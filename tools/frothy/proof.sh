@@ -28,6 +28,7 @@ usage: proof.sh <proof> [args...]
 proofs:
   host
   control [--host-only|<PORT>]
+  editor [--host-only|<PORT>]
   repl
   ctrl-c
   inspect
@@ -51,6 +52,9 @@ run_one() {
       ;;
     control)
       exec sh "$SCRIPT_DIR/proof_f1_control_smoke.sh" "$@"
+      ;;
+    editor)
+      exec sh "$SCRIPT_DIR/proof_editor_smoke.sh" "$@"
       ;;
     inspect)
       exec sh "$SCRIPT_DIR/proof_m8_inspect_smoke.sh" "$@"
@@ -86,9 +90,9 @@ case "$1" in
       usage >&2
       exit 1
     }
-    for proof_name in repl ctrl-c control inspect boot ffi safe-boot; do
+    for proof_name in repl ctrl-c control editor inspect boot ffi safe-boot; do
       printf '==> %s\n' "$proof_name"
-      if [ "$proof_name" = control ]; then
+      if [ "$proof_name" = control ] || [ "$proof_name" = editor ]; then
         sh "$0" "$proof_name" --host-only
       else
         sh "$0" "$proof_name"

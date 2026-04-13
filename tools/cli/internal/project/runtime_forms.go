@@ -11,6 +11,7 @@ type runtimeFormState struct {
 	braceDepth       int
 	bracketDepth     int
 	inString         bool
+	sawTopLevelIf    bool
 	trailingEqual    bool
 	trailingKeyword  bool
 	trailingComma    bool
@@ -31,7 +32,7 @@ func SplitTopLevelForms(source string) ([]string, error) {
 		hasCode bool
 	)
 
-	for _, line := range lines {
+	for index, line := range lines {
 		if isLineComment(line) {
 			continue
 		}
@@ -41,7 +42,7 @@ func SplitTopLevelForms(source string) ([]string, error) {
 		if strings.TrimSpace(line) != "" {
 			hasCode = true
 		}
-		if hasCode && runtimeFormComplete(&state) {
+		if hasCode && runtimeFormComplete(&state) && !runtimeFormContinuesWithElse(lines, index+1, &state) {
 			form := strings.TrimSpace(current.String())
 			if form != "" {
 				forms = append(forms, form)
@@ -72,6 +73,9 @@ func runtimeFormAppendLine(state *runtimeFormState, current *strings.Builder, li
 }
 
 func runtimeFormScanChunk(state *runtimeFormState, chunk string) {
+	token := strings.Builder{}
+	topLevel := state.parenDepth == 0 && state.braceDepth == 0 && state.bracketDepth == 0
+
 	for i := 0; i < len(chunk); i++ {
 		ch := chunk[i]
 		if state.inString {
@@ -83,6 +87,15 @@ func runtimeFormScanChunk(state *runtimeFormState, chunk string) {
 				state.inString = false
 			}
 			continue
+		}
+
+		if topLevel && runtimeFormIsNameContinue(ch) {
+			token.WriteByte(ch)
+		} else if token.Len() > 0 {
+			if token.String() == "if" {
+				state.sawTopLevelIf = true
+			}
+			token.Reset()
 		}
 
 		switch ch {
@@ -107,6 +120,12 @@ func runtimeFormScanChunk(state *runtimeFormState, chunk string) {
 				state.braceDepth--
 			}
 		}
+
+		topLevel = state.parenDepth == 0 && state.braceDepth == 0 && state.bracketDepth == 0
+	}
+
+	if topLevel && token.String() == "if" {
+		state.sawTopLevelIf = true
 	}
 }
 
@@ -488,4 +507,28 @@ func runtimeFormEndsWithCallHeader(text string, end int) bool {
 		return false
 	}
 	return !runtimeFormContainsCallSeparator(text, callStart+len("call"), end)
+}
+
+func runtimeFormContinuesWithElse(lines []string, start int, state *runtimeFormState) bool {
+	if !state.sawTopLevelIf {
+		return false
+	}
+	for index := start; index < len(lines); index++ {
+		trimmed := strings.TrimSpace(lines[index])
+		if trimmed == "" || strings.HasPrefix(trimmed, `\`) {
+			continue
+		}
+		return runtimeFormIsElseContinuation(trimmed)
+	}
+	return false
+}
+
+func runtimeFormIsElseContinuation(trimmed string) bool {
+	if !strings.HasPrefix(trimmed, "else") {
+		return false
+	}
+	if len(trimmed) == 4 {
+		return true
+	}
+	return !runtimeFormIsNameContinue(trimmed[4])
 }

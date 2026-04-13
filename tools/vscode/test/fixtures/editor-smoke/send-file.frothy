@@ -1,0 +1,2 @@
+keep = 30
+probe(n) { n + 2 }

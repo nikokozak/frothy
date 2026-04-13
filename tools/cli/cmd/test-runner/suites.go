@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 )
 
@@ -18,6 +19,16 @@ func runAll() error {
 	}
 	if err := runCLILocal(); err != nil {
 		return err
+	}
+	if err := runVSCode(); err != nil {
+		return err
+	}
+	if port := boardSmokePort(); port != "" {
+		if err := runVSCodeBoard(port); err != nil {
+			return err
+		}
+	} else {
+		fmt.Println("[skip] vscode:proof-board (set FROTHY_EDITOR_SMOKE_PORT or make test-all PORT=/dev/... to include real-board editor smoke)")
 	}
 	return runCLIIntegration()
 }
@@ -59,6 +70,125 @@ func runCLILocal() error {
 	return runCommand(paths, "cli:localruntime", env, paths.Root, "make", "--no-print-directory", "-C", filepath.Join(paths.Root, "tools", "cli"), "test-localruntime")
 }
 
+func runVSCode() error {
+	paths, err := detectPaths()
+	if err != nil {
+		return err
+	}
+	if err := ensureProfile(paths, "host-default", false); err != nil {
+		return err
+	}
+	env := baseTestEnv(paths)
+	if err := prepareVSCode(paths, env); err != nil {
+		return err
+	}
+	return runCommand(
+		paths,
+		"vscode:proof-host",
+		env,
+		paths.Root,
+		"sh",
+		filepath.Join(paths.Root, "tools", "frothy", "proof_editor_smoke.sh"),
+		"--host-only",
+	)
+}
+
+func runVSCodeBoard(port string) error {
+	paths, err := detectPaths()
+	if err != nil {
+		return err
+	}
+	if err := ensureProfile(paths, "host-default", false); err != nil {
+		return err
+	}
+	env := baseTestEnv(paths)
+	if err := prepareVSCodeBoard(paths, env); err != nil {
+		return err
+	}
+	return runCommand(
+		paths,
+		"vscode:proof-board",
+		env,
+		paths.Root,
+		"sh",
+		filepath.Join(paths.Root, "tools", "frothy", "proof_editor_smoke.sh"),
+		port,
+	)
+}
+
+func prepareVSCode(paths pathSet, env map[string]string) error {
+	if err := runCommand(
+		paths,
+		"vscode:cli-build",
+		env,
+		paths.Root,
+		"make",
+		"--no-print-directory",
+		"-C",
+		filepath.Join(paths.Root, "tools", "cli"),
+		"build",
+	); err != nil {
+		return err
+	}
+	if err := runCommand(
+		paths,
+		"vscode:npm-ci",
+		env,
+		filepath.Join(paths.Root, "tools", "vscode"),
+		"npm",
+		"ci",
+	); err != nil {
+		return err
+	}
+	if err := runCommand(
+		paths,
+		"vscode:test",
+		env,
+		filepath.Join(paths.Root, "tools", "vscode"),
+		"npm",
+		"test",
+	); err != nil {
+		return err
+	}
+	return nil
+}
+
+func prepareVSCodeBoard(paths pathSet, env map[string]string) error {
+	if err := runCommand(
+		paths,
+		"vscode:cli-build",
+		env,
+		paths.Root,
+		"make",
+		"--no-print-directory",
+		"-C",
+		filepath.Join(paths.Root, "tools", "cli"),
+		"build",
+	); err != nil {
+		return err
+	}
+
+	nodeModulesPath := filepath.Join(paths.Root, "tools", "vscode", "node_modules")
+	info, err := os.Stat(nodeModulesPath)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("missing VS Code dependencies: %s (run: cd tools/vscode && npm ci)", nodeModulesPath)
+	}
+
+	return runCommand(
+		paths,
+		"vscode:compile",
+		env,
+		filepath.Join(paths.Root, "tools", "vscode"),
+		"npm",
+		"run",
+		"compile",
+	)
+}
+
+func boardSmokePort() string {
+	return os.Getenv("FROTHY_EDITOR_SMOKE_PORT")
+}
+
 func runCLIIntegration() error {
 	paths, err := detectPaths()
 	if err != nil {
@@ -74,6 +204,8 @@ func printList() {
 	fmt.Println("all")
 	fmt.Println("  fast")
 	fmt.Println("  cli-local")
+	fmt.Println("  vscode")
+	fmt.Println("  vscode-board --port <PORT>")
 	fmt.Println("  integration")
 	fmt.Println("profiles")
 	for _, name := range sortedProfileNames() {

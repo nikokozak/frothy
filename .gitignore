@@ -40,6 +40,7 @@ tools/frothy/__pycache__/
 tests/kernel/__pycache__/
 
 # VS Code extension local outputs
+.vscode-test/
 tools/vscode/node_modules/
 tools/vscode/out/
 tools/vscode/*.vsix

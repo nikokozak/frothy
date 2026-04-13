@@ -121,3 +121,44 @@ func TestSplitTopLevelFormsRejectsIncompleteInput(t *testing.T) {
 		t.Fatal("SplitTopLevelForms repeat header succeeded, want error")
 	}
 }
+
+func TestSplitTopLevelFormsKeepsIfElseTogether(t *testing.T) {
+	source := `keep = if true {
+  1
+}
+else {
+  2
+}
+after = 7
+`
+	forms, err := SplitTopLevelForms(source)
+	if err != nil {
+		t.Fatalf("SplitTopLevelForms: %v", err)
+	}
+	want := []string{
+		"keep = if true {\n  1\n}\nelse {\n  2\n}",
+		"after = 7",
+	}
+	if !reflect.DeepEqual(forms, want) {
+		t.Fatalf("forms = %#v, want %#v", forms, want)
+	}
+}
+
+func TestSplitTopLevelFormsDoesNotTreatElsePrefixesAsElseBranch(t *testing.T) {
+	source := `keep = if true {
+  1
+}
+elsewhere = 2
+`
+	forms, err := SplitTopLevelForms(source)
+	if err != nil {
+		t.Fatalf("SplitTopLevelForms: %v", err)
+	}
+	want := []string{
+		"keep = if true {\n  1\n}",
+		"elsewhere = 2",
+	}
+	if !reflect.DeepEqual(forms, want) {
+		t.Fatalf("forms = %#v, want %#v", forms, want)
+	}
+}

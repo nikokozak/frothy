@@ -18,10 +18,13 @@
   },
   "files": [
     "out/cli-discovery.js",
+    "out/controller.js",
     "out/control-session-client.js",
     "out/extension.js",
+    "out/runtime-forms.js",
     "out/send-file.js",
     "out/send-file-reset.js",
+    "out/vscode-host.js",
     "syntaxes/**",
     "language-configuration.json",
     "README.md",
@@ -260,11 +263,14 @@
     "package:vsix": "npm run compile && vsce package --no-yarn",
     "test:package": "npm run compile && node test/package-smoke.js",
     "watch": "tsc -watch -p ./",
-    "test": "npm run compile && node test/control-session-smoke.js && node test/extension-smoke.js"
+    "test:smoke": "node test/control-session-smoke.js && node test/runtime-forms-smoke.js && node test/controller-smoke.js && node test/extension-smoke.js",
+    "test:extension-host": "node test/run-extension-host-smoke.js",
+    "test": "npm run compile && npm run test:smoke"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
     "typescript": "^5.3.0"
   }

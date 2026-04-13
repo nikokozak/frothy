@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,8 @@ var commands = map[string]commandFunc{
 	"frothy":           commandFrothy,
 	"cli":              commandCLIUnit,
 	"cli-local":        commandCLILocal,
+	"vscode":           commandVSCode,
+	"vscode-board":     commandVSCodeBoard,
 	"integration":      commandCLIIntegration,
 	"list":             commandList,
 	"ensure-profile":   commandEnsureProfile,
@@ -54,6 +57,22 @@ func commandCLIUnit(_ []string) error {
 
 func commandCLILocal(_ []string) error {
 	return runCLILocal()
+}
+
+func commandVSCode(_ []string) error {
+	return runVSCode()
+}
+
+func commandVSCodeBoard(args []string) error {
+	fs := flag.NewFlagSet("vscode-board", flag.ContinueOnError)
+	port := fs.String("port", "", "serial port for board editor smoke")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *port == "" {
+		return fmt.Errorf("--port is required")
+	}
+	return runVSCodeBoard(*port)
 }
 
 func commandCLIIntegration(_ []string) error {

@@ -6,6 +6,11 @@ export const resetUnavailableLogLine =
 export const resetUnavailableError =
   "Whole-file Send File requires control reset. The connected Frothy firmware is too old for safe whole-file send. Upgrade or reflash the firmware, or use Send Selection / Line for intentional additive eval.";
 
+export interface PrepareSendFileResetResult {
+  proceed: boolean;
+  degraded: boolean;
+}
+
 type ResetClient = {
   reset(): Promise<unknown>;
 };
@@ -14,32 +19,36 @@ type ResetOutput = {
   appendLine(line: string): void;
 };
 
-type MessageFn =
-  (message: string) => PromiseLike<string | undefined> | string | undefined;
+type MessageFn = (
+  message: string,
+  ...items: string[]
+) => PromiseLike<string | undefined> | string | undefined;
 
 type ErrorFn = (label: string, err: unknown) => void;
 
 export async function prepareSendFileReset(
   client: ResetClient,
   output: ResetOutput,
-  showErrorMessage: MessageFn,
+  showMessage: MessageFn,
   handleError: ErrorFn,
-): Promise<boolean> {
+): Promise<PrepareSendFileResetResult> {
   try {
     await client.reset();
     output.appendLine(resetLogLine);
-    return true;
+    return { proceed: true, degraded: false };
   } catch (err: unknown) {
     if (
       err instanceof ControlSessionClientError &&
       err.code === "reset_unavailable"
     ) {
       output.appendLine(resetUnavailableLogLine);
-      await showErrorMessage(resetUnavailableError);
-      return false;
+      return {
+        proceed: (await showMessage(resetUnavailableError), false),
+        degraded: false,
+      };
     }
 
     handleError("reset", err);
-    return false;
+    return { proceed: false, degraded: false };
   }
 }

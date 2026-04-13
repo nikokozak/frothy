@@ -86,7 +86,7 @@ async function main() {
   assert(handledErrors.length === 0, "successful reset should not handle errors");
 
   const staleOutput = [];
-  const staleOk = await prepareSendFileReset(
+  const staleResult = await prepareSendFileReset(
     {
       reset: async () => {
         throw new ControlSessionClientError({
@@ -104,7 +104,8 @@ async function main() {
       throw new Error("stale reset should not route through generic error handler");
     },
   );
-  assert(staleOk === false, "stale reset should block whole-file send");
+  assert(staleResult.proceed === false, "stale reset should block whole-file send");
+  assert(staleResult.degraded === false, "stale reset should not mark degraded mode");
   assert(
     staleOutput.includes(resetUnavailableLogLine),
     "stale reset should log whole-file send abort",
