@@ -1,6 +1,6 @@
 # Frothy Timeline
 
-*Last updated: 2026-04-12*
+*Last updated: 2026-04-13*
 
 This file is the thin milestone ledger for Frothy.
 The roadmap current-state block in
@@ -13,10 +13,10 @@ If this file and the roadmap disagree, the roadmap wins.
 
 - Active milestone: `[~] Next-stage language definition`
 - Blocked by: none
-- Next artifact: align the control docs with the accepted ADR stack, then
-  advance `docs/spec/Frothy_Language_Spec_vNext.md` as the active next-stage
-  language-definition draft
-- Next proof command: `make test-all && rg -n "Next-stage language definition|draft next-stage spec plus ADR|ADR-112|ADR-113" docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md docs/spec/Frothy_Language_Spec_vNext.md docs/adr/112-next-stage-language-growth-and-recovery-boundary.md docs/adr/113-manifest-owned-project-target-selection.md`
+- Next artifact: tighten the remaining next-stage draft around records,
+  modules, `cond`/`case`, `try/catch`, and binding/place values on top of
+  the frozen spoken-ledger tranche 1 baseline
+- Next proof command: `make test-all && sh tools/frothy/proof_next_stage_docs.sh`
 
 ## Milestone Ledger
 
@@ -52,11 +52,19 @@ If this file and the roadmap disagree, the roadmap wins.
 - `Helper proof coverage`: confirmed on target hardware on 2026-04-12. The
   checked-in `proof_f1_control_smoke.sh <PORT>` path now closes the public-CLI
   flash/apply/reconnect proof on device.
-- `Next-stage language definition`: active immediately after the helper
-  closeout. Tighten the draft language spec around the accepted ADR-112
-  boundary for counted iteration, fixed-layout records, module images built
-  from stable slots, Frothy-native `try/catch`, and the top-level
-  recovery-boundary story before runtime semantics widen again.
+- `Spoken-ledger syntax tranche 1`: landed on 2026-04-13. `name is expr`,
+  `here name is expr`, `set place to expr`, `to` / `fn with`, bracket
+  blocks, `:` calls plus `call expr with ...`, `repeat`, `when`, `unless`,
+  `and`, `or`, prompt verbs, and prompt-only simple-call sugar are now
+  merged on top of canonical IR lowering, with refreshed parser/eval
+  coverage plus M8 REPL and inspect smokes.
+- `Spoken-ledger syntax tranche 1 baseline`: frozen on 2026-04-13. The next
+  language-definition pass should treat that proved slice as fixed input and
+  move the remaining design work in a separate process.
+- `Next-stage language definition`: remains active after the spoken-ledger
+  first slice. Records, modules, `cond`/`case`, Frothy-native `try/catch`,
+  and binding/place values remain draft-only next-stage design work before
+  runtime semantics widen again.
 - `CLI naming alignment`: queued after the next-stage language-definition
   artifact. Align the repo-local `froth-cli` binary, release-time `froth`
   binary, and transitional docs/tooling surfaces with the intended global
@@ -73,8 +81,8 @@ If this file and the roadmap disagree, the roadmap wins.
   `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md`.
 - `Syntax tranche 1`: landed on 2026-04-12. `here`, top-level
   `name(args) = expr`, `name(args) { block }`, `boot { block }`, and the
-  accepted bare REPL command sugar are now merged on top of the runtime
-  baseline, with refreshed M8 REPL and inspect smokes proving the shell path.
+  first accepted bare REPL command sugar are now merged on top of the runtime
+  baseline that the spoken-ledger follow-on extends.
 - `Transport simplification`: replace the inherited daemon and mixed-stream
   direction with the ADR-110 single-owner control session. Raw REPL stays raw;
   structured control gets explicit exclusive framing and event replies. After

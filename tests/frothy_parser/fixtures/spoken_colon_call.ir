@@ -1,0 +1,1 @@
+(write-slot "emitOne" (fn arity=0 locals=0 (seq (call (read-slot "emit") (lit 1)))))

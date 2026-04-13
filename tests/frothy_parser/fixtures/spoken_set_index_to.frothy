@@ -1,0 +1,1 @@
+poke is fn with frame, index, value [ set frame[index] to value ]

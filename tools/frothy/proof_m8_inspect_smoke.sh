@@ -64,9 +64,11 @@ HELP_TRANSCRIPT="$(
 )"
 printf '%s\n' "$HELP_TRANSCRIPT"
 require_contains "$HELP_TRANSCRIPT" 'words'
+require_contains "$HELP_TRANSCRIPT" 'show @name'
 require_contains "$HELP_TRANSCRIPT" 'see @name'
 require_contains "$HELP_TRANSCRIPT" 'core @name'
 require_contains "$HELP_TRANSCRIPT" 'info @name'
+require_contains "$HELP_TRANSCRIPT" 'remember'
 require_contains "$HELP_TRANSCRIPT" 'save'
 require_contains "$HELP_TRANSCRIPT" 'restore'
 require_contains "$HELP_TRANSCRIPT" 'wipe'
@@ -76,7 +78,7 @@ require_contains "$HELP_TRANSCRIPT" 'exit'
 
 WORDS_TRANSCRIPT="$(
   run_transcript \
-    'inc = fn(x) { x + 1 }' \
+    'to inc with x [ x + 1 ]' \
     'words' \
     'quit'
 )"
@@ -118,19 +120,45 @@ require_not_contains "$BASE_TRANSCRIPT" 'parse error ('
 
 INSPECT_TRANSCRIPT="$(
   run_transcript \
-    'inc = fn(x) { x + 1 }' \
+    'to inc with x [ x + 1 ]' \
     'alias = inc' \
-    'see("alias")' \
+    'show @alias' \
     'core("alias")' \
     'slotInfo("alias")' \
     'quit'
 )"
 printf '%s\n' "$INSPECT_TRANSCRIPT"
 require_contains "$INSPECT_TRANSCRIPT" 'alias | overlay | code'
+require_contains "$INSPECT_TRANSCRIPT" 'to alias with arg0 [ arg0 + 1 ]'
 require_contains "$INSPECT_TRANSCRIPT" '(fn arity=1 locals=1 (seq (call (builtin "+") (read-local 0) (lit 1))))'
 require_contains "$INSPECT_TRANSCRIPT" 'alias | overlay | code | persistable | user'
 require_not_contains "$INSPECT_TRANSCRIPT" 'eval error ('
 require_not_contains "$INSPECT_TRANSCRIPT" 'parse error ('
+
+NORMALIZED_SHOW_TRANSCRIPT="$(
+  run_transcript \
+    'to loopDemo [ repeat 3 as i [ i ] ]' \
+    'to logicDemo with x, y [ x and y ]' \
+    'to logicOr with x, y [ x or y ]' \
+    'to scoped [ here n is 1; n ]' \
+    'to localDemo [ n is 6; n ]' \
+    'show @loopDemo' \
+    'show @logicDemo' \
+    'show @logicOr' \
+    'show @scoped' \
+    'show @localDemo' \
+    'quit'
+)"
+printf '%s\n' "$NORMALIZED_SHOW_TRANSCRIPT"
+require_contains "$NORMALIZED_SHOW_TRANSCRIPT" 'to loopDemo [ repeat 3 as local0 [ local0 ] ]'
+require_contains "$NORMALIZED_SHOW_TRANSCRIPT" 'to logicDemo with arg0, arg1 [ arg0 and arg1 ]'
+require_contains "$NORMALIZED_SHOW_TRANSCRIPT" 'to logicOr with arg0, arg1 [ arg0 or arg1 ]'
+require_contains "$NORMALIZED_SHOW_TRANSCRIPT" 'to scoped [ here local0 is 1; local0 ]'
+require_contains "$NORMALIZED_SHOW_TRANSCRIPT" 'to localDemo [ here local0 is 6; local0 ]'
+require_not_contains "$NORMALIZED_SHOW_TRANSCRIPT" 'while local'
+require_not_contains "$NORMALIZED_SHOW_TRANSCRIPT" 'if arg0 [ if arg1'
+require_not_contains "$NORMALIZED_SHOW_TRANSCRIPT" 'eval error ('
+require_not_contains "$NORMALIZED_SHOW_TRANSCRIPT" 'parse error ('
 
 REBIND_TRANSCRIPT="$(
   run_transcript \
@@ -147,12 +175,12 @@ require_not_contains "$REBIND_TRANSCRIPT" 'parse error ('
 
 COMMAND_TRANSCRIPT="$(
   run_transcript \
-    'alias = fn() { 42 }' \
-    'see @alias' \
+    'to alias [ 42 ]' \
+    'show @alias' \
     'core @alias' \
     'info @alias' \
     'note = "saved"' \
-    'save' \
+    'remember' \
     'note = "changed"' \
     'restore' \
     'note' \
@@ -162,10 +190,26 @@ COMMAND_TRANSCRIPT="$(
 )"
 printf '%s\n' "$COMMAND_TRANSCRIPT"
 require_contains "$COMMAND_TRANSCRIPT" 'alias | overlay | code'
+require_contains "$COMMAND_TRANSCRIPT" 'to alias [ 42 ]'
 require_contains "$COMMAND_TRANSCRIPT" 'alias | overlay | code | persistable | user'
 require_contains "$COMMAND_TRANSCRIPT" 'frothy> "saved"'
 require_contains "$COMMAND_TRANSCRIPT" 'eval error ('
 require_not_contains "$COMMAND_TRANSCRIPT" 'frothy> nil'
+
+SIMPLE_CALL_TRANSCRIPT="$(
+  run_transcript \
+    'add = fn(a, b) { a + b }' \
+    'add 4, 5' \
+    'add -1, 2' \
+    'tick.on = fn() { 7 }' \
+    'tick.on' \
+    'quit'
+)"
+printf '%s\n' "$SIMPLE_CALL_TRANSCRIPT"
+require_contains "$SIMPLE_CALL_TRANSCRIPT" 'frothy> frothy> 9'
+require_contains "$SIMPLE_CALL_TRANSCRIPT" 'frothy> 1'
+require_contains "$SIMPLE_CALL_TRANSCRIPT" 'frothy> frothy> 7'
+require_not_contains "$SIMPLE_CALL_TRANSCRIPT" 'parse error ('
 
 CALLABLE_TRANSCRIPT="$(
   run_transcript \

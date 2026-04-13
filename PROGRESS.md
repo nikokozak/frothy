@@ -1,6 +1,6 @@
 # Frothy Progress
 
-*Last updated: 2026-04-12*
+*Last updated: 2026-04-13*
 
 This file is the thin repo-local execution journal for Frothy.
 The current-state block in
@@ -14,13 +14,25 @@ file is wrong.
 
 - Active milestone: `[~] Next-stage language definition`
 - Blocked by: none
-- Next artifact: align the control docs with the accepted ADR stack, then
-  advance `docs/spec/Frothy_Language_Spec_vNext.md` as the active next-stage
-  language-definition draft
-- Next proof: `make test-all && rg -n "Next-stage language definition|draft next-stage spec plus ADR|ADR-112|ADR-113" docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md docs/spec/Frothy_Language_Spec_vNext.md docs/adr/112-next-stage-language-growth-and-recovery-boundary.md docs/adr/113-manifest-owned-project-target-selection.md`
+- Next artifact: tighten the remaining next-stage draft around records,
+  modules, `cond`/`case`, `try/catch`, and binding/place values on top of
+  the frozen spoken-ledger tranche 1 baseline
+- Next proof: `make test-all && sh tools/frothy/proof_next_stage_docs.sh`
 
 ## Recent Landed Work
 
+- Spoken-ledger syntax tranche 1 is landed on 2026-04-13:
+  the parser now accepts `name is expr`, `here name is expr`,
+  `set place to expr`, bracket blocks with `;`, `to` / `fn with`,
+  `:` calls plus `call expr with ...`, `repeat`, `when`, `unless`, `and`,
+  and `or`, while the shell now carries the matching continuation rules,
+  `show` / `info` / `remember`, and prompt-only simple-call sugar. The first
+  slice still lowers onto canonical IR without widening the evaluator or
+  snapshot format, and `show` now prefers a normalized source-like code
+  surface while `core` stays canonical.
+- Spoken-ledger syntax tranche 1 is now the frozen baseline for the next
+  process. Follow-on next-stage work should start from this proved surface
+  rather than mixing new semantic widening into further tranche hardening.
 - The 2026-04-12 real-device F1 closeout is confirmed:
   the checked-in `tools/frothy/proof_f1_control_smoke.sh <PORT>` path now
   succeeds end to end on target hardware through public-CLI
@@ -139,28 +151,18 @@ file is wrong.
   device path. That checked-in device proof is now confirmed on target
   hardware.
 - The next language-definition artifact after the active helper broadening
-  slice is tightening the draft next-stage spec around the already-accepted
-  ADR-112 boundary: counted iteration, fixed-layout records, module images
-  built from stable slots, Frothy-native `try/catch`, and the current
-  recovery-boundary story that explains why Frothy still has no Froth-style
-  language-level global `catch`.
+  slice is now tighter: spoken-ledger syntax tranche 1 is in tree, while
+  records, modules, `cond`/`case`, Frothy-native `try/catch`, and
+  binding/place values remain the draft-only next-stage design surface.
 - Workspace/image-loading primitives stay deferred until the control surface,
   helper surface, and editor integration story are smaller and clearer.
 
 ## Next Artifact
 
-- Confirm the checked-in helper-owned flash/apply proof on real hardware,
-  then close F1 and move to the queued next-stage language-definition
-  artifact.
+- Tighten the remaining next-stage draft around records, modules,
+  `cond`/`case`, `try/catch`, and binding/place values on top of the frozen
+  spoken-ledger tranche 1 baseline.
 
 ## Next Proof
 
-- `make build`
-- `ctest --test-dir build --output-on-failure -R '^frothy_(parser|eval|snapshot|ffi)$'`
-- `cd tools/cli && go test ./internal/frothycontrol ./cmd`
-- `cd tools/vscode && npm test`
-- `./build/frothy_runtime_bench`
-- `sh tools/frothy/proof_f1_control_smoke.sh --host-only`
-- `sh tools/frothy/proof_f1_control_smoke.sh <PORT>`
-- `tools/frothy/proof_m8_repl_smoke.sh`
-- `bash tools/frothy/proof_m8_inspect_smoke.sh`
+- `make test-all && sh tools/frothy/proof_next_stage_docs.sh`

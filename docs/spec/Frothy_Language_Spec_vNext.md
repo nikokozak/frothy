@@ -2,7 +2,7 @@
 
 Status: Draft proposal
 Version: vNext
-Date: 2026-04-12
+Date: 2026-04-13
 Depends on:
 - `Frothy_Language_Spec_v0_1.md`
 - `Frothy_Surface_Syntax_Proposal_vNext.md`
@@ -29,6 +29,32 @@ The next stage should make Frothy feel:
 - strong enough for reusable libraries,
 - and more obviously distinct from both C-like batch languages and inherited
   Froth stack-visible programming.
+
+The current draft surface direction for that next stage is a spoken and
+ledger-like hybrid optimized for heavy line-by-line REPL use:
+
+- `name is expr` for binding
+- `to name ... [ ... ]` for named code
+- `set place to expr` for mutation
+- bracketed blocks plus `;` for one-line separation
+- `:` as the primary call marker in files
+- and narrower bare-command sugar at the prompt
+
+The first implemented slice in tree is spoken-ledger syntax tranche 1:
+
+- `name is expr`
+- `here name is expr`
+- `set place to expr`
+- `to name ... [ ... ]` and `fn with ... [ ... ]`
+- bracket blocks plus `;`
+- `:` calls and `call expr with ...`
+- `repeat`, `when`, `unless`, `and`, and `or`
+- prompt verbs `show`, `info`, and `remember`
+- prompt-only simple-call sugar
+
+That slice lowers onto existing canonical IR and evaluator machinery.
+After spoken-ledger syntax tranche 1, records, modules, cond/case,
+try/catch, and binding/place values remain draft.
 
 ## 2. What Must Stay True
 
@@ -101,24 +127,24 @@ The semantic requirements are:
 The preferred user-facing shape is:
 
 ```txt
-repeat count { block }
-repeat count as i { block }
+repeat count [ block ]
+repeat count as i [ block ]
 ```
 
 Illustrative examples:
 
 ```txt
-repeat 5 as i {
-  gpio.write(i, true)
-}
+repeat 5 as i [
+  gpio.write: i, true
+]
 ```
 
 ```txt
-repeat height as y {
-  repeat width as x {
-    drawPixel(x, y)
-  }
-}
+repeat height as y [
+  repeat width as x [
+    drawPixel: x, y
+  ]
+]
 ```
 
 Why this matters:
@@ -136,8 +162,8 @@ The minimum next-stage control additions should be:
 
 - short-circuit `and`
 - short-circuit `or`
-- `when condition { block }`
-- `unless condition { block }`
+- `when condition [ block ]`
+- `unless condition [ block ]`
 - `cond` for ordered multi-branch selection
 - `case` for value-based dispatch
 
@@ -190,17 +216,18 @@ The preferred first-step module model is:
 Illustrative shape:
 
 ```txt
-module led {
-  pin = LED_BUILTIN
+in led [
+  pin is LED_BUILTIN
 
-  on() = gpio.write(pin, true)
-  off() = gpio.write(pin, false)
-}
+  to on [ gpio.write: pin, true ]
+  to off [ gpio.write: pin, false ]
+]
 ```
 
 The key property is that this remains compatible with the accepted slot model.
 A module is not a separate hidden object graph that bypasses slots.
-It is a structured way to define and reason about groups of slots.
+It is a structured way to define and reason about groups of prefixed stable
+slots.
 
 This makes modules the right main mechanism for libraries:
 
@@ -239,20 +266,20 @@ stack-visible global catch model.
 The preferred first-step shape is:
 
 ```txt
-try { block } catch err { block }
+try [ block ] catch err [ block ]
 ```
 
 Illustrative example:
 
 ```txt
-sample() {
-  try {
-    readSensor()
-  } catch err {
-    logError(err)
+to sample [
+  try [
+    readSensor:
+  ] catch err [
+    logError: err;
     nil
-  }
-}
+  ]
+]
 ```
 
 The semantic requirements are:
@@ -371,26 +398,27 @@ That construct should obey these rules:
 
 This next-stage work should land in a disciplined order.
 
-### 7.1 First design tranche
+### 7.1 First implemented slice
 
-The first design tranche after current helper/control hardening should be:
+The first implemented slice after the helper/control hardening work is now
+spoken-ledger syntax tranche 1:
 
-1. counted iteration
-2. records
-3. modules
+1. spoken-ledger binding and mutation forms
+2. bracket blocks and `;`
+3. `to` / `fn with` / `:` calls
+4. counted iteration
+5. `when`, `unless`, `and`, and `or`
+6. prompt verbs plus prompt-only simple-call sugar
+
+### 7.2 Remaining design order
+
+The remaining next-stage design work should now stay narrower:
+
+1. records
+2. modules
+3. `cond` and `case`
 4. Frothy-native `try/catch` with named error values
-5. binding/place values
-
-### 7.2 Implementation order
-
-The implementation order should stay narrower:
-
-1. keep current helper/control broadening as the active follow-on artifact
-2. land the language-design draft and ADR
-3. settle counted iteration and structured recovery semantics first
-4. implement records before or alongside the caught-error value shape
-5. add module blocks and library-oriented inspection next
-6. add binding/place values after the above surfaces are explicit
+5. binding/place values after the above surfaces are explicit
 
 ### 7.3 Explicit non-goals for this tranche
 

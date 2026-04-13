@@ -1,0 +1,1 @@
+(if (lit true) (if (lit false) (lit true) (lit false)) (lit false))

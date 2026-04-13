@@ -24,12 +24,12 @@ It is a sequencing and control document.
 This block is the live control surface for repo status.
 
 Current milestone: `[~] Next-stage language definition`
-Today's goal: turn the queued next-stage language-definition work into the live control artifact now that F1 is closed on real hardware
-Next artifact: align the control docs with the accepted ADR stack, then advance `docs/spec/Frothy_Language_Spec_vNext.md` as the active next-stage language-definition draft
+Today's goal: keep spoken-ledger syntax tranche 1 frozen as the baseline while the remaining next-stage draft is tightened in a separate follow-on process
+Next artifact: tighten the remaining next-stage draft around records, modules, `cond`/`case`, `try/catch`, and binding/place values on top of the frozen spoken-ledger tranche 1 baseline
 Blocked by: none
-Next proof command: `make test-all && rg -n "Next-stage language definition|draft next-stage spec plus ADR|ADR-112|ADR-113" docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md docs/spec/Frothy_Language_Spec_vNext.md docs/adr/112-next-stage-language-growth-and-recovery-boundary.md docs/adr/113-manifest-owned-project-target-selection.md`
-Slip against plan: none; the checked-in public-CLI flash/apply proof is now confirmed on target hardware, so the helper closeout no longer blocks next-stage language work
-Cut candidate if slip persists: defer CLI naming alignment and workspace/image-loading work until the next-stage language draft is tightened
+Next proof command: `make test-all && sh tools/frothy/proof_next_stage_docs.sh`
+Slip against plan: none; spoken-ledger syntax tranche 1 now lands without widening the evaluator or snapshot format
+Cut candidate if slip persists: keep `in prefix`, records, modules, `cond`/`case`, `try/catch`, and binding/place values as draft-only work until the remaining next-stage design is tighter
 
 ## 3. Operating Rules
 
@@ -623,9 +623,15 @@ Why now:
 Approach:
 
 - keep the accepted `v0.1` spec authoritative for current behavior
-- add a draft next-stage language spec that covers indexed counted iteration,
-  short-circuit and multi-branch control, fixed-layout records, module images
-  built from stable slots, and Frothy-native `try/catch`
+- keep spoken-ledger syntax tranche 1 explicit in the live draft:
+  `name is expr`, `here name is expr`, `set place to expr`, `to` / `fn with`,
+  bracket blocks, `:` calls plus `call expr with ...`, `repeat`, `when`,
+  `unless`, `and`, `or`, prompt verbs, and prompt-only bare simple-call sugar
+- keep that first slice parser-lowered onto the existing canonical IR,
+  evaluator, and snapshot machinery
+- keep records, modules, `cond`/`case`, Frothy-native `try/catch`, and
+  binding/place values in the draft, but do not widen runtime semantics for
+  them yet
 - keep recovery terminology honest: top-level shell/control/boot recovery is
   current reality, and the next in-language `try/catch` surface must stay
   explicitly non-transactional and narrower than Froth's old global catch
@@ -635,7 +641,7 @@ Approach:
 Next artifact:
 
 - `docs/spec/Frothy_Language_Spec_vNext.md`
-- `docs/adr/112-next-stage-language-growth-and-recovery-boundary.md`
+- `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md`
 
 #### Immediate control hardening + `RESET`
 

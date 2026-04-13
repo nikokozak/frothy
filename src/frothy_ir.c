@@ -257,6 +257,565 @@ static froth_error_t frothy_ir_render_node(const frothy_ir_program_t *program,
   return FROTH_ERROR_SIGNATURE;
 }
 
+typedef struct {
+  const frothy_ir_program_t *program;
+  size_t arity;
+  size_t local_count;
+} frothy_surface_render_t;
+
+static froth_error_t
+frothy_ir_render_surface_expr(const frothy_surface_render_t *render,
+                              frothy_ir_node_id_t node_id,
+                              frothy_string_builder_t *builder);
+
+static froth_error_t
+frothy_ir_render_surface_block(const frothy_surface_render_t *render,
+                               frothy_ir_node_id_t node_id,
+                               frothy_string_builder_t *builder);
+
+static froth_error_t frothy_ir_render_surface_local_name(
+    const frothy_surface_render_t *render, size_t local_index,
+    frothy_string_builder_t *builder) {
+  if (local_index < render->arity) {
+    return frothy_sb_appendf(builder, "arg%zu", local_index);
+  }
+  return frothy_sb_appendf(builder, "local%zu", local_index - render->arity);
+}
+
+static const char *
+frothy_ir_surface_infix_operator(frothy_ir_builtin_kind_t builtin) {
+  switch (builtin) {
+  case FROTHY_IR_BUILTIN_ADD:
+    return "+";
+  case FROTHY_IR_BUILTIN_SUB:
+    return "-";
+  case FROTHY_IR_BUILTIN_MUL:
+    return "*";
+  case FROTHY_IR_BUILTIN_DIV:
+    return "/";
+  case FROTHY_IR_BUILTIN_REM:
+    return "%";
+  case FROTHY_IR_BUILTIN_LT:
+    return "<";
+  case FROTHY_IR_BUILTIN_LE:
+    return "<=";
+  case FROTHY_IR_BUILTIN_GT:
+    return ">";
+  case FROTHY_IR_BUILTIN_GE:
+    return ">=";
+  case FROTHY_IR_BUILTIN_EQ:
+    return "==";
+  case FROTHY_IR_BUILTIN_NEQ:
+    return "!=";
+  default:
+    return NULL;
+  }
+}
+
+static froth_error_t
+frothy_ir_render_surface_literal(const frothy_ir_program_t *program,
+                                 frothy_ir_literal_id_t literal_id,
+                                 frothy_string_builder_t *builder) {
+  const frothy_ir_literal_t *literal = &program->literals[literal_id];
+
+  switch (literal->kind) {
+  case FROTHY_IR_LITERAL_INT:
+    return frothy_sb_appendf(builder, "%" FROTH_CELL_FORMAT,
+                             literal->as.int_value);
+  case FROTHY_IR_LITERAL_BOOL:
+    return frothy_sb_append_text(builder,
+                                 literal->as.bool_value ? "true" : "false");
+  case FROTHY_IR_LITERAL_NIL:
+    return frothy_sb_append_text(builder, "nil");
+  case FROTHY_IR_LITERAL_TEXT:
+    return frothy_ir_render_quoted(literal->as.text_value, builder);
+  }
+
+  return FROTH_ERROR_SIGNATURE;
+}
+
+static bool frothy_ir_surface_bool_literal(const frothy_ir_program_t *program,
+                                           frothy_ir_node_id_t node_id,
+                                           bool expected) {
+  const frothy_ir_node_t *node;
+  const frothy_ir_literal_t *literal;
+
+  if (node_id >= program->node_count) {
+    return false;
+  }
+  node = &program->nodes[node_id];
+  if (node->kind != FROTHY_IR_NODE_LIT) {
+    return false;
+  }
+  literal = &program->literals[node->as.lit.literal_id];
+  return literal->kind == FROTHY_IR_LITERAL_BOOL &&
+         literal->as.bool_value == expected;
+}
+
+static bool frothy_ir_surface_int_literal(const frothy_ir_program_t *program,
+                                          frothy_ir_node_id_t node_id,
+                                          froth_cell_t expected) {
+  const frothy_ir_node_t *node;
+  const frothy_ir_literal_t *literal;
+
+  if (node_id >= program->node_count) {
+    return false;
+  }
+  node = &program->nodes[node_id];
+  if (node->kind != FROTHY_IR_NODE_LIT) {
+    return false;
+  }
+  literal = &program->literals[node->as.lit.literal_id];
+  return literal->kind == FROTHY_IR_LITERAL_INT &&
+         literal->as.int_value == expected;
+}
+
+static bool frothy_ir_surface_match_bool_condition(
+    const frothy_ir_program_t *program, frothy_ir_node_id_t node_id,
+    frothy_ir_node_id_t *condition_out) {
+  const frothy_ir_node_t *node;
+
+  if (node_id >= program->node_count) {
+    return false;
+  }
+  node = &program->nodes[node_id];
+  if (node->kind != FROTHY_IR_NODE_IF || !node->as.if_expr.has_else_branch) {
+    return false;
+  }
+  if (!frothy_ir_surface_bool_literal(program, node->as.if_expr.then_branch,
+                                      true) ||
+      !frothy_ir_surface_bool_literal(program, node->as.if_expr.else_branch,
+                                      false)) {
+    return false;
+  }
+  *condition_out = node->as.if_expr.condition;
+  return true;
+}
+
+static bool frothy_ir_surface_match_short_circuit(
+    const frothy_ir_program_t *program, const frothy_ir_node_t *node,
+    bool *is_or_out, frothy_ir_node_id_t *lhs_out, frothy_ir_node_id_t *rhs_out) {
+  frothy_ir_node_id_t rhs_condition;
+
+  if (node->kind != FROTHY_IR_NODE_IF || !node->as.if_expr.has_else_branch) {
+    return false;
+  }
+
+  if (frothy_ir_surface_bool_literal(program, node->as.if_expr.then_branch,
+                                     true) &&
+      frothy_ir_surface_match_bool_condition(program,
+                                             node->as.if_expr.else_branch,
+                                             &rhs_condition)) {
+    *is_or_out = true;
+    *lhs_out = node->as.if_expr.condition;
+    *rhs_out = rhs_condition;
+    return true;
+  }
+
+  if (frothy_ir_surface_bool_literal(program, node->as.if_expr.else_branch,
+                                     false) &&
+      frothy_ir_surface_match_bool_condition(program,
+                                             node->as.if_expr.then_branch,
+                                             &rhs_condition)) {
+    *is_or_out = false;
+    *lhs_out = node->as.if_expr.condition;
+    *rhs_out = rhs_condition;
+    return true;
+  }
+
+  return false;
+}
+
+static bool frothy_ir_surface_match_repeat_increment(
+    const frothy_ir_program_t *program, frothy_ir_node_id_t node_id,
+    size_t counter_local) {
+  const frothy_ir_node_t *node;
+  const frothy_ir_node_t *value_node;
+
+  if (node_id >= program->node_count) {
+    return false;
+  }
+  node = &program->nodes[node_id];
+  if (node->kind != FROTHY_IR_NODE_WRITE_LOCAL ||
+      node->as.write_local.local_index != counter_local) {
+    return false;
+  }
+
+  value_node = &program->nodes[node->as.write_local.value];
+  if (value_node->kind != FROTHY_IR_NODE_CALL ||
+      value_node->as.call.builtin != FROTHY_IR_BUILTIN_ADD ||
+      value_node->as.call.arg_count != 2) {
+    return false;
+  }
+  if (!frothy_ir_surface_int_literal(program,
+                                     program->links[value_node->as.call.first_arg + 1],
+                                     1)) {
+    return false;
+  }
+
+  node = &program->nodes[program->links[value_node->as.call.first_arg]];
+  return node->kind == FROTHY_IR_NODE_READ_LOCAL &&
+         node->as.read_local.local_index == counter_local;
+}
+
+static bool frothy_ir_surface_match_repeat(
+    const frothy_ir_program_t *program, frothy_ir_node_id_t node_id,
+    frothy_ir_node_id_t *count_expr_out, bool *has_index_out,
+    size_t *index_local_out, frothy_ir_node_id_t *body_out) {
+  const frothy_ir_node_t *root;
+  const frothy_ir_node_t *limit_init;
+  const frothy_ir_node_t *counter_init;
+  const frothy_ir_node_t *while_node;
+  const frothy_ir_node_t *condition;
+  const frothy_ir_node_t *while_body;
+  size_t limit_local;
+  size_t counter_local;
+  size_t loop_offset = 0;
+
+  if (node_id >= program->node_count) {
+    return false;
+  }
+  root = &program->nodes[node_id];
+  if (root->kind != FROTHY_IR_NODE_SEQ || root->as.seq.item_count != 3) {
+    return false;
+  }
+
+  limit_init = &program->nodes[program->links[root->as.seq.first_item]];
+  counter_init =
+      &program->nodes[program->links[root->as.seq.first_item + 1]];
+  while_node = &program->nodes[program->links[root->as.seq.first_item + 2]];
+  if (limit_init->kind != FROTHY_IR_NODE_WRITE_LOCAL ||
+      counter_init->kind != FROTHY_IR_NODE_WRITE_LOCAL ||
+      while_node->kind != FROTHY_IR_NODE_WHILE) {
+    return false;
+  }
+  if (!frothy_ir_surface_int_literal(program, counter_init->as.write_local.value,
+                                     0)) {
+    return false;
+  }
+
+  limit_local = limit_init->as.write_local.local_index;
+  counter_local = counter_init->as.write_local.local_index;
+
+  condition = &program->nodes[while_node->as.while_expr.condition];
+  if (condition->kind != FROTHY_IR_NODE_CALL ||
+      condition->as.call.builtin != FROTHY_IR_BUILTIN_LT ||
+      condition->as.call.arg_count != 2) {
+    return false;
+  }
+  {
+    const frothy_ir_node_t *lhs =
+        &program->nodes[program->links[condition->as.call.first_arg]];
+    const frothy_ir_node_t *rhs =
+        &program->nodes[program->links[condition->as.call.first_arg + 1]];
+    if (lhs->kind != FROTHY_IR_NODE_READ_LOCAL ||
+        lhs->as.read_local.local_index != counter_local ||
+        rhs->kind != FROTHY_IR_NODE_READ_LOCAL ||
+        rhs->as.read_local.local_index != limit_local) {
+      return false;
+    }
+  }
+
+  while_body = &program->nodes[while_node->as.while_expr.body];
+  if (while_body->kind != FROTHY_IR_NODE_SEQ ||
+      while_body->as.seq.item_count < 2 ||
+      while_body->as.seq.item_count > 3) {
+    return false;
+  }
+
+  *has_index_out = false;
+  if (while_body->as.seq.item_count == 3) {
+    const frothy_ir_node_t *prelude =
+        &program->nodes[program->links[while_body->as.seq.first_item]];
+    const frothy_ir_node_t *prelude_value;
+
+    if (prelude->kind != FROTHY_IR_NODE_WRITE_LOCAL) {
+      return false;
+    }
+    prelude_value = &program->nodes[prelude->as.write_local.value];
+    if (prelude_value->kind != FROTHY_IR_NODE_READ_LOCAL ||
+        prelude_value->as.read_local.local_index != counter_local) {
+      return false;
+    }
+    *has_index_out = true;
+    *index_local_out = prelude->as.write_local.local_index;
+    loop_offset = 1;
+  }
+
+  *body_out = program->links[while_body->as.seq.first_item + loop_offset];
+  if (!frothy_ir_surface_match_repeat_increment(
+          program,
+          program->links[while_body->as.seq.first_item + loop_offset + 1],
+          counter_local)) {
+    return false;
+  }
+
+  *count_expr_out = limit_init->as.write_local.value;
+  return true;
+}
+
+static froth_error_t frothy_ir_render_surface_arg_list(
+    const frothy_surface_render_t *render, size_t first_arg, size_t arg_count,
+    frothy_string_builder_t *builder) {
+  size_t i;
+
+  for (i = 0; i < arg_count; i++) {
+    if (i != 0) {
+      FROTH_TRY(frothy_sb_append_text(builder, ", "));
+    }
+    FROTH_TRY(frothy_ir_render_surface_expr(
+        render, render->program->links[first_arg + i], builder));
+  }
+
+  return FROTH_OK;
+}
+
+static froth_error_t
+frothy_ir_render_surface_call(const frothy_surface_render_t *render,
+                              const frothy_ir_node_t *node,
+                              frothy_string_builder_t *builder) {
+  const char *infix = frothy_ir_surface_infix_operator(node->as.call.builtin);
+
+  if (node->as.call.builtin == FROTHY_IR_BUILTIN_CELLS &&
+      node->as.call.arg_count == 1) {
+    FROTH_TRY(frothy_sb_append_text(builder, "cells("));
+    FROTH_TRY(frothy_ir_render_surface_expr(
+        render, render->program->links[node->as.call.first_arg], builder));
+    return frothy_sb_append_char(builder, ')');
+  }
+  if (node->as.call.builtin == FROTHY_IR_BUILTIN_NOT &&
+      node->as.call.arg_count == 1) {
+    FROTH_TRY(frothy_sb_append_text(builder, "not "));
+    return frothy_ir_render_surface_expr(
+        render, render->program->links[node->as.call.first_arg], builder);
+  }
+  if (node->as.call.builtin == FROTHY_IR_BUILTIN_NEGATE &&
+      node->as.call.arg_count == 1) {
+    FROTH_TRY(frothy_sb_append_char(builder, '-'));
+    return frothy_ir_render_surface_expr(
+        render, render->program->links[node->as.call.first_arg], builder);
+  }
+  if (infix != NULL && node->as.call.arg_count == 2) {
+    FROTH_TRY(frothy_ir_render_surface_expr(
+        render, render->program->links[node->as.call.first_arg], builder));
+    FROTH_TRY(frothy_sb_append_char(builder, ' '));
+    FROTH_TRY(frothy_sb_append_text(builder, infix));
+    FROTH_TRY(frothy_sb_append_char(builder, ' '));
+    return frothy_ir_render_surface_expr(
+        render, render->program->links[node->as.call.first_arg + 1], builder);
+  }
+  if (node->as.call.builtin == FROTHY_IR_BUILTIN_NONE) {
+    const frothy_ir_node_t *callee = &render->program->nodes[node->as.call.callee];
+
+    if (callee->kind == FROTHY_IR_NODE_READ_SLOT) {
+      FROTH_TRY(
+          frothy_sb_append_text(builder, callee->as.read_slot.slot_name));
+      FROTH_TRY(frothy_sb_append_char(builder, ':'));
+      if (node->as.call.arg_count != 0) {
+        FROTH_TRY(frothy_sb_append_char(builder, ' '));
+        FROTH_TRY(frothy_ir_render_surface_arg_list(
+            render, node->as.call.first_arg, node->as.call.arg_count, builder));
+      }
+      return FROTH_OK;
+    }
+
+    FROTH_TRY(frothy_sb_append_text(builder, "call "));
+    FROTH_TRY(
+        frothy_ir_render_surface_expr(render, node->as.call.callee, builder));
+    if (node->as.call.arg_count != 0) {
+      FROTH_TRY(frothy_sb_append_text(builder, " with "));
+      FROTH_TRY(frothy_ir_render_surface_arg_list(
+          render, node->as.call.first_arg, node->as.call.arg_count, builder));
+    }
+    return FROTH_OK;
+  }
+
+  FROTH_TRY(frothy_sb_append_text(builder, "call "));
+  FROTH_TRY(
+      frothy_sb_append_text(builder, frothy_ir_builtin_name(node->as.call.builtin)));
+  if (node->as.call.arg_count != 0) {
+    FROTH_TRY(frothy_sb_append_text(builder, " with "));
+    FROTH_TRY(frothy_ir_render_surface_arg_list(
+        render, node->as.call.first_arg, node->as.call.arg_count, builder));
+  }
+  return FROTH_OK;
+}
+
+static froth_error_t
+frothy_ir_render_surface_expr(const frothy_surface_render_t *render,
+                              frothy_ir_node_id_t node_id,
+                              frothy_string_builder_t *builder) {
+  const frothy_ir_node_t *node = &render->program->nodes[node_id];
+  bool is_or;
+  frothy_ir_node_id_t lhs;
+  frothy_ir_node_id_t rhs;
+  frothy_ir_node_id_t count_expr;
+  frothy_ir_node_id_t repeat_body;
+  bool has_index;
+  size_t index_local;
+
+  switch (node->kind) {
+  case FROTHY_IR_NODE_LIT:
+    return frothy_ir_render_surface_literal(render->program,
+                                            node->as.lit.literal_id, builder);
+  case FROTHY_IR_NODE_READ_LOCAL:
+    return frothy_ir_render_surface_local_name(
+        render, node->as.read_local.local_index, builder);
+  case FROTHY_IR_NODE_WRITE_LOCAL:
+    FROTH_TRY(frothy_sb_append_text(builder, "here "));
+    FROTH_TRY(frothy_ir_render_surface_local_name(
+        render, node->as.write_local.local_index, builder));
+    FROTH_TRY(frothy_sb_append_text(builder, " is "));
+    return frothy_ir_render_surface_expr(render, node->as.write_local.value,
+                                         builder);
+  case FROTHY_IR_NODE_READ_SLOT:
+    return frothy_sb_append_text(builder, node->as.read_slot.slot_name);
+  case FROTHY_IR_NODE_WRITE_SLOT:
+    if (node->as.write_slot.require_existing) {
+      FROTH_TRY(frothy_sb_append_text(builder, "set "));
+      FROTH_TRY(
+          frothy_sb_append_text(builder, node->as.write_slot.slot_name));
+      FROTH_TRY(frothy_sb_append_text(builder, " to "));
+    } else {
+      FROTH_TRY(
+          frothy_sb_append_text(builder, node->as.write_slot.slot_name));
+      FROTH_TRY(frothy_sb_append_text(builder, " is "));
+    }
+    return frothy_ir_render_surface_expr(render, node->as.write_slot.value,
+                                         builder);
+  case FROTHY_IR_NODE_READ_INDEX:
+    FROTH_TRY(
+        frothy_ir_render_surface_expr(render, node->as.read_index.base, builder));
+    FROTH_TRY(frothy_sb_append_char(builder, '['));
+    FROTH_TRY(frothy_ir_render_surface_expr(render, node->as.read_index.index,
+                                            builder));
+    return frothy_sb_append_char(builder, ']');
+  case FROTHY_IR_NODE_WRITE_INDEX:
+    FROTH_TRY(frothy_sb_append_text(builder, "set "));
+    FROTH_TRY(frothy_ir_render_surface_expr(render, node->as.write_index.base,
+                                            builder));
+    FROTH_TRY(frothy_sb_append_char(builder, '['));
+    FROTH_TRY(frothy_ir_render_surface_expr(render, node->as.write_index.index,
+                                            builder));
+    FROTH_TRY(frothy_sb_append_text(builder, "] to "));
+    return frothy_ir_render_surface_expr(render, node->as.write_index.value,
+                                         builder);
+  case FROTHY_IR_NODE_FN: {
+    frothy_surface_render_t child = {
+        .program = render->program,
+        .arity = node->as.fn.arity,
+        .local_count = node->as.fn.local_count,
+    };
+    size_t i;
+
+    FROTH_TRY(frothy_sb_append_text(builder, "fn"));
+    if (node->as.fn.arity != 0) {
+      FROTH_TRY(frothy_sb_append_text(builder, " with "));
+      for (i = 0; i < node->as.fn.arity; i++) {
+        if (i != 0) {
+          FROTH_TRY(frothy_sb_append_text(builder, ", "));
+        }
+        FROTH_TRY(frothy_sb_appendf(builder, "arg%zu", i));
+      }
+    }
+    FROTH_TRY(frothy_sb_append_char(builder, ' '));
+    return frothy_ir_render_surface_block(&child, node->as.fn.body, builder);
+  }
+  case FROTHY_IR_NODE_CALL:
+    return frothy_ir_render_surface_call(render, node, builder);
+  case FROTHY_IR_NODE_IF:
+    if (frothy_ir_surface_match_short_circuit(render->program, node, &is_or,
+                                              &lhs, &rhs)) {
+      FROTH_TRY(frothy_ir_render_surface_expr(render, lhs, builder));
+      FROTH_TRY(frothy_sb_append_text(builder, is_or ? " or " : " and "));
+      return frothy_ir_render_surface_expr(render, rhs, builder);
+    }
+    if (!node->as.if_expr.has_else_branch) {
+      const frothy_ir_node_t *condition =
+          &render->program->nodes[node->as.if_expr.condition];
+
+      if (condition->kind == FROTHY_IR_NODE_CALL &&
+          condition->as.call.builtin == FROTHY_IR_BUILTIN_NOT &&
+          condition->as.call.arg_count == 1) {
+        FROTH_TRY(frothy_sb_append_text(builder, "unless "));
+        FROTH_TRY(frothy_ir_render_surface_expr(
+            render, render->program->links[condition->as.call.first_arg],
+            builder));
+      } else {
+        FROTH_TRY(frothy_sb_append_text(builder, "when "));
+        FROTH_TRY(frothy_ir_render_surface_expr(
+            render, node->as.if_expr.condition, builder));
+      }
+      FROTH_TRY(frothy_sb_append_char(builder, ' '));
+      return frothy_ir_render_surface_block(render, node->as.if_expr.then_branch,
+                                            builder);
+    }
+
+    FROTH_TRY(frothy_sb_append_text(builder, "if "));
+    FROTH_TRY(
+        frothy_ir_render_surface_expr(render, node->as.if_expr.condition, builder));
+    FROTH_TRY(frothy_sb_append_char(builder, ' '));
+    FROTH_TRY(frothy_ir_render_surface_block(render, node->as.if_expr.then_branch,
+                                             builder));
+    FROTH_TRY(frothy_sb_append_text(builder, " else "));
+    return frothy_ir_render_surface_block(render, node->as.if_expr.else_branch,
+                                          builder);
+  case FROTHY_IR_NODE_WHILE:
+    FROTH_TRY(frothy_sb_append_text(builder, "while "));
+    FROTH_TRY(frothy_ir_render_surface_expr(render, node->as.while_expr.condition,
+                                            builder));
+    FROTH_TRY(frothy_sb_append_char(builder, ' '));
+    return frothy_ir_render_surface_block(render, node->as.while_expr.body,
+                                          builder);
+  case FROTHY_IR_NODE_SEQ:
+    if (frothy_ir_surface_match_repeat(render->program, node_id, &count_expr,
+                                       &has_index, &index_local,
+                                       &repeat_body)) {
+      FROTH_TRY(frothy_sb_append_text(builder, "repeat "));
+      FROTH_TRY(frothy_ir_render_surface_expr(render, count_expr, builder));
+      if (has_index) {
+        FROTH_TRY(frothy_sb_append_text(builder, " as "));
+        FROTH_TRY(frothy_ir_render_surface_local_name(render, index_local,
+                                                      builder));
+      }
+      FROTH_TRY(frothy_sb_append_char(builder, ' '));
+      return frothy_ir_render_surface_block(render, repeat_body, builder);
+    }
+    return frothy_ir_render_surface_block(render, node_id, builder);
+  }
+
+  return FROTH_ERROR_SIGNATURE;
+}
+
+static froth_error_t
+frothy_ir_render_surface_block(const frothy_surface_render_t *render,
+                               frothy_ir_node_id_t node_id,
+                               frothy_string_builder_t *builder) {
+  const frothy_ir_node_t *node = &render->program->nodes[node_id];
+  size_t i;
+
+  FROTH_TRY(frothy_sb_append_char(builder, '['));
+  if (node->kind == FROTHY_IR_NODE_SEQ) {
+    for (i = 0; i < node->as.seq.item_count; i++) {
+      if (i == 0) {
+        FROTH_TRY(frothy_sb_append_char(builder, ' '));
+      } else {
+        FROTH_TRY(frothy_sb_append_text(builder, "; "));
+      }
+      FROTH_TRY(frothy_ir_render_surface_expr(
+          render, render->program->links[node->as.seq.first_item + i], builder));
+    }
+    if (node->as.seq.item_count != 0) {
+      FROTH_TRY(frothy_sb_append_char(builder, ' '));
+    }
+  } else {
+    FROTH_TRY(frothy_sb_append_char(builder, ' '));
+    FROTH_TRY(frothy_ir_render_surface_expr(render, node_id, builder));
+    FROTH_TRY(frothy_sb_append_char(builder, ' '));
+  }
+  return frothy_sb_append_char(builder, ']');
+}
+
 void frothy_ir_program_init(frothy_ir_program_t *program) {
   memset(program, 0, sizeof(*program));
   program->root = FROTHY_IR_NODE_INVALID;
@@ -408,6 +967,69 @@ froth_error_t frothy_ir_render_code(const frothy_ir_program_t *program,
     return err;
   }
   err = frothy_sb_append_char(&builder, ')');
+  if (err != FROTH_OK) {
+    free(builder.data);
+    return err;
+  }
+  *out_text = builder.data;
+  return FROTH_OK;
+}
+
+froth_error_t frothy_ir_render_surface_code(const frothy_ir_program_t *program,
+                                            frothy_ir_node_id_t body,
+                                            size_t arity, size_t local_count,
+                                            const char *name, char **out_text) {
+  frothy_string_builder_t builder;
+  frothy_surface_render_t render = {
+      .program = program,
+      .arity = arity,
+      .local_count = local_count,
+  };
+  size_t i;
+  froth_error_t err;
+
+  *out_text = NULL;
+  if (body >= program->node_count) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  frothy_sb_init(&builder);
+  if (name != NULL && *name != '\0') {
+    err = frothy_sb_appendf(&builder, "to %s", name);
+  } else {
+    err = frothy_sb_append_text(&builder, "fn");
+  }
+  if (err != FROTH_OK) {
+    free(builder.data);
+    return err;
+  }
+  if (arity != 0) {
+    err = frothy_sb_append_text(&builder, " with ");
+    if (err != FROTH_OK) {
+      free(builder.data);
+      return err;
+    }
+    for (i = 0; i < arity; i++) {
+      if (i != 0) {
+        err = frothy_sb_append_text(&builder, ", ");
+        if (err != FROTH_OK) {
+          free(builder.data);
+          return err;
+        }
+      }
+      err = frothy_sb_appendf(&builder, "arg%zu", i);
+      if (err != FROTH_OK) {
+        free(builder.data);
+        return err;
+      }
+    }
+  }
+  err = frothy_sb_append_char(&builder, ' ');
+  if (err != FROTH_OK) {
+    free(builder.data);
+    return err;
+  }
+  err = frothy_ir_render_surface_block(&render, body, &builder);
   if (err != FROTH_OK) {
     free(builder.data);
     return err;

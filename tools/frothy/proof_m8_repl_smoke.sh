@@ -50,10 +50,9 @@ count_occurrences() {
 
 MAIN_TRANSCRIPT="$(
   run_transcript \
-    'inc = fn(x) {' \
-    'x + 1' \
-    '}' \
-    'inc(4)' \
+    'to inc with x' \
+    '[ x + 1 ]' \
+    'inc 4' \
     '1 / 0' \
     '2' \
     'set = 1' \
@@ -62,7 +61,7 @@ MAIN_TRANSCRIPT="$(
 )"
 printf '%s\n' "$MAIN_TRANSCRIPT"
 
-require_contains "$MAIN_TRANSCRIPT" 'frothy> .. .. frothy> 5'
+require_contains "$MAIN_TRANSCRIPT" 'frothy> .. frothy> 5'
 require_contains "$MAIN_TRANSCRIPT" 'eval error ('
 require_contains "$MAIN_TRANSCRIPT" 'frothy> 2'
 require_contains "$MAIN_TRANSCRIPT" 'parse error ('
@@ -155,6 +154,27 @@ printf '%s\n' "$EQUAL_TRANSCRIPT"
 require_contains "$EQUAL_TRANSCRIPT" 'frothy> .. frothy> 9'
 require_not_contains "$EQUAL_TRANSCRIPT" 'parse error ('
 
+IS_TRANSCRIPT="$(
+  run_transcript \
+    'count is' \
+    '9' \
+    'count' \
+    'quit'
+)"
+printf '%s\n' "$IS_TRANSCRIPT"
+require_contains "$IS_TRANSCRIPT" 'frothy> .. frothy> 9'
+require_not_contains "$IS_TRANSCRIPT" 'parse error ('
+
+FN_TRANSCRIPT="$(
+  run_transcript \
+    'fn with x, y' \
+    '[ x + y ]' \
+    'quit'
+)"
+printf '%s\n' "$FN_TRANSCRIPT"
+require_contains "$FN_TRANSCRIPT" 'frothy> .. <fn/2>'
+require_not_contains "$FN_TRANSCRIPT" 'parse error ('
+
 OPERATOR_TRANSCRIPT="$(
   run_transcript \
     '1 +' \
@@ -186,6 +206,72 @@ printf '%s\n' "$UNARY_MINUS_TRANSCRIPT"
 require_contains "$UNARY_MINUS_TRANSCRIPT" 'frothy> .. frothy> -1'
 require_not_contains "$UNARY_MINUS_TRANSCRIPT" 'parse error ('
 
+WHEN_TRANSCRIPT="$(
+  run_transcript \
+    'when true' \
+    '[ 42 ]' \
+    'quit'
+)"
+printf '%s\n' "$WHEN_TRANSCRIPT"
+require_contains "$WHEN_TRANSCRIPT" 'frothy> .. 42'
+require_not_contains "$WHEN_TRANSCRIPT" 'parse error ('
+
+REPEAT_TRANSCRIPT="$(
+  run_transcript \
+    'repeat 3 as i' \
+    '[ i ]' \
+    'quit'
+)"
+printf '%s\n' "$REPEAT_TRANSCRIPT"
+require_contains "$REPEAT_TRANSCRIPT" 'frothy> .. nil'
+require_not_contains "$REPEAT_TRANSCRIPT" 'parse error ('
+
+UNLESS_TRANSCRIPT="$(
+  run_transcript \
+    'unless false' \
+    '[ 42 ]' \
+    'quit'
+)"
+printf '%s\n' "$UNLESS_TRANSCRIPT"
+require_contains "$UNLESS_TRANSCRIPT" 'frothy> .. 42'
+require_not_contains "$UNLESS_TRANSCRIPT" 'parse error ('
+
+AND_OR_TRANSCRIPT="$(
+  run_transcript \
+    'false and' \
+    'true' \
+    'true or' \
+    'false' \
+    'quit'
+)"
+printf '%s\n' "$AND_OR_TRANSCRIPT"
+require_contains "$AND_OR_TRANSCRIPT" 'frothy> .. false'
+require_contains "$AND_OR_TRANSCRIPT" 'frothy> .. true'
+require_not_contains "$AND_OR_TRANSCRIPT" 'parse error ('
+
+CALL_HEADER_TRANSCRIPT="$(
+  run_transcript \
+    'makeInc is fn [ fn with x [ x + 1 ] ]' \
+    'call' \
+    'makeInc: with 41' \
+    'quit'
+)"
+printf '%s\n' "$CALL_HEADER_TRANSCRIPT"
+require_contains "$CALL_HEADER_TRANSCRIPT" 'frothy> frothy> .. 42'
+require_not_contains "$CALL_HEADER_TRANSCRIPT" 'parse error ('
+
+COLON_CONTINUATION_TRANSCRIPT="$(
+  run_transcript \
+    'to inc with x [ x + 1 ]' \
+    'inc:' \
+    '41' \
+    'quit'
+)"
+printf '%s\n' "$COLON_CONTINUATION_TRANSCRIPT"
+require_contains "$COLON_CONTINUATION_TRANSCRIPT" 'frothy> frothy> .. 42'
+require_not_contains "$COLON_CONTINUATION_TRANSCRIPT" 'eval error (108)'
+require_not_contains "$COLON_CONTINUATION_TRANSCRIPT" 'parse error ('
+
 CHAINED_MINUS_TRANSCRIPT="$(
   run_transcript \
     '1 + -' \
@@ -214,9 +300,20 @@ fi
 CALL_TRANSCRIPT="$(
   run_transcript \
     'count() = 7' \
-    'count()' \
+    'count:' \
+    'makeInc is fn [ fn with x [ x + 1 ] ]' \
+    'call makeInc: with 41' \
+    'blink = fn(a, b) { a + b }' \
+    'blink 4, 5' \
+    'blink -1, 2' \
+    'tick.on = fn() { 7 }' \
+    'tick.on' \
     'quit'
 )"
 printf '%s\n' "$CALL_TRANSCRIPT"
+require_contains "$CALL_TRANSCRIPT" 'frothy> frothy> 7'
+require_contains "$CALL_TRANSCRIPT" 'frothy> 42'
+require_contains "$CALL_TRANSCRIPT" 'frothy> frothy> 9'
+require_contains "$CALL_TRANSCRIPT" 'frothy> 1'
 require_contains "$CALL_TRANSCRIPT" 'frothy> frothy> 7'
 require_not_contains "$CALL_TRANSCRIPT" 'parse error ('

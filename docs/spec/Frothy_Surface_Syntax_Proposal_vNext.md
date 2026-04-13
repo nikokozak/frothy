@@ -2,7 +2,7 @@
 
 Status: Draft proposal
 Version: vNext
-Date: 2026-04-12
+Date: 2026-04-13
 Depends on:
 - `Frothy_Language_Spec_v0_1.md`
 - `docs/adr/101-stable-top-level-slot-model.md`
@@ -31,6 +31,21 @@ This proposal is about how the same model should look and feel to a human.
 The target outcome is simple:
 Frothy should read like a language of named live image definitions, not like a
 thin lexical wrapper around anonymous `fn` values.
+
+The first implemented slice in tree is spoken-ledger syntax tranche 1:
+
+- `name is expr`
+- `here name is expr`
+- `set place to expr`
+- bracket blocks plus `;`
+- `to` / `fn with`
+- `:` calls and `call expr with ...`
+- `repeat`, `when`, `unless`, `and`, and `or`
+- prompt verbs `show`, `info`, and `remember`
+- prompt-only simple-call sugar
+
+After spoken-ledger syntax tranche 1, records, modules, cond/case,
+try/catch, and binding/place values remain draft.
 
 ## 2. Scope And Non-Goals
 
@@ -97,7 +112,7 @@ Per ADR-105, persisted code truth is canonical IR, not preserved surface text.
 That means:
 
 - surface sugar is acceptable
-- pretty-printing may recover source-like forms
+- pretty-printing may recover normalized source-like forms
 - but the proposal should not depend on exact-source persistence
 
 ### 3.4 Persistence remains overlay-based
@@ -170,87 +185,93 @@ Every new form should earn its place by improving:
 
 ## 5. Proposed Surface
 
-This section describes the proposed next-stage surface precisely.
+This draft now prefers a spoken and ledger-like hybrid.
 
-### 5.1 Top-level forms
+The core idea is:
+
+- the top level should read like editing the live image
+- executable definitions should read like telling the machine what to do
+- multiline entry must stay REPL-friendly
+- every multiline construct must also have a compact one-line form
+
+### 5.1 Top-level binding and named code
 
 At top level, the primary forms should be:
 
 ```txt
-name = expr
-name(args) = expr
-name(args) { block }
-boot { block }
+name is expr
+to name [ block ]
+to name with a, b [ block ]
+in prefix [ item* ]
 ```
 
 Meaning:
 
-- `name = expr`
+- `name is expr`
   creates or rebinds the stable top-level slot `name`
-- `name(args) = expr`
-  creates or rebinds the stable top-level slot `name` with a `Code` value
-- `name(args) { block }`
-  is the block-bodied form of the same
-- `boot { block }`
-  is surface sugar for binding the ordinary top-level slot `boot` to `Code`
+- `to name [ block ]`
+  binds the ordinary top-level slot `name` to zero-arity `Code`
+- `to name with a, b [ block ]`
+  binds the ordinary top-level slot `name` to `Code` with parameters
+- `in prefix [ item* ]`
+  groups top-level definitions under a dotted prefix while preserving stable
+  slot identity
 
 Examples:
 
 ```txt
-threshold = 42
-frame = cells(3)
+threshold is 42
+frame is cells(3)
 
-count() = frame[0]
-enabled() = frame[1]
+to count [ frame[0] ]
 
-writeFrame() {
-  set frame[0] = 7
-  set frame[1] = false
-  set frame[2] = "ready"
-}
+to writeFrame [
+  set frame[0] to 7;
+  set frame[1] to false;
+  set frame[2] to "ready"
+]
 
-boot {
-  gpio.mode(LED_BUILTIN, true)
-}
+to boot [
+  gpio.mode: LED_BUILTIN, true
+]
 ```
 
 Why this shape is right:
 
-- top-level definitions stay short
-- executable definitions look like named image definitions
-- no extra `slot` keyword is required on every line
-- the model still matches ADR-101 exactly
+- `is` reads better than symbolic assignment in a live notebook language
+- `to` makes named code feel authored without pretending it is a second
+  namespace
+- `to boot [ ... ]` stays honest about `boot` as an ordinary well-known slot
+- `in prefix [ ... ]` provides a real grouping surface without a hidden module
+  object
 
 ### 5.2 Local forms
 
 Inside a block, the primary local binding form should be:
 
 ```txt
-here name = expr
+here name is expr
 ```
 
 Example:
 
 ```txt
-sumTo(limit) {
-  here total = 0
-  here i = 0
+to sumTo with limit [
+  here total is 0;
+  here i is 0;
 
-  while i < limit {
-    set total = total + i
-    set i = i + 1
-  }
+  while i < limit [
+    set total to total + i;
+    set i to i + 1
+  ];
 
   total
-}
+]
 ```
 
-`here` was chosen deliberately.
-It communicates the actual semantic fact:
-this name exists here, in this lexical region, and not in the durable image.
-
-This is the main reason it is preferred over `let`.
-`let` is conventional, but it does not teach the reader much.
+`here` still earns its place.
+It says the important thing plainly:
+this name belongs to this local region, not to the durable image.
 
 Rules:
 
@@ -270,127 +291,153 @@ Both are worse than keeping the rule simple.
 
 ### 5.3 Mutation
 
-Mutation should remain:
+Mutation should be:
 
 ```txt
-set place = expr
+set place to expr
 ```
 
 Examples:
 
 ```txt
-set threshold = 43
-set frame[0] = 9
+set threshold to 43
+set frame[0] to 9
 ```
 
-Why `set` stays:
+Why this shape is right:
 
-- it preserves the semantic distinction between binding and mutation
-- it catches common live-edit mistakes
-- it already matches the accepted `v0.1` model
+- `set` keeps mutation explicit
+- `to` reads naturally without the cargo feel of `put ... into ...`
+- misspelled places still fail instead of silently creating names
 
 Concrete safety win:
 
 ```txt
-threshold = 42
-set threshold = 43
+threshold is 42
+set threshold to 43
 ```
 
 is valid, but:
 
 ```txt
-set threshhold = 43
+set threshhold to 43
 ```
 
 should fail if `threshhold` does not already exist.
 
-That is valuable in a live image language.
+### 5.4 Calls and anonymous code
 
-### 5.4 Anonymous code
+The draft should stop making ordinary calls look like C.
 
-Anonymous code remains:
+The preferred core call surface is:
 
 ```txt
-fn(args) { block }
+name:
+name: arg1, arg2
+gpio.write: pin, true
+call expr with arg1, arg2
 ```
 
-This matters because `Code` is still an ordinary value.
+Meaning:
+
+- `count`
+  means read the value in `count`
+- `count:`
+  means call that value as zero-arity `Code`
+- `blink: LED_BUILTIN, 3`
+  means call the named slot `blink`
+- `call expr with ...`
+  is the explicit escape hatch for computed callees and higher-order code
+
+This keeps the important one-namespace distinction sharp without dragging the
+surface back to parenthesized calls everywhere.
+
+Anonymous code remains ordinary `Code`, but should align with the spoken
+surface:
+
+```txt
+fn [ block ]
+fn with a, b [ block ]
+```
 
 Examples:
 
 ```txt
-factory() = fn() { 1 }
+factory is fn [ 1 ]
+
+to apply with action [
+  action:
+]
 ```
 
-```txt
-apply(action) {
-  action()
-}
-```
-
-The proposal does not change the current non-capturing rule.
+This proposal does not change the current non-capturing rule.
 Nested `fn` values remain legal only when they do not capture outer locals.
 
-### 5.5 Calls stay parenthesized
+### 5.5 Blocks and separators
 
-Ordinary calls should remain:
-
-```txt
-name(...)
-```
-
-This proposal does not introduce prefix-style no-parens calls such as:
+Blocks should be written with brackets:
 
 ```txt
-add 1 2
+[ item* ]
 ```
 
-That is intentionally rejected.
+This is the right shape for Frothy because:
 
-Reasons:
+- it keeps the REPL free of indentation rules
+- it gives every multiline construct a compact one-line form
+- it nods back toward Froth and Forth without restoring the old user model
 
-- Frothy is not a prefix language
-- `count` and `count()` should remain distinct
-- code-as-value is clearer when calling stays explicit
-- adding bare application would be a much larger language shift than the rest
-  of this proposal
+Inside a block:
 
-So:
+- a newline may separate items
+- `;` may separate items on one line
+- the last expression still yields the block value
 
-- `count`
-  means read the slot value
-- `count()`
-  means call that value as code
-
-That distinction is worth keeping sharp.
-
-### 5.6 No local executable shorthand in the first step
-
-This proposal does not add:
+One-line examples:
 
 ```txt
-here helper(x) = ...
+to pulse [ gpio.write: LED_BUILTIN, true; wait: 120; gpio.write: LED_BUILTIN, false ]
+to inc with n [ n + 1 ]
 ```
 
-or:
+No significant indentation should be introduced in the language itself.
+Files may still be indented for readability, but indentation should never carry
+semantic weight.
+
+### 5.6 Counted iteration and clause forms
+
+The surface should extend naturally to the queued next-stage control forms:
 
 ```txt
-helper(x) = ...
+repeat count [ block ]
+repeat count as i [ block ]
+when condition [ block ]
+unless condition [ block ]
+try [ block ] catch err [ block ]
 ```
 
-inside ordinary blocks.
-
-In the first step, local executable values should still be written as:
+Examples:
 
 ```txt
-here helper = fn(x) { x + 1 }
+repeat 5 as i [
+  gpio.write: i, true
+]
 ```
 
-That keeps the new grammar small and focused on the top-level image story.
+```txt
+when ready [
+  blink: LED_BUILTIN, 1
+]
+```
+
+`repeat ... as ...` is preferable to `repeat ... with ...` because the index is
+not an argument being passed.
+It is a name being introduced for the loop body.
 
 ## 6. Inspection And REPL Surface
 
-The inspection story should improve, but cheaply.
+The inspection story should improve, but it also has to feel good one line at
+a time.
 
 ### 6.1 Keep the accepted language entry points
 
@@ -406,28 +453,31 @@ The accepted `v0.1` entry points remain:
 
 This proposal does not remove them.
 
-### 6.2 Add bare REPL command sugar
+### 6.2 Preferred REPL command surface
 
 At the prompt, the shell should additionally accept:
 
 ```txt
 words
-see @name
+show @name
 core @name
 info @name
-save
+remember
 restore
 wipe
+name arg1, arg2
+path.name arg1, arg2
 ```
 
 Examples:
 
 ```txt
 words
-see @count
-core @count
+show @count
 info @threshold
-save
+remember
+blink LED_BUILTIN, 3
+led.on
 ```
 
 This should be implemented as REPL sugar first, not as a new full expression
@@ -437,7 +487,11 @@ That keeps the feature cheap:
 
 - no new IR kinds
 - no new persisted value kind
-- no need to settle expression-level binding reference semantics immediately
+- no requirement that the file language accept fully bare calls
+
+The rule should stay narrow:
+prompt sugar applies only to simple leading name or dotted-name calls.
+Inside files and nested expressions, `:` remains the primary call marker.
 
 ### 6.3 `@name` means binding, not value
 
@@ -447,19 +501,19 @@ reading that name.
 Given:
 
 ```txt
-count() = frame[0]
+to count [ frame[0] ]
 ```
 
 then:
 
 - `count`
   means the current value in the slot `count`
-- `count()`
+- `count:`
   means call that value
 - `@count`
   means the slot binding named `count` as an inspectable image object
 
-This is why plain `see(count)` is not enough for binding inspection.
+This is why plain `show count` is not enough for binding inspection.
 `count` is an expression that evaluates to a value.
 Binding inspection needs a way to talk about the slot itself.
 
@@ -467,18 +521,22 @@ For the immediate next stage, `@name` should be supported only in REPL
 inspection commands.
 Making `@name` a full expression-level construct can be deferred.
 
-### 6.4 `info` is REPL sugar over `slotInfo`
+### 6.4 `show`, `info`, and `remember`
 
-`info @name` should be command-surface sugar for the existing binding metadata
-operation now surfaced as `slotInfo("name")`.
+The preferred prompt verbs are:
 
-`info` is shorter and reads better at the prompt.
-The underlying runtime entry point can remain the same at first.
+- `show @name` as shell sugar for `see("name")`
+- `info @name` as shell sugar for `slotInfo("name")`
+- `remember` as shell sugar for `save()`
 
-## 7. Newline And Multiline Rules
+They read better in an interactive line-by-line environment than the more
+library-like callable names, while still lowering to the accepted runtime
+entry points.
 
-Because Frothy is meant to be entered interactively, newline behavior must be
-predictable.
+## 7. Line And Separator Rules
+
+Because Frothy will be used heavily in the REPL, line handling is part of the
+language feel.
 
 ### 7.1 Default rule
 
@@ -488,60 +546,49 @@ A newline ends the current form unless the form is clearly incomplete.
 
 Any of these are true:
 
-- `(` is unclosed
 - `[` is unclosed
-- `{` is unclosed
+- `(` is unclosed
 - a string literal is unclosed
-- the line ends with `=`
+- the line ends with `is`
+- the line ends with `to`
+- the line ends with `with`
+- the parser has seen `set place to` and is still waiting for an expression
 - the line ends with `,`
 - the line ends with a binary operator
-- the parser has seen `name(args)` and is still waiting for `=` or `{`
-- the parser has seen `boot` and is still waiting for `{`
+- the parser has seen `to name` and is still waiting for `[` or `with`
+- the parser has seen `to name with ...` and is still waiting for `[`
+- the parser has seen `repeat ...` and is still waiting for `[`
+- the parser has seen `when condition` and is still waiting for `[`
+- the parser has seen `unless condition` and is still waiting for `[`
+- the parser has seen `in prefix` and is still waiting for `[`
 
-### 7.3 Long expression bodies
+### 7.3 One-line and multiline should both feel natural
 
-If an expression-bodied definition is too long for one line, it should use
-parentheses:
+Anything that can be written across several lines should also be writable on
+one line with `;`.
 
-```txt
-average() = (
-  sensor.a() +
-  sensor.b() +
-  sensor.c()
-) / 3
-```
-
-That is safe and predictable at a terminal.
-
-### 7.4 Block bodies for real logic
-
-Anything with real control flow or several intermediate values should switch to
-the block-bodied form:
+Examples:
 
 ```txt
-average() {
-  here a = sensor.a()
-  here b = sensor.b()
-  here c = sensor.c()
-  (a + b + c) / 3
-}
+to average with a, b, c [ (a + b + c) / 3 ]
+to pulse [ gpio.write: LED_BUILTIN, true; wait: 120; gpio.write: LED_BUILTIN, false ]
 ```
 
-This keeps the language free of indentation-sensitive rules while still making
-multiline entry pleasant.
+This matters because REPL editing is line-oriented.
+The language should not assume the user can comfortably reshape indentation
+interactively.
 
-### 7.5 Prompt modes
+### 7.4 Prompt modes
 
 The REPL should visibly distinguish complete-entry mode from continuation mode:
 
 ```txt
-frothy> count() = frame[0]
-frothy> blink(period) {
-...>   led.on()
-...>   ms(period)
-...>   led.off()
-...>   ms(period)
-...> }
+frothy> to blink with period [
+...>   led.on:;
+...>   wait: period;
+...>   led.off:;
+...>   wait: period
+...> ]
 ```
 
 The continuation prompt should appear only while the parser still expects the
@@ -552,67 +599,70 @@ rest of the form.
 ### 8.1 Small stateful sketch
 
 ```txt
-frame = cells(3)
+frame is cells(3)
 
-count() = frame[0]
-enabled() = frame[1]
-label() = frame[2]
+to count [ frame[0] ]
+to enabled [ frame[1] ]
+to label [ frame[2] ]
 
-writeFrame() {
-  set frame[0] = 7
-  set frame[1] = false
-  set frame[2] = "ready"
-}
+to writeFrame [
+  set frame[0] to 7;
+  set frame[1] to false;
+  set frame[2] to "ready"
+]
 ```
 
 ### 8.2 Loop with local state
 
 ```txt
-sumTo(limit) {
-  here total = 0
-  here i = 0
+to sumTo with limit [
+  here total is 0;
+  here i is 0;
 
-  while i < limit {
-    set total = total + i
-    set i = i + 1
-  }
+  while i < limit [
+    set total to total + i;
+    set i to i + 1
+  ];
 
   total
-}
+]
 ```
 
 ### 8.3 Hardware-facing style
 
 ```txt
-led.pin = LED_BUILTIN
+in led [
+  pin is LED_BUILTIN;
 
-led.on() = gpio.write(led.pin, true)
-led.off() = gpio.write(led.pin, false)
+  to on [ gpio.write: pin, true ]
+  to off [ gpio.write: pin, false ]
+]
 
-blink(period) {
-  led.on()
-  ms(period)
-  led.off()
-  ms(period)
-}
+to blink with period [
+  led.on:;
+  wait: period;
+  led.off:;
+  wait: period
+]
 
-boot {
-  gpio.mode(led.pin, true)
-}
+to boot [
+  gpio.mode: led.pin, true
+]
 ```
 
 ### 8.4 REPL session shape
 
 ```txt
-frothy> threshold = 42
-frothy> frame = cells(1)
-frothy> count() = frame[0]
-frothy> set frame[0] = 9
-frothy> count()
+frothy> threshold is 42
+frothy> frame is cells(1)
+frothy> to count [ frame[0] ]
+frothy> set frame[0] to 9
+frothy> count:
 9
-frothy> see @count
-count() = frame[0]
-frothy> save
+frothy> show @count
+to count [ frame[0] ]
+frothy> blink LED_BUILTIN, 1
+frothy> remember
 ```
 
 ## 9. Desugaring To The Accepted `v0.1` Core
@@ -623,7 +673,7 @@ runtime change.
 ### 9.1 Top-level value definition
 
 ```txt
-threshold = 42
+threshold is 42
 ```
 
 desugars directly to the current top-level slot binding:
@@ -632,12 +682,10 @@ desugars directly to the current top-level slot binding:
 threshold = 42
 ```
 
-No semantic change.
-
-### 9.2 Executable slot with expression body
+### 9.2 Named executable slot
 
 ```txt
-count() = frame[0]
+to count [ frame[0] ]
 ```
 
 desugars to:
@@ -646,26 +694,28 @@ desugars to:
 count = fn() { frame[0] }
 ```
 
-### 9.3 Executable slot with block body
+And:
 
 ```txt
-writeFrame() {
-  set frame[0] = 7
-}
+to blink with pin, n [
+  gpio.write: pin, true;
+  wait: 120
+]
 ```
 
 desugars to:
 
 ```txt
-writeFrame = fn() {
-  set frame[0] = 7
+blink = fn(pin, n) {
+  gpio.write(pin, true)
+  wait(120)
 }
 ```
 
-### 9.4 Local binding
+### 9.3 Local binding
 
 ```txt
-here total = 0
+here total is 0
 ```
 
 desugars to the current block-local binding form:
@@ -674,87 +724,138 @@ desugars to the current block-local binding form:
 total = 0
 ```
 
-Again, no semantic change.
-
-### 9.5 Boot block
+### 9.4 Mutation
 
 ```txt
-boot {
-  gpio.mode(LED_BUILTIN, true)
-}
+set frame[0] to 7
 ```
 
 desugars to:
 
 ```txt
-boot = fn() {
-  gpio.mode(LED_BUILTIN, true)
+set frame[0] = 7
+```
+
+### 9.5 Calls
+
+```txt
+gpio.write: pin, true
+```
+
+desugars to:
+
+```txt
+gpio.write(pin, true)
+```
+
+Likewise:
+
+```txt
+call action with frame[0]
+```
+
+desugars to:
+
+```txt
+action(frame[0])
+```
+
+### 9.6 Prefixed groups
+
+```txt
+in led [
+  pulse.ms is 120;
+  to blink with pin, n [
+    wait: pulse.ms
+  ]
+]
+```
+
+desugars conceptually to:
+
+```txt
+led.pulse.ms = 120
+led.blink = fn(pin, n) {
+  wait(led.pulse.ms)
 }
 ```
 
+The important property is that `in led [ ... ]` does not introduce a new
+runtime object kind.
+It is surface grouping over stable top-level slots.
+
 ## 10. Implementation Considerations
 
-The proposal is primarily parser, shell, and pretty-printing work.
-That is why it is realistic.
+The proposal is still primarily parser, shell, and pretty-printing work.
+That is why it remains realistic even though it is bolder than the previous
+draft.
 
 ### 10.1 Lexer and parser
 
 Relevant current files:
 
-- [frothy_parser.c](/Users/niko/Developer/Frothy/src/frothy_parser.c)
-- [frothy_ir.h](/Users/niko/Developer/Frothy/src/frothy_ir.h)
+- `src/frothy_parser.c`
+- `src/frothy_ir.h`
 
 The main parser work is:
 
-- add `here` as a reserved keyword
-- parse `name(args) = expr` at top level
-- parse `name(args) { block }` at top level
-- parse `boot { block }` as top-level sugar
+- add `is`, `to`, `with`, and `as`
+- parse bracketed blocks
+- parse `set place to expr`
+- parse `:` as the primary call marker
+- parse `to name [ ... ]`
+- parse `to name with ... [ ... ]`
+- keep `in prefix [ ... ]` draft-only until the next design pass
+- keep the accepted `v0.1` forms valid during rollout
 
-Important implementation note:
-`boot` does not need to become a globally reserved keyword.
-The parser can special-case the top-level form `boot { ... }`.
-That avoids breaking ordinary name syntax more than necessary.
+Important implementation notes:
 
-Likewise, `name(args) = expr` and `name(args) { block }` should be recognized
-only in the top-level parser path.
-Elsewhere, `name(args)` remains an ordinary call expression.
+- `boot` does not need to become a special event form; `to boot [ ... ]` is
+  ordinary named code
+- REPL sugar should remain a shell concern where possible
+- when `in prefix [ ... ]` eventually lands, it should lower to prefixed slot
+  names, not a hidden module object
 
 Expected cost:
 
-- `here`: low
-- top-level executable-slot forms: low to medium
-- `boot { ... }`: low
+- bracket blocks: low to medium
+- `is` and `set ... to ...`: low
+- `to` forms: low to medium
+- `:` calls: medium
+- deferred `in prefix [ ... ]`: medium
 
 ### 10.2 REPL command parsing
 
 Relevant current files:
 
-- [frothy_shell.c](/Users/niko/Developer/Frothy/src/frothy_shell.c)
-- [frothy_inspect.c](/Users/niko/Developer/Frothy/src/frothy_inspect.c)
+- `src/frothy_shell.c`
+- `src/frothy_inspect.c`
 
-Bare commands such as:
+Prompt sugar such as:
 
 - `words`
-- `see @name`
+- `show @name`
 - `core @name`
 - `info @name`
-- `save`
+- `remember`
 - `restore`
 - `wipe`
+- `blink LED_BUILTIN, 3`
 
 should be implemented in the REPL front end first.
 
 That means:
 
-- they are shell-level sugar
 - the accepted `v0.1` callable forms remain valid
+- file syntax does not have to accept every REPL shortcut immediately
 - `@name` can remain command-only initially
+- bare simple calls can stay prompt-only sugar over the `:` call form
 
 Expected cost:
 
 - bare command recognition: low
 - `@name` command-surface parsing: low
+- prompt-only simple-call sugar: medium
 - full expression-level `@name`: deferred
 
 ### 10.3 IR and evaluator
@@ -763,17 +864,15 @@ The proposal should not require new semantic IR nodes.
 
 All major forms lower to what already exists:
 
-- top-level definitions -> `WRITE_SLOT`
-- locals -> `WRITE_LOCAL`
-- mutation -> existing place-write handling
-- executable slot forms -> `FN` plus top-level slot write
-- boot block -> ordinary top-level `Code`
+- `name is expr` -> top-level slot write
+- `here name is expr` -> local write
+- `set place to expr` -> existing place-write handling
+- `to` forms -> `FN` plus top-level slot write
+- `:` call forms -> ordinary call expression
+- later `in prefix [ ... ]` -> prefixed top-level names
 
-So the evaluator in
-[frothy_eval.c](/Users/niko/Developer/Frothy/src/frothy_eval.c)
-should not need new execution machinery.
-
-This is one of the main reasons the proposal is worth doing.
+So the evaluator in `src/frothy_eval.c` should not need new execution
+machinery.
 
 ### 10.4 Persistence
 
@@ -783,7 +882,7 @@ The following remain true:
 
 - top-level slots are the persisted unit
 - locals do not persist
-- `boot` is just an ordinary slot holding `Code`
+- `boot` is still just an ordinary slot holding `Code`
 - canonical IR remains the persisted code truth
 
 So the snapshot design accepted in ADR-106 remains intact.
@@ -793,9 +892,10 @@ So the snapshot design accepted in ADR-106 remains intact.
 To make this surface feel real, `see` should eventually prefer the new
 source-like forms where possible:
 
-- `count() = frame[0]`
-- `writeFrame() { ... }`
-- `boot { ... }`
+- `threshold is 42`
+- `to count [ frame[0] ]`
+- `to blink with period [ ... ]`
+- `in led [ ... ]`
 
 This does not require exact-source persistence in snapshots.
 It can begin as:
@@ -806,20 +906,29 @@ It can begin as:
 
 Exact-source persistence is still optional.
 Canonical IR remains normative.
+Current in-tree `show` output uses canonical local names such as `arg0` and
+`local0` when authored names are not retained by the lowered IR.
 
 ### 10.6 Multiline implementation
 
 Relevant current files:
 
-- [frothy_shell.c](/Users/niko/Developer/Frothy/src/frothy_shell.c)
+- `src/frothy_shell.c`
 
 The shell already tracks incomplete grouped and quoted input.
 To support this proposal well, multiline continuation should also account for:
 
-- trailing `=`
+- trailing `is`
+- trailing `to`
+- trailing `with`
+- trailing `:`
 - trailing binary operators
-- top-level `name(args)` waiting for `=` or `{`
-- `boot` waiting for `{`
+- `to name` waiting for `[` or `with`
+- `to name with ...` waiting for `[`
+- `repeat ...` waiting for `[`
+- `when condition` waiting for `[`
+- `unless condition` waiting for `[`
+- `in prefix` waiting for `[`
 
 This is still shell work, not evaluator work.
 
@@ -827,11 +936,18 @@ This is still shell work, not evaluator work.
 
 The minimum new proof surface should include:
 
-- parser coverage for `here`
-- parser coverage for executable-slot top-level forms
-- parser coverage for `boot { ... }`
-- REPL smoke for bare commands
-- REPL smoke for continuation after `=`
+- parser coverage for `is`
+- parser coverage for bracketed blocks
+- parser coverage for `to` forms
+- parser coverage for `set ... to ...`
+- parser coverage for `:` calls
+- parser coverage for `call expr with ...`
+- parser coverage for `repeat`, `when`, and `unless`
+- parser coverage for `and` and `or`
+- REPL smoke for `show`, `info`, and `remember`
+- REPL smoke for one-line simple-call sugar
+- REPL smoke for continuation after `is`, `to`, `:`, `repeat`, `when`, and
+  `unless`
 - `see` output checks for the new rendered forms where implemented
 
 The existing accepted forms should remain covered during the transition.
@@ -840,29 +956,36 @@ The existing accepted forms should remain covered during the transition.
 
 A low-risk rollout should proceed in this order:
 
-1. add `here`
-2. add top-level `name(args) = expr`
-3. add top-level `name(args) { block }`
-4. add `boot { block }`
-5. add bare REPL commands
-6. add command-surface `@name`
-7. improve `see` rendering
+1. add bracketed blocks and `;`
+2. add `is`
+3. add `to` forms
+4. add `set ... to ...`
+5. add `:` calls
+6. add prompt verbs `show`, `info`, and `remember`
+7. add prompt-only simple-call sugar
+8. add `repeat`, `when`, `unless`, `and`, and `or`
+9. improve `see` rendering
+10. keep `in prefix [ ... ]`, records, modules, cond/case, and `try/catch`
+    in draft until the next design pass
 
 Roadmap position:
-this rollout should begin immediately after the urgent transport slice, not as
-a late polish pass and not after broader workspace work. It is mostly parser
-and shell work, it makes the public model read less like inherited Froth, and
-it keeps canonical IR plus the evaluator unchanged.
+spoken-ledger syntax tranche 1 now covers steps 1 through 9 in tree. It is
+mostly parser and shell work, it changes the feel of the language
+substantially, and it still keeps canonical IR plus the evaluator largely
+unchanged.
 
 During rollout, the current `v0.1` forms should remain accepted:
 
 - top-level `name = expr`
 - block-local `name = expr`
+- `set place = expr`
 - `name = fn(args) { ... }`
+- parenthesized calls
 - `words()`
 - `see("name")`
 - `core("name")`
 - `slotInfo("name")`
+- `save()`
 
 That keeps tests, transcripts, and proof scripts working while the surface is
 improved incrementally.
@@ -871,67 +994,84 @@ improved incrementally.
 
 These ideas were considered and intentionally left out of this proposal.
 
-### 12.1 `slot` at top level
+### 12.1 `=`
 
-Rejected for now because it adds noise to the place where the meaning is
-already obvious.
-The top level already is the image.
+Rejected as the preferred new surface binding form.
 
-### 12.2 `:=` and `<-`
+It is easy to type, but it drags the eye back toward conventional code and
+does not help Frothy feel like a live notebook language.
 
-Rejected for now because they do not buy enough over:
+### 12.2 `<-`
 
-- bare top-level `=`
-- `here`
-- `set`
+Rejected because it is more awkward to type than it is worth and introduces a
+more alien symbol than the draft needs.
 
-The semantic distinction matters.
-The extra punctuation does not.
+### 12.3 `put ... into ...`
 
-### 12.3 `let`
+Rejected for now.
 
-Rejected in favor of `here`.
-`let` is familiar, but it does not describe the scope fact that matters.
+It is explicit and humane, but it reads a little too cargo-like in ordinary
+code.
+`set place to expr` preserves the important semantic distinction with less
+surface weight.
 
-### 12.4 No-parens calls
+### 12.4 `on boot`
 
-Rejected because they would shift Frothy toward a different calling model and
-blur the useful distinction between reading a slot value and calling it.
+Rejected because it implies an event or callback system.
+The accepted architecture is simpler than that.
+`boot` is an ordinary well-known slot, so `to boot [ ... ]` tells the truth.
 
-### 12.5 `module`
+### 12.5 Fully bare calls everywhere
+
+Rejected because they would blur the useful distinction between reading a slot
+value and calling it, especially in a one-namespace live image language.
+
+Prompt-only simple-call sugar is acceptable.
+Making it the whole language is not.
+
+### 12.6 Significant indentation
+
+Rejected because Frothy is meant to be used line by line in the REPL.
+
+Indentation-sensitive syntax is pleasant in files, but it becomes awkward in a
+serial prompt where reshaping previous lines is expensive or impossible.
+
+### 12.7 Slash paths
+
+Rejected in favor of dotted names.
+
+Slash paths carry strong REBOL associations and can work well, but dotted names
+fit the current Frothy naming model better and feel less jarring in mixed host
+and hardware code.
+
+### 12.8 Full expression-level `@name`
 
 Deferred.
-Dotted names already organize a lot of real hardware code, and a true module
-surface can come later if it proves necessary.
 
-### 12.6 `volatile` or `session`
-
-Deferred.
-These state classes are easy to make confusing in a persistent live image
-model.
-
-### 12.7 Types
-
-Deferred.
-They may be valuable later, but they are not part of the minimal surface
-cleanup.
+`@name` is valuable immediately for inspection and control-surface work.
+General expression-level binding values are useful too, but they should not be
+smuggled in accidentally through REPL sugar.
 
 ## 13. Summary
 
-The next-stage Frothy surface should make four things obvious:
+The next-stage Frothy surface should make five things obvious:
 
-- the top level is the live image
-- a named executable definition is still just a slot
+- the top level is a live image ledger
+- named code is still ordinary slot rebinding
 - locals are temporary and belong only here
-- the REPL is a first-class way to inspect and patch the image
+- the REPL is a first-class programming surface, not a second-rate shell
+- one-line and multiline entry must both feel natural
 
 This proposal achieves that by:
 
-- keeping top-level definitions compact
-- using `here` for locals
-- keeping `set` for mutation
-- keeping calls parenthesized
-- adding cheap REPL sugar for inspection
-- and using `@name` to talk about bindings without forcing a new runtime value
+- preferring `is` for binding
+- using `to` for named code
+- keeping `here` for locals
+- using `set ... to ...` for mutation
+- using brackets for blocks and `;` for one-line separation
+- using `:` for the core call surface
+- adding narrow prompt-only call sugar where it genuinely helps
+- using `show @name` and related commands for image inspection
 
-That is a meaningful user-facing improvement with modest architectural cost.
+That is a much stronger change in language feeling without demanding a
+fundamental runtime rewrite.

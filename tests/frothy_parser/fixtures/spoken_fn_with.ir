@@ -1,0 +1,1 @@
+(write-slot "make" (fn arity=0 locals=0 (seq (fn arity=1 locals=1 (seq (call (builtin "+") (read-local 0) (lit 1)))))))

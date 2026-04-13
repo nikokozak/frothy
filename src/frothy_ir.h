@@ -143,4 +143,8 @@ froth_error_t frothy_ir_render(const frothy_ir_program_t *program,
 froth_error_t frothy_ir_render_code(const frothy_ir_program_t *program,
                                     frothy_ir_node_id_t body, size_t arity,
                                     size_t local_count, char **out_text);
+froth_error_t frothy_ir_render_surface_code(const frothy_ir_program_t *program,
+                                            frothy_ir_node_id_t body,
+                                            size_t arity, size_t local_count,
+                                            const char *name, char **out_text);
 const char *frothy_ir_builtin_name(frothy_ir_builtin_kind_t builtin);

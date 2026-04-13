@@ -149,6 +149,9 @@ that prove the intended authority split and release hygiene are actually true.
 - Update `PROGRESS.md` after meaningful work lands.
 - Update `TIMELINE.md` when milestone status, target dates, or slips change.
 - Keep README and repo-control docs aligned with actual repo policy.
+- At the end of a tranche, run agent reviews repeatedly until they stop
+  surfacing major issues and you are comfortable with the work. Do not treat a
+  first green test pass or a single review round as tranche closeout.
 - Keep commit messages terse.
 - Do not add `Co-Authored-By` lines.
 

@@ -410,6 +410,153 @@ static int test_top_level_set_forms(void) {
   return ok;
 }
 
+static int test_spoken_ledger_surface_and_control_forms(void) {
+  frothy_value_t value = frothy_value_make_nil();
+  int ok = 1;
+
+  reset_frothy_state();
+
+  ok &= expect_ok("count is 7", &value);
+  release_value(&value);
+  ok &= expect_ok("set count to 8", &value);
+  ok &= expect_nil_value(value, "set count to 8");
+  release_value(&value);
+  ok &= expect_ok("count", &value);
+  ok &= expect_int_value(value, 8, "count after spoken set");
+  release_value(&value);
+
+  ok &= expect_ok("to inc with x [ x + 1 ]", &value);
+  release_value(&value);
+  ok &= expect_ok("inc: 41", &value);
+  ok &= expect_int_value(value, 42, "inc: 41");
+  release_value(&value);
+
+  ok &= expect_ok("localDemo is fn [ here n is 5; n ]", &value);
+  release_value(&value);
+  ok &= expect_ok("localDemo:", &value);
+  ok &= expect_int_value(value, 5, "localDemo:");
+  release_value(&value);
+
+  ok &= expect_ok("plainLocalDemo is fn [ n is 6; n ]", &value);
+  release_value(&value);
+  ok &= expect_ok("plainLocalDemo:", &value);
+  ok &= expect_int_value(value, 6, "plainLocalDemo:");
+  release_value(&value);
+
+  ok &= expect_ok("frame is cells(1)", &value);
+  release_value(&value);
+  ok &= expect_ok("set frame[0] to 7", &value);
+  ok &= expect_nil_value(value, "set frame[0] to 7");
+  release_value(&value);
+  ok &= expect_ok("frame[0]", &value);
+  ok &= expect_int_value(value, 7, "frame[0] after spoken set");
+  release_value(&value);
+
+  ok &= expect_ok("makeInc is fn [ fn with x [ x + 1 ] ]", &value);
+  release_value(&value);
+  ok &= expect_ok("call makeInc: with 41", &value);
+  ok &= expect_int_value(value, 42, "call makeInc: with 41");
+  release_value(&value);
+
+  ok &= expect_ok("counter is cells(1)", &value);
+  release_value(&value);
+  ok &= expect_ok("set counter[0] to 0", &value);
+  release_value(&value);
+  ok &= expect_ok("repeat 3 as i [ set counter[0] to counter[0] + i ]", &value);
+  ok &= expect_nil_value(value, "repeat indexed");
+  release_value(&value);
+  ok &= expect_ok("counter[0]", &value);
+  ok &= expect_int_value(value, 3, "indexed repeat sum");
+  release_value(&value);
+
+  ok &= expect_ok("set counter[0] to 0", &value);
+  release_value(&value);
+  ok &= expect_ok(
+      "repeat 2 as i [ repeat 3 as j [ set counter[0] to counter[0] + i + j ] ]",
+      &value);
+  ok &= expect_nil_value(value, "nested repeat");
+  release_value(&value);
+  ok &= expect_ok("counter[0]", &value);
+  ok &= expect_int_value(value, 9, "nested repeat sum");
+  release_value(&value);
+
+  ok &= expect_ok(
+      "nextCount is fn [ here n is counter[0]; set counter[0] to counter[0] + 1; n ]",
+      &value);
+  release_value(&value);
+  ok &= expect_ok("set counter[0] to 0", &value);
+  release_value(&value);
+  ok &= expect_ok("repeat nextCount: [ nil ]", &value);
+  ok &= expect_nil_value(value, "repeat count evaluates once");
+  release_value(&value);
+  ok &= expect_ok("counter[0]", &value);
+  ok &= expect_int_value(value, 1, "repeat count evaluated once");
+  release_value(&value);
+
+  ok &= expect_ok("set counter[0] to 5", &value);
+  release_value(&value);
+  ok &= expect_ok("repeat 0 [ set counter[0] to 99 ]", &value);
+  ok &= expect_nil_value(value, "repeat zero");
+  release_value(&value);
+  ok &= expect_ok("counter[0]", &value);
+  ok &= expect_int_value(value, 5, "repeat zero leaves state");
+  release_value(&value);
+  ok &= expect_ok("repeat -1 [ set counter[0] to 99 ]", &value);
+  ok &= expect_nil_value(value, "repeat negative");
+  release_value(&value);
+  ok &= expect_ok("counter[0]", &value);
+  ok &= expect_int_value(value, 5, "repeat negative leaves state");
+  release_value(&value);
+
+  ok &= expect_ok("when true [ 42 ]", &value);
+  ok &= expect_int_value(value, 42, "when true");
+  release_value(&value);
+  ok &= expect_ok("when false [ 42 ]", &value);
+  ok &= expect_nil_value(value, "when false");
+  release_value(&value);
+  ok &= expect_ok("unless false [ 42 ]", &value);
+  ok &= expect_int_value(value, 42, "unless false");
+  release_value(&value);
+  ok &= expect_ok("unless true [ 42 ]", &value);
+  ok &= expect_nil_value(value, "unless true");
+  release_value(&value);
+
+  ok &= expect_ok("set counter[0] to 0", &value);
+  release_value(&value);
+  ok &= expect_ok(
+      "tick is fn [ set counter[0] to counter[0] + 1; true ]", &value);
+  release_value(&value);
+  ok &= expect_ok("false and tick:", &value);
+  ok &= expect_bool_value(value, false, "false and tick:");
+  release_value(&value);
+  ok &= expect_ok("counter[0]", &value);
+  ok &= expect_int_value(value, 0, "and short-circuit");
+  release_value(&value);
+  ok &= expect_ok("true or tick:", &value);
+  ok &= expect_bool_value(value, true, "true or tick:");
+  release_value(&value);
+  ok &= expect_ok("counter[0]", &value);
+  ok &= expect_int_value(value, 0, "or short-circuit");
+  release_value(&value);
+  ok &= expect_ok("true and tick:", &value);
+  ok &= expect_bool_value(value, true, "true and tick:");
+  release_value(&value);
+  ok &= expect_ok("counter[0]", &value);
+  ok &= expect_int_value(value, 1, "and evaluates rhs");
+  release_value(&value);
+  ok &= expect_ok("false or tick:", &value);
+  ok &= expect_bool_value(value, true, "false or tick:");
+  release_value(&value);
+  ok &= expect_ok("counter[0]", &value);
+  ok &= expect_int_value(value, 2, "or evaluates rhs");
+  release_value(&value);
+
+  ok &= expect_error("1 and true", FROTH_ERROR_TYPE_MISMATCH);
+  ok &= expect_error("false or 1", FROTH_ERROR_TYPE_MISMATCH);
+
+  return ok;
+}
+
 static int test_temporary_results_release_cleanly(void) {
   frothy_value_t value = frothy_value_make_nil();
   int ok = 1;
@@ -520,6 +667,7 @@ int main(void) {
   ok &= test_cells_store_rules_and_overwrite_reclamation();
   ok &= test_cells_sample_program();
   ok &= test_top_level_set_forms();
+  ok &= test_spoken_ledger_surface_and_control_forms();
   ok &= test_temporary_results_release_cleanly();
   ok &= test_allocator_failure_cleanup();
   ok &= test_object_slot_reuse_at_capacity();

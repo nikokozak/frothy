@@ -1,0 +1,1 @@
+(if (call (builtin "not") (lit false)) (seq (lit 1)))

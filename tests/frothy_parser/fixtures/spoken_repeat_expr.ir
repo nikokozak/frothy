@@ -1,0 +1,1 @@
+(seq (write-local 1 (lit 2)) (write-local 2 (lit 0)) (while (call (builtin "<") (read-local 2) (read-local 1)) (seq (write-local 0 (read-local 2)) (seq (read-local 0)) (write-local 2 (call (builtin "+") (read-local 2) (lit 1))))))

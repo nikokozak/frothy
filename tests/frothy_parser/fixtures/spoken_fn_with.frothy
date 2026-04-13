@@ -1,0 +1,1 @@
+make is fn [ fn with x [ x + 1 ] ]

@@ -25,8 +25,10 @@ typedef struct {
   int bracket_depth;
   bool in_string;
   bool trailing_equal;
+  bool trailing_keyword;
   bool trailing_comma;
   bool trailing_operator;
+  bool trailing_named_code;
 } frothy_input_state_t;
 
 typedef enum {
@@ -37,6 +39,7 @@ typedef enum {
   FROTHY_SHELL_COMMAND_RESTORE,
   FROTHY_SHELL_COMMAND_WIPE,
   FROTHY_SHELL_COMMAND_SEE,
+  FROTHY_SHELL_COMMAND_SHOW,
   FROTHY_SHELL_COMMAND_CORE,
   FROTHY_SHELL_COMMAND_INFO,
   FROTHY_SHELL_COMMAND_CONTROL,
@@ -74,6 +77,307 @@ static bool frothy_is_name_continue(unsigned char byte) {
   return isalnum(byte) || byte == '_' || byte == '.';
 }
 
+static bool frothy_word_equals(const char *start, size_t length,
+                               const char *text) {
+  return strlen(text) == length && strncmp(start, text, length) == 0;
+}
+
+static size_t frothy_trim_end_index(const char *text, size_t length) {
+  while (length > 0 && isspace((unsigned char)text[length - 1])) {
+    length--;
+  }
+  return length;
+}
+
+static const char *frothy_shell_skip_spaces(const char *text) {
+  while (*text != '\0' && isspace((unsigned char)*text)) {
+    text++;
+  }
+  return text;
+}
+
+static bool frothy_find_prev_word(const char *text, size_t *cursor_io,
+                                  const char **start_out,
+                                  size_t *length_out) {
+  size_t cursor = frothy_trim_end_index(text, *cursor_io);
+  size_t end = cursor;
+
+  while (cursor > 0 &&
+         frothy_is_name_continue((unsigned char)text[cursor - 1])) {
+    cursor--;
+  }
+  if (cursor == end || !frothy_is_name_start((unsigned char)text[cursor])) {
+    return false;
+  }
+
+  *cursor_io = cursor;
+  *start_out = text + cursor;
+  *length_out = end - cursor;
+  return true;
+}
+
+static bool frothy_source_ends_with_named_code_header(const char *text,
+                                                      size_t length) {
+  const char *token_start = NULL;
+  size_t token_length = 0;
+  size_t cursor = frothy_trim_end_index(text, length);
+
+  if (!frothy_find_prev_word(text, &cursor, &token_start, &token_length)) {
+    return false;
+  }
+  if (frothy_word_equals(token_start, token_length, "to")) {
+    return true;
+  }
+
+  while (1) {
+    size_t before = frothy_trim_end_index(text, cursor);
+
+    if (before == 0 || text[before - 1] != ',') {
+      break;
+    }
+    cursor = before - 1;
+    if (!frothy_find_prev_word(text, &cursor, &token_start, &token_length)) {
+      return false;
+    }
+  }
+
+  if (!frothy_find_prev_word(text, &cursor, &token_start, &token_length)) {
+    return false;
+  }
+  if (frothy_word_equals(token_start, token_length, "to")) {
+    return true;
+  }
+  if (!frothy_word_equals(token_start, token_length, "with")) {
+    return false;
+  }
+
+  if (!frothy_find_prev_word(text, &cursor, &token_start, &token_length)) {
+    return false;
+  }
+  if (!frothy_find_prev_word(text, &cursor, &token_start, &token_length)) {
+    return false;
+  }
+  return frothy_word_equals(token_start, token_length, "to");
+}
+
+static bool frothy_source_ends_with_block_header(const char *text,
+                                                 size_t length) {
+  const char *end = text + frothy_trim_end_index(text, length);
+  const char *segment = end;
+  const char *cursor;
+  const char *word_start;
+  size_t word_length;
+
+  while (segment > text) {
+    char prev = segment[-1];
+
+    if (prev == '\n' || prev == ';') {
+      break;
+    }
+    segment--;
+  }
+
+  cursor = frothy_shell_skip_spaces(segment);
+  if (cursor >= end) {
+    return false;
+  }
+
+  word_start = cursor;
+  if (!frothy_is_name_start((unsigned char)*cursor)) {
+    return false;
+  }
+  cursor++;
+  while (cursor < end && frothy_is_name_continue((unsigned char)*cursor)) {
+    cursor++;
+  }
+  word_length = (size_t)(cursor - word_start);
+  if (!frothy_word_equals(word_start, word_length, "fn") &&
+      !frothy_word_equals(word_start, word_length, "if") &&
+      !frothy_word_equals(word_start, word_length, "when") &&
+      !frothy_word_equals(word_start, word_length, "unless") &&
+      !frothy_word_equals(word_start, word_length, "repeat") &&
+      !frothy_word_equals(word_start, word_length, "while")) {
+    return false;
+  }
+
+  while (cursor < end) {
+    if (*cursor == '[' || *cursor == '{') {
+      return false;
+    }
+    cursor++;
+  }
+
+  return true;
+}
+
+static bool frothy_source_ends_with_call_header(const char *text,
+                                                size_t length) {
+  const char *end = text + frothy_trim_end_index(text, length);
+  const char *segment = end;
+  const char *cursor;
+  const char *word_start;
+  size_t word_length;
+
+  while (segment > text) {
+    char prev = segment[-1];
+
+    if (prev == '\n' || prev == ';') {
+      break;
+    }
+    segment--;
+  }
+
+  cursor = frothy_shell_skip_spaces(segment);
+  if (cursor >= end || !frothy_is_name_start((unsigned char)*cursor)) {
+    return false;
+  }
+
+  word_start = cursor;
+  cursor++;
+  while (cursor < end && frothy_is_name_continue((unsigned char)*cursor)) {
+    cursor++;
+  }
+  word_length = (size_t)(cursor - word_start);
+  if (!frothy_word_equals(word_start, word_length, "call")) {
+    return false;
+  }
+
+  while (cursor < end) {
+    cursor = frothy_shell_skip_spaces(cursor);
+    if (cursor >= end) {
+      break;
+    }
+    if (!frothy_is_name_start((unsigned char)*cursor)) {
+      cursor++;
+      continue;
+    }
+
+    word_start = cursor;
+    cursor++;
+    while (cursor < end && frothy_is_name_continue((unsigned char)*cursor)) {
+      cursor++;
+    }
+    if (frothy_word_equals(word_start, (size_t)(cursor - word_start), "with")) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static bool frothy_word_in_list(const char *start, size_t length,
+                                const char *const *words, size_t count) {
+  size_t i;
+
+  for (i = 0; i < count; i++) {
+    if (frothy_word_equals(start, length, words[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool frothy_shell_parse_leading_name(const char *text,
+                                            const char **start_out,
+                                            size_t *length_out,
+                                            const char **rest_out) {
+  const char *cursor = text;
+
+  if (!frothy_is_name_start((unsigned char)*cursor)) {
+    return false;
+  }
+
+  cursor++;
+  while (frothy_is_name_continue((unsigned char)*cursor)) {
+    cursor++;
+  }
+
+  *start_out = text;
+  *length_out = (size_t)(cursor - text);
+  *rest_out = cursor;
+  return true;
+}
+
+static bool frothy_shell_is_reserved_leader(const char *start, size_t length) {
+  static const char *const reserved[] = {
+      "and",      "as",       "boot",  "call",   "core", "else", "exit",
+      "false",    "fn",       "help",  "here",   "if",   "info", "is",
+      "nil",      "not",      "or",    "quit",   "remember",
+      "repeat",   "restore",  "save",  "see",    "set",  "show",
+      "to",       "true",     "unless","when",   "while","wipe",
+      "with",     "words",
+  };
+
+  return frothy_word_in_list(start, length, reserved,
+                             sizeof(reserved) / sizeof(reserved[0]));
+}
+
+static bool frothy_shell_rest_starts_syntax_word(const char *text) {
+  static const char *const reserved[] = {
+      "and",    "as",   "boot", "call", "else", "fn",     "here",
+      "if",     "is",   "or",   "repeat", "set", "to",    "unless",
+      "when",   "while","with",
+  };
+  const char *start = frothy_shell_skip_spaces(text);
+  const char *cursor = start;
+
+  if (!frothy_is_name_start((unsigned char)*cursor)) {
+    return false;
+  }
+
+  cursor++;
+  while (frothy_is_name_continue((unsigned char)*cursor)) {
+    cursor++;
+  }
+
+  return frothy_word_in_list(start, (size_t)(cursor - start), reserved,
+                             sizeof(reserved) / sizeof(reserved[0]));
+}
+
+static bool frothy_shell_rewrite_simple_call(const char *command, char *buffer,
+                                             size_t capacity) {
+  const char *name_start = NULL;
+  const char *rest = NULL;
+  size_t name_length = 0;
+  int needed;
+
+  if (!frothy_shell_parse_leading_name(command, &name_start, &name_length,
+                                       &rest)) {
+    return false;
+  }
+  if (frothy_shell_is_reserved_leader(name_start, name_length)) {
+    return false;
+  }
+  if (*rest != '\0' && !isspace((unsigned char)*rest)) {
+    return false;
+  }
+
+  rest = frothy_shell_skip_spaces(rest);
+  if (*rest == '\0') {
+    if (memchr(name_start, '.', name_length) == NULL) {
+      return false;
+    }
+    needed = snprintf(buffer, capacity, "%.*s:", (int)name_length, name_start);
+    return needed >= 0 && (size_t)needed < capacity;
+  }
+
+  if (frothy_shell_rest_starts_syntax_word(rest)) {
+    return false;
+  }
+  if (*rest == '=' || *rest == '+' || *rest == '*' ||
+      *rest == '/' || *rest == '%' || *rest == '<' || *rest == '>' ||
+      *rest == '!' || *rest == ':') {
+    return false;
+  }
+  if (*rest == '-' && !isdigit((unsigned char)rest[1])) {
+    return false;
+  }
+
+  needed = snprintf(buffer, capacity, "%.*s: %s", (int)name_length,
+                    name_start, rest);
+  return needed >= 0 && (size_t)needed < capacity;
+}
+
 static char *frothy_trim_command(char *buffer) {
   char *start = buffer;
   char *end;
@@ -102,8 +406,10 @@ static void frothy_input_state_reset(frothy_input_state_t *state) {
   state->bracket_depth = 0;
   state->in_string = false;
   state->trailing_equal = false;
+  state->trailing_keyword = false;
   state->trailing_comma = false;
   state->trailing_operator = false;
+  state->trailing_named_code = false;
   if (state->source != NULL) {
     state->source[0] = '\0';
   }
@@ -122,7 +428,8 @@ static bool frothy_input_state_is_complete(const frothy_input_state_t *state) {
   return state->length != 0 && state->paren_depth == 0 &&
          state->brace_depth == 0 && state->bracket_depth == 0 &&
          !state->in_string && !state->trailing_equal &&
-         !state->trailing_comma && !state->trailing_operator;
+         !state->trailing_keyword && !state->trailing_comma &&
+         !state->trailing_operator && !state->trailing_named_code;
 }
 
 static froth_error_t
@@ -225,19 +532,24 @@ static void frothy_scan_chunk(frothy_input_state_t *state, const char *chunk,
 }
 
 static void frothy_update_trailing_state(frothy_input_state_t *state) {
+  static const char *const keyword_words[] = {"as", "is", "to", "with"};
+  static const char *const operator_words[] = {"and", "not", "or"};
   size_t i = state->length;
+  const char *token_start = NULL;
+  size_t token_length = 0;
+  size_t cursor;
 
   state->trailing_equal = false;
+  state->trailing_keyword = false;
   state->trailing_comma = false;
   state->trailing_operator = false;
+  state->trailing_named_code = false;
 
   if (state->in_string) {
     return;
   }
 
-  while (i > 0 && isspace((unsigned char)state->source[i - 1])) {
-    i--;
-  }
+  i = frothy_trim_end_index(state->source, i);
   if (i == 0) {
     return;
   }
@@ -258,24 +570,6 @@ static void frothy_update_trailing_state(frothy_input_state_t *state) {
   if (state->source[i - 1] == ',') {
     state->trailing_comma = true;
     return;
-  }
-
-  {
-    size_t token_end = i;
-    size_t token_start = token_end;
-
-    while (token_start > 0 &&
-           frothy_is_name_continue((unsigned char)state->source[token_start - 1])) {
-      token_start--;
-    }
-    if (token_start < token_end &&
-        token_end - token_start == 3 &&
-        strncmp(state->source + token_start, "not", 3) == 0 &&
-        (token_start == 0 ||
-         !frothy_is_name_continue((unsigned char)state->source[token_start - 1]))) {
-      state->trailing_operator = true;
-      return;
-    }
   }
 
   if (i >= 2) {
@@ -300,6 +594,55 @@ static void frothy_update_trailing_state(frothy_input_state_t *state) {
     state->trailing_operator = true;
     return;
   }
+
+  cursor = i;
+  if (frothy_find_prev_word(state->source, &cursor, &token_start,
+                            &token_length)) {
+    if (frothy_word_in_list(token_start, token_length, keyword_words,
+                            sizeof(keyword_words) / sizeof(keyword_words[0]))) {
+      state->trailing_keyword = true;
+      return;
+    }
+    if (frothy_word_in_list(token_start, token_length, operator_words,
+                            sizeof(operator_words) /
+                                sizeof(operator_words[0]))) {
+      state->trailing_operator = true;
+      return;
+    }
+  }
+
+  if (frothy_source_ends_with_named_code_header(state->source, i)) {
+    state->trailing_named_code = true;
+    return;
+  }
+  if (frothy_source_ends_with_block_header(state->source, i)) {
+    state->trailing_named_code = true;
+    return;
+  }
+  if (frothy_source_ends_with_call_header(state->source, i)) {
+    state->trailing_named_code = true;
+  }
+}
+
+static bool frothy_source_ends_with_bare_colon_call(const char *text,
+                                                    size_t length) {
+  size_t end = frothy_trim_end_index(text, length);
+  size_t cursor;
+  const char *token_start = NULL;
+  size_t token_length = 0;
+
+  if (end == 0 || text[end - 1] != ':') {
+    return false;
+  }
+  if (end >= 2 && text[end - 2] == ':') {
+    return false;
+  }
+
+  cursor = end - 1;
+  if (!frothy_find_prev_word(text, &cursor, &token_start, &token_length)) {
+    return false;
+  }
+  return token_start + token_length == text + end - 1;
 }
 
 static froth_error_t frothy_input_state_append_line(frothy_input_state_t *state,
@@ -406,9 +749,11 @@ static froth_error_t frothy_read_line(char *buffer, size_t capacity,
 static froth_error_t frothy_print_help(void) {
   FROTH_TRY(frothy_emit_text("help\n"));
   FROTH_TRY(frothy_emit_text("words\n"));
+  FROTH_TRY(frothy_emit_text("show @name\n"));
   FROTH_TRY(frothy_emit_text("see @name\n"));
   FROTH_TRY(frothy_emit_text("core @name\n"));
   FROTH_TRY(frothy_emit_text("info @name\n"));
+  FROTH_TRY(frothy_emit_text("remember\n"));
   FROTH_TRY(frothy_emit_text("save\n"));
   FROTH_TRY(frothy_emit_text("restore\n"));
   FROTH_TRY(frothy_emit_text("wipe\n"));
@@ -500,6 +845,7 @@ frothy_shell_command_builtin_name(frothy_shell_command_kind_t kind) {
   case FROTHY_SHELL_COMMAND_WIPE:
     return "wipe";
   case FROTHY_SHELL_COMMAND_SEE:
+  case FROTHY_SHELL_COMMAND_SHOW:
     return "see";
   case FROTHY_SHELL_COMMAND_CORE:
     return "core";
@@ -539,13 +885,6 @@ static bool frothy_shell_parse_name_arg(const char *text, const char **name_out,
   return true;
 }
 
-static const char *frothy_shell_skip_spaces(const char *text) {
-  while (*text != '\0' && isspace((unsigned char)*text)) {
-    text++;
-  }
-  return text;
-}
-
 static frothy_shell_command_t frothy_shell_parse_command(const char *command) {
   frothy_shell_command_t result;
   const char *name_text = NULL;
@@ -557,6 +896,8 @@ static frothy_shell_command_t frothy_shell_parse_command(const char *command) {
     result.kind = FROTHY_SHELL_COMMAND_HELP;
   } else if (strcmp(command, "words") == 0) {
     result.kind = FROTHY_SHELL_COMMAND_WORDS;
+  } else if (strcmp(command, "remember") == 0) {
+    result.kind = FROTHY_SHELL_COMMAND_SAVE;
   } else if (strcmp(command, "save") == 0) {
     result.kind = FROTHY_SHELL_COMMAND_SAVE;
   } else if (strcmp(command, "restore") == 0) {
@@ -569,6 +910,12 @@ static frothy_shell_command_t frothy_shell_parse_command(const char *command) {
     result.kind = FROTHY_SHELL_COMMAND_QUIT;
   } else if (strcmp(command, "exit") == 0) {
     result.kind = FROTHY_SHELL_COMMAND_EXIT;
+  } else if (strncmp(command, "show", 4) == 0 &&
+             (name_text = frothy_shell_skip_spaces(command + 4)) != command + 4 &&
+             frothy_shell_parse_name_arg(name_text, &result.name_arg,
+                                         &name_end) &&
+             *name_end == '\0') {
+    result.kind = FROTHY_SHELL_COMMAND_SHOW;
   } else if (strncmp(command, "see", 3) == 0 &&
              (name_text = frothy_shell_skip_spaces(command + 3)) != command + 3 &&
              frothy_shell_parse_name_arg(name_text, &result.name_arg,
@@ -623,6 +970,7 @@ frothy_shell_command_source(const frothy_shell_command_t *command,
   case FROTHY_SHELL_COMMAND_WIPE:
     format = "wipe()";
     break;
+  case FROTHY_SHELL_COMMAND_SHOW:
   case FROTHY_SHELL_COMMAND_SEE:
     format = "see(\"%.*s\")";
     break;
@@ -695,26 +1043,12 @@ froth_error_t frothy_shell_eval_source(const char *source,
   return FROTH_OK;
 }
 
-static froth_error_t frothy_print_eval_result(const char *source) {
-  frothy_shell_eval_result_t result;
-  const char *label = "eval";
-  froth_error_t err = frothy_shell_eval_source(source, &result);
-
-  if (err != FROTH_OK) {
-    if (result.phase == FROTHY_SHELL_EVAL_PHASE_PARSE) {
-      label = "parse";
-    }
-    frothy_shell_eval_result_free(&result);
-    return frothy_emit_error(label, err);
+static bool frothy_shell_should_continue_after_eval_error(
+    const char *source, froth_error_t err, frothy_shell_eval_phase_t phase) {
+  if (phase != FROTHY_SHELL_EVAL_PHASE_EVAL || err != FROTH_ERROR_SIGNATURE) {
+    return false;
   }
-
-  if (!result.suppress_raw_output) {
-    FROTH_TRY(frothy_emit_text(result.rendered));
-    FROTH_TRY(platform_emit('\n'));
-  }
-
-  frothy_shell_eval_result_free(&result);
-  return FROTH_OK;
+  return frothy_source_ends_with_bare_colon_call(source, strlen(source));
 }
 
 static froth_error_t
@@ -762,6 +1096,8 @@ froth_error_t frothy_shell_run(void) {
 
   while (1) {
     char *command = NULL;
+    const char *line_for_input = shell_line;
+    char rewritten_command[FROTH_LINE_BUFFER_SIZE];
     bool saw_eof;
     bool saw_interrupt;
     froth_error_t err;
@@ -849,13 +1185,19 @@ froth_error_t frothy_shell_run(void) {
         }
         continue;
       }
+
+      if (frothy_shell_rewrite_simple_call(command, rewritten_command,
+                                           sizeof(rewritten_command))) {
+        command = rewritten_command;
+        line_for_input = rewritten_command;
+      }
     }
 
     if (!frothy_input_state_has_pending(&input) && *command == '\0') {
       continue;
     }
 
-    err = frothy_input_state_append_line(&input, shell_line);
+    err = frothy_input_state_append_line(&input, line_for_input);
     if (err != FROTH_OK) {
       result = err;
       goto cleanup;
@@ -864,11 +1206,36 @@ froth_error_t frothy_shell_run(void) {
       continue;
     }
 
-    err = frothy_print_eval_result(input.source);
-    frothy_input_state_reset(&input);
-    if (err != FROTH_OK) {
-      result = err;
-      goto cleanup;
+    {
+      frothy_shell_eval_result_t eval_result;
+      const char *label = "eval";
+
+      err = frothy_shell_eval_source(input.source, &eval_result);
+      if (err != FROTH_OK) {
+        if (frothy_shell_should_continue_after_eval_error(
+                input.source, err, eval_result.phase)) {
+          frothy_shell_eval_result_free(&eval_result);
+          continue;
+        }
+        if (eval_result.phase == FROTHY_SHELL_EVAL_PHASE_PARSE) {
+          label = "parse";
+        }
+        frothy_shell_eval_result_free(&eval_result);
+        frothy_input_state_reset(&input);
+        err = frothy_emit_error(label, err);
+        if (err != FROTH_OK) {
+          result = err;
+          goto cleanup;
+        }
+        continue;
+      }
+
+      if (!eval_result.suppress_raw_output) {
+        FROTH_TRY(frothy_emit_text(eval_result.rendered));
+        FROTH_TRY(platform_emit('\n'));
+      }
+      frothy_shell_eval_result_free(&eval_result);
+      frothy_input_state_reset(&input);
     }
   }
 
