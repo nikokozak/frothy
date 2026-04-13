@@ -1,0 +1,1 @@
+(write-index (read-slot "frame") (lit 0) (lit 7))

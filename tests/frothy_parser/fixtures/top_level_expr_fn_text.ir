@@ -1,0 +1,1 @@
+(write-slot "msg" (fn arity=0 locals=0 (seq (lit "hi"))))

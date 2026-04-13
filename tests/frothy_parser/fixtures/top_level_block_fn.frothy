@@ -1,0 +1,5 @@
+writeFrame() {
+  set frame[0] = 7
+  set frame[1] = false
+  set frame[2] = "ready"
+}

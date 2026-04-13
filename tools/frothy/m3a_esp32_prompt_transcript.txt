@@ -1,0 +1,42 @@
+Frothy M3a ESP32 Prompt Transcript
+Date: 2026-04-11
+Board: ESP32 DevKit V1
+Port: /dev/cu.usbserial-0001
+Status: captured from attached hardware after flashing the current Frothy ESP-IDF image
+
+Normal Boot
+-----------
+ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:1396
+load:0x40078000,len:13708
+load:0x40080400,len:2996
+entry 0x40080574
+Frothy shell
+snapshot: none
+boot: CTRL-C for safe boot
+Type help for commands.
+frothy>
+
+Safe Boot
+---------
+ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:1396
+load:0x40078000,len:13708
+load:0x40080400,len:2996
+entry 0x40080574
+Frothy shell
+snapshot: none
+boot: CTRL-C for safe boot
+boot: Safe Boot, skipped restore and boot.
+Type help for commands.
+frothy>

@@ -1,0 +1,5 @@
+if true {
+  blink(2)
+} else {
+  nil
+}

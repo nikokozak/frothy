@@ -1,0 +1,228 @@
+{
+  "name": "frothy",
+  "displayName": "Frothy",
+  "description": "Live board control for Frothy devices",
+  "version": "0.1.0",
+  "publisher": "frothy",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguage:frothy"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "frothy",
+        "extensions": [
+          ".frothy",
+          ".froth"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "frothy",
+        "scopeName": "source.frothy",
+        "path": "./syntaxes/froth.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "frothy.connect",
+        "title": "Frothy: Connect Device",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "frothy.disconnect",
+        "title": "Frothy: Disconnect",
+        "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "frothy.sendSelection",
+        "title": "Frothy: Send Selection / Line",
+        "icon": "$(play)"
+      },
+      {
+        "command": "frothy.sendFile",
+        "title": "Frothy: Send File",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "frothy.interrupt",
+        "title": "Frothy: Interrupt",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "frothy.words",
+        "title": "Frothy: Words",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "frothy.see",
+        "title": "Frothy: See Binding",
+        "icon": "$(symbol-field)"
+      },
+      {
+        "command": "frothy.save",
+        "title": "Frothy: Save Snapshot",
+        "icon": "$(save)"
+      },
+      {
+        "command": "frothy.restore",
+        "title": "Frothy: Restore Snapshot",
+        "icon": "$(history)"
+      },
+      {
+        "command": "frothy.wipe",
+        "title": "Frothy: Wipe Snapshot",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "frothy.doctor",
+        "title": "Frothy: Run Doctor",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "frothy.showConsole",
+        "title": "Frothy: Show Console",
+        "icon": "$(terminal)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "frothy.sendSelection",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "editorTextFocus && (resourceExtname == .frothy || resourceExtname == .froth)"
+      },
+      {
+        "command": "frothy.sendFile",
+        "key": "ctrl+shift+enter",
+        "mac": "cmd+shift+enter",
+        "when": "editorTextFocus && (resourceExtname == .frothy || resourceExtname == .froth)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "frothy",
+          "title": "Frothy",
+          "icon": "$(symbol-misc)"
+        }
+      ]
+    },
+    "views": {
+      "frothy": [
+        {
+          "id": "frothyDeviceView",
+          "name": "Device"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "frothyDeviceView",
+        "contents": "Connect to a Frothy device from the current VS Code window.\n\n[Connect Device](command:frothy.connect)\n[Show Console](command:frothy.showConsole)\n[Run Doctor](command:frothy.doctor)"
+      }
+    ],
+    "configuration": {
+      "title": "Frothy",
+      "properties": {
+        "frothy.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the froth CLI binary. Leave empty to auto-discover froth on PATH or from the repo-local tools/cli build."
+        },
+        "frothy.port": {
+          "type": "string",
+          "default": "",
+          "description": "Preferred serial port for Frothy device connections. Leave empty to auto-connect one device or prompt when several are found."
+        }
+      }
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "frothy.connect",
+          "when": "view == frothyDeviceView",
+          "group": "navigation"
+        },
+        {
+          "command": "frothy.disconnect",
+          "when": "view == frothyDeviceView",
+          "group": "navigation"
+        },
+        {
+          "command": "frothy.interrupt",
+          "when": "view == frothyDeviceView",
+          "group": "navigation"
+        },
+        {
+          "command": "frothy.showConsole",
+          "when": "view == frothyDeviceView",
+          "group": "navigation"
+        },
+        {
+          "command": "frothy.words",
+          "when": "view == frothyDeviceView",
+          "group": "2_actions"
+        },
+        {
+          "command": "frothy.see",
+          "when": "view == frothyDeviceView",
+          "group": "2_actions"
+        },
+        {
+          "command": "frothy.save",
+          "when": "view == frothyDeviceView",
+          "group": "2_actions"
+        },
+        {
+          "command": "frothy.restore",
+          "when": "view == frothyDeviceView",
+          "group": "2_actions"
+        },
+        {
+          "command": "frothy.wipe",
+          "when": "view == frothyDeviceView",
+          "group": "2_actions"
+        },
+        {
+          "command": "frothy.doctor",
+          "when": "view == frothyDeviceView",
+          "group": "2_actions"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "frothy.sendSelection",
+          "when": "resourceExtname == .frothy || resourceExtname == .froth",
+          "group": "navigation"
+        },
+        {
+          "command": "frothy.sendFile",
+          "when": "resourceExtname == .frothy || resourceExtname == .froth",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node test/control-session-smoke.js && node test/extension-smoke.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit
+#
+# Git-level safety net. Catches commits made outside Claude Code.
+# Install with: git config core.hooksPath .githooks
+#
+# This is a SOFT gate — warns but does not block by default.
+# To make it a hard gate, change the final exit to: exit 1
+
+STAGED=$(git diff --cached --name-only)
+
+SRC_CHANGED=$(echo "$STAGED" | grep -c '^src/' || true)
+PROGRESS_STAGED=$(echo "$STAGED" | grep -c '^PROGRESS.md' || true)
+
+if [ "$SRC_CHANGED" -gt 0 ] && [ "$PROGRESS_STAGED" -eq 0 ]; then
+    echo ""
+    echo "⚠  WARNING: src/ files changed but PROGRESS.md not staged."
+    echo "   Consider updating PROGRESS.md before committing."
+    echo "   (To skip this check: git commit --no-verify)"
+    echo ""
+    # Uncomment the next line to make this a hard block:
+    # exit 1
+fi
+
+exit 0

@@ -1,0 +1,1 @@
+(write-slot "writeFrame" (fn arity=0 locals=0 (seq (write-index (read-slot "frame") (lit 0) (lit 7)) (write-index (read-slot "frame") (lit 1) (lit false)) (write-index (read-slot "frame") (lit 2) (lit "ready")))))

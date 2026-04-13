@@ -1,0 +1,7 @@
+blink = fn(pin) {
+  i = 0
+  while i < 3 {
+    pulse(pin, i)
+    set i = i + 1
+  }
+}

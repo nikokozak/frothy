@@ -1,0 +1,99 @@
+\ ===== LEDC (PWM) ========================================
+\ Convenience words for the ESP32 LEDC peripheral.
+\ These wrap the raw ledc.* FFI words with high-speed mode,
+\ 10-bit duty resolution, and a 1:1 timer-to-channel mapping.
+\ For full control, use the raw words directly.
+\
+\ Channels 0-7 are available. Each channel uses the timer
+\ with the same index. Duty values range from 0 to 1023
+\ (10-bit resolution).
+
+\ Configure a PWM channel on a pin at a given frequency.
+\ Uses high-speed mode, 10-bit resolution, timer = channel.
+\ ( channel pin freq -- )
+\ Example: 0 2 1000 ledc.setup  \ channel 0, pin 2, 1kHz
+: ledc.setup ( channel pin freq -- )
+    swap >r
+    swap dup >r swap
+    0 -rot 10
+    ledc.timer-config
+    r> r> swap
+    0 swap dup 0
+    ledc.channel-config
+;
+
+\ Set the duty cycle on a channel. Range 0-1023 (10-bit).
+\ ( channel duty -- )
+\ Example: 0 512 ledc.duty  \ channel 0, ~50% duty
+: ledc.duty ( channel duty -- )
+    over >r
+    0 -rot
+    ledc.set-duty
+    0 r>
+    ledc.update-duty
+;
+
+\ Change the PWM frequency on a channel (timer = channel).
+\ ( channel freq -- )
+\ Example: 0 440 ledc.freq  \ channel 0, 440Hz (A4 tone)
+: ledc.freq ( channel freq -- )
+    0 -rot
+    ledc.set-freq
+;
+
+\ Stop PWM output on a channel. Pin goes low.
+\ ( channel -- )
+\ Example: 0 ledc.off
+: ledc.off ( channel -- )
+    0 swap 0 ledc.stop
+;
+
+\ ===== I2C ==============================================
+\ Default I2C helpers for the ESP32 DevKit V1.
+
+\ Create a default-speed I2C bus on the board SDA/SCL pins.
+\ ( -- bus )
+\ Example: i2c.setup
+: i2c.setup ( -- bus )   SDA SCL 100000 i2c.init ;
+
+\ Create a fast-mode I2C bus on the board SDA/SCL pins.
+\ ( -- bus )
+\ Example: i2c.setup-fast
+: i2c.setup-fast ( -- bus )   SDA SCL 400000 i2c.init ;
+
+\ Add a default-speed device (100kHz) to a bus.
+\ ( bus addr -- device )
+\ Example: i2c.setup 64 i2c.device
+: i2c.device ( bus addr -- device )   100000 i2c.add-device ;
+
+\ Add a fast-mode device (400kHz) to a bus.
+\ ( bus addr -- device )
+\ Example: i2c.setup-fast 64 i2c.device-fast
+: i2c.device-fast ( bus addr -- device )   400000 i2c.add-device ;
+
+\ ===== UART =============================================
+\ Default UART helpers for the ESP32 DevKit V1.
+\ Uses the auxiliary UART pins declared in board.json,
+\ leaving the primary REPL/transport UART alone.
+
+\ Create a UART on the board TX/RX pins at a given baud.
+\ ( baud -- uart )
+\ Example: 115200 uart.setup
+: uart.setup ( baud -- uart )   UART_TX UART_RX rot uart.init ;
+
+\ Internal helper used by uart.type.
+\ ( s uart i -- s uart )
+: _uart.type-step ( s uart i -- s uart )
+    >r
+    over r@ s@
+    over uart.write
+    r> drop
+;
+
+\ Emit a whole string to a UART.
+\ ( s uart -- )
+\ Example: "hi" 115200 uart.setup uart.type
+: uart.type ( s uart -- )
+    over s.len [ _uart.type-step ] times.i
+    drop drop
+;

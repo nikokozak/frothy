@@ -1,0 +1,3 @@
+poke = fn(frame, index, value) {
+  set frame[index] = value
+}

@@ -1,0 +1,28 @@
+{
+  "name": "POSIX Host",
+  "vendor": "Froth",
+  "platform": "posix",
+  "chip": "host",
+  "description": "POSIX host board for development and testing. GPIO words print trace output.",
+
+  "config": {
+    "cell_size_bits": 32,
+    "heap_size": 4096,
+    "ds_depth": 256,
+    "rs_depth": 256,
+    "slot_count": 128,
+    "has_snapshots": true,
+    "snapshot_block_size": 2048
+  },
+
+  "peripherals": ["gpio", "adc", "i2c", "uart"],
+
+  "pins": {
+    "LED_BUILTIN": 2,
+    "A0": 0,
+    "SDA": 21,
+    "SCL": 22,
+    "UART_TX": 17,
+    "UART_RX": 16
+  }
+}

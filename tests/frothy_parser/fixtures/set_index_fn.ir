@@ -1,0 +1,1 @@
+(write-slot "poke" (fn arity=3 locals=3 (seq (write-index (read-local 0) (read-local 1) (read-local 2)))))

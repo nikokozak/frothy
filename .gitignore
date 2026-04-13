@@ -1,0 +1,45 @@
+.claude
+.githooks/*
+!.githooks/
+!.githooks/pre-commit
+froth-session
+docs/superpowers/
+docs/perm-tutorial.md
+build/
+Testing/
+
+# macOS / editor noise
+.DS_Store
+.vscode/
+tools/vscode/.vscode/
+
+# Local build outputs
+.cache/
+build-review/
+build-tm1629-*/
+compile_commands.json
+dist/
+froth_a.snap
+froth_b.snap
+targets/esp-idf/.cache/
+targets/esp-idf/sdkconfig
+tools/cli/internal/sdk/generated/
+
+# Local scratch space
+tmp/
+docs/test.froth
+tools/vscode/test/test.froth
+
+# CLI local binaries / captures
+tools/cli/cli
+tools/cli/froth-cli
+tools/cli/froth-debug
+tools/cli/minicom_capture
+tools/cli/tmp-froth-cli
+tools/frothy/__pycache__/
+tests/kernel/__pycache__/
+
+# VS Code extension local outputs
+tools/vscode/node_modules/
+tools/vscode/out/
+tools/vscode/*.vsix

@@ -1,0 +1,140 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Froth",
+  "scopeName": "source.froth",
+  "patterns": [
+    {
+      "include": "#line-comment"
+    },
+    {
+      "include": "#block-comment"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#definition"
+    },
+    {
+      "include": "#tick"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#builtins"
+    },
+    {
+      "include": "#brackets"
+    }
+  ],
+  "repository": {
+    "line-comment": {
+      "name": "comment.line.backslash.froth",
+      "match": "(?<!\\S)\\\\ .*$"
+    },
+    "block-comment": {
+      "name": "comment.block.paren.froth",
+      "begin": "(?<!\\S)(\\()",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.comment.begin.froth"
+        }
+      },
+      "end": "(\\))",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.definition.comment.end.froth"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#block-comment"
+        }
+      ]
+    },
+    "string": {
+      "name": "string.quoted.double.froth",
+      "begin": "\"",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.begin.froth"
+        }
+      },
+      "end": "\"",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.froth"
+        }
+      },
+      "patterns": [
+        {
+          "name": "constant.character.escape.froth",
+          "match": "\\\\(?:[ntr\\\\\"]|x[0-9A-Fa-f]{2})"
+        }
+      ]
+    },
+    "definition": {
+      "patterns": [
+        {
+          "match": "(?<!\\S)(:)(?=\\s)\\s+([^\\s\\[\\]\"';]+)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.definition.froth"
+            },
+            "2": {
+              "name": "entity.name.function.froth"
+            }
+          }
+        },
+        {
+          "name": "keyword.control.definition.froth",
+          "match": "(?<!\\S);(?=\\s|$)"
+        }
+      ]
+    },
+    "tick": {
+      "match": "(?<!\\S)(')([^\\s\\[\\]\"';]+)",
+      "captures": {
+        "1": {
+          "name": "keyword.operator.tick.froth"
+        },
+        "2": {
+          "name": "variable.other.froth"
+        }
+      }
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.froth",
+          "match": "(?<!\\S)-?0x[0-9A-Fa-f]+(?!\\S)"
+        },
+        {
+          "name": "constant.numeric.binary.froth",
+          "match": "(?<!\\S)-?0b[01]+(?!\\S)"
+        },
+        {
+          "name": "constant.numeric.decimal.froth",
+          "match": "(?<!\\S)-?\\d+(?!\\S)"
+        }
+      ]
+    },
+    "builtins": {
+      "name": "support.function.builtin.froth",
+      "match": "(?<!\\S)(?:dangerous-reset|restore|release|negate|invert|lshift|rshift|choose|catch|throw|times|while|words|emit|key\\?|key|millis|keep|call|drop|over|2over|swap|tuck|dup|2dup|2drop|2swap|rot|-rot|nip|dip|set|assign|to|value|is|defer|flag>n|pat|perm|mark|save|wipe|def|get|and|xor|abs|cr|if|bi|or|see|info|s\\.emit|s\\.len|s@|s\\.=|s\\.keep|q\\.len|q@|/mod|\\.s|\\.|\\+|-|\\*|<|>|=|>r|r>|r@)(?!\\S)"
+    },
+    "brackets": {
+      "patterns": [
+        {
+          "name": "punctuation.section.brackets.froth",
+          "match": "(?<!\\S)p\\["
+        },
+        {
+          "name": "punctuation.section.brackets.froth",
+          "match": "\\[|\\]"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,49 @@
+\ ===== I2C ==============================================
+\ Default I2C helpers for the POSIX host board.
+\ These mirror the ESP32 board-lib surface so host-side
+\ tests can exercise the same vocabulary.
+
+\ Create a default-speed I2C bus on the board SDA/SCL pins.
+\ ( -- bus )
+\ Example: i2c.setup
+: i2c.setup ( -- bus )   SDA SCL 100000 i2c.init ;
+
+\ Create a fast-mode I2C bus on the board SDA/SCL pins.
+\ ( -- bus )
+\ Example: i2c.setup-fast
+: i2c.setup-fast ( -- bus )   SDA SCL 400000 i2c.init ;
+
+\ Add a default-speed device (100kHz) to a bus.
+\ ( bus addr -- device )
+\ Example: i2c.setup 64 i2c.device
+: i2c.device ( bus addr -- device )   100000 i2c.add-device ;
+
+\ Add a fast-mode device (400kHz) to a bus.
+\ ( bus addr -- device )
+\ Example: i2c.setup-fast 64 i2c.device-fast
+: i2c.device-fast ( bus addr -- device )   400000 i2c.add-device ;
+
+\ ===== UART =============================================
+\ Default UART helpers for the POSIX host board.
+
+\ Create a UART on the board TX/RX pins at a given baud.
+\ ( baud -- uart )
+\ Example: 115200 uart.setup
+: uart.setup ( baud -- uart )   UART_TX UART_RX rot uart.init ;
+
+\ Internal helper used by uart.type.
+\ ( s uart i -- s uart )
+: _uart.type-step ( s uart i -- s uart )
+    >r
+    over r@ s@
+    over uart.write
+    r> drop
+;
+
+\ Emit a whole string to a UART.
+\ ( s uart -- )
+\ Example: "hi" 115200 uart.setup uart.type
+: uart.type ( s uart -- )
+    over s.len [ _uart.type-step ] times.i
+    drop drop
+;

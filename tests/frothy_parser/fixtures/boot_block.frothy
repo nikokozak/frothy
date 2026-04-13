@@ -1,0 +1,3 @@
+boot {
+  gpio.mode(LED_BUILTIN, true)
+}

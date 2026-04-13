@@ -1,0 +1,175 @@
+Executing action: flash
+Running ninja in directory /Users/niko/Developer/Frothy/targets/esp-idf/build
+Executing "ninja flash"...
+[1/5] cd /Users/niko/Developer/Frothy/targets/esp-idf/build/esp-idf/esptool_py && /Users/niko/.espressif/python_env/idf5.5_py3.14_env/bin/python /Users/niko/.froth/sdk/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app /Users/niko/Developer/Frothy/targets/esp-idf/build/partition_table/partition-table.bin /Users/niko/Developer/Frothy/targets/esp-idf/build/froth.bin[K
+froth.bin binary size 0x45520 bytes. Smallest app partition is 0x100000 bytes. 0xbaae0 bytes (73%) free.
+[2/5] Performing build step for 'bootloader'[K[1/1] cd /Users/niko/Developer/Frothy/targets/esp-idf/build/bootloader/esp-idf/esptool_py && /Users/niko/.espressif/python_env/idf5.5_py3.14_env/bin/python /Users/niko/.froth/sdk/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 /Users/niko/Developer/Frothy/targets/esp-idf/build/bootloader/bootloader.bin[K
+Bootloader binary size 0x4710 bytes. 0x28f0 bytes (37%) free.
+[3/5] No install step for 'bootloader'[K[4/5] Completed 'bootloader'[K[4/5] cd /Users/niko/.froth/sdk/esp-idf/components/esptool_py && /opt/homebrew/bin/cmake -D IDF_PATH=/Users/niko/.froth/sdk/esp-idf -D "SERIAL_TOOL=/Users/niko/.espressif/python_env/idf5.5_py3.14_env/bin/python;;/Users/niko/.froth/sdk/esp-idf/components/esptool_py/esptool/esptool.py;--chip;esp32" -D "SERIAL_TOOL_ARGS=--before=default_reset;--after=hard_reset;write_flash;@flash_args" -D WORKING_DIRECTORY=/Users/niko/Developer/Frothy/targets/esp-idf/build -P /Users/niko/.froth/sdk/esp-idf/components/esptool_py/run_serial_tool.cmake[K
+esptool.py --chip esp32 -p /dev/cu.usbserial-0001 -b 460800 --before=default_reset --after=hard_reset write_flash --flash_mode dio --flash_freq 40m --flash_size 4MB 0x1000 bootloader/bootloader.bin 0x10000 froth.bin 0x8000 partition_table/partition-table.bin
+esptool.py v4.12.dev1
+Serial port /dev/cu.usbserial-0001
+Connecting.......
+Chip is ESP32-D0WD-V3 (revision v3.1)
+Features: WiFi, BT, Dual Core, 240MHz, VRef calibration in efuse, Coding Scheme None
+Crystal is 40MHz
+MAC: 1c:c3:ab:fa:1d:dc
+Uploading stub...
+Running stub...
+Stub running...
+Changing baud rate to 460800
+Changed.
+Configuring flash size...
+Flash will be erased from 0x00001000 to 0x00005fff...
+Flash will be erased from 0x00010000 to 0x00055fff...
+Flash will be erased from 0x00008000 to 0x00008fff...
+SHA digest in image updated
+Compressed 18192 bytes to 12293...
+Writing at 0x00001000... (100 %)[K
+Wrote 18192 bytes (12293 compressed) at 0x00001000 in 0.7 seconds (effective 220.9 kbit/s)...
+Hash of data verified.
+Compressed 283936 bytes to 156385...
+Writing at 0x00010000... (10 %)[KWriting at 0x0001cfe2... (20 %)[KWriting at 0x00022d27... (30 %)[KWriting at 0x00028cf3... (40 %)[KWriting at 0x0002ed03... (50 %)[KWriting at 0x00035139... (60 %)[KWriting at 0x0003b9c6... (70 %)[KWriting at 0x000458a1... (80 %)[KWriting at 0x0004bbb5... (90 %)[KWriting at 0x00051f71... (100 %)[K
+Wrote 283936 bytes (156385 compressed) at 0x00010000 in 4.0 seconds (effective 561.7 kbit/s)...
+Hash of data verified.
+Compressed 3072 bytes to 103...
+Writing at 0x00008000... (100 %)[K
+Wrote 3072 bytes (103 compressed) at 0x00008000 in 0.1 seconds (effective 315.6 kbit/s)...
+Hash of data verified.
+
+Leaving...
+Hard resetting via RTS pin...
+Executing action: monitor
+Running idf_monitor in directory /Users/niko/Developer/Frothy/targets/esp-idf
+Executing "/Users/niko/.espressif/python_env/idf5.5_py3.14_env/bin/python /Users/niko/.froth/sdk/esp-idf/tools/idf_monitor.py -p /dev/cu.usbserial-0001 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 /Users/niko/Developer/Frothy/targets/esp-idf/build/froth.elf /Users/niko/Developer/Frothy/targets/esp-idf/build/bootloader/bootloader.elf -m '/Users/niko/.espressif/python_env/idf5.5_py3.14_env/bin/python' '/Users/niko/.froth/sdk/esp-idf/tools/idf.py' '-p' '/dev/cu.usbserial-0001'"...
+[0;33m--- esp-idf-monitor 1.9.0 on /dev/cu.usbserial-0001 115200[0m
+[0;33m--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H[0m
+�������boot: Safe Boot, skipped restore and boot.
+Type help for commands.
+frothy> ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:1396
+load:0x40078000,len:13708
+load:0x40080400,len:2996
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32m/Users/niko/.froth/sdk/esp-idf/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+entry 0x40080574
+[0m--- 0x40080574: [0;33mcall_start_cpu0[0m[0m at [0;32m/Users/niko/.froth/sdk/esp-idf/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+Frothy shell
+snapshot: none
+boot: CTRL-C for safe boot
+Type help for commands.
+frothy> period = 50
+frothy> pulses = 3
+frothy> led.on = fn(pin) { gpio.write(pin, 1) }
+frothy> led.off = fn(pin) { gpio.write(pin, 0) }
+frothy> pulse = fn(pin, wait) {
+..   led.on(pin)
+..   ms(wait)
+..   led.off(pin)
+.. }
+frothy> blink = fn(pin, count, wait) {
+..   i = 0
+..   gpio.mode(pin, 1)
+..   while i < count {
+..     pulse(pin, wait)
+..     ms(wait)
+..     set i = i + 1
+..   }
+.. }
+frothy> blink(LED_BUILTIN, pulses, period)
+nil
+frothy> note = "armed"
+frothy> boot.flash = fn(pin) { gpio.mode(pin, 1) gpio.write(pin, 1) ms(25) gpio.write(pin, 0) }
+frothy> boot = fn() { boot.flash(LED_BUILTIN) set note = "booted" }
+frothy> save()
+nil
+frothy> blink confirmation: assumed yes via --assume-blink-confirmed
+Executing action: flash
+Running ninja in directory /Users/niko/Developer/Frothy/targets/esp-idf/build
+Executing "ninja flash"...
+[1/5] cd /Users/niko/Developer/Frothy/targets/esp-idf/build/esp-idf/esptool_py && /Users/niko/.espressif/python_env/idf5.5_py3.14_env/bin/python /Users/niko/.froth/sdk/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 partition --type app /Users/niko/Developer/Frothy/targets/esp-idf/build/partition_table/partition-table.bin /Users/niko/Developer/Frothy/targets/esp-idf/build/froth.bin[K
+froth.bin binary size 0x45520 bytes. Smallest app partition is 0x100000 bytes. 0xbaae0 bytes (73%) free.
+[2/5] Performing build step for 'bootloader'[K[1/1] cd /Users/niko/Developer/Frothy/targets/esp-idf/build/bootloader/esp-idf/esptool_py && /Users/niko/.espressif/python_env/idf5.5_py3.14_env/bin/python /Users/niko/.froth/sdk/esp-idf/components/partition_table/check_sizes.py --offset 0x8000 bootloader 0x1000 /Users/niko/Developer/Frothy/targets/esp-idf/build/bootloader/bootloader.bin[K
+Bootloader binary size 0x4710 bytes. 0x28f0 bytes (37%) free.
+[3/5] No install step for 'bootloader'[K[4/5] Completed 'bootloader'[K[4/5] cd /Users/niko/.froth/sdk/esp-idf/components/esptool_py && /opt/homebrew/bin/cmake -D IDF_PATH=/Users/niko/.froth/sdk/esp-idf -D "SERIAL_TOOL=/Users/niko/.espressif/python_env/idf5.5_py3.14_env/bin/python;;/Users/niko/.froth/sdk/esp-idf/components/esptool_py/esptool/esptool.py;--chip;esp32" -D "SERIAL_TOOL_ARGS=--before=default_reset;--after=hard_reset;write_flash;@flash_args" -D WORKING_DIRECTORY=/Users/niko/Developer/Frothy/targets/esp-idf/build -P /Users/niko/.froth/sdk/esp-idf/components/esptool_py/run_serial_tool.cmake[K
+esptool.py --chip esp32 -p /dev/cu.usbserial-0001 -b 460800 --before=default_reset --after=hard_reset write_flash --flash_mode dio --flash_freq 40m --flash_size 4MB 0x1000 bootloader/bootloader.bin 0x10000 froth.bin 0x8000 partition_table/partition-table.bin
+esptool.py v4.12.dev1
+Serial port /dev/cu.usbserial-0001
+Connecting....
+Chip is ESP32-D0WD-V3 (revision v3.1)
+Features: WiFi, BT, Dual Core, 240MHz, VRef calibration in efuse, Coding Scheme None
+Crystal is 40MHz
+MAC: 1c:c3:ab:fa:1d:dc
+Uploading stub...
+Running stub...
+Stub running...
+Changing baud rate to 460800
+Changed.
+Configuring flash size...
+Flash will be erased from 0x00001000 to 0x00005fff...
+Flash will be erased from 0x00010000 to 0x00055fff...
+Flash will be erased from 0x00008000 to 0x00008fff...
+SHA digest in image updated
+Compressed 18192 bytes to 12293...
+Writing at 0x00001000... (100 %)[K
+Wrote 18192 bytes (12293 compressed) at 0x00001000 in 0.7 seconds (effective 218.2 kbit/s)...
+Hash of data verified.
+Compressed 283936 bytes to 156385...
+Writing at 0x00010000... (10 %)[KWriting at 0x0001cfe2... (20 %)[KWriting at 0x00022d27... (30 %)[KWriting at 0x00028cf3... (40 %)[KWriting at 0x0002ed03... (50 %)[KWriting at 0x00035139... (60 %)[KWriting at 0x0003b9c6... (70 %)[KWriting at 0x000458a1... (80 %)[KWriting at 0x0004bbb5... (90 %)[KWriting at 0x00051f71... (100 %)[K
+Wrote 283936 bytes (156385 compressed) at 0x00010000 in 4.1 seconds (effective 557.5 kbit/s)...
+Hash of data verified.
+Compressed 3072 bytes to 103...
+Writing at 0x00008000... (100 %)[K
+Wrote 3072 bytes (103 compressed) at 0x00008000 in 0.1 seconds (effective 332.0 kbit/s)...
+Hash of data verified.
+
+Leaving...
+Hard resetting via RTS pin...
+Executing action: monitor
+Running idf_monitor in directory /Users/niko/Developer/Frothy/targets/esp-idf
+Executing "/Users/niko/.espressif/python_env/idf5.5_py3.14_env/bin/python /Users/niko/.froth/sdk/esp-idf/tools/idf_monitor.py -p /dev/cu.usbserial-0001 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 /Users/niko/Developer/Frothy/targets/esp-idf/build/froth.elf /Users/niko/Developer/Frothy/targets/esp-idf/build/bootloader/bootloader.elf -m '/Users/niko/.espressif/python_env/idf5.5_py3.14_env/bin/python' '/Users/niko/.froth/sdk/esp-idf/tools/idf.py' '-p' '/dev/cu.usbserial-0001'"...
+[0;33m--- esp-idf-monitor 1.9.0 on /dev/cu.usbserial-0001 115200[0m
+[0;33m--- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H[0m
+ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:1396
+load:0x40078000,len:13708
+load:0x40080400,len:2996
+[0m--- 0x40080400: [0;33m_invalid_pc_placeholder[0m[0m at [0;32m/Users/niko/.froth/sdk/esp-idf/components/xtensa/xtensa_vectors.S[0m[0m:[1;31m2235[0m
+entry 0x40080574
+[0m--- 0x40080574: [0;33mcall_start_cpu0[0m[0m at [0;32m/Users/niko/.froth/sdk/esp-idf/components/bootloader/subproject/main/bootloader_start.c[0m[0m:[1;31m25[0m
+Frothy shell
+snapshot: found
+boot: CTRL-C for safe boot
+Type help for commands.
+frothy> note
+"booted"
+frothy> wipe()
+nil
+frothy> note
+eval error (4)
+frothy> sample.count = 4
+frothy> samples = cells(4)
+frothy> capture = fn() { i = 0 while i < sample.count { set samples[i] = adc.read(A0) set i = i + 1 } }
+frothy> sample.read = fn(i) { samples[i] }
+frothy> capture()
+nil
+frothy> sample.read(0)
+0
+frothy> sample.read(1)
+0
+frothy> sample.read(2)
+0
+frothy> sample.read(3)
+0
+frothy> wipe()
+nil
+frothy> 

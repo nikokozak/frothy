@@ -1,0 +1,133 @@
+name: Release (Manual Bootstrap)
+
+"on":
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to publish, for example v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag }}
+
+jobs:
+  build-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.release_tag }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/cli/go.mod
+          cache-dependency-path: tools/cli/go.sum
+      - name: Verify version
+        run: |
+          tag_version="${RELEASE_TAG#v}"
+          file_version="$(cat VERSION)"
+          if [ "$tag_version" != "$file_version" ]; then
+            echo "ERROR: tag $RELEASE_TAG does not match VERSION ($file_version)"
+            exit 1
+          fi
+          make version-check
+      - run: make sdk-payload
+      - name: Build CLI tarballs
+        run: |
+          mkdir -p dist
+          cd tools/cli
+          for pair in darwin/arm64 darwin/amd64 linux/amd64; do
+            os="${pair%/*}"
+            arch="${pair#*/}"
+            stage="$(mktemp -d)"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -o "$stage/froth" .
+            "$GITHUB_WORKSPACE/tools/package-release.sh" "$stage/froth" "${RELEASE_TAG#v}" "$os" "$arch" "$GITHUB_WORKSPACE/dist"
+            rm -rf "$stage"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-artifacts
+          path: dist/*.tar.gz
+
+  build-esp32:
+    runs-on: ubuntu-latest
+    env:
+      FROTH_HOME: ${{ github.workspace }}/.froth-home
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.release_tag }}
+      - name: Verify version
+        run: |
+          tag_version="${RELEASE_TAG#v}"
+          file_version="$(cat VERSION)"
+          if [ "$tag_version" != "$file_version" ]; then
+            echo "ERROR: tag $RELEASE_TAG does not match VERSION ($file_version)"
+            exit 1
+          fi
+          make version-check
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.espressif
+            ${{ github.workspace }}/.froth-home/sdk/esp-idf
+          key: esp-idf-v5.5-esp32-${{ hashFiles('tools/setup-esp-idf.sh') }}
+      - name: Install ESP-IDF
+        run: ./tools/setup-esp-idf.sh
+      - name: Build firmware
+        run: |
+          . "$FROTH_HOME/sdk/esp-idf/export.sh"
+          cd targets/esp-idf
+          idf.py set-target esp32
+          idf.py -DFROTH_BOARD=esp32-devkit-v1 build
+      - name: Package firmware
+        run: |
+          ./tools/package-firmware-release.sh "targets/esp-idf/build" "${RELEASE_TAG#v}" "$GITHUB_WORKSPACE/dist/frothy-${RELEASE_TAG}-esp32-devkit-v1.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-artifacts
+          path: dist/*.zip
+
+  release:
+    runs-on: ubuntu-latest
+    needs:
+      - build-cli
+      - build-esp32
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.release_tag }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: cli-artifacts
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware-artifacts
+          path: dist
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum * > "frothy-${RELEASE_TAG}-checksums.txt"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*-checksums.txt
+          prerelease: ${{ startsWith(inputs.release_tag, 'v0.') }}
+          generate_release_notes: true
+      - name: Update Homebrew tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          darwin_arm64_sha="$(sha256sum "dist/frothy-${RELEASE_TAG}-darwin-arm64.tar.gz" | cut -d' ' -f1)"
+          darwin_amd64_sha="$(sha256sum "dist/frothy-${RELEASE_TAG}-darwin-amd64.tar.gz" | cut -d' ' -f1)"
+          linux_amd64_sha="$(sha256sum "dist/frothy-${RELEASE_TAG}-linux-amd64.tar.gz" | cut -d' ' -f1)"
+
+          ./tools/update-homebrew-tap.sh "$version" "$darwin_arm64_sha" "$darwin_amd64_sha" "$linux_amd64_sha"

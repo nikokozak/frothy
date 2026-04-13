@@ -1,0 +1,1 @@
+(write-slot "count" (fn arity=0 locals=0 (seq (read-index (read-slot "frame") (lit 0)))))

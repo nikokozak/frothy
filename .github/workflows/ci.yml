@@ -1,0 +1,72 @@
+name: CI
+
+"on":
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  sdk-payload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/cli/go.mod
+          cache-dependency-path: tools/cli/go.sum
+      - run: make sdk-payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-payload
+          path: tools/cli/internal/sdk/generated
+
+  fast:
+    needs: sdk-payload
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/cli/go.mod
+          cache-dependency-path: tools/cli/go.sum
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-payload
+          path: tools/cli/internal/sdk/generated
+      - run: make test
+
+  cli-localruntime:
+    needs: sdk-payload
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/cli/go.mod
+          cache-dependency-path: tools/cli/go.sum
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-payload
+          path: tools/cli/internal/sdk/generated
+      - run: make test-cli-local
+
+  cli-integration:
+    needs: sdk-payload
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/cli/go.mod
+          cache-dependency-path: tools/cli/go.sum
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-payload
+          path: tools/cli/internal/sdk/generated
+      - run: make test-integration

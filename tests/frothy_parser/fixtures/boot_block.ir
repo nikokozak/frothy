@@ -1,0 +1,1 @@
+(write-slot "boot" (fn arity=0 locals=0 (seq (call (read-slot "gpio.mode") (read-slot "LED_BUILTIN") (lit true)))))

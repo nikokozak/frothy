@@ -1,0 +1,9 @@
+sample.count = 4
+samples = cells(4)
+capture = fn() { i = 0 while i < sample.count { set samples[i] = adc.read(A0) set i = i + 1 } }
+sample.read = fn(i) { samples[i] }
+capture()
+sample.read(0)
+sample.read(1)
+sample.read(2)
+sample.read(3)

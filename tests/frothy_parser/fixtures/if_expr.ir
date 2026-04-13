@@ -1,0 +1,1 @@
+(if (lit true) (seq (call (read-slot "blink") (lit 2))) (seq (lit nil)))

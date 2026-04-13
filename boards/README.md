@@ -1,0 +1,292 @@
+# Boards
+
+A board represents a specific piece of hardware: an ESP32 DevKit, a custom
+PCB, a Raspberry Pi Pico, or the POSIX host (used for development). Adding
+a board does not require understanding Froth internals. You need to know
+your hardware and a small amount of C.
+
+Boards sit on top of **platforms**. A platform handles the chip family and
+SDK (POSIX, ESP-IDF, Pico SDK). A board handles the specifics of one piece
+of hardware: which pins are available, what peripherals are connected, and
+what convenience words to expose to the user. If a platform already exists
+for your chip, writing a board is straightforward. If not, see
+`platforms/README.md` for how to write one.
+
+## Directory layout
+
+```
+boards/
+  <name>/
+    board.json      board metadata and build config (required)
+    ffi.h           declares the board binding table (required)
+    ffi.c           board-specific C bindings (required)
+    lib.froth       convenience words in Froth (optional)
+```
+
+## Adding a new board
+
+1. Copy an existing board directory (start with `boards/posix/`).
+2. Edit `board.json`: set your board name, platform, chip, pins, peripherals.
+3. Edit `ffi.c`: replace the bindings with your hardware-specific words.
+4. Optionally write `lib.froth` for higher-level convenience words.
+5. Build: `cmake .. -DFROTH_BOARD=<name> -DFROTH_PLATFORM=<platform>`
+
+## board.json
+
+Every board directory must contain a `board.json`. This file is read by the
+build system to set compile-time configuration, and by the editor to
+determine what words and pins are available on the target.
+
+```json
+{
+  "name": "My Board",
+  "vendor": "Your Name",
+  "platform": "esp-idf",
+  "chip": "esp32",
+  "description": "Short description of the board.",
+
+  "config": {
+    "cell_size_bits": 32,
+    "heap_size": 4096,
+    "ds_depth": 64,
+    "rs_depth": 32,
+    "slot_count": 128,
+    "has_snapshots": true,
+    "snapshot_block_size": 4096
+  },
+
+  "peripherals": ["gpio", "adc"],
+
+  "pins": {
+    "LED_BUILTIN": 2,
+    "SDA": 21,
+    "SCL": 22
+  }
+}
+```
+
+### Top-level fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Human-readable board name. |
+| `vendor` | no | Board manufacturer or author. |
+| `platform` | yes | Platform directory name. Must match a directory under `platforms/`. |
+| `chip` | yes | Chip identifier (e.g. `esp32`, `esp32s3`, `rp2040`, `host`). |
+| `description` | no | One-line summary, shown in editor UI and generated docs. |
+| `config` | yes | Build-time configuration. See below. |
+| `peripherals` | yes | Which generic FFI modules this board uses. See below. |
+| `pins` | yes | Named pin constants. See below. |
+
+### config
+
+Each key maps directly to a CMake compile definition. These control the
+size of internal data structures. Larger values use more RAM.
+
+| Key | CMake define | Default | Notes |
+|-----|-------------|---------|-------|
+| `cell_size_bits` | `FROTH_CELL_SIZE_BITS` | 32 | Width of a Froth cell in bits. Valid values: 8, 16, 32, 64. |
+| `heap_size` | `FROTH_HEAP_SIZE` | 4096 | Heap size in bytes. All quotations, patterns, and strings are allocated here. |
+| `ds_depth` | `FROTH_DS_CAPACITY` | 256 | Maximum data stack depth in cells. |
+| `rs_depth` | `FROTH_RS_CAPACITY` | 256 | Maximum return stack depth in cells. |
+| `slot_count` | `FROTH_SLOT_TABLE_SIZE` | 128 | Maximum number of named slots (words). Includes stdlib and board words. |
+| `has_snapshots` | `FROTH_HAS_SNAPSHOTS` | true | Enable save/restore/wipe. Requires the platform to implement snapshot storage. |
+| `snapshot_block_size` | `FROTH_SNAPSHOT_BLOCK_SIZE` | 2048 | Size of each snapshot storage slot in bytes. |
+
+For resource-constrained targets, reduce `heap_size`, `ds_depth`,
+`rs_depth`, and `slot_count`. The POSIX board uses generous defaults
+suitable for desktop development. An ESP32 with 320KB SRAM can
+comfortably use the defaults. Smaller chips (ESP32-C3, RP2040) may
+need lower values depending on how much RAM your application needs
+for other purposes.
+
+### peripherals
+
+A list of peripheral module names. The build system uses this list to
+decide which generic FFI modules to compile from the platform directory.
+
+For example, if a board declares `"peripherals": ["gpio", "adc"]` and
+its platform is `esp-idf`, the build system will include `ffi_gpio.c`
+and `ffi_adc.c` from `platforms/esp-idf/` (if they exist). This means
+the board gets `gpio.mode`, `gpio.write`, `gpio.read`, and `adc.read`
+words without the board author writing any C code for them.
+
+Currently recognized peripheral names: `gpio`, `adc`, `dac`, `i2c`,
+`spi`, `uart`, `timer`. Not all platforms implement all peripherals.
+
+### pins
+
+A map of named pin constants. At build time, these are converted to Froth
+word definitions and embedded into the binary. For example:
+
+```json
+"pins": {
+  "LED_BUILTIN": 2,
+  "SDA": 21
+}
+```
+
+generates the equivalent of:
+
+```froth
+2 'LED_BUILTIN def
+21 'SDA def
+```
+
+These words are available in `lib.froth` and in user code at the REPL.
+This avoids hardcoding pin numbers in board Froth libraries and makes
+code readable: `LED_BUILTIN 1 gpio.write` instead of `2 1 gpio.write`.
+
+## ffi.h
+
+Declares the board binding table. Every board needs this file, and in
+most cases it contains exactly one line after the includes:
+
+```c
+#pragma once
+#include "froth_ffi.h"
+FROTH_BOARD_DECLARE(froth_board_bindings);
+```
+
+`FROTH_BOARD_DECLARE` is a macro that forward-declares a
+null-terminated array of `froth_ffi_entry_t`. The boot sequence passes
+this array to `froth_ffi_register()`, which walks the table and creates
+a Froth word for each entry.
+
+## ffi.c
+
+Contains the C functions that expose hardware to Froth. Each word is
+defined using the `FROTH_FFI` macro, which creates both the C function
+and its metadata (name, stack effect, help text) in one declaration.
+
+### Writing a binding
+
+```c
+#include "ffi.h"
+#include "froth_fmt.h"
+#include <driver/gpio.h>  /* or whatever your platform SDK provides */
+
+FROTH_FFI(prim_led_on, "led.on", "( -- )", "Turn on the onboard LED") {
+  gpio_set_level(2, 1);
+  return FROTH_OK;
+}
+
+FROTH_FFI(prim_led_off, "led.off", "( -- )", "Turn off the onboard LED") {
+  gpio_set_level(2, 0);
+  return FROTH_OK;
+}
+```
+
+Arguments to `FROTH_FFI`:
+
+1. C function name (used internally, never seen by the user)
+2. Froth word name (what the user types at the REPL)
+3. Stack effect string (standard Forth notation)
+4. Help text (shown by the `info` word)
+
+### Reading and writing the stack
+
+Inside a `FROTH_FFI` function, a pointer called `froth_vm` is in scope.
+Use these macros to interact with the data stack:
+
+```c
+FROTH_POP(pin);      /* pop a number into a new local variable `pin` */
+FROTH_PUSH(42);      /* push a number onto the stack */
+```
+
+Both macros handle type checking and error propagation. If the stack is
+empty when you pop, or full when you push, the word returns an error
+automatically.
+
+For tagged values (quotations, strings, slots, etc.), use:
+
+```c
+froth_cell_t payload;
+froth_cell_tag_t tag;
+froth_pop_tagged(froth_vm, &payload, &tag);
+```
+
+### The binding table
+
+Collect all bindings into a table at the bottom of `ffi.c`:
+
+```c
+FROTH_BOARD_BEGIN(froth_board_bindings)
+  FROTH_BIND(prim_led_on),
+  FROTH_BIND(prim_led_off),
+FROTH_BOARD_END
+```
+
+`FROTH_BIND` references the metadata struct that `FROTH_FFI` created.
+The table must be null-terminated (the `FROTH_BOARD_END` macro handles
+this).
+
+If the board has no custom hardware and relies entirely on generic
+platform modules, the table can be empty:
+
+```c
+#include "ffi.h"
+FROTH_BOARD_BEGIN(froth_board_bindings)
+FROTH_BOARD_END
+```
+
+### Error handling
+
+Return `FROTH_OK` on success. To signal an error to the user, call
+`froth_throw`:
+
+```c
+FROTH_FFI(prim_adc_read, "adc.read", "( chan -- val )", "Read ADC") {
+  FROTH_POP(chan);
+  int result = adc_read(chan);
+  if (result < 0) {
+    return froth_throw(froth_vm, 300);  /* FFI error codes start at 300 */
+  }
+  FROTH_PUSH(result);
+  return FROTH_OK;
+}
+```
+
+Error codes 1-299 are reserved for the Froth kernel. Board-specific
+errors should use codes 300 and above.
+
+## lib.froth
+
+Optional. Board-level words written in Froth rather than C.
+
+### Boot order
+
+The Froth boot sequence loads code in this order:
+
+1. Kernel primitives (C)
+2. Board FFI bindings (C, from `ffi.c`)
+3. Snapshot primitives (C, if snapshots are enabled)
+4. Platform init
+5. Standard library (`core.froth`)
+6. Generated pin constants (from `board.json` `"pins"`)
+7. Board library (`lib.froth`, if present)
+8. Mark boot complete
+9. Restore snapshot (if one exists)
+10. Run `autorun` word (if defined by user, errors caught silently)
+11. Enter REPL
+
+`lib.froth` runs at step 7. At that point, all stdlib words (`dup`,
+`swap`, `if`, `times`, etc.) and all pin constants (`LED_BUILTIN`, etc.)
+are available.
+
+### Example
+
+```froth
+\ ESP32 DevKit V1 convenience words
+: led.on   LED_BUILTIN 1 gpio.write ;
+: led.off  LED_BUILTIN 0 gpio.write ;
+: led.blink  ( ms -- ) led.on dup ms led.off ms ;
+```
+
+### Guidelines
+
+- Prefix board-specific words with a namespace (`led.`, `board.`, etc.).
+- Do not redefine stdlib words (`dup`, `swap`, `def`, `call`, etc.).
+- Keep it short. This file runs on every boot and adds to startup time.
+  On a microcontroller where boot-to-autorun latency matters (audio,
+  control systems), every millisecond counts.

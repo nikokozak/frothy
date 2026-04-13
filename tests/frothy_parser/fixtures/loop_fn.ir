@@ -1,0 +1,1 @@
+(write-slot "blink" (fn arity=1 locals=2 (seq (write-local 1 (lit 0)) (while (call (builtin "<") (read-local 1) (lit 3)) (seq (call (read-slot "pulse") (read-local 0) (read-local 1)) (write-local 1 (call (builtin "+") (read-local 1) (lit 1))))))))

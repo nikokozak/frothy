@@ -1,0 +1,31 @@
+{
+  "name": "ESP32 DevKit V1",
+  "vendor": "DoIt",
+  "platform": "esp-idf",
+  "chip": "esp32",
+  "description": "DoIt ESP32 DevKit V1 development board, 38 pins, 4MB flash.",
+  "config": {
+    "cell_size_bits": 32,
+    "heap_size": 4096,
+    "ds_depth": 256,
+    "rs_depth": 256,
+    "slot_count": 128,
+    "has_snapshots": true,
+    "snapshot_block_size": 2048
+  },
+  "peripherals": [
+    "gpio",
+    "adc",
+    "i2c",
+    "uart"
+  ],
+  "pins": {
+    "LED_BUILTIN": 2,
+    "BOOT_BUTTON": 0,
+    "A0": 34,
+    "SDA": 21,
+    "SCL": 22,
+    "UART_TX": 17,
+    "UART_RX": 16
+  }
+}

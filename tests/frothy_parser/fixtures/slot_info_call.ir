@@ -1,0 +1,1 @@
+(call (read-slot "slotInfo") (lit "inc"))
