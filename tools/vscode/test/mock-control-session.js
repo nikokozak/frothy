@@ -34,6 +34,23 @@ function respond(id, ok, result, error) {
   emit({ type: "response", id, ok, result, error });
 }
 
+function emitTextResult(id, text) {
+  emit({
+    type: "event",
+    event: "output",
+    request_id: id,
+    data: Buffer.from(text + "\n", "utf8").toString("base64")
+  });
+  emit({
+    type: "event",
+    event: "value",
+    request_id: id,
+    value: { text: "nil" }
+  });
+  emit({ type: "event", event: "idle", request_id: id });
+  respond(id, true, { text: "nil" });
+}
+
 function handle(message) {
   switch (message.command) {
     case "connect":
@@ -188,8 +205,6 @@ function handle(message) {
     case "save":
     case "restore":
     case "wipe":
-    case "core":
-    case "slot_info":
       emit({
         type: "event",
         event: "value",
@@ -198,6 +213,18 @@ function handle(message) {
       });
       emit({ type: "event", event: "idle", request_id: message.id });
       respond(message.id, true, { text: "nil" });
+      return;
+    case "core":
+      emitTextResult(
+        message.id,
+        `${message.name}\n  slot: base\n  kind: native\n  call: 0 -> 1\n  owner: runtime builtin\n  persistence: not saved\n  core: <native ${message.name}/0>`
+      );
+      return;
+    case "slot_info":
+      emitTextResult(
+        message.id,
+        `${message.name}\n  slot: base\n  kind: native\n  call: 0 -> 1\n  owner: runtime builtin\n  persistence: not saved`
+      );
       return;
     default:
       respond(message.id, false, null, {

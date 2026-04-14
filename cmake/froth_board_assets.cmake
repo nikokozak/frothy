@@ -112,3 +112,28 @@ function(frothy_generate_board_pin_seed target source_root board)
   froth_write_if_changed("${frothy_pins_h}" "${frothy_pins_content}")
   target_compile_definitions(${target} PRIVATE FROTHY_HAS_BOARD_PINS)
 endfunction()
+
+function(frothy_generate_board_workshop_lib target source_root board)
+  target_include_directories(${target} PRIVATE "${CMAKE_BINARY_DIR}")
+
+  set(workshop_lib_path "${source_root}/boards/${board}/lib/workshop.frothy")
+  if(NOT EXISTS "${workshop_lib_path}")
+    return()
+  endif()
+
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${workshop_lib_path}"
+  )
+
+  file(READ "${workshop_lib_path}" workshop_hex HEX)
+  string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1, "
+         workshop_bytes "${workshop_hex}")
+
+  set(workshop_h "${CMAKE_BINARY_DIR}/frothy_board_workshop_lib.h")
+  set(workshop_content
+      "#pragma once\nstatic const char frothy_board_workshop_lib[] = {${workshop_bytes}0x00};\n")
+  froth_write_if_changed("${workshop_h}" "${workshop_content}")
+
+  target_sources(${target} PRIVATE "${workshop_h}")
+  target_compile_definitions(${target} PRIVATE FROTHY_HAS_BOARD_WORKSHOP_LIB)
+endfunction()

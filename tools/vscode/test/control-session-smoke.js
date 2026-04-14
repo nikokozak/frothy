@@ -74,6 +74,12 @@ async function main() {
     const see = await client.see("control.demo");
     assertEq(see.rendered, "42", "see result");
 
+    const core = await client.core("save");
+    assertEq(core.text, "nil", "core result");
+
+    const slotInfo = await client.slotInfo("save");
+    assertEq(slotInfo.text, "nil", "slotInfo result");
+
     const reset = await client.reset();
     assert(reset.heap_size > 0, "reset heap size");
     assertEq(reset.version, "0.1.0-test", "reset version");
@@ -92,6 +98,12 @@ async function main() {
     assert(events.some((event) => event.event === "output"), "output event");
     assert(events.some((event) => event.event === "interrupted"), "interrupted event");
     assert(events.some((event) => event.event === "disconnected"), "disconnected event");
+    const outputText = events
+      .filter((event) => event.event === "output" && event.data)
+      .map((event) => Buffer.from(event.data, "base64").toString("utf8"))
+      .join("");
+    assert(outputText.includes("core: <native save/0>"), "core output text");
+    assert(outputText.includes("owner: runtime builtin"), "slotInfo output text");
   });
 
   await test("stale firmware keeps reset_unavailable compatibility", async () => {
@@ -121,6 +133,39 @@ async function main() {
     assertEq(err.code, "control_error", "structured error code");
     assertEq(err.phase, 4, "structured error phase");
     client.dispose();
+  });
+
+  await test("client reconnects on the same helper-owned path", async () => {
+    const helperPath = path.join(__dirname, "mock-control-session.js");
+    const client = new ControlSessionClient(process.execPath, process.cwd(), [
+      helperPath,
+    ]);
+    const connectedPorts = [];
+    const disconnected = [];
+
+    client.onEvent((event) => {
+      if (event.event === "connected" && event.device) {
+        connectedPorts.push(event.device.port);
+      }
+      if (event.event === "disconnected") {
+        disconnected.push(true);
+      }
+    });
+
+    await client.start();
+    const firstDevice = await client.connect("/dev/cu.first");
+    assertEq(firstDevice.port, "/dev/cu.first", "first connect port");
+    await client.disconnect();
+
+    const secondDevice = await client.connect("/dev/cu.second");
+    assertEq(secondDevice.port, "/dev/cu.second", "second connect port");
+    await client.disconnect();
+    client.dispose();
+
+    assertEq(connectedPorts.length, 2, "connected event count");
+    assertEq(connectedPorts[0], "/dev/cu.first", "first connected event port");
+    assertEq(connectedPorts[1], "/dev/cu.second", "second connected event port");
+    assertEq(disconnected.length, 2, "disconnected event count");
   });
 
   await test("CLI discovery still prefers froth and repo-local paths", async () => {

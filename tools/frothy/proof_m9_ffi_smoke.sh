@@ -73,7 +73,13 @@ MAIN_TRANSCRIPT="$(
     'quit'
 )"
 printf '%s\n' "$MAIN_TRANSCRIPT"
-require_contains "$MAIN_TRANSCRIPT" 'adc.read | base | native | non-persistable | foreign'
+require_contains "$MAIN_TRANSCRIPT" 'adc.read'
+require_contains "$MAIN_TRANSCRIPT" '  slot: base'
+require_contains "$MAIN_TRANSCRIPT" '  kind: native'
+require_contains "$MAIN_TRANSCRIPT" '  owner: board ffi'
+require_contains "$MAIN_TRANSCRIPT" '  persistence: not saved'
+require_contains "$MAIN_TRANSCRIPT" '  effect: ( pin -- value )'
+require_contains "$MAIN_TRANSCRIPT" '  help: Deterministic ADC stub on POSIX'
 require_contains "$MAIN_TRANSCRIPT" '[gpio] pin 2 -> OUTPUT'
 require_contains "$MAIN_TRANSCRIPT" '[gpio] pin 2 = HIGH'
 require_contains "$MAIN_TRANSCRIPT" '[gpio] pin 2 = LOW'

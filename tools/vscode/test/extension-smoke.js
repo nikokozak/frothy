@@ -9,9 +9,8 @@ const {
 const {
   prepareSendFileReset,
   resetLogLine,
-  resetUnavailableAction,
+  resetUnavailableError,
   resetUnavailableLogLine,
-  resetUnavailableWarning,
 } = require("../out/send-file-reset");
 
 const manifest = JSON.parse(
@@ -38,6 +37,8 @@ async function main() {
     "frothy.interrupt",
     "frothy.words",
     "frothy.see",
+    "frothy.core",
+    "frothy.slotInfo",
     "frothy.save",
     "frothy.restore",
     "frothy.wipe",
@@ -56,6 +57,11 @@ async function main() {
   assert(config["frothy.port"], "missing frothy.port setting");
   assert(!config["froth.cliPath"], "stale froth.cliPath setting");
   assert(!config["froth.localRuntimePath"], "stale local runtime setting");
+  assert(manifest.repository, "missing repository metadata");
+  assert(manifest.license === "MIT", "license should be MIT");
+  assert(Array.isArray(manifest.files), "missing packaged files allowlist");
+  assert(manifest.files.includes("README.md"), "README.md should ship in the VSIX");
+  assert(manifest.files.includes("LICENSE"), "LICENSE should ship in the VSIX");
 
   const language = manifest.contributes.languages[0];
   assert(language.id === "frothy", "language id should be frothy");
@@ -90,19 +96,18 @@ async function main() {
       },
     },
     { appendLine: (line) => staleOutput.push(line) },
-    async (message, action) => {
-      assert(message === resetUnavailableWarning, "stale warning text");
-      assert(action === resetUnavailableAction, "stale warning action");
-      return action;
+    async (message) => {
+      assert(message === resetUnavailableError, "stale error text");
+      return undefined;
     },
     () => {
       throw new Error("stale reset should not route through generic error handler");
     },
   );
-  assert(staleOk === true, "stale reset warning acceptance should continue send");
+  assert(staleOk === false, "stale reset should block whole-file send");
   assert(
     staleOutput.includes(resetUnavailableLogLine),
-    "stale reset should log additive-send warning",
+    "stale reset should log whole-file send abort",
   );
 
   process.stdout.write("passed manifest smoke\n");

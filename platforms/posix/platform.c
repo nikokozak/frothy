@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "ffi.h"
 #include "froth_types.h"
 #include "froth_vm.h"
 
@@ -35,7 +36,7 @@ uint32_t platform_uptime_ms(void) {
   return (uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
 }
 
-void platform_reset_runtime_state(void) {}
+void platform_reset_runtime_state(void) { froth_board_reset_runtime_state(); }
 
 static void cleanup_term(void) {
   if (!term_configured)

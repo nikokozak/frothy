@@ -12,6 +12,7 @@
 #include "froth_console.h"
 #include "froth_fmt.h"
 #include "froth_types.h"
+#include "frothy_ffi.h"
 #include "platform.h"
 
 static froth_error_t throw_program_interrupted(froth_vm_t *froth_vm) {
@@ -33,6 +34,9 @@ static froth_error_t poll_interruptible_wait(froth_vm_t *froth_vm) {
 #else
 #define FROTH_BOARD_ADC_ATTEN ADC_ATTEN_DB_11
 #endif
+
+static uint8_t esp32_gpio_output_shadow_valid[GPIO_NUM_MAX];
+static froth_cell_t esp32_gpio_output_shadow_levels[GPIO_NUM_MAX];
 
 static bool esp32_adc1_channel_for_pin(froth_cell_t pin,
                                        adc1_channel_t *channel_out) {
@@ -66,15 +70,30 @@ static bool esp32_adc1_channel_for_pin(froth_cell_t pin,
   }
 }
 
+static bool esp32_gpio_pin_valid(froth_cell_t pin) {
+  return pin >= 0 && GPIO_IS_VALID_GPIO((gpio_num_t)pin);
+}
+
 FROTH_FFI_ARITY(esp32_gpio_mode, "gpio.mode", "( pin mode -- )", 2, 0,
                 "Set pin mode (1=output)") {
   FROTH_POP(mode);
   FROTH_POP(pin);
 
+  if (!esp32_gpio_pin_valid(pin)) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
   esp_err_t err =
       gpio_set_direction(pin, mode == 1 ? GPIO_MODE_OUTPUT : GPIO_MODE_INPUT);
   if (err != ESP_OK) {
     return FROTH_ERROR_IO;
+  }
+
+  if (mode == 1) {
+    esp32_gpio_output_shadow_valid[pin] = 1;
+    esp32_gpio_output_shadow_levels[pin] = gpio_get_level(pin) ? 1 : 0;
+  } else {
+    esp32_gpio_output_shadow_valid[pin] = 0;
   }
   return FROTH_OK;
 }
@@ -83,20 +102,37 @@ FROTH_FFI_ARITY(esp32_gpio_write, "gpio.write", "( pin level -- )", 2, 0,
                 "Set pin level (1=high)") {
   FROTH_POP(level);
   FROTH_POP(pin);
+  froth_cell_t normalized = level ? 1 : 0;
 
-  esp_err_t err = gpio_set_level(pin, level);
+  if (!esp32_gpio_pin_valid(pin)) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  esp_err_t err = gpio_set_level(pin, normalized);
   if (err != ESP_OK) {
     return FROTH_ERROR_IO;
   }
+
+  esp32_gpio_output_shadow_valid[pin] = 1;
+  esp32_gpio_output_shadow_levels[pin] = normalized;
   return FROTH_OK;
 }
 
 FROTH_FFI_ARITY(
     esp32_gpio_read, "gpio.read", "( pin -- level )", 1, 1,
-    "Read pin level. Pin mode MUST be set, otherwise will always return 0.") {
+    "Read the last written level for outputs, otherwise sample the live pin.") {
   FROTH_POP(pin);
 
-  froth_cell_t level = gpio_get_level(pin);
+  if (!esp32_gpio_pin_valid(pin)) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  froth_cell_t level = 0;
+  if (esp32_gpio_output_shadow_valid[pin]) {
+    level = esp32_gpio_output_shadow_levels[pin];
+  } else {
+    level = gpio_get_level(pin) ? 1 : 0;
+  }
   FROTH_PUSH(level);
   return FROTH_OK;
 }
@@ -116,6 +152,12 @@ FROTH_FFI_ARITY(esp32_ms, "ms", "( ms -- )", 1, 0,
     FROTH_TRY(poll_interruptible_wait(froth_vm));
   }
 
+  return FROTH_OK;
+}
+
+FROTH_FFI_ARITY(esp32_millis, "millis", "( -- n )", 0, 1,
+                "Return wrapped monotonic uptime in milliseconds.") {
+  FROTH_PUSH(frothy_ffi_wrap_uptime_ms(platform_uptime_ms()));
   return FROTH_OK;
 }
 
@@ -541,6 +583,14 @@ static int uart_tx_pins[UART_MAX_PORTS];
 static int uart_rx_pins[UART_MAX_PORTS];
 
 void froth_board_reset_runtime_state(void) {
+  for (int pin = 0; pin < GPIO_NUM_MAX; pin++) {
+    if (esp32_gpio_output_shadow_valid[pin]) {
+      (void)gpio_set_level((gpio_num_t)pin, 0);
+    }
+    esp32_gpio_output_shadow_valid[pin] = 0;
+    esp32_gpio_output_shadow_levels[pin] = 0;
+  }
+
   for (int i = 0; i < UART_MAX_PORTS; i++) {
     if (uart_in_use[i]) {
       (void)uart_driver_delete(uart_ports[i]);
@@ -802,6 +852,7 @@ FROTH_FFI_ARITY(
 FROTH_BOARD_BEGIN(froth_board_bindings)
 FROTH_BIND(esp32_gpio_mode), FROTH_BIND(esp32_gpio_read),
     FROTH_BIND(esp32_gpio_write), FROTH_BIND(esp32_ms),
+    FROTH_BIND(esp32_millis),
     FROTH_BIND(esp32_adc_read),
     FROTH_BIND(esp32_ledc_timer_config), FROTH_BIND(esp32_ledc_channel_config),
     FROTH_BIND(esp32_ledc_set_duty), FROTH_BIND(esp32_ledc_update_duty),

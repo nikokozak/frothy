@@ -2176,8 +2176,10 @@ static void frothy_parser_cleanup(frothy_parser_t *parser) {
   memset(parser, 0, sizeof(*parser));
 }
 
-froth_error_t frothy_parse_top_level(const char *source,
-                                     frothy_ir_program_t *program) {
+static froth_error_t frothy_parse_top_level_internal(const char *source,
+                                                     bool require_eof,
+                                                     size_t *consumed_out,
+                                                     frothy_ir_program_t *program) {
   frothy_parser_t parser;
   froth_error_t err;
   frothy_ir_node_id_t root;
@@ -2279,13 +2281,19 @@ froth_error_t frothy_parse_top_level(const char *source,
     err = frothy_parse_expr(&parser, false, &root);
   }
 
-  if (err == FROTH_OK && parser.current.kind != FROTHY_TOKEN_EOF) {
+  if (err == FROTH_OK && require_eof &&
+      parser.current.kind != FROTHY_TOKEN_EOF) {
     err = FROTH_ERROR_SIGNATURE;
   }
 
   if (err == FROTH_OK) {
     program->root = root;
     program->root_local_count = frothy_current_frame(&parser)->next_local_index;
+    if (consumed_out != NULL) {
+      const char *end = parser.current.start != NULL ? parser.current.start
+                                                     : parser.cursor;
+      *consumed_out = (size_t)(end - source);
+    }
   }
 
   frothy_parser_cleanup(&parser);
@@ -2293,4 +2301,18 @@ froth_error_t frothy_parse_top_level(const char *source,
     frothy_ir_program_free(program);
   }
   return err;
+}
+
+froth_error_t frothy_parse_top_level(const char *source,
+                                     frothy_ir_program_t *program) {
+  return frothy_parse_top_level_internal(source, true, NULL, program);
+}
+
+froth_error_t frothy_parse_top_level_prefix(const char *source,
+                                            size_t *consumed_out,
+                                            frothy_ir_program_t *program) {
+  if (consumed_out != NULL) {
+    *consumed_out = 0;
+  }
+  return frothy_parse_top_level_internal(source, false, consumed_out, program);
 }

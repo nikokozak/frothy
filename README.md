@@ -6,8 +6,8 @@ Frothy `v0.1` is functionally closed.
 
 The active repo work is post-`v0.1` control-surface repair and workshop
 readiness for 2026-04-16, with the next implementation cut kept deliberately
-small: first host-only slot-bundle inspection/generation in the CLI project
-layer.
+small: first workshop install/editor/recovery hardening across CLI release,
+VS Code distribution, and reset-safe whole-file send.
 
 The forward queue after that is explicit:
 
@@ -16,7 +16,8 @@ The forward queue after that is explicit:
 - robust string support
 - measured performance tightening
 - direct-control tooling improvements
-- later workspace/image-flow growth only after the host-only cut proves itself
+- later workspace/image-flow growth only after the workshop-critical tranches
+  prove themselves
 
 See `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md` for the
 kept-vs-deferred stack.
@@ -68,6 +69,34 @@ That command surface stays transitional for now. Frothy repo policy and release
 identity are separated from inherited Froth, but the command and
 implementation-symbol transition is deliberately narrower than the
 language/runtime cleanup.
+
+## Workshop Install
+
+Install the maintained Frothy CLI path first:
+
+```sh
+brew tap nikokozak/frothy
+brew install frothy
+froth doctor
+```
+
+Then install the matching VS Code extension asset from the GitHub Release:
+
+```sh
+code --install-extension /path/to/frothy-vscode-v<extension-version>.vsix
+```
+
+The maintained editor path stays on the accepted direct-control surface:
+
+- VS Code owns one helper child per window
+- the helper owns one direct control session at a time
+- there is no daemon, shared port owner, or local editor runtime in the
+  maintained workshop path
+
+`Send Selection / Line` is intentional additive eval.
+`Send File` is whole-file `reset + eval`; if the connected firmware is too old
+for control `reset`, the extension blocks the send and asks you to upgrade or
+reflash instead of replaying the file unsafely.
 
 ## Active Docs
 

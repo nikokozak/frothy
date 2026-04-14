@@ -238,7 +238,9 @@ static froth_error_t frothy_slot_write_owned(const char *slot_name,
                                    frothy_value_from_cell(old_impl)));
   }
   (void)created;
-  FROTH_TRY(froth_slot_set_overlay(slot_index, 1));
+  /* Base-image seeding runs before boot_complete so those definitions survive
+   * wipe/reset as part of the preflashed image instead of the overlay. */
+  FROTH_TRY(froth_slot_set_overlay(slot_index, froth_vm.boot_complete ? 1u : 0u));
   FROTH_TRY(froth_slot_set_impl(slot_index, frothy_value_to_cell(value)));
   FROTH_TRY(frothy_slot_update_arity(slot_index, value));
 

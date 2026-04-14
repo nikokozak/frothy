@@ -1,6 +1,9 @@
 #include "ffi.h"
 #include "froth_fmt.h"
+#include "frothy_ffi.h"
+#include "platform.h"
 #include <stdint.h>
+#include <string.h>
 #include <unistd.h>
 
 /* POSIX board package: stub GPIO + real ms delay.
@@ -10,6 +13,7 @@
 #define POSIX_I2C_MAX_BUSES 2
 #define POSIX_I2C_MAX_DEVICES 8
 #define POSIX_UART_MAX_PORTS 2
+#define POSIX_GPIO_PIN_LIMIT 128
 
 typedef struct {
   int in_use;
@@ -36,7 +40,21 @@ typedef struct {
 static posix_i2c_bus_t posix_i2c_buses[POSIX_I2C_MAX_BUSES];
 static posix_i2c_device_t posix_i2c_devices[POSIX_I2C_MAX_DEVICES];
 static posix_uart_t posix_uarts[POSIX_UART_MAX_PORTS];
+static uint8_t posix_gpio_known[POSIX_GPIO_PIN_LIMIT];
+static froth_cell_t posix_gpio_levels[POSIX_GPIO_PIN_LIMIT];
 static const uint8_t posix_uart_readback[] = {'f', 'r', 'o', 't', 'h'};
+
+void froth_board_reset_runtime_state(void) {
+  memset(posix_i2c_buses, 0, sizeof(posix_i2c_buses));
+  memset(posix_i2c_devices, 0, sizeof(posix_i2c_devices));
+  memset(posix_uarts, 0, sizeof(posix_uarts));
+  memset(posix_gpio_known, 0, sizeof(posix_gpio_known));
+  memset(posix_gpio_levels, 0, sizeof(posix_gpio_levels));
+}
+
+static int posix_gpio_pin_valid(froth_cell_t pin) {
+  return pin >= 0 && pin < POSIX_GPIO_PIN_LIMIT;
+}
 
 static froth_error_t emit_trace_prefix(const char *prefix, froth_cell_t handle) {
   FROTH_TRY(emit_string(prefix));
@@ -49,6 +67,12 @@ FROTH_FFI_ARITY(prim_gpio_mode, "gpio.mode", "( pin mode -- )", 2, 0,
                 "Set pin mode (1=output)") {
   FROTH_POP(mode);
   FROTH_POP(pin);
+
+  if (!posix_gpio_pin_valid(pin)) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  posix_gpio_known[pin] = 1;
   emit_string("[gpio] pin ");
   emit_string(format_number(pin));
   emit_string(mode == 1 ? " -> OUTPUT\n" : " -> INPUT\n");
@@ -59,15 +83,45 @@ FROTH_FFI_ARITY(prim_gpio_write, "gpio.write", "( pin value -- )", 2, 0,
                 "Write digital output") {
   FROTH_POP(value);
   FROTH_POP(pin);
+
+  if (!posix_gpio_pin_valid(pin)) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  posix_gpio_known[pin] = 1;
+  posix_gpio_levels[pin] = value ? 1 : 0;
   emit_string("[gpio] pin ");
   emit_string(format_number(pin));
   emit_string(value ? " = HIGH\n" : " = LOW\n");
   return FROTH_OK;
 }
 
+FROTH_FFI_ARITY(prim_gpio_read, "gpio.read", "( pin -- value )", 1, 1,
+                "Read the last written GPIO level on POSIX.") {
+  FROTH_POP(pin);
+
+  if (!posix_gpio_pin_valid(pin)) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  if (!posix_gpio_known[pin]) {
+    posix_gpio_known[pin] = 1;
+    posix_gpio_levels[pin] = 0;
+  }
+
+  FROTH_PUSH(posix_gpio_levels[pin]);
+  return FROTH_OK;
+}
+
 FROTH_FFI_ARITY(prim_ms, "ms", "( n -- )", 1, 0, "Delay n milliseconds") {
   FROTH_POP(ms);
   usleep((useconds_t)ms * 1000);
+  return FROTH_OK;
+}
+
+FROTH_FFI_ARITY(prim_millis, "millis", "( -- n )", 0, 1,
+                "Return wrapped monotonic uptime in milliseconds.") {
+  FROTH_PUSH(frothy_ffi_wrap_uptime_ms(platform_uptime_ms()));
   return FROTH_OK;
 }
 
@@ -286,7 +340,8 @@ FROTH_FFI_ARITY(prim_uart_available, "uart.key?", "( uart -- flag )", 1, 1,
 
 FROTH_BOARD_BEGIN(froth_board_bindings)
 FROTH_BIND(prim_gpio_mode), FROTH_BIND(prim_gpio_write),
-    FROTH_BIND(prim_ms), FROTH_BIND(prim_adc_read),
+    FROTH_BIND(prim_gpio_read), FROTH_BIND(prim_ms),
+    FROTH_BIND(prim_millis), FROTH_BIND(prim_adc_read),
     FROTH_BIND(prim_i2c_init),
     FROTH_BIND(prim_i2c_add_device), FROTH_BIND(prim_i2c_rm_device),
     FROTH_BIND(prim_i2c_del_bus), FROTH_BIND(prim_i2c_probe),

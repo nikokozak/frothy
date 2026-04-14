@@ -250,6 +250,41 @@ static int capture_code_renders(const char *name, char **see_out,
   return 1;
 }
 
+static int capture_report_text(const char *name,
+                               frothy_inspect_report_mode_t mode,
+                               char **report_out) {
+  *report_out = NULL;
+  if (frothy_inspect_render_binding_report(runtime(), name, mode, report_out) !=
+      FROTH_OK) {
+    fprintf(stderr, "failed to render inspect report for `%s`\n", name);
+    return 0;
+  }
+
+  return 1;
+}
+
+static int expect_binding_view(const char *name, bool expected_overlay,
+                               frothy_value_class_t expected_class,
+                               const char *label) {
+  frothy_inspect_binding_view_t view = {0};
+  int ok = 1;
+
+  if (frothy_inspect_render_binding_view(runtime(), name, &view) != FROTH_OK) {
+    fprintf(stderr, "%s failed to inspect `%s`\n", label, name);
+    return 0;
+  }
+  if (view.is_overlay != expected_overlay || view.value_class != expected_class) {
+    fprintf(stderr, "%s expected `%s` overlay=%d class=%s, got overlay=%d class=%s\n",
+            label, name, expected_overlay ? 1 : 0,
+            frothy_inspect_class_name(expected_class),
+            view.is_overlay ? 1 : 0,
+            frothy_inspect_class_name(view.value_class));
+    ok = 0;
+  }
+  frothy_inspect_binding_view_free(&view);
+  return ok;
+}
+
 static int expect_snapshot_present(bool expected, const char *label) {
   uint8_t slot = 0;
   uint32_t generation = 0;
@@ -582,13 +617,17 @@ static int test_native_dispatch_and_roundtrip(void) {
 static int test_overlay_reset_semantics(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
+  size_t base_live_objects = 0;
+  size_t base_payload = 0;
   int ok = 1;
 
   if (!enter_temp_workspace(&workspace)) {
     return 0;
   }
 
-  ok &= expect_live_objects(14, "base native objects");
+  base_live_objects = frothy_runtime_live_object_count(runtime());
+  base_payload = frothy_runtime_payload_used(runtime());
+  ok &= expect_live_objects(base_live_objects, "base live objects");
   ok &= expect_ok("save = 1", &value);
   release_value(&value);
   ok &= expect_ok("note = \"hello\"", &value);
@@ -599,15 +638,15 @@ static int test_overlay_reset_semantics(void) {
   release_value(&value);
   ok &= expect_ok("touchFrame()", &value);
   release_value(&value);
-  ok &= expect_live_objects(17, "overlay objects before reset");
+  ok &= expect_live_objects(base_live_objects + 3, "overlay objects before reset");
 
   if (frothy_base_image_reset() != FROTH_OK) {
     fprintf(stderr, "frothy_base_image_reset failed\n");
     ok = 0;
   }
 
-  ok &= expect_live_objects(14, "base native objects after reset");
-  ok &= expect_payload_used(0, "base payload after reset");
+  ok &= expect_live_objects(base_live_objects, "base live objects after reset");
+  ok &= expect_payload_used(base_payload, "base payload after reset");
   ok &= expect_error("note", FROTH_ERROR_UNDEFINED_WORD);
   ok &= expect_error("frame", FROTH_ERROR_UNDEFINED_WORD);
   ok &= expect_ok("save()", &value);
@@ -722,6 +761,7 @@ static int test_corrupt_snapshot_failures_reset_to_base(void) {
 static int test_repeated_near_capacity_save_restore(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
+  size_t base_live_objects = 0;
   size_t overlay_count = 0;
   size_t text_count = 0;
   size_t middle_index = 0;
@@ -732,6 +772,7 @@ static int test_repeated_near_capacity_save_restore(void) {
   if (!enter_temp_workspace(&workspace)) {
     return 0;
   }
+  base_live_objects = frothy_runtime_live_object_count(runtime());
   overlay_count = near_capacity_overlay_count();
   if (overlay_count == 0) {
     fprintf(stderr, "expected near-capacity overlay headroom\n");
@@ -748,7 +789,8 @@ static int test_repeated_near_capacity_save_restore(void) {
     return 0;
   }
 
-  ok &= expect_live_objects(14 + overlay_count, "near-cap overlay before save");
+  ok &= expect_live_objects(base_live_objects + overlay_count,
+                            "near-cap overlay before save");
   ok &= expect_ok("save()", &value);
   ok &= expect_nil_value(value, "save() with near-cap overlay");
   release_value(&value);
@@ -763,7 +805,7 @@ static int test_repeated_near_capacity_save_restore(void) {
   ok &= expect_nil_value(value, "restore() with near-cap overlay");
   release_value(&value);
 
-  ok &= expect_live_objects(14 + overlay_count,
+  ok &= expect_live_objects(base_live_objects + overlay_count,
                             "near-cap overlay after first restore");
   if (text_count > 0) {
     ok &= expect_overlay_text_slot(0, "first near-cap binding after restore");
@@ -798,7 +840,7 @@ static int test_repeated_near_capacity_save_restore(void) {
     release_value(&value);
   }
 
-  ok &= expect_live_objects(14 + overlay_count,
+  ok &= expect_live_objects(base_live_objects + overlay_count,
                             "near-cap overlay after second restore");
   if (text_count > 0) {
     ok &= expect_overlay_text_slot(last_index,
@@ -815,11 +857,15 @@ static int test_repeated_near_capacity_save_restore(void) {
 static int test_decode_failure_after_reset_re_resets_to_base(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
+  size_t base_live_objects = 0;
+  size_t base_payload = 0;
   int ok = 1;
 
   if (!enter_temp_workspace(&workspace)) {
     return 0;
   }
+  base_live_objects = frothy_runtime_live_object_count(runtime());
+  base_payload = frothy_runtime_payload_used(runtime());
 
   ok &= write_simple_text_snapshot();
   ok &= expect_ok("junk = 1", &value);
@@ -830,8 +876,9 @@ static int test_decode_failure_after_reset_re_resets_to_base(void) {
     fprintf(stderr, "direct restore expected heap out of memory\n");
     ok = 0;
   }
-  ok &= expect_live_objects(14, "base native objects after decode failure");
-  ok &= expect_payload_used(0, "base payload after decode failure");
+  ok &= expect_live_objects(base_live_objects,
+                            "base live objects after decode failure");
+  ok &= expect_payload_used(base_payload, "base payload after decode failure");
   ok &= expect_snapshot_present(true, "snapshot preserved after decode failure");
   ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
   ok &= expect_ok("1", &value);
@@ -878,6 +925,191 @@ static int test_slot_info_errors(void) {
   ok &= expect_error("slotInfo(\"\")", FROTH_ERROR_BOUNDS);
   ok &= expect_error("slotInfo(\"missing\")", FROTH_ERROR_UNDEFINED_WORD);
 
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
+static int test_inspect_report_formatting(void) {
+  temp_workspace_t workspace = {{0}};
+  frothy_value_t value = frothy_value_make_nil();
+  frothy_value_t native_value = frothy_value_make_nil();
+  frothy_value_t builtin_alias_value = frothy_value_make_nil();
+  char *see_text = NULL;
+  char *core_text = NULL;
+  char *slot_info_text = NULL;
+  char *ffi_info_text = NULL;
+  char *base_info_text = NULL;
+  char *builtin_see_text = NULL;
+  char *native_slot_info_text = NULL;
+  char *builtin_alias_info_text = NULL;
+  char *cells_info_text = NULL;
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+
+  ok &= expect_ok("to inc with x [ x + 1 ]", &value);
+  release_value(&value);
+  ok &= expect_ok("alias = inc", &value);
+  release_value(&value);
+
+  ok &= capture_report_text("alias", FROTHY_INSPECT_REPORT_SEE, &see_text);
+  ok &= capture_report_text("alias", FROTHY_INSPECT_REPORT_CORE, &core_text);
+  ok &= capture_report_text("alias", FROTHY_INSPECT_REPORT_SLOT_INFO,
+                            &slot_info_text);
+  ok &= capture_report_text("gpio.mode", FROTHY_INSPECT_REPORT_SLOT_INFO,
+                            &ffi_info_text);
+  ok &= capture_report_text("A0", FROTHY_INSPECT_REPORT_SLOT_INFO,
+                            &base_info_text);
+  ok &= capture_report_text("save", FROTHY_INSPECT_REPORT_SEE,
+                            &builtin_see_text);
+  ok &= expect_ok("frame = cells(1)", &value);
+  release_value(&value);
+  ok &= capture_report_text("frame", FROTHY_INSPECT_REPORT_SLOT_INFO,
+                            &cells_info_text);
+
+  if (ok &&
+      frothy_runtime_alloc_native(runtime(), test_native_noop, "test.native", 0,
+                                  NULL, &native_value) == FROTH_OK) {
+    froth_cell_u_t slot_index = 0;
+
+    ok &= froth_slot_find_name_or_create(&froth_vm.heap, "nativeSlot",
+                                         &slot_index) == FROTH_OK;
+    ok &= froth_slot_set_overlay(slot_index, 1) == FROTH_OK;
+    ok &= froth_slot_set_impl(slot_index, frothy_value_to_cell(native_value)) ==
+          FROTH_OK;
+    ok &= froth_slot_set_arity(slot_index, 0, 1) == FROTH_OK;
+    ok &= capture_report_text("nativeSlot", FROTHY_INSPECT_REPORT_SLOT_INFO,
+                              &native_slot_info_text);
+  } else if (ok) {
+    fprintf(stderr, "failed to allocate native test value\n");
+    ok = 0;
+  }
+
+  if (ok && frothy_runtime_alloc_native(runtime(), frothy_builtin_save, "save",
+                                        0, NULL, &builtin_alias_value) ==
+                FROTH_OK) {
+    froth_cell_u_t slot_index = 0;
+
+    ok &= froth_slot_find_name_or_create(&froth_vm.heap, "saveAlias",
+                                         &slot_index) == FROTH_OK;
+    ok &= froth_slot_set_overlay(slot_index, 1) == FROTH_OK;
+    ok &= froth_slot_set_impl(slot_index,
+                              frothy_value_to_cell(builtin_alias_value)) ==
+          FROTH_OK;
+    ok &= froth_slot_set_arity(slot_index, 0, 1) == FROTH_OK;
+    ok &= capture_report_text("saveAlias", FROTHY_INSPECT_REPORT_SLOT_INFO,
+                              &builtin_alias_info_text);
+  } else if (ok) {
+    fprintf(stderr, "failed to allocate builtin alias test value\n");
+    ok = 0;
+  }
+
+  if (ok) {
+    ok &= expect_text_equal(
+        see_text,
+        "alias\n"
+        "  slot: overlay\n"
+        "  kind: code\n"
+        "  call: 1 -> 1\n"
+        "  owner: overlay image\n"
+        "  persistence: saved in snapshot\n"
+        "  see: to alias with arg0 [ arg0 + 1 ]",
+        "formatted see report");
+    ok &= expect_text_equal(
+        core_text,
+        "alias\n"
+        "  slot: overlay\n"
+        "  kind: code\n"
+        "  call: 1 -> 1\n"
+        "  owner: overlay image\n"
+        "  persistence: saved in snapshot\n"
+        "  core: (fn arity=1 locals=1 (seq (call (builtin \"+\") (read-local 0) (lit 1))))",
+        "formatted core report");
+    ok &= expect_text_equal(
+        slot_info_text,
+        "alias\n"
+        "  slot: overlay\n"
+        "  kind: code\n"
+        "  call: 1 -> 1\n"
+        "  owner: overlay image\n"
+        "  persistence: saved in snapshot",
+        "formatted slotInfo report");
+    ok &= expect_text_equal(
+        ffi_info_text,
+        "gpio.mode\n"
+        "  slot: base\n"
+        "  kind: native\n"
+        "  call: 2 -> 1\n"
+        "  owner: board ffi\n"
+        "  persistence: not saved\n"
+        "  effect: ( pin mode -- )\n"
+        "  help: Set pin mode (1=output)",
+        "formatted FFI slotInfo report");
+    ok &= expect_text_equal(
+        base_info_text,
+        "A0\n"
+        "  slot: base\n"
+        "  kind: int\n"
+        "  call: not callable\n"
+        "  owner: base image\n"
+        "  persistence: not saved",
+        "formatted base value slotInfo report");
+    ok &= expect_text_equal(
+        cells_info_text,
+        "frame\n"
+        "  slot: overlay\n"
+        "  kind: cells\n"
+        "  call: not callable\n"
+        "  owner: overlay image\n"
+        "  persistence: saved if contents are persistable",
+        "formatted cells slotInfo report");
+    ok &= expect_text_equal(
+        builtin_see_text,
+        "save\n"
+        "  slot: base\n"
+        "  kind: native\n"
+        "  call: 0 -> 1\n"
+        "  owner: runtime builtin\n"
+        "  persistence: not saved\n"
+        "  help: Save the current overlay snapshot.\n"
+        "  see: <native save/0>",
+        "formatted builtin see report");
+    ok &= expect_text_equal(
+        native_slot_info_text,
+        "nativeSlot\n"
+        "  slot: overlay\n"
+        "  kind: native\n"
+        "  call: 0 -> 1\n"
+        "  owner: overlay image\n"
+        "  persistence: not saved",
+        "formatted custom native slotInfo report");
+    ok &= expect_text_equal(
+        builtin_alias_info_text,
+        "saveAlias\n"
+        "  slot: overlay\n"
+        "  kind: native\n"
+        "  call: 0 -> 1\n"
+        "  owner: runtime builtin\n"
+        "  persistence: not saved\n"
+        "  help: Save the current overlay snapshot.",
+        "formatted builtin alias slotInfo report");
+  }
+
+  free(see_text);
+  free(core_text);
+  free(slot_info_text);
+  free(ffi_info_text);
+  free(base_info_text);
+  free(builtin_see_text);
+  free(native_slot_info_text);
+  free(builtin_alias_info_text);
+  free(cells_info_text);
+  if (frothy_snapshot_wipe() != FROTH_OK) {
+    fprintf(stderr, "failed to wipe inspect report workspace\n");
+    ok = 0;
+  }
   leave_temp_workspace(&workspace);
   return ok;
 }
@@ -934,6 +1166,90 @@ static int test_startup_without_snapshot(void) {
   ok &= expect_int_value(value, 1, "prompt usable after no-snapshot startup");
   release_value(&value);
 
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
+static int test_workshop_base_library_wipe_restore(void) {
+  temp_workspace_t workspace = {{0}};
+  frothy_value_t value = frothy_value_make_nil();
+  char *see_before = NULL;
+  char *core_before = NULL;
+  char *see_after = NULL;
+  char *core_after = NULL;
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+
+  ok &= expect_binding_view("millis", false, FROTHY_VALUE_CLASS_NATIVE,
+                            "base millis view");
+  ok &= expect_binding_view("blink", false, FROTHY_VALUE_CLASS_CODE,
+                            "base blink view");
+  ok &= expect_binding_view("adc.percent", false, FROTHY_VALUE_CLASS_CODE,
+                            "base adc.percent view");
+  ok &= capture_code_renders("blink", &see_before, &core_before);
+  ok &= expect_ok("adc.percent(A0)", &value);
+  ok &= expect_int_value(value, 50, "base adc.percent(A0)");
+  release_value(&value);
+  ok &= expect_ok("led.off()", &value);
+  ok &= expect_nil_value(value, "led.off()");
+  release_value(&value);
+  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
+  ok &= expect_int_value(value, 0, "gpio.read after led.off()");
+  release_value(&value);
+  ok &= expect_ok("led.on()", &value);
+  ok &= expect_nil_value(value, "led.on()");
+  release_value(&value);
+  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
+  ok &= expect_int_value(value, 1, "gpio.read after led.on()");
+  release_value(&value);
+  ok &= expect_ok("led.toggle()", &value);
+  ok &= expect_nil_value(value, "led.toggle()");
+  release_value(&value);
+  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
+  ok &= expect_int_value(value, 0, "gpio.read after led.toggle()");
+  release_value(&value);
+
+  ok &= expect_ok("blink = fn(pin, count, wait) { 99 }", &value);
+  release_value(&value);
+  ok &= expect_ok("adc.percent = fn(pin) { 99 }", &value);
+  release_value(&value);
+  ok &= expect_binding_view("blink", true, FROTHY_VALUE_CLASS_CODE,
+                            "overlay blink view");
+  ok &= expect_binding_view("adc.percent", true, FROTHY_VALUE_CLASS_CODE,
+                            "overlay adc.percent view");
+  ok &= expect_ok("adc.percent(A0)", &value);
+  ok &= expect_int_value(value, 99, "overlay adc.percent(A0)");
+  release_value(&value);
+  ok &= expect_ok("led.on()", &value);
+  ok &= expect_nil_value(value, "led.on() before wipe");
+  release_value(&value);
+
+  ok &= expect_ok("wipe()", &value);
+  ok &= expect_nil_value(value, "wipe()");
+  release_value(&value);
+  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
+  ok &= expect_int_value(value, 0, "gpio.read after wipe reset");
+  release_value(&value);
+  ok &= expect_binding_view("blink", false, FROTHY_VALUE_CLASS_CODE,
+                            "restored blink view");
+  ok &= expect_binding_view("adc.percent", false, FROTHY_VALUE_CLASS_CODE,
+                            "restored adc.percent view");
+  ok &= capture_code_renders("blink", &see_after, &core_after);
+  if (ok) {
+    ok &= expect_text_equal(see_after, see_before, "blink see after wipe");
+    ok &= expect_text_equal(core_after, core_before, "blink core after wipe");
+  }
+  ok &= expect_ok("adc.percent(A0)", &value);
+  ok &= expect_int_value(value, 50, "restored adc.percent(A0)");
+  release_value(&value);
+
+  free(see_before);
+  free(core_before);
+  free(see_after);
+  free(core_after);
   leave_temp_workspace(&workspace);
   return ok;
 }
@@ -1281,8 +1597,10 @@ int main(void) {
   ok &= test_wipe_inside_nested_call_unwinds_cleanly();
   ok &= test_non_persistable_rejection();
   ok &= test_slot_info_errors();
+  ok &= test_inspect_report_formatting();
   ok &= test_length_aware_slot_lookup();
   ok &= test_startup_without_snapshot();
+  ok &= test_workshop_base_library_wipe_restore();
   ok &= test_startup_snapshot_discovery_failure();
   ok &= test_startup_restore_without_boot();
   ok &= test_startup_with_non_code_boot();
