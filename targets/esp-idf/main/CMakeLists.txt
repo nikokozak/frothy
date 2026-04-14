@@ -63,6 +63,7 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
 
 froth_embed_board_assets(${COMPONENT_LIB} ${FROTH_ROOT} ${FROTH_BOARD} ON)
 frothy_generate_board_pin_seed(${COMPONENT_LIB} ${FROTH_ROOT} ${FROTH_BOARD})
+frothy_generate_board_workshop_lib(${COMPONENT_LIB} ${FROTH_ROOT} ${FROTH_BOARD})
 
 # Project FFI: user-provided C bindings from [ffi] in froth.toml
 if(DEFINED FROTH_PROJECT_FFI_CONFIG AND NOT FROTH_PROJECT_FFI_CONFIG STREQUAL "")

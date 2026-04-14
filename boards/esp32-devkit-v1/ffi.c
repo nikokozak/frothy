@@ -35,6 +35,9 @@ static froth_error_t poll_interruptible_wait(froth_vm_t *froth_vm) {
 #define FROTH_BOARD_ADC_ATTEN ADC_ATTEN_DB_11
 #endif
 
+static uint8_t esp32_gpio_output_shadow_valid[GPIO_NUM_MAX];
+static froth_cell_t esp32_gpio_output_shadow_levels[GPIO_NUM_MAX];
+
 static bool esp32_adc1_channel_for_pin(froth_cell_t pin,
                                        adc1_channel_t *channel_out) {
   switch (pin) {
@@ -85,6 +88,13 @@ FROTH_FFI_ARITY(esp32_gpio_mode, "gpio.mode", "( pin mode -- )", 2, 0,
   if (err != ESP_OK) {
     return FROTH_ERROR_IO;
   }
+
+  if (mode == 1) {
+    esp32_gpio_output_shadow_valid[pin] = 1;
+    esp32_gpio_output_shadow_levels[pin] = gpio_get_level(pin) ? 1 : 0;
+  } else {
+    esp32_gpio_output_shadow_valid[pin] = 0;
+  }
   return FROTH_OK;
 }
 
@@ -92,28 +102,37 @@ FROTH_FFI_ARITY(esp32_gpio_write, "gpio.write", "( pin level -- )", 2, 0,
                 "Set pin level (1=high)") {
   FROTH_POP(level);
   FROTH_POP(pin);
+  froth_cell_t normalized = level ? 1 : 0;
 
   if (!esp32_gpio_pin_valid(pin)) {
     return FROTH_ERROR_BOUNDS;
   }
 
-  esp_err_t err = gpio_set_level(pin, level);
+  esp_err_t err = gpio_set_level(pin, normalized);
   if (err != ESP_OK) {
     return FROTH_ERROR_IO;
   }
+
+  esp32_gpio_output_shadow_valid[pin] = 1;
+  esp32_gpio_output_shadow_levels[pin] = normalized;
   return FROTH_OK;
 }
 
 FROTH_FFI_ARITY(
     esp32_gpio_read, "gpio.read", "( pin -- level )", 1, 1,
-    "Read pin level. Pin mode MUST be set, otherwise will always return 0.") {
+    "Read the last written level for outputs, otherwise sample the live pin.") {
   FROTH_POP(pin);
 
   if (!esp32_gpio_pin_valid(pin)) {
     return FROTH_ERROR_BOUNDS;
   }
 
-  froth_cell_t level = gpio_get_level(pin);
+  froth_cell_t level = 0;
+  if (esp32_gpio_output_shadow_valid[pin]) {
+    level = esp32_gpio_output_shadow_levels[pin];
+  } else {
+    level = gpio_get_level(pin) ? 1 : 0;
+  }
   FROTH_PUSH(level);
   return FROTH_OK;
 }
@@ -564,6 +583,11 @@ static int uart_tx_pins[UART_MAX_PORTS];
 static int uart_rx_pins[UART_MAX_PORTS];
 
 void froth_board_reset_runtime_state(void) {
+  for (int pin = 0; pin < GPIO_NUM_MAX; pin++) {
+    esp32_gpio_output_shadow_valid[pin] = 0;
+    esp32_gpio_output_shadow_levels[pin] = 0;
+  }
+
   for (int i = 0; i < UART_MAX_PORTS; i++) {
     if (uart_in_use[i]) {
       (void)uart_driver_delete(uart_ports[i]);

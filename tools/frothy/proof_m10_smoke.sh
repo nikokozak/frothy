@@ -201,9 +201,25 @@ WORKSHOP_TRANSCRIPT="$(
   run_file "$ROOT_DIR/tools/frothy/proof_m10_workshop_surface.frothy"
 )"
 printf '%s\n' "$WORKSHOP_TRANSCRIPT"
-require_contains "$WORKSHOP_TRANSCRIPT" 'millis | base | native | non-persistable | foreign'
-require_count_at_least "$WORKSHOP_TRANSCRIPT" 'blink | base | code | persistable | user' 2
-require_contains "$WORKSHOP_TRANSCRIPT" 'adc.percent | base | code | persistable | user'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  'millis' \
+  '  slot: base' \
+  '  kind: native' \
+  '  owner: board ffi' \
+  '  persistence: not saved'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  'blink' \
+  '  slot: base' \
+  '  kind: code' \
+  '  owner: base image' \
+  '  persistence: not saved'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  'adc.percent' \
+  '  slot: base' \
+  '  kind: code' \
+  '  owner: base image' \
+  '  persistence: not saved'
+require_contains "$WORKSHOP_TRANSCRIPT" '  help: Return wrapped monotonic uptime in milliseconds.'
 require_sequence "$WORKSHOP_TRANSCRIPT" \
   '"millis.check"' \
   'frothy> true'
@@ -244,11 +260,19 @@ require_sequence "$WORKSHOP_TRANSCRIPT" \
   'frothy> 43'
 require_sequence "$WORKSHOP_TRANSCRIPT" \
   '"overlay.blink.check"' \
-  'blink | overlay | code | persistable | user' \
+  'blink' \
+  '  slot: overlay' \
+  '  kind: code' \
+  '  owner: overlay image' \
+  '  persistence: saved in snapshot' \
   'frothy> 99'
 require_sequence "$WORKSHOP_TRANSCRIPT" \
   '"restored.blink.check"' \
-  'blink | base | code | persistable | user' \
+  'blink' \
+  '  slot: base' \
+  '  kind: code' \
+  '  owner: base image' \
+  '  persistence: not saved' \
   '[gpio] pin 2 -> OUTPUT' \
   '[gpio] pin 2 = LOW' \
   '[gpio] pin 2 = HIGH' \
