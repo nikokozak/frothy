@@ -51,16 +51,55 @@ The original Froth repo at `/Users/niko/Developer/Froth` is reference material.
 - Build Frothy beside inherited code first. Do not rip out the old runtime
   before the replacement path exists and proves itself.
 
-## Session Start
+## Working Set
 
-At the start of a session, or whenever context feels stale:
+Do not force the same startup ritual on every task.
 
-1. Read `docs/spec/Frothy_Language_Spec_v0_1.md`.
-2. Read `docs/roadmap/Frothy_Development_Roadmap_v0_1.md`.
-3. Read relevant Frothy ADRs in `docs/adr/100-*.md`.
-4. Read `PROGRESS.md` and `TIMELINE.md`.
-5. State the active milestone, blockers, next artifact, and proof command from
-   the roadmap current-state block.
+For targeted work:
+
+1. Read this file.
+2. Read the roadmap current-state block in
+   `docs/roadmap/Frothy_Development_Roadmap_v0_1.md`.
+3. Read only the authority docs directly relevant to the task.
+
+Examples:
+
+- semantics, persistence, inspection, or recovery work:
+  `docs/spec/Frothy_Language_Spec_v0_1.md` plus the relevant Frothy ADRs
+- FFI or board-surface work:
+  `docs/adr/108-frothy-ffi-boundary.md` and
+  `docs/roadmap/Frothy_M9_Board_FFI_Closeout.md`
+- forward-direction language work:
+  `docs/spec/Frothy_Language_Spec_vNext.md`,
+  `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md`, and the relevant
+  Frothy `100`-series ADRs
+- workspace/image-flow work:
+  `docs/adr/115-first-workspace-image-flow-tranche.md` and
+  `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`
+- repo-control or priority-surface work:
+  `PROGRESS.md`, `TIMELINE.md`, and
+  `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`
+
+Run the broader read pass when:
+
+- the task is broad or open-ended
+- context is stale
+- the task touches semantics, persistence, FFI, roadmap intent, or repo policy
+- you are being asked to audit or repair the control surface itself
+
+Broader read pass:
+
+1. `docs/spec/Frothy_Language_Spec_v0_1.md`
+2. `docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
+3. relevant Frothy ADRs in `docs/adr/100-*.md`
+4. `PROGRESS.md` and `TIMELINE.md`
+5. `docs/spec/Frothy_Language_Spec_vNext.md` and
+   `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md` if the task concerns
+   explicit future direction
+
+State the active milestone, blockers, next artifact, and proof command from
+the roadmap current-state block when asked, when context is stale, or when
+editing the control docs.
 
 ## Engineering Baseline
 
@@ -114,6 +153,11 @@ Reliance on local documentation is mandatory.
   questions about semantics, persistence, inspection, FFI, or roadmap intent.
 - Treat `docs/spec/README.md` and `docs/adr/README.md` as part of the authority
   map.
+- Treat `docs/spec/Frothy_Language_Spec_vNext.md`,
+  `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md`, and
+  `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md` as
+  forward-direction and queue-shaping docs only. They do not override the
+  accepted `v0.1` contract or accepted ADRs.
 - Use inherited Froth material through
   `docs/reference/Froth_Substrate_References.md`, not by assuming old Froth
   policy still applies.
@@ -140,29 +184,24 @@ Default validation paths:
 - `cmake -S . -B build && cmake --build build`
 - `make test`
 
-Validation must stay proportional to the change.
-
-- Add tests and proofs only when they protect basic user-visible behavior,
-  likely regressions, or clear data-loss boundaries.
-- Prefer one good check at one layer over multiple overlapping checks for the
-  same behavior.
-- Keep docs and control-surface proofs lightweight and direct. Prove the live
-  snapshot is truthful; do not build wording-police harnesses unless wording is
-  itself the contract.
-- If a test or proof failure would not correspond to a meaningful product
-  failure, the check is probably too heavy for the current repo stage.
+For docs and control-surface changes, default to focused grep or checked-in
+sanity scripts that prove the intended authority split and live queue are
+actually true. Do not default to heavier build or test runs unless the change
+genuinely needs them.
 
 ## Workflow Expectations
 
 - Keep the roadmap current-state block truthful. It is the live control surface.
 - Update `PROGRESS.md` after meaningful work lands.
-- Update `TIMELINE.md` when milestone status, target dates, or slips change.
+- Keep `PROGRESS.md` short and operational. It is not a changelog.
+- Update `TIMELINE.md` when milestone status or queue priority changes.
+- Keep `TIMELINE.md` as a movable checkbox ledger. Reordering the queue is
+  expected; if context would be lost, add or update a referenced doc rather
+  than expanding the timeline into narrative sprawl.
 - Keep README and repo-control docs aligned with actual repo policy.
-- At the end of a tranche, run enough review and validation to catch major
-  issues in the changed surface. Stop when core behavior is covered and the
-  remaining risk is normal, not theoretical.
-- Do not pile on overlapping review loops, test matrices, or proof scripts once
-  the tranche is already well covered.
+- At the end of a tranche, run agent reviews repeatedly until they stop
+  surfacing major issues and you are comfortable with the work. Do not treat a
+  first green test pass or a single review round as tranche closeout.
 - Keep commit messages terse.
 - Do not add `Co-Authored-By` lines.
 
@@ -175,7 +214,3 @@ Validation must stay proportional to the change.
 - Do not hide hot-path allocation behind helper layers.
 - Do not start deleting inherited substrate before the parallel Frothy path
   exists.
-- Do not build multiple assurance layers for the same behavior without a clear
-  product need.
-- Do not turn low-probability or compatibility-only edges into large permanent
-  maintenance surfaces unless the user explicitly wants that tradeoff.

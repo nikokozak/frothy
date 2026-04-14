@@ -23,20 +23,23 @@ It is a sequencing and control document.
 
 This block is the live control surface for repo status.
 
-Current milestone: `none`
-Today's goal: keep the landed workspace/image-flow tranche and CLI naming
-alignment truthful while queuing the first host-only slot-bundle
-inspection/generation cut in the CLI project layer
+Current milestone: `queued follow-on only`
+Today's goal: keep the control docs thin and aligned, make the post-`v0.1`
+priority stack workshop-ready for 2026-04-16, and keep the next
+implementation cut limited to the first host-only slot-bundle
+inspection/generation artifact in the CLI project layer
 Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer
 Blocked by: none
-Next proof command: `make test-all && sh tools/frothy/proof_next_stage_docs.sh`
-Slip against plan: none; next-stage language-definition docs, control-session
-slice 2, bounded-memory hardening, CLI naming alignment, and
-workspace/image-flow tranche 1 are already landed, so the next live cut is
-host-only slot-bundle inspection/generation in the CLI project layer
-Cut candidate if slip persists: keep the next workspace/image-flow step
-host-only and inspection/generation-only, and defer apply, helper/editor,
-manifest, and kernel-loader growth
+Next proof command: `sh tools/frothy/proof_control_surface_docs.sh`
+Slip against plan: none; the next-stage language-definition docs, direct
+control-session slice 2, bounded-memory hardening, CLI naming alignment, and
+workspace/image-flow tranche 1 are already landed, but the repo still needed a
+truthful post-`v0.1` queue and a workshop-ready control surface before more
+follow-on work resumed
+Cut candidate if slip persists: keep the control-surface repair doc-only, keep
+the next workspace/image-flow cut host-only and inspection/generation-only,
+and defer apply/load, FFI ABI cleanup, string broadening, larger library
+growth, and tooling UI growth
 
 ## 3. Operating Rules
 
@@ -603,8 +606,18 @@ Operational label:
 
 Pending priority order:
 
-1. CLI naming alignment
-2. host-only workspace/image-flow tooling, only if later approved
+1. host-only slot-bundle inspection/generation in the CLI project layer
+2. FFI boundary quality and porting discipline
+3. small useful core library growth
+4. robust string support
+5. measured performance tightening
+6. direct-control tooling improvements
+7. later workspace/image-flow apply/load growth only after the host-only cut
+   proves itself
+
+Detailed queue and workshop gate:
+
+- `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`
 
 Already landed in this follow-on tranche:
 
@@ -613,6 +626,47 @@ Already landed in this follow-on tranche:
 3. syntax tranche 1
 4. VS Code plugin merge and alignment
 5. immediate control hardening + `RESET`
+6. control-surface repair and workshop-prep note
+
+#### Control-surface repair and workshop prep
+
+Status:
+
+- landed on 2026-04-13 as a docs/control-surface repair tranche
+
+Why now:
+
+- `PROGRESS.md` and `TIMELINE.md` had drifted from thin control docs into
+  narrative status streams
+- `AGENTS.md` still implied a heavyweight full-session cold-start ritual even
+  for targeted work
+- the repo already had real forward-direction docs in `vNext` and the accepted
+  ADR stack, but the post-`v0.1` queue was not surfaced as one truthful
+  workshop-facing story
+
+Approach:
+
+- keep the accepted `v0.1` spec, Frothy ADRs, and roadmap current-state block
+  authoritative
+- keep `PROGRESS.md` as a short operational note rather than a changelog
+- keep `TIMELINE.md` as a movable checkbox ledger rather than a narrative
+  slip diary
+- keep `AGENTS.md` targeted-work-first and require the broader read pass only
+  when the task is broad, stale, or policy/semantics-touching
+- surface the post-`v0.1` priority stack and 2026-04-16 workshop gate in one
+  short roadmap note instead of scattering them across status prose
+
+Closeout:
+
+- `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md` now carries
+  the near-term priority stack and workshop gate
+- Frothy ADR-116 records the thin-control-doc and targeted-session policy
+- `README.md`, `PROGRESS.md`, `TIMELINE.md`, and `AGENTS.md` now point at the
+  same live story
+
+Proof:
+
+- `sh tools/frothy/proof_control_surface_docs.sh`
 
 #### Next-stage language definition
 
@@ -1095,3 +1149,6 @@ If implementation resumed today, the next steps should be:
 - [x] define the first workspace/image-flow tranche as a doc-only
   slot-bundle-first ADR plus roadmap note before any helper, editor, manifest,
   or kernel surface widens
+- [x] reset the post-`v0.1` control surface so `PROGRESS.md`, `TIMELINE.md`,
+  `AGENTS.md`, `README.md`, and one short roadmap note stop carrying separate
+  truths about the live queue

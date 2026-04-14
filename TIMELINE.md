@@ -2,161 +2,114 @@
 
 *Last updated: 2026-04-13*
 
-This file is the thin milestone ledger for Frothy.
+This file is the movable milestone and queue ledger for Frothy.
 The roadmap current-state block in
-`docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
-remains the live control surface.
+`docs/roadmap/Frothy_Development_Roadmap_v0_1.md` remains the live control
+surface.
 
 If this file and the roadmap disagree, the roadmap wins.
 
 ## Current Control Snapshot
 
-- Active milestone: `none`
+- Active milestone: `queued follow-on only`
 - Blocked by: none
 - Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer
-- Next proof command: `make test-all && sh tools/frothy/proof_next_stage_docs.sh`
+- Next proof command: `sh tools/frothy/proof_control_surface_docs.sh`
 
-## Milestone Ledger
+## Closed v0.1 Ladder
 
-| ID | Status | Window | Primary Deliverable | Proof | Repo State |
-|---|---|---|---|---|---|
-| M0 | `[x]` | 2026-04-09 to 2026-04-09 | accepted spec + handoff + roadmap | doc review complete | Landed. Permanent Frothy control docs are in place. |
-| M1 | `[x]` | 2026-04-09 to 2026-04-10 | safe fork identity | release pipeline disabled | Landed. Frothy release identity is separated from inherited Froth. |
-| M2 | `[x]` | 2026-04-09 to 2026-04-11 | core ADR stack | ADR files landed | Landed. Frothy ADR-100 through ADR-108 define the accepted core. |
-| M3 | `[x]` | 2026-04-10 to 2026-04-11 | Frothy shell builds beside Froth | host build succeeds | Landed. `Frothy` builds beside inherited `Froth`. |
-| M3a | `[x]` | 2026-04-11 to 2026-04-11 | ESP32 Frothy shell stub boots | target reaches prompt | Landed. Checked-in prompt transcripts cover normal and safe boot. |
-| M4 | `[x]` | 2026-04-11 to 2026-04-12 | parser and canonical IR | parser tests pass | Landed. Parser, fixtures, and canonical IR are in place. |
-| M5 | `[x]` | 2026-04-12 to 2026-04-14 | host evaluator with rebinding | eval tests pass | Landed. Stable values are VM-owned and reclaimable. |
-| M6 | `[x]` | 2026-04-14 to 2026-04-15 | top-level `cells(n)` storage | cells tests pass | Landed. `Cells` are live, narrow, and covered. |
-| M7 | `[x]` | 2026-04-15 to 2026-04-16 | save/restore/wipe | snapshot tests pass | Landed. Overlay-only persistence is closed. |
-| M8 | `[x]` | 2026-04-16 to 2026-04-17 | multiline REPL + interrupt + inspection | REPL smoke passes | Landed. Interactive profile is closed on host. |
-| M9 | `[x]` | 2026-04-17 to 2026-04-18 | base-image bindings for hardware | `ctest -R frothy_ffi` | Closed with the explicit board-FFI closeout note. |
-| M10 | `[x]` | 2026-04-18 to 2026-04-19 | blink + boot + cells sketch | `./tools/frothy/proof_m10_smoke.sh <PORT>` passes | Closed with the proof bundle and checked-in ESP32 transcript. |
+- [x] M0 Freeze direction
+  Deliverable: accepted spec, roadmap, and control-doc baseline.
+  Reference: `docs/roadmap/Frothy_Development_Roadmap_v0_1.md`, section 7.
+- [x] M1 Fork hygiene
+  Deliverable: Frothy release identity separated from inherited Froth.
+  Reference: Frothy ADR-100 and roadmap section 7.
+- [x] M2 ADR foundation
+  Deliverable: Frothy ADR-100 through ADR-108.
+  Reference: `docs/adr/README.md`.
+- [x] M3 Parallel host scaffolding
+  Deliverable: `build/Frothy` exists beside inherited substrate.
+  Reference: roadmap section 7.
+- [x] M3a Device smoke
+  Deliverable: ESP32 shell stub reaches prompt and safe boot.
+  Reference: roadmap section 7 and checked-in prompt transcripts.
+- [x] M4 Parser + canonical IR
+  Deliverable: parser and canonical IR under focused test coverage.
+  Reference: roadmap section 7.
+- [x] M5 Evaluator + stable rebinding
+  Deliverable: host evaluator with stable-slot semantics.
+  Reference: roadmap section 7.
+- [x] M6 Cells stores
+  Deliverable: narrow top-level `cells(n)` storage with tests.
+  Reference: roadmap section 7 and Frothy ADR-104.
+- [x] M7 Snapshot format
+  Deliverable: save, restore, and wipe on the overlay image.
+  Reference: roadmap section 7 and Frothy ADR-106.
+- [x] M8 Interactive profile
+  Deliverable: multiline REPL, interrupt, inspection, and `boot`.
+  Reference: roadmap section 7 and Frothy ADR-107.
+- [x] M9 Board FFI surface
+  Deliverable: narrow board-facing base image plus proof coverage.
+  Reference: `docs/roadmap/Frothy_M9_Board_FFI_Closeout.md`.
+- [x] M10 Hardware proof
+  Deliverable: blink, boot persistence, and cells proof on ESP32.
+  Reference: `./tools/frothy/proof_m10_smoke.sh <PORT>` and
+  `tools/frothy/m10_esp32_proof_transcript.txt`.
 
-## Current Follow-On Queue
+## Movable Post-v0.1 Queue
 
-- Operational label: `queued follow-on only`
-- `Immediate control hardening + RESET`: landed on 2026-04-12. Builtin
-  metadata now has one owner, `WORDS` / `SEE` stream across multiple value
-  events, malformed bound-session requests fail explicitly, current firmware
-  resets cleanly through the direct control path, and stale firmware still
-  reports `reset_unavailable`.
-- `VS Code plugin merge`: landed on 2026-04-12. The checked-in editor path now
-  runs on the maintained helper-owned control session rather than a daemon
-  split.
-- `Local helper`: landed in tree on 2026-04-12. Shared CLI/session reuse plus
-  flashing, new-project creation, and file send/apply now sit on the direct
-  single-owner control path.
-- `Helper proof coverage`: confirmed on target hardware on 2026-04-12. The
-  checked-in `proof_f1_control_smoke.sh <PORT>` path now closes the public-CLI
-  flash/apply/reconnect proof on device.
-- `Spoken-ledger syntax tranche 1`: landed on 2026-04-13. `name is expr`,
-  `here name is expr`, `set place to expr`, `to` / `fn with`, bracket
-  blocks, `:` calls plus `call expr with ...`, `repeat`, `when`, `unless`,
-  `and`, `or`, prompt verbs, and prompt-only simple-call sugar are now
-  merged on top of canonical IR lowering, with refreshed parser/eval
-  coverage plus M8 REPL and inspect smokes.
-- `Spoken-ledger syntax tranche 1 baseline`: frozen on 2026-04-13. The next
-  language-definition pass should treat that proved slice as fixed input and
-  move the remaining design work in a separate process.
-- `Next-stage language definition`: landed on 2026-04-13 as a doc-only
-  closeout. The vNext spec, surface proposal, and Frothy ADR-114 now freeze
-  spoken-ledger syntax tranche 1 as the baseline while keeping records,
-  modules, `cond`/`case`, Frothy-native `try/catch`, and restricted
-  binding/place designators as explicit draft-only work before runtime
-  semantics widen again.
-- `CLI naming alignment`: landed on 2026-04-13 as the first truthful
-  docs/tooling-note artifact. `README.md`, repo-local build labels, release
-  notes, and VS Code CLI discovery/config wording now explain the repo-local
-  `froth-cli`, release-time `froth`, and intended global `frothy` split
-  without renaming binaries, tarball contents, Homebrew install targets, or
-  editor command ids.
-- `Workspace/image-flow tranche 1`: defined in tree on 2026-04-13 as a
-  doc-only closeout. Frothy ADR-115 and
-  `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md` now freeze a
-  host-local slot bundle as the first workspace/image flow artifact, make the
-  bundle contract payload-first rather than path-first, keep live apply on
-  direct-control `RESET + replay` with `RESET` explicitly separate from
-  persisted-overlay `wipe()`, define bundle-oriented persistent seed/apply as
-  a later `reset-to-base + replay + save()` model while noting that today's
-  checked-in build/flash paths still rely on fresh-start replay plus `save()`,
-  record the current `reset + eval` versus `wipe()` send drift without fixing
-  it here, and explicitly defer IR capsule, registry, daemon, PTY,
-  shared-owner, helper-protocol, manifest, and kernel-loader growth.
-- `Host-only slot-bundle inspection/generation`: now the next queued
-  workspace/image-flow implementation artifact after the doc closeout and CLI
-  naming-alignment landing. Start in the CLI project layer only, and keep
-  apply/load, helper/editor, manifest, and kernel-loader growth deferred.
-- `Urgent transport slice 1`: landed on 2026-04-12. Raw prompt `.control`
-  now enters Frothy-owned structured mode with `HELLO`, `EVAL`, `WORDS`,
-  `SEE`, `DETACH`, structured `OUTPUT` / `VALUE` / `ERROR` /
-  `INTERRUPTED` / `IDLE`, direct-tool proof, and prompt recovery without any
-  daemon.
-- `Runtime hardening`: landed on 2026-04-12. `frothy_runtime_bench` and
-  `make bench-frothy` are checked in, evaluator scratch and object metadata
-  now use fixed capacities, and the before/after host numbers live in
-  `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md`.
-- `Syntax tranche 1`: landed on 2026-04-12. `here`, top-level
-  `name(args) = expr`, `name(args) { block }`, `boot { block }`, and the
-  first accepted bare REPL command sugar are now merged on top of the runtime
-  baseline that the spoken-ledger follow-on extends.
-- `Transport simplification`: replace the inherited daemon and mixed-stream
-  direction with the ADR-110 single-owner control session. Raw REPL stays raw;
-  structured control gets explicit exclusive framing and event replies. After
-  the urgent first slice, this means rounding out the remaining commands rather
-  than reopening the transport shape.
-- `Workspace/image flow` implementation: still deferred after the tranche-1
-  doc closeout. If later approved, start with host-only slot-bundle
-  inspection/generation and keep any later apply path on the existing direct
-  control session rather than building a registry, PTY layer, daemon, or
-  background service first.
+The queue below is intentionally movable. Reorder it as priorities change, but
+keep each item's description and references so deferral does not erase context.
 
-## Slip Notes
+- [x] Control-surface repair and workshop-prep note
+  Deliverable: thin `PROGRESS.md`, movable `TIMELINE.md`, targeted
+  `AGENTS.md`, and one forward-priority note.
+  References: Frothy ADR-116 and
+  `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`.
+- [ ] Host-only slot-bundle inspection/generation in the CLI project layer
+  Deliverable: the first workspace/image-flow implementation cut only.
+  References: Frothy ADR-115 and
+  `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`.
+- [ ] FFI boundary quality and porting discipline
+  Deliverable: make the shipped shim and porting rules explicit, narrow, and
+  test-backed before any ABI cleanup.
+  References: Frothy ADR-108 and
+  `docs/roadmap/Frothy_M9_Board_FFI_Closeout.md`.
+- [ ] Small useful core library growth
+  Deliverable: choose and land a minimal library tranche that makes Frothy
+  more useful without sneaking in new runtime semantics.
+  References: `docs/spec/Frothy_Language_Spec_v0_1.md`, Appendix C, and
+  Frothy ADR-112.
+- [ ] Robust string support
+  Deliverable: define the next truthful string-support cut around current
+  byte-string semantics, utilities, and FFI/persistence boundaries.
+  References: `docs/spec/Frothy_Language_Spec_v0_1.md`, sections 3.6 and 9,
+  and `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`.
+- [ ] Measured performance tightening
+  Deliverable: benchmark-backed speed work on the current runtime rather than
+  speculative rewrites.
+  References: `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md` and the
+  roadmap follow-on queue.
+- [ ] Direct-control tooling improvements
+  Deliverable: keep CLI/helper/editor improvements on the single-owner control
+  path and out of daemon or PTY drift.
+  References: Frothy ADR-110, Frothy ADR-111, and Frothy ADR-113.
+- [ ] Workshop readiness for 2026-04-16
+  Deliverable: make the demo path, kept scope, and deferred queue explicit
+  before the workshop.
+  References: `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`
+  and `README.md`.
+- [ ] Later workspace/image-flow apply/load growth
+  Deliverable: only after host-only inspection/generation proves useful; still
+  no registry, daemon, or loader-first detour.
+  References: Frothy ADR-115 and
+  `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`.
 
-- M9 remained active until its closeout note landed on 2026-04-12 even though
-  most of the technical work was already present.
-- The first M10 board run on 2026-04-12 exposed Frothy shell stack-use and
-  device-runner assumptions before the same-day hardware transcript closed the
-  milestone.
-- The 2026-04-12 phase 2 sanity pass removed the tracked CLI SDK mirror,
-  collapsed Frothy proof behind `tools/frothy/proof.sh`, and made Frothy
-  base-image assembly explicit without changing semantics, snapshots, or the
-  public FFI surface.
-- The 2026-04-12 control-slice landing replaced the inherited daemon-first
-  path for new Frothy tooling with a checked-in direct control session and a
-  shared host plus device smoke driver.
-- The 2026-04-12 runtime hardening slice split cleanly from syntax tranche 1:
-  runtime budgeting and benchmarking landed in the repo, while syntax
-  rollout continues in parallel so parser and shell work does not obscure the
-  evaluator and runtime proof path.
-- The 2026-04-12 shell-tranche merge closed that split: syntax tranche 1 is
-  now landed on top of the runtime-hardening baseline, so the follow-on queue
-  can move to workspace / image-loading design instead of parallel syntax
-  rollout.
-- The next timeline adjustment moved workspace / image-loading back behind a
-  narrower tightening pass plus real host tooling.
-- The 2026-04-13 control-surface adjustment took workspace/image flow ahead of
-  CLI naming alignment only as a doc-only closeout. With that closeout and the
-  CLI naming tranche now both landed, the live next-artifact pointer moves to
-  host-only slot-bundle inspection/generation in the CLI project layer while
-  apply/load surfaces remain deferred.
-- The merged VS Code helper/editor path and the immediate control hardening
-  plus reset slice are now landed on the same baseline, so the next timeline
-  step is helper broadening and shared CLI/session reuse rather than editor
-  merge or reset design work.
-- The 2026-04-12 repo-prune tranche removed the legacy `Froth` host/runtime
-  surface, daemon-first CLI path, and active-tree historical Froth doc sprawl,
-  leaving a Frothy-only maintained build/test path plus explicit archives.
-- The 2026-04-12 lean proof-coverage slice kept that surface small: one new
-  CLI integration test for the real helper entrypoint and one extension of the
-  maintained F1 device smoke for public-CLI flash/apply/reconnect proof.
+## Queue Rules
 
-## Current Rules
-
-- Only one milestone may be `[~]` at a time.
-- Every active milestone must name one next artifact and one proof command.
-- The dated milestone ladder stops at M10; use the follow-on queue for current
-  priority, not a fake dated milestone.
-- Do not widen the board surface or add package machinery before syntax
-  tranche 1, the immediate control/tooling slice, and the first
-  workspace/image flow are defined against the landed runtime baseline.
+- The checkboxes above are the live movable queue.
+- Reordering the queue is expected when priorities change.
+- If an item needs more than a short description here, add or update its
+  reference doc instead of expanding this file into narrative history.
+- The dated v0.1 ladder ends at M10. Do not invent fake dated milestones for
+  post-`v0.1` work.

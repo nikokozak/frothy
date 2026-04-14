@@ -2,11 +2,24 @@
 
 Frothy is a small live lexical language for programmable devices.
 
-Frothy `v0.1` is functionally closed. The live control surface is in
-`docs/roadmap/Frothy_Development_Roadmap_v0_1.md`; the next queued artifact is
-host-only slot-bundle inspection/generation in the CLI project layer, while
-accepted language, snapshot, and FFI semantics remain on the closed `v0.1`
-baseline.
+Frothy `v0.1` is functionally closed.
+
+The active repo work is post-`v0.1` control-surface repair and workshop
+readiness for 2026-04-16, with the next implementation cut kept deliberately
+small: first host-only slot-bundle inspection/generation in the CLI project
+layer.
+
+The forward queue after that is explicit:
+
+- FFI boundary quality and porting discipline
+- small useful core library growth
+- robust string support
+- measured performance tightening
+- direct-control tooling improvements
+- later workspace/image-flow growth only after the host-only cut proves itself
+
+See `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md` for the
+kept-vs-deferred stack.
 
 The repo reuses inherited Froth substrate where that is the simplest working
 path, but Froth's old roadmap, stack-centric user model, and language
@@ -60,11 +73,16 @@ language/runtime cleanup.
 
 - `docs/spec/Frothy_Language_Spec_v0_1.md`: normative Frothy language and
   interactive-profile spec
+- `docs/spec/Frothy_Language_Spec_vNext.md` and
+  `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md`: draft next-stage
+  language direction without widening current behavior
 - `docs/roadmap/Frothy_Development_Roadmap_v0_1.md`: live control surface and
-  milestone tracker
+  accepted milestone roadmap
+- `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`: near-term
+  post-`v0.1` queue and workshop gate
 - `docs/adr/README.md`: ADR authority split and Frothy `100`-series index
-- `PROGRESS.md`: thin execution journal
-- `TIMELINE.md`: thin milestone ledger
+- `PROGRESS.md`: thin operational note
+- `TIMELINE.md`: movable checkbox ledger
 
 ## Reference Material
 
