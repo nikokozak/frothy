@@ -31,6 +31,20 @@ ensure_node_deps() {
     echo "run: (cd \"$VSCODE_DIR\" && npm ci)" >&2
     exit 1
   fi
+
+  (
+    cd "$VSCODE_DIR" &&
+      node -e 'require.resolve("@vscode/test-electron/package.json")'
+  ) >/dev/null 2>&1 || {
+    echo "error: missing VS Code smoke dependency @vscode/test-electron" >&2
+    echo "run: (cd \"$VSCODE_DIR\" && npm ci)" >&2
+    exit 1
+  }
+}
+
+build_vscode_extension() {
+  echo "==> Building VS Code extension for editor smoke"
+  (cd "$VSCODE_DIR" && npm run compile)
 }
 
 ensure_cli_binary() {
@@ -47,6 +61,7 @@ if [ "$#" -ne 1 ]; then
 fi
 
 ensure_node_deps
+build_vscode_extension
 ensure_cli_binary
 
 case "$1" in
