@@ -7,6 +7,7 @@
 #include "frothy_ir_internal.h"
 #include "frothy_value.h"
 
+#include <ctype.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -144,6 +145,39 @@ static bool frothy_snapshot_name_bytes_are_simple(const uint8_t *bytes,
     }
   }
   return true;
+}
+
+static bool frothy_snapshot_name_bytes_are_slot_name(const uint8_t *bytes,
+                                                     size_t length) {
+  size_t i;
+  bool expect_segment_start = true;
+
+  if (length == 0) {
+    return false;
+  }
+  for (i = 0; i < length; i++) {
+    if (bytes[i] == '\0') {
+      return false;
+    }
+    if (bytes[i] == '.') {
+      if (expect_segment_start) {
+        return false;
+      }
+      expect_segment_start = true;
+      continue;
+    }
+    if (expect_segment_start) {
+      if (!isalpha(bytes[i]) && bytes[i] != '_') {
+        return false;
+      }
+      expect_segment_start = false;
+      continue;
+    }
+    if (!isalnum(bytes[i]) && bytes[i] != '_') {
+      return false;
+    }
+  }
+  return !expect_segment_start;
 }
 
 
@@ -776,8 +810,8 @@ static froth_error_t frothy_snapshot_write_record_def_object(
   if (field_count == 0 || field_count > FROTHY_IR_LINK_CAPACITY) {
     return FROTH_ERROR_NOT_PERSISTABLE;
   }
-  if (!frothy_snapshot_name_bytes_are_simple((const uint8_t *)name,
-                                             strlen(name))) {
+  if (!frothy_snapshot_name_bytes_are_slot_name((const uint8_t *)name,
+                                                strlen(name))) {
     return FROTH_ERROR_NOT_PERSISTABLE;
   }
 
@@ -1206,7 +1240,7 @@ static froth_error_t frothy_snapshot_validate_record_def_object(
   }
 
   FROTH_TRY(frothy_snapshot_read_string_bytes(reader, &length, &bytes));
-  if (!frothy_snapshot_name_bytes_are_simple(bytes, length)) {
+  if (!frothy_snapshot_name_bytes_are_slot_name(bytes, length)) {
     return FROTH_ERROR_SNAPSHOT_BAD_NAME;
   }
 

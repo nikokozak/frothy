@@ -1962,6 +1962,48 @@ static int test_record_roundtrip_and_truthful_inspection(void) {
   return ok;
 }
 
+static int test_prefixed_record_roundtrip(void) {
+  temp_workspace_t workspace = {{0}};
+  frothy_value_t value = frothy_value_make_nil();
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+
+  ok &= expect_ok(
+      "in sprite [ record State [ x, y ]; current is State: 3, 4 ]", &value);
+  release_value(&value);
+  ok &= expect_binding_render_view("sprite.State", FROTHY_VALUE_CLASS_RECORD_DEF,
+                                   "record-def",
+                                   "record sprite.State [ x, y ]",
+                                   "prefixed record def before save");
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "save: prefixed record roundtrip");
+  release_value(&value);
+
+  ok &= expect_ok(
+      "in sprite [ record State [ z ]; current is State: 9 ]", &value);
+  release_value(&value);
+  ok &= expect_ok("restore:", &value);
+  ok &= expect_nil_value(value, "restore: prefixed record roundtrip");
+  release_value(&value);
+
+  ok &= expect_binding_render_view("sprite.State", FROTHY_VALUE_CLASS_RECORD_DEF,
+                                   "record-def",
+                                   "record sprite.State [ x, y ]",
+                                   "prefixed record def after restore");
+  ok &= expect_ok("sprite.current->x", &value);
+  ok &= expect_int_value(value, 3, "sprite.current->x after restore");
+  release_value(&value);
+  ok &= expect_ok("sprite.current->y", &value);
+  ok &= expect_int_value(value, 4, "sprite.current->y after restore");
+  release_value(&value);
+
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
 static int test_record_cycle_save_rejection(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
@@ -2093,6 +2135,7 @@ int main(void) {
   ok &= test_decode_failure_after_reset_re_resets_to_base();
   ok &= test_wipe_inside_nested_call_unwinds_cleanly();
   ok &= test_record_roundtrip_and_truthful_inspection();
+  ok &= test_prefixed_record_roundtrip();
   ok &= test_record_cycle_save_rejection();
   ok &= test_record_snapshot_rejects_mismatched_record_def_name();
   ok &= test_record_snapshot_rejects_record_arity_mismatch();

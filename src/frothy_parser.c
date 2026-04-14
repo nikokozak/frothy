@@ -1775,9 +1775,9 @@ static froth_error_t frothy_parse_top_level_record(
   if (err != FROTH_OK) {
     goto cleanup;
   }
-  record_name = frothy_strdup_range(name_token.start, name_token.length);
-  if (record_name == NULL) {
-    err = FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+  err = frothy_join_prefix_name(parser->active_prefix, name_token.start,
+                                name_token.length, &record_name);
+  if (err != FROTH_OK) {
     goto cleanup;
   }
 
