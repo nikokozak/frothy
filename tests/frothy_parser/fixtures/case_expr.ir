@@ -1,0 +1,1 @@
+(write-slot "route" (fn arity=1 locals=2 (seq (seq (write-local 1 (read-local 0)) (if (call (builtin "==") (read-local 1) (lit "off")) (seq (lit 0)) (if (call (builtin "==") (read-local 1) (lit "on")) (seq (lit 1)) (seq (lit 2))))))))

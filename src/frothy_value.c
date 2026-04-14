@@ -25,11 +25,23 @@ bool frothy_value_is_object_ref(frothy_value_t value) {
   return (value & FROTHY_VALUE_TAG_MASK) == FROTHY_VALUE_TAG_OBJECT;
 }
 
+bool frothy_value_is_slot_designator(frothy_value_t value) {
+  return (value & FROTHY_VALUE_TAG_MASK) == FROTHY_VALUE_TAG_SLOT;
+}
+
 static frothy_value_t frothy_object_value(size_t object_id) {
   return (frothy_value_t)(((uint32_t)object_id << 2) | FROTHY_VALUE_TAG_OBJECT);
 }
 
 size_t frothy_value_object_index(frothy_value_t value) { return value >> 2; }
+
+static frothy_value_t frothy_slot_value(froth_cell_u_t slot_index) {
+  return (frothy_value_t)(((uint32_t)slot_index << 2) | FROTHY_VALUE_TAG_SLOT);
+}
+
+static froth_cell_u_t frothy_value_slot_index(frothy_value_t value) {
+  return (froth_cell_u_t)(value >> 2);
+}
 
 static void frothy_object_reset(frothy_object_t *object) {
   memset(object, 0, sizeof(*object));
@@ -47,6 +59,28 @@ froth_cell_t frothy_value_to_cell(frothy_value_t value) {
 
 frothy_value_t frothy_value_from_cell(froth_cell_t cell) {
   return (frothy_value_t)(uint32_t)(int32_t)cell;
+}
+
+froth_error_t frothy_value_make_slot_designator(const char *slot_name,
+                                                frothy_value_t *out) {
+  froth_cell_u_t slot_index;
+
+  if (slot_name == NULL || out == NULL) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  FROTH_TRY(froth_slot_find_name(slot_name, &slot_index));
+  *out = frothy_slot_value(slot_index);
+  return FROTH_OK;
+}
+
+froth_error_t frothy_value_get_slot_designator_name(frothy_value_t value,
+                                                    const char **name_out) {
+  if (!frothy_value_is_slot_designator(value) || name_out == NULL) {
+    return FROTH_ERROR_TYPE_MISMATCH;
+  }
+
+  return froth_slot_get_name(frothy_value_slot_index(value), name_out);
 }
 
 static void frothy_cellspace_store_value(froth_cellspace_t *cellspace,
@@ -707,6 +741,9 @@ froth_error_t frothy_value_class(const frothy_runtime_t *runtime,
     *out = FROTHY_VALUE_CLASS_NIL;
     return FROTH_OK;
   }
+  if (frothy_value_is_slot_designator(value)) {
+    return FROTH_ERROR_TYPE_MISMATCH;
+  }
   if (frothy_value_is_object_ref(value)) {
     const frothy_object_t *object;
     size_t object_id = frothy_value_object_index(value);
@@ -773,6 +810,12 @@ froth_error_t frothy_value_render(const frothy_runtime_t *runtime,
   if (frothy_value_is_nil(value)) {
     return frothy_strdup("nil", 3, out_text);
   }
+  if (frothy_value_is_slot_designator(value)) {
+    const char *name = NULL;
+
+    FROTH_TRY(frothy_value_get_slot_designator_name(value, &name));
+    return frothy_strdup_printf(out_text, "@%s", name);
+  }
   if (frothy_value_is_object_ref(value)) {
     const frothy_object_t *object;
     size_t object_id = frothy_value_object_index(value);
@@ -814,6 +857,13 @@ froth_error_t frothy_value_equals(const frothy_runtime_t *runtime,
 
   if (lhs == rhs) {
     *equal_out = true;
+    return FROTH_OK;
+  }
+  if (frothy_value_is_slot_designator(lhs) ||
+      frothy_value_is_slot_designator(rhs)) {
+    *equal_out = frothy_value_is_slot_designator(lhs) &&
+                 frothy_value_is_slot_designator(rhs) &&
+                 frothy_value_slot_index(lhs) == frothy_value_slot_index(rhs);
     return FROTH_OK;
   }
 

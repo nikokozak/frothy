@@ -822,6 +822,83 @@ static int test_object_slot_reuse_at_capacity(void) {
   return ok;
 }
 
+static int test_readability_language_tranche(void) {
+  frothy_value_t value = frothy_value_make_nil();
+  int ok = 1;
+
+  reset_frothy_state();
+
+  ok &= expect_ok("count is 7", &value);
+  release_value(&value);
+  ok &= expect_ok("bump is fn [ here count is 1; set @count to count + 2 ]",
+                  &value);
+  release_value(&value);
+  ok &= expect_ok("bump:", &value);
+  ok &= expect_nil_value(value, "bump:");
+  release_value(&value);
+  ok &= expect_ok("count", &value);
+  ok &= expect_int_value(value, 3, "count after @count write");
+  release_value(&value);
+
+  ok &= expect_error("alias is @count", FROTH_ERROR_TYPE_MISMATCH);
+  ok &= expect_ok("frame is cells(1)", &value);
+  release_value(&value);
+  ok &= expect_error("set frame[0] to @count", FROTH_ERROR_TYPE_MISMATCH);
+
+  ok &= expect_ok(
+      "choose is fn with ready, fallback [ cond [ when ready [ 1 ]; when fallback [ 2 ]; else [ nil ] ] ]",
+      &value);
+  release_value(&value);
+  ok &= expect_ok("choose: false, true", &value);
+  ok &= expect_int_value(value, 2, "cond fallback branch");
+  release_value(&value);
+  ok &= expect_ok("choose: false, false", &value);
+  ok &= expect_nil_value(value, "cond nil default");
+  release_value(&value);
+
+  ok &= expect_ok("count is 0", &value);
+  release_value(&value);
+  ok &= expect_ok(
+      "nextMode is fn [ set @count to count + 1; if count == 1 [ \"on\" ] else [ \"off\" ] ]",
+      &value);
+  release_value(&value);
+  ok &= expect_ok(
+      "route is fn [ case nextMode: [ \"off\" [ 0 ]; \"on\" [ count ]; else [ 2 ] ] ]",
+      &value);
+  release_value(&value);
+  ok &= expect_ok("route:", &value);
+  ok &= expect_int_value(value, 1, "case scrutinee result");
+  release_value(&value);
+  ok &= expect_ok("count", &value);
+  ok &= expect_int_value(value, 1, "case scrutinee evaluated once");
+  release_value(&value);
+
+  ok &= expect_ok("board is 21", &value);
+  release_value(&value);
+  ok &= expect_ok(
+      "in led [ pin is 13; to showPin [ pin ]; to showBoard [ board ]; to retarget [ set pin to 14; set board to 30 ] ]",
+      &value);
+  ok &= expect_nil_value(value, "in led [...]");
+  release_value(&value);
+  ok &= expect_ok("led.showPin:", &value);
+  ok &= expect_int_value(value, 13, "in prefix prefixed-first read");
+  release_value(&value);
+  ok &= expect_ok("led.showBoard:", &value);
+  ok &= expect_int_value(value, 21, "in prefix global fallback read");
+  release_value(&value);
+  ok &= expect_ok("led.retarget:", &value);
+  ok &= expect_nil_value(value, "in prefix fallback write");
+  release_value(&value);
+  ok &= expect_ok("led.pin", &value);
+  ok &= expect_int_value(value, 14, "in prefix prefixed-first write");
+  release_value(&value);
+  ok &= expect_ok("board", &value);
+  ok &= expect_int_value(value, 30, "in prefix global fallback write");
+  release_value(&value);
+
+  return ok;
+}
+
 int main(void) {
   int ok = 1;
 
@@ -837,6 +914,7 @@ int main(void) {
   ok &= test_allocator_failure_cleanup();
   ok &= test_payload_capacity_and_fragmentation();
   ok &= test_object_slot_reuse_at_capacity();
+  ok &= test_readability_language_tranche();
 
   return ok ? 0 : 1;
 }

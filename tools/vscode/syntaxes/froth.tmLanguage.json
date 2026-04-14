@@ -22,6 +22,9 @@
       "include": "#numbers"
     },
     {
+      "include": "#slot-designator"
+    },
+    {
       "include": "#builtins"
     },
     {
@@ -120,9 +123,13 @@
         }
       ]
     },
+    "slot-designator": {
+      "match": "@[A-Za-z_][A-Za-z0-9_\\.]*",
+      "name": "variable.other.slot-designator.froth"
+    },
     "builtins": {
       "name": "support.function.builtin.froth",
-      "match": "(?<!\\S)(?:dangerous-reset|restore|release|negate|invert|lshift|rshift|choose|catch|throw|times|while|words|emit|key\\?|key|millis|keep|call|drop|over|2over|swap|tuck|dup|2dup|2drop|2swap|rot|-rot|nip|dip|set|assign|to|value|is|defer|flag>n|pat|perm|mark|save|wipe|def|get|and|xor|abs|cr|if|bi|or|see|info|s\\.emit|s\\.len|s@|s\\.=|s\\.keep|q\\.len|q@|/mod|\\.s|\\.|\\+|-|\\*|<|>|=|>r|r>|r@)(?!\\S)"
+      "match": "(?<!\\S)(?:dangerous-reset|restore|release|negate|invert|lshift|rshift|choose|catch|throw|times|while|when|unless|repeat|cond|case|in|words|emit|key\\?|key|millis|keep|call|drop|over|2over|swap|tuck|dup|2dup|2drop|2swap|rot|-rot|nip|dip|set|assign|to|value|is|here|with|as|fn|save|wipe|def|get|and|xor|abs|cr|if|bi|or|see|core|info|true|false|nil|not|cells|s\\.emit|s\\.len|s@|s\\.=|s\\.keep|q\\.len|q@|/mod|\\.s|\\.|\\+|-|\\*|<|>|=|>r|r>|r@)(?!\\S)"
     },
     "brackets": {
       "patterns": [

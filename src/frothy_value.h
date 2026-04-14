@@ -153,11 +153,16 @@ bool frothy_value_is_int(frothy_value_t value);
 bool frothy_value_is_bool(frothy_value_t value);
 bool frothy_value_is_nil(frothy_value_t value);
 bool frothy_value_is_object_ref(frothy_value_t value);
+bool frothy_value_is_slot_designator(frothy_value_t value);
 int32_t frothy_value_as_int(frothy_value_t value);
 bool frothy_value_as_bool(frothy_value_t value);
 size_t frothy_value_object_index(frothy_value_t value);
 froth_cell_t frothy_value_to_cell(frothy_value_t value);
 frothy_value_t frothy_value_from_cell(froth_cell_t cell);
+froth_error_t frothy_value_make_slot_designator(const char *slot_name,
+                                                frothy_value_t *out);
+froth_error_t frothy_value_get_slot_designator_name(frothy_value_t value,
+                                                    const char **name_out);
 
 froth_error_t frothy_value_class(const frothy_runtime_t *runtime,
                                  frothy_value_t value,

@@ -218,6 +218,9 @@ static froth_error_t frothy_slot_write_owned(const char *slot_name,
   bool created = false;
 
   err = froth_slot_find_name(slot_name, &slot_index);
+  if (frothy_value_is_slot_designator(value)) {
+    return FROTH_ERROR_TYPE_MISMATCH;
+  }
   if (err == FROTH_ERROR_UNDEFINED_WORD) {
     if (require_existing) {
       return err;
@@ -245,6 +248,35 @@ static froth_error_t frothy_slot_write_owned(const char *slot_name,
   FROTH_TRY(frothy_slot_update_arity(slot_index, value));
 
   return FROTH_OK;
+}
+
+static froth_error_t frothy_slot_read_fallback_owned(const char *primary_slot_name,
+                                                     const char *fallback_slot_name,
+                                                     frothy_value_t *out) {
+  froth_cell_u_t slot_index;
+  froth_error_t err;
+
+  err = froth_slot_find_name(primary_slot_name, &slot_index);
+  if (err == FROTH_OK) {
+    return frothy_slot_read_owned(primary_slot_name, out);
+  }
+  if (err != FROTH_ERROR_UNDEFINED_WORD) {
+    return err;
+  }
+
+  return frothy_slot_read_owned(fallback_slot_name, out);
+}
+
+static froth_error_t frothy_slot_write_fallback_owned(
+    const char *primary_slot_name, const char *fallback_slot_name,
+    frothy_value_t value, bool require_existing) {
+  froth_error_t err =
+      frothy_slot_write_owned(primary_slot_name, value, require_existing);
+
+  if (err != FROTH_ERROR_UNDEFINED_WORD) {
+    return err;
+  }
+  return frothy_slot_write_owned(fallback_slot_name, value, require_existing);
 }
 
 static froth_error_t frothy_index_offset(frothy_value_t index_value,
@@ -692,6 +724,10 @@ static froth_error_t frothy_eval_node(const frothy_ir_program_t *program,
   }
   case FROTHY_IR_NODE_READ_SLOT:
     return frothy_slot_read_owned(node->as.read_slot.slot_name, out);
+  case FROTHY_IR_NODE_READ_SLOT_FALLBACK:
+    return frothy_slot_read_fallback_owned(
+        node->as.read_slot_fallback.primary_slot_name,
+        node->as.read_slot_fallback.fallback_slot_name, out);
   case FROTHY_IR_NODE_WRITE_SLOT: {
     frothy_value_t value;
 
@@ -706,6 +742,25 @@ static froth_error_t frothy_eval_node(const frothy_ir_program_t *program,
     *out = frothy_value_make_nil();
     return FROTH_OK;
   }
+  case FROTHY_IR_NODE_WRITE_SLOT_FALLBACK: {
+    frothy_value_t value;
+
+    FROTH_TRY(frothy_eval_node(program, locals, local_count,
+                               node->as.write_slot_fallback.value, &value));
+    err = frothy_slot_write_fallback_owned(
+        node->as.write_slot_fallback.primary_slot_name,
+        node->as.write_slot_fallback.fallback_slot_name, value,
+        node->as.write_slot_fallback.require_existing);
+    if (err != FROTH_OK) {
+      frothy_release_ignored(frothy_runtime(), value);
+      return err;
+    }
+    *out = frothy_value_make_nil();
+    return FROTH_OK;
+  }
+  case FROTHY_IR_NODE_SLOT_DESIGNATOR:
+    return frothy_value_make_slot_designator(node->as.slot_designator.slot_name,
+                                             out);
   case FROTHY_IR_NODE_READ_INDEX: {
     frothy_value_t base_value;
     frothy_value_t index_value;

@@ -67,6 +67,9 @@ typedef enum {
   FROTHY_IR_NODE_WRITE_LOCAL,
   FROTHY_IR_NODE_READ_SLOT,
   FROTHY_IR_NODE_WRITE_SLOT,
+  FROTHY_IR_NODE_READ_SLOT_FALLBACK,
+  FROTHY_IR_NODE_WRITE_SLOT_FALLBACK,
+  FROTHY_IR_NODE_SLOT_DESIGNATOR,
   FROTHY_IR_NODE_READ_INDEX,
   FROTHY_IR_NODE_WRITE_INDEX,
   FROTHY_IR_NODE_FN,
@@ -97,6 +100,19 @@ typedef struct {
       frothy_ir_node_id_t value;
       bool require_existing;
     } write_slot;
+    struct {
+      char *primary_slot_name;
+      char *fallback_slot_name;
+    } read_slot_fallback;
+    struct {
+      char *primary_slot_name;
+      char *fallback_slot_name;
+      frothy_ir_node_id_t value;
+      bool require_existing;
+    } write_slot_fallback;
+    struct {
+      char *slot_name;
+    } slot_designator;
     struct {
       frothy_ir_node_id_t base;
       frothy_ir_node_id_t index;
