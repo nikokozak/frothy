@@ -39,6 +39,7 @@ typedef struct {
   uint64_t total_ns;
   size_t peak_eval_values;
   size_t peak_objects;
+  size_t peak_payload_bytes;
 } bench_result_t;
 
 struct bench_case {
@@ -350,6 +351,7 @@ static froth_error_t bench_time_case(bench_case_t *bench_case,
   out->total_ns = end_ns - start_ns;
   out->peak_eval_values = frothy_runtime_eval_value_high_water(runtime());
   out->peak_objects = frothy_runtime_object_high_water(runtime());
+  out->peak_payload_bytes = frothy_runtime_payload_high_water(runtime());
   bench_case->cleanup(bench_case);
   return FROTH_OK;
 }
@@ -391,9 +393,9 @@ static void print_result(const bench_case_t *bench_case,
   double total_ms = (double)result->total_ns / 1000000.0;
   double ns_per_iter = (double)result->total_ns / (double)result->iterations;
 
-  printf("%-16s %12zu %12.3f %14.1f %18zu %13zu\n", bench_case->name,
+  printf("%-16s %12zu %12.3f %14.1f %18zu %13zu %18zu\n", bench_case->name,
          result->iterations, total_ms, ns_per_iter, result->peak_eval_values,
-         result->peak_objects);
+         result->peak_objects, result->peak_payload_bytes);
 }
 
 static int run_single_case(bench_case_t *bench_case) {
@@ -454,6 +456,11 @@ int main(void) {
        .cleanup = cleanup_program_case,
        .setup_source = "hop = fn(v) { v }",
        .run_source = "hop(7)"},
+      {.name = "code_literal",
+       .prepare = prepare_program_case,
+       .run = run_program_case,
+       .cleanup = cleanup_program_case,
+       .run_source = "fn() { 1 }"},
       {.name = "slot_access",
        .prepare = prepare_program_case,
        .run = run_program_case,
@@ -498,8 +505,10 @@ int main(void) {
   printf("Frothy runtime benchmark\n");
   printf("eval_value_capacity: %d\n", FROTHY_EVAL_VALUE_CAPACITY);
   printf("object_capacity: %d\n\n", FROTHY_OBJECT_CAPACITY);
-  printf("%-16s %12s %12s %14s %18s %13s\n", "case", "iterations",
-         "total_ms", "ns_per_iter", "peak_eval_values", "peak_objects");
+  printf("payload_capacity: %d\n\n", FROTHY_PAYLOAD_CAPACITY);
+  printf("%-16s %12s %12s %14s %18s %13s %18s\n", "case", "iterations",
+         "total_ms", "ns_per_iter", "peak_eval_values", "peak_objects",
+         "peak_payload_bytes");
   fflush(stdout);
 
   for (i = 0; i < case_count; i++) {

@@ -512,6 +512,9 @@ static froth_error_t frothy_eval_call(const frothy_ir_program_t *program,
         frothy_release_ignored(frothy_runtime(), callee);
       }
       frothy_eval_buffer_free(frothy_runtime(), &args);
+      if (!frothy_reset_epoch_matches(reset_epoch) && err == FROTH_OK) {
+        return frothy_eval_reset_sentinel(out);
+      }
       return err;
     }
 
@@ -543,6 +546,9 @@ static froth_error_t frothy_eval_call(const frothy_ir_program_t *program,
     err = frothy_eval_node(callee_program, frame.locals, frame.local_count, body,
                            out);
     frothy_frame_free(frothy_runtime(), &frame);
+    if (!frothy_reset_epoch_matches(reset_epoch) && err == FROTH_OK) {
+      return frothy_eval_reset_sentinel(out);
+    }
     if (frothy_reset_epoch_matches(reset_epoch)) {
       frothy_release_ignored(frothy_runtime(), callee);
     }

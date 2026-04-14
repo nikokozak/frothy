@@ -4,6 +4,7 @@
 #include "frothy_base_image.h"
 #include "frothy_boot.h"
 #include "frothy_eval.h"
+#include "frothy_inspect.h"
 #include "frothy_parser.h"
 #include "frothy_snapshot.h"
 #include "frothy_value.h"
@@ -202,6 +203,53 @@ static int expect_live_objects(size_t expected, const char *label) {
   return 1;
 }
 
+static int expect_payload_used(size_t expected, const char *label) {
+  size_t used = frothy_runtime_payload_used(runtime());
+
+  if (used != expected) {
+    fprintf(stderr, "%s expected payload used %zu, got %zu\n", label, expected,
+            used);
+    return 0;
+  }
+  return 1;
+}
+
+static int expect_text_equal(const char *actual, const char *expected,
+                             const char *label) {
+  if (strcmp(actual, expected) != 0) {
+    fprintf(stderr, "%s expected `%s`, got `%s`\n", label, expected, actual);
+    return 0;
+  }
+  return 1;
+}
+
+static int capture_code_renders(const char *name, char **see_out,
+                                char **core_out) {
+  frothy_inspect_binding_view_t view = {0};
+
+  *see_out = NULL;
+  *core_out = NULL;
+  if (frothy_inspect_render_binding_view(runtime(), name, &view) != FROTH_OK) {
+    fprintf(stderr, "failed to render see view for `%s`\n", name);
+    return 0;
+  }
+  *see_out = view.rendered;
+  view.rendered = NULL;
+  frothy_inspect_binding_view_free(&view);
+
+  if (frothy_inspect_render_binding_text(runtime(), name,
+                                         FROTHY_INSPECT_RENDER_CORE,
+                                         core_out) !=
+      FROTH_OK) {
+    fprintf(stderr, "failed to render core view for `%s`\n", name);
+    free(*see_out);
+    *see_out = NULL;
+    return 0;
+  }
+
+  return 1;
+}
+
 static int expect_snapshot_present(bool expected, const char *label) {
   uint8_t slot = 0;
   uint32_t generation = 0;
@@ -342,7 +390,8 @@ static size_t near_capacity_overlay_count(void) {
   size_t object_headroom = 0;
   size_t payload_headroom = 0;
   size_t count;
-  const size_t bytes_per_binding = 24;
+  const size_t bytes_per_text_binding = 24;
+  const size_t bytes_per_code_binding = 40;
   const size_t payload_prefix_bytes = 20;
 
   if (froth_slot_count() < FROTH_SLOT_TABLE_SIZE) {
@@ -352,10 +401,12 @@ static size_t near_capacity_overlay_count(void) {
     object_headroom =
         FROTHY_OBJECT_CAPACITY - frothy_runtime_live_object_count(runtime());
   }
-  if (FROTH_SNAPSHOT_MAX_PAYLOAD_BYTES > payload_prefix_bytes) {
+  if (FROTH_SNAPSHOT_MAX_PAYLOAD_BYTES >
+      payload_prefix_bytes + bytes_per_code_binding) {
     payload_headroom =
-        (FROTH_SNAPSHOT_MAX_PAYLOAD_BYTES - payload_prefix_bytes) /
-        bytes_per_binding;
+        1 + ((FROTH_SNAPSHOT_MAX_PAYLOAD_BYTES - payload_prefix_bytes -
+              bytes_per_code_binding) /
+             bytes_per_text_binding);
   }
   count = slot_headroom < object_headroom ? slot_headroom : object_headroom;
   if (payload_headroom < count) {
@@ -370,10 +421,12 @@ static size_t near_capacity_overlay_count(void) {
   return count;
 }
 
-static int populate_near_capacity_text_overlay(size_t count) {
+static int populate_near_capacity_overlay(size_t count) {
+  frothy_value_t value = frothy_value_make_nil();
+  size_t text_count = count > 1 ? count - 1 : 0;
   size_t i;
 
-  for (i = 0; i < count; i++) {
+  for (i = 0; i < text_count; i++) {
     char name[32];
     char text[48];
 
@@ -382,6 +435,13 @@ static int populate_near_capacity_text_overlay(size_t count) {
         !bind_overlay_text_direct(name, text)) {
       return 0;
     }
+  }
+
+  if (count > 0) {
+    if (!expect_ok("nearCapCode = fn() { 7 }", &value)) {
+      return 0;
+    }
+    release_value(&value);
   }
 
   return 1;
@@ -445,6 +505,10 @@ static int expect_startup_report(const frothy_startup_report_t *report,
 static int test_native_dispatch_and_roundtrip(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
+  char *see_before = NULL;
+  char *core_before = NULL;
+  char *see_after = NULL;
+  char *core_after = NULL;
   int ok = 1;
 
   if (!enter_temp_workspace(&workspace)) {
@@ -475,6 +539,7 @@ static int test_native_dispatch_and_roundtrip(void) {
   release_value(&value);
   ok &= expect_ok("adder = fn(x) { x + alias[0] }", &value);
   release_value(&value);
+  ok &= capture_code_renders("adder", &see_before, &core_before);
   ok &= expect_ok("save()", &value);
   ok &= expect_nil_value(value, "save()");
   release_value(&value);
@@ -495,12 +560,21 @@ static int test_native_dispatch_and_roundtrip(void) {
   ok &= expect_ok("adder(1)", &value);
   ok &= expect_int_value(value, 10, "adder(1) after restore");
   release_value(&value);
+  ok &= capture_code_renders("adder", &see_after, &core_after);
+  if (ok) {
+    ok &= expect_text_equal(see_after, see_before, "see render after restore");
+    ok &= expect_text_equal(core_after, core_before, "core render after restore");
+  }
   ok &= expect_ok("setAlias(8)", &value);
   release_value(&value);
   ok &= expect_ok("frame[0]", &value);
   ok &= expect_int_value(value, 8, "shared cells alias");
   release_value(&value);
 
+  free(see_before);
+  free(core_before);
+  free(see_after);
+  free(core_after);
   leave_temp_workspace(&workspace);
   return ok;
 }
@@ -533,6 +607,7 @@ static int test_overlay_reset_semantics(void) {
   }
 
   ok &= expect_live_objects(14, "base native objects after reset");
+  ok &= expect_payload_used(0, "base payload after reset");
   ok &= expect_error("note", FROTH_ERROR_UNDEFINED_WORD);
   ok &= expect_error("frame", FROTH_ERROR_UNDEFINED_WORD);
   ok &= expect_ok("save()", &value);
@@ -648,6 +723,7 @@ static int test_repeated_near_capacity_save_restore(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
   size_t overlay_count = 0;
+  size_t text_count = 0;
   size_t middle_index = 0;
   size_t last_index = 0;
   char mutate_command[96];
@@ -662,9 +738,12 @@ static int test_repeated_near_capacity_save_restore(void) {
     leave_temp_workspace(&workspace);
     return 0;
   }
-  middle_index = overlay_count / 2;
-  last_index = overlay_count - 1;
-  if (!populate_near_capacity_text_overlay(overlay_count)) {
+  text_count = overlay_count > 1 ? overlay_count - 1 : 0;
+  if (text_count > 0) {
+    middle_index = text_count / 2;
+    last_index = text_count - 1;
+  }
+  if (!populate_near_capacity_overlay(overlay_count)) {
     leave_temp_workspace(&workspace);
     return 0;
   }
@@ -674,7 +753,11 @@ static int test_repeated_near_capacity_save_restore(void) {
   ok &= expect_nil_value(value, "save() with near-cap overlay");
   release_value(&value);
 
-  ok &= expect_ok("t000 = \"m\"", &value);
+  if (text_count == 0) {
+    ok &= expect_ok("nearCapCode = fn() { 8 }", &value);
+  } else {
+    ok &= expect_ok("t000 = \"m\"", &value);
+  }
   release_value(&value);
   ok &= expect_ok("restore()", &value);
   ok &= expect_nil_value(value, "restore() with near-cap overlay");
@@ -682,18 +765,29 @@ static int test_repeated_near_capacity_save_restore(void) {
 
   ok &= expect_live_objects(14 + overlay_count,
                             "near-cap overlay after first restore");
-  ok &= expect_overlay_text_slot(0, "first near-cap binding after restore");
-  ok &= expect_overlay_text_slot(middle_index,
-                                 "middle near-cap binding after restore");
-  ok &= expect_overlay_text_slot(last_index,
-                                 "last near-cap binding after restore");
+  if (text_count > 0) {
+    ok &= expect_overlay_text_slot(0, "first near-cap binding after restore");
+    ok &= expect_overlay_text_slot(middle_index,
+                                   "middle near-cap binding after restore");
+    ok &= expect_overlay_text_slot(last_index,
+                                   "last near-cap binding after restore");
+  }
+  ok &= expect_ok("nearCapCode()", &value);
+  ok &= expect_int_value(value, 7, "near-cap code after first restore");
+  release_value(&value);
 
   ok &= expect_ok("save()", &value);
   ok &= expect_nil_value(value, "second save() with near-cap overlay");
   release_value(&value);
 
-  if (snprintf(mutate_command, sizeof(mutate_command), "t%03zu = \"m\"",
-               last_index) >= (int)sizeof(mutate_command)) {
+  if (text_count == 0) {
+    ok &= expect_ok("nearCapCode = fn() { 8 }", &value);
+    release_value(&value);
+    ok &= expect_ok("restore()", &value);
+    ok &= expect_nil_value(value, "second restore() with code-only near-cap overlay");
+    release_value(&value);
+  } else if (snprintf(mutate_command, sizeof(mutate_command), "t%03zu = \"m\"",
+                      last_index) >= (int)sizeof(mutate_command)) {
     fprintf(stderr, "failed to build near-cap mutation command\n");
     ok = 0;
   } else {
@@ -706,8 +800,13 @@ static int test_repeated_near_capacity_save_restore(void) {
 
   ok &= expect_live_objects(14 + overlay_count,
                             "near-cap overlay after second restore");
-  ok &= expect_overlay_text_slot(last_index,
-                                 "last near-cap binding after second restore");
+  if (text_count > 0) {
+    ok &= expect_overlay_text_slot(last_index,
+                                   "last near-cap binding after second restore");
+  }
+  ok &= expect_ok("nearCapCode()", &value);
+  ok &= expect_int_value(value, 7, "near-cap code after second restore");
+  release_value(&value);
 
   leave_temp_workspace(&workspace);
   return ok;
@@ -732,6 +831,7 @@ static int test_decode_failure_after_reset_re_resets_to_base(void) {
     ok = 0;
   }
   ok &= expect_live_objects(14, "base native objects after decode failure");
+  ok &= expect_payload_used(0, "base payload after decode failure");
   ok &= expect_snapshot_present(true, "snapshot preserved after decode failure");
   ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
   ok &= expect_ok("1", &value);

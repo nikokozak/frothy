@@ -17,6 +17,7 @@ endif()
 option(FROTHY_BUILD_HOST "Build the Frothy host runtime." ${FROTHY_BUILD_HOST_DEFAULT})
 set(FROTHY_EVAL_VALUE_CAPACITY 256 CACHE STRING "Frothy evaluator scratch capacity in number of values.")
 set(FROTHY_OBJECT_CAPACITY 128 CACHE STRING "Frothy runtime object and free-span capacity.")
+set(FROTHY_PAYLOAD_CAPACITY 16384 CACHE STRING "Frothy runtime payload arena capacity in bytes.")
 set(FROTHY_SHELL_SOURCE_CAPACITY 2048 CACHE STRING "Frothy multiline shell source capacity in bytes.")
 set(FROTHY_PARSER_BINDING_CAPACITY 128 CACHE STRING "Frothy parser binding capacity.")
 set(FROTHY_PARSER_SCOPE_CAPACITY 32 CACHE STRING "Frothy parser scope capacity.")
@@ -96,6 +97,7 @@ function(frothy_configure_target target)
   target_compile_definitions(${target} PRIVATE
     FROTHY_EVAL_VALUE_CAPACITY=${FROTHY_EVAL_VALUE_CAPACITY}
     FROTHY_OBJECT_CAPACITY=${FROTHY_OBJECT_CAPACITY}
+    FROTHY_PAYLOAD_CAPACITY=${FROTHY_PAYLOAD_CAPACITY}
     FROTHY_SHELL_SOURCE_CAPACITY=${FROTHY_SHELL_SOURCE_CAPACITY}
     FROTHY_PARSER_BINDING_CAPACITY=${FROTHY_PARSER_BINDING_CAPACITY}
     FROTHY_PARSER_SCOPE_CAPACITY=${FROTHY_PARSER_SCOPE_CAPACITY}

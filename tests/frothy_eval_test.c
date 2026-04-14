@@ -5,6 +5,7 @@
 #include "frothy_value.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -148,6 +149,28 @@ static int expect_eval_high_water(size_t expected, const char *label) {
   return 1;
 }
 
+static int expect_payload_used(size_t expected, const char *label) {
+  size_t used = frothy_runtime_payload_used(runtime());
+
+  if (used != expected) {
+    fprintf(stderr, "%s expected payload used %zu, got %zu\n", label, expected,
+            used);
+    return 0;
+  }
+  return 1;
+}
+
+static int expect_payload_high_water(size_t expected, const char *label) {
+  size_t high_water = frothy_runtime_payload_high_water(runtime());
+
+  if (high_water != expected) {
+    fprintf(stderr, "%s expected payload high-water %zu, got %zu\n", label,
+            expected, high_water);
+    return 0;
+  }
+  return 1;
+}
+
 static int test_function_calls_and_blocks(void) {
   frothy_value_t value = frothy_value_make_nil();
   int ok = 1;
@@ -226,6 +249,7 @@ static int test_eval_scratch_limits_and_nested_calls(void) {
 static int test_stable_rebinding_and_reclamation(void) {
   frothy_value_t value = frothy_value_make_nil();
   size_t live_before;
+  size_t payload_before;
   int ok = 1;
 
   reset_frothy_state();
@@ -239,9 +263,11 @@ static int test_stable_rebinding_and_reclamation(void) {
   release_value(&value);
 
   live_before = frothy_runtime_live_object_count(runtime());
+  payload_before = frothy_runtime_payload_used(runtime());
   ok &= expect_ok("adder = fn(x) { x + 2 }", &value);
   release_value(&value);
   ok &= expect_live_objects(live_before, "code slot rebind");
+  ok &= expect_payload_used(payload_before, "code slot rebind payload");
   ok &= expect_ok("apply(10)", &value);
   ok &= expect_int_value(value, 12, "apply(10) after rebind");
   release_value(&value);
@@ -255,9 +281,11 @@ static int test_stable_rebinding_and_reclamation(void) {
   release_value(&value);
 
   live_before = frothy_runtime_live_object_count(runtime());
+  payload_before = frothy_runtime_payload_used(runtime());
   ok &= expect_ok("label = \"two\"", &value);
   release_value(&value);
   ok &= expect_live_objects(live_before, "text slot rebind");
+  ok &= expect_payload_used(payload_before, "text slot rebind payload");
   ok &= expect_ok("reader()", &value);
   ok &= expect_text_value(value, "two", "reader() after rebind");
   release_value(&value);
@@ -559,21 +587,72 @@ static int test_spoken_ledger_surface_and_control_forms(void) {
 
 static int test_temporary_results_release_cleanly(void) {
   frothy_value_t value = frothy_value_make_nil();
+  size_t high_water = 0;
   int ok = 1;
 
   reset_frothy_state();
 
   ok &= expect_live_objects(0, "fresh runtime");
+  ok &= expect_payload_used(0, "fresh payload");
   ok &= expect_ok("\"temp\"", &value);
   ok &= expect_text_value(value, "temp", "temporary text");
   ok &= expect_live_objects(1, "temporary text retained by caller");
+  if (frothy_runtime_payload_used(runtime()) == 0) {
+    fprintf(stderr, "temporary text should consume payload\n");
+    ok = 0;
+  }
   release_value(&value);
   ok &= expect_live_objects(0, "temporary text released");
+  ok &= expect_payload_used(0, "temporary text payload released");
 
   ok &= expect_ok("fn() { 1 }", &value);
   ok &= expect_live_objects(1, "temporary code retained by caller");
+  if (frothy_runtime_payload_used(runtime()) == 0) {
+    fprintf(stderr, "temporary code should consume payload\n");
+    ok = 0;
+  }
+  high_water = frothy_runtime_payload_high_water(runtime());
+  if (high_water == 0) {
+    fprintf(stderr, "temporary code should raise payload high-water\n");
+    ok = 0;
+  }
   release_value(&value);
   ok &= expect_live_objects(0, "temporary code released");
+  ok &= expect_payload_used(0, "temporary code payload released");
+
+  return ok;
+}
+
+static int test_code_payload_reuse_with_factory_churn(void) {
+  frothy_value_t value = frothy_value_make_nil();
+  size_t baseline_payload = 0;
+  size_t first_high_water = 0;
+  size_t i;
+  int ok = 1;
+
+  reset_frothy_state();
+
+  ok &= expect_ok("factory = fn() { fn() { 1 } }", &value);
+  release_value(&value);
+  baseline_payload = frothy_runtime_payload_used(runtime());
+  frothy_runtime_debug_reset_high_water(runtime());
+
+  ok &= expect_ok("factory()", &value);
+  first_high_water = frothy_runtime_payload_high_water(runtime());
+  if (first_high_water == 0) {
+    fprintf(stderr, "factory() should allocate payload for returned code\n");
+    ok = 0;
+  }
+  release_value(&value);
+  ok &= expect_payload_used(baseline_payload, "factory churn baseline");
+
+  for (i = 0; i < 32 && ok; i++) {
+    ok &= expect_ok("factory()", &value);
+    release_value(&value);
+    ok &= expect_payload_used(baseline_payload, "factory churn payload reuse");
+    ok &= expect_payload_high_water(first_high_water,
+                                    "factory churn high-water reuse");
+  }
 
   return ok;
 }
@@ -587,10 +666,12 @@ static int test_allocator_failure_cleanup(void) {
   frothy_runtime_test_fail_next_append(runtime());
   ok &= expect_error("\"boom\"", FROTH_ERROR_HEAP_OUT_OF_MEMORY);
   ok &= expect_live_objects(0, "text append failure");
+  ok &= expect_payload_used(0, "text append payload cleanup");
 
   frothy_runtime_test_fail_next_append(runtime());
   ok &= expect_error("fn() { 1 }", FROTH_ERROR_HEAP_OUT_OF_MEMORY);
   ok &= expect_live_objects(0, "code append failure");
+  ok &= expect_payload_used(0, "code append payload cleanup");
 
   frothy_runtime_test_fail_next_append(runtime());
   ok &= expect_error("frame = cells(2)", FROTH_ERROR_HEAP_OUT_OF_MEMORY);
@@ -609,6 +690,89 @@ static int test_allocator_failure_cleanup(void) {
   ok &= expect_error("\"two\"", FROTH_ERROR_HEAP_OUT_OF_MEMORY);
   ok &= expect_live_objects(1, "object limit cleanup");
 
+  return ok;
+}
+
+static size_t test_payload_align_up(size_t value) {
+  const size_t alignment = _Alignof(max_align_t);
+  size_t remainder = value % alignment;
+
+  if (remainder == 0) {
+    return value;
+  }
+  return value + (alignment - remainder);
+}
+
+static int test_payload_capacity_and_fragmentation(void) {
+  frothy_payload_span_t spans[256];
+  frothy_payload_span_t reused = {0};
+  void *data = NULL;
+  size_t count = 0;
+  size_t i;
+  size_t chunk = test_payload_align_up(_Alignof(max_align_t) * 8);
+  size_t expected_used = 0;
+  int ok = 1;
+
+  reset_frothy_state();
+  memset(spans, 0, sizeof(spans));
+
+  while (count < (sizeof(spans) / sizeof(spans[0])) &&
+         frothy_runtime_alloc_payload(runtime(), chunk, &spans[count], &data) ==
+             FROTH_OK) {
+    memset(data, 0, chunk);
+    expected_used += spans[count].length;
+    count++;
+  }
+
+  if (count < 3) {
+    fprintf(stderr, "payload fill expected at least three spans, got %zu\n",
+            count);
+    ok = 0;
+    goto cleanup;
+  }
+  ok &= expect_payload_used(expected_used, "payload fill used");
+
+  if (frothy_runtime_alloc_payload(runtime(), chunk, &reused, &data) !=
+      FROTH_ERROR_HEAP_OUT_OF_MEMORY) {
+    fprintf(stderr, "payload fill expected heap out of memory at capacity\n");
+    ok = 0;
+  }
+
+  frothy_runtime_release_payload(runtime(), spans[count / 2]);
+  expected_used -= spans[count / 2].length;
+  spans[count / 2].length = 0;
+  ok &= expect_payload_used(expected_used, "payload release used");
+
+  if (frothy_runtime_alloc_payload(runtime(), chunk / 2, &reused, &data) !=
+      FROTH_OK) {
+    fprintf(stderr, "payload fragmentation expected smaller span reuse\n");
+    ok = 0;
+  } else {
+    memset(data, 0, chunk / 2);
+    expected_used += reused.length;
+    ok &= expect_payload_used(expected_used, "payload reuse used");
+    frothy_runtime_release_payload(runtime(), reused);
+    expected_used -= reused.length;
+    reused.length = 0;
+    ok &= expect_payload_used(expected_used, "payload reuse release used");
+  }
+
+  if (frothy_runtime_alloc_payload(runtime(), chunk, &reused, &data) !=
+      FROTH_OK) {
+    fprintf(stderr, "payload fragmentation expected merged span reuse\n");
+    ok = 0;
+  } else {
+    memset(data, 0, chunk);
+    expected_used += reused.length;
+    ok &= expect_payload_used(expected_used, "payload merged reuse used");
+  }
+
+cleanup:
+  frothy_runtime_release_payload(runtime(), reused);
+  for (i = 0; i < count; i++) {
+    frothy_runtime_release_payload(runtime(), spans[i]);
+  }
+  ok &= expect_payload_used(0, "payload cleanup");
   return ok;
 }
 
@@ -669,7 +833,9 @@ int main(void) {
   ok &= test_top_level_set_forms();
   ok &= test_spoken_ledger_surface_and_control_forms();
   ok &= test_temporary_results_release_cleanly();
+  ok &= test_code_payload_reuse_with_factory_churn();
   ok &= test_allocator_failure_cleanup();
+  ok &= test_payload_capacity_and_fragmentation();
   ok &= test_object_slot_reuse_at_capacity();
 
   return ok ? 0 : 1;

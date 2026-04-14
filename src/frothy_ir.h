@@ -3,6 +3,7 @@
 #include "froth_types.h"
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 typedef size_t frothy_ir_node_id_t;
 typedef size_t frothy_ir_literal_id_t;
@@ -20,6 +21,11 @@ typedef size_t frothy_ir_literal_id_t;
 #endif
 
 #define FROTHY_IR_NODE_INVALID ((frothy_ir_node_id_t)SIZE_MAX)
+
+typedef enum {
+  FROTHY_IR_STORAGE_DYNAMIC = 0,
+  FROTHY_IR_STORAGE_VIEW = 1,
+} frothy_ir_storage_kind_t;
 
 typedef enum {
   FROTHY_IR_LITERAL_INT = 0,
@@ -143,6 +149,11 @@ typedef struct {
 
   frothy_ir_node_id_t root;
   size_t root_local_count;
+
+  /* Internal packed-storage metadata for runtime/snapshot ownership paths. */
+  frothy_ir_storage_kind_t storage_kind;
+  void *storage_base;
+  size_t storage_size;
 } frothy_ir_program_t;
 
 void frothy_ir_program_init(frothy_ir_program_t *program);

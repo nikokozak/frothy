@@ -125,17 +125,19 @@ static froth_error_t frothy_inspect_render_binding_name(
   return frothy_inspect_render_binding(runtime, name, &binding, out_text);
 }
 
-static froth_error_t frothy_inspect_render_core_binding_name(
-    frothy_runtime_t *runtime, const char *name, char **out_text) {
+froth_error_t frothy_inspect_render_binding_text(
+    frothy_runtime_t *runtime, const char *name,
+    frothy_inspect_render_mode_t mode, char **out_text) {
   frothy_inspect_binding_t binding;
 
   FROTH_TRY(frothy_inspect_resolve_binding(runtime, name, &binding));
-  if (binding.value_class == FROTHY_VALUE_CLASS_CODE) {
+  if (mode == FROTHY_INSPECT_RENDER_CORE &&
+      binding.value_class == FROTHY_VALUE_CLASS_CODE) {
     return frothy_ir_render_code(binding.program, binding.body, binding.arity,
                                  binding.local_count, out_text);
   }
 
-  return frothy_value_render(runtime, binding.value, out_text);
+  return frothy_inspect_render_binding(runtime, name, &binding, out_text);
 }
 
 static froth_error_t
@@ -200,8 +202,9 @@ froth_error_t frothy_inspect_render_binding_view(
   FROTH_TRY(frothy_inspect_resolve_binding(runtime, name, &binding));
   view_out->is_overlay = froth_slot_is_overlay(binding.slot_index);
   view_out->value_class = binding.value_class;
-  return frothy_inspect_render_binding(runtime, name, &binding,
-                                       &view_out->rendered);
+  return frothy_inspect_render_binding_text(runtime, name,
+                                            FROTHY_INSPECT_RENDER_SURFACE,
+                                            &view_out->rendered);
 }
 
 void frothy_inspect_binding_view_free(frothy_inspect_binding_view_t *view) {
@@ -296,7 +299,9 @@ froth_error_t frothy_builtin_core(frothy_runtime_t *runtime,
   if (err != FROTH_OK) {
     return err;
   }
-  err = frothy_inspect_render_core_binding_name(runtime, name, &view.rendered);
+  err = frothy_inspect_render_binding_text(runtime, name,
+                                           FROTHY_INSPECT_RENDER_CORE,
+                                           &view.rendered);
   if (err != FROTH_OK) {
     return err;
   }

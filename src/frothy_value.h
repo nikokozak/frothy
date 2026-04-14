@@ -19,6 +19,10 @@
 #define FROTHY_OBJECT_CAPACITY 128
 #endif
 
+#ifndef FROTHY_PAYLOAD_CAPACITY
+#define FROTHY_PAYLOAD_CAPACITY 16384
+#endif
+
 typedef uint32_t frothy_value_t;
 
 typedef struct frothy_runtime_t frothy_runtime_t;
@@ -53,18 +57,24 @@ typedef struct {
 } frothy_cells_span_t;
 
 typedef struct {
+  size_t offset;
+  size_t length;
+} frothy_payload_span_t;
+
+typedef struct {
   frothy_object_kind_t kind;
   uint32_t refcount;
   bool live;
   union {
     struct {
-      char *bytes;
+      frothy_payload_span_t payload;
       size_t length;
     } text;
     struct {
       frothy_cells_span_t span;
     } cells;
     struct {
+      frothy_payload_span_t payload;
       size_t arity;
       size_t local_count;
       frothy_ir_node_id_t body;
@@ -90,6 +100,14 @@ struct frothy_runtime_t {
   size_t free_span_count;
   size_t free_span_capacity;
 
+  frothy_payload_span_t *payload_free_spans;
+  size_t payload_free_span_count;
+  size_t payload_free_span_capacity;
+  size_t payload_capacity;
+  size_t payload_extent;
+  size_t payload_bytes_used;
+  size_t payload_bytes_high_water;
+
   frothy_value_t *eval_values;
   size_t eval_value_capacity;
   size_t eval_value_limit;
@@ -104,6 +122,11 @@ struct frothy_runtime_t {
 
   frothy_object_t object_storage[FROTHY_OBJECT_CAPACITY];
   frothy_cells_span_t free_span_storage[FROTHY_OBJECT_CAPACITY];
+  frothy_payload_span_t payload_free_span_storage[FROTHY_OBJECT_CAPACITY];
+  union {
+    max_align_t align;
+    uint8_t bytes[FROTHY_PAYLOAD_CAPACITY];
+  } payload_storage;
   frothy_value_t eval_value_storage[FROTHY_EVAL_VALUE_CAPACITY];
 };
 
@@ -114,6 +137,8 @@ froth_error_t frothy_runtime_clear_overlay_state(frothy_runtime_t *runtime);
 size_t frothy_runtime_live_object_count(const frothy_runtime_t *runtime);
 size_t frothy_runtime_object_high_water(const frothy_runtime_t *runtime);
 size_t frothy_runtime_eval_value_high_water(const frothy_runtime_t *runtime);
+size_t frothy_runtime_payload_used(const frothy_runtime_t *runtime);
+size_t frothy_runtime_payload_high_water(const frothy_runtime_t *runtime);
 void frothy_runtime_debug_reset_high_water(frothy_runtime_t *runtime);
 void frothy_runtime_test_set_object_limit(frothy_runtime_t *runtime, size_t limit);
 void frothy_runtime_test_set_eval_value_limit(frothy_runtime_t *runtime,
@@ -161,10 +186,24 @@ froth_error_t frothy_runtime_get_cells(const frothy_runtime_t *runtime,
                                        frothy_value_t value, size_t *length_out,
                                        froth_cell_t *base_out);
 
+/* Internal persistent-payload helpers for packed text/code ownership. */
+froth_error_t frothy_runtime_alloc_payload(frothy_runtime_t *runtime,
+                                           size_t length,
+                                           frothy_payload_span_t *span_out,
+                                           void **data_out);
+void frothy_runtime_release_payload(frothy_runtime_t *runtime,
+                                    frothy_payload_span_t span);
+
 froth_error_t frothy_runtime_alloc_code(frothy_runtime_t *runtime,
                                         const frothy_ir_program_t *program,
                                         frothy_ir_node_id_t body, size_t arity,
                                         size_t local_count, frothy_value_t *out);
+froth_error_t frothy_runtime_alloc_packed_code(frothy_runtime_t *runtime,
+                                               const frothy_ir_program_t *program,
+                                               frothy_ir_node_id_t body,
+                                               size_t arity,
+                                               size_t local_count,
+                                               frothy_value_t *out);
 froth_error_t frothy_runtime_get_code(const frothy_runtime_t *runtime,
                                       frothy_value_t value,
                                       const frothy_ir_program_t **program_out,

@@ -88,6 +88,82 @@ static froth_error_t frothy_ir_render_node(const frothy_ir_program_t *program,
                                            frothy_ir_node_id_t node_id,
                                            frothy_string_builder_t *builder);
 
+static size_t frothy_ir_align_up(size_t value, size_t alignment) {
+  size_t remainder;
+
+  if (alignment == 0) {
+    return value;
+  }
+
+  remainder = value % alignment;
+  if (remainder == 0) {
+    return value;
+  }
+  return value + (alignment - remainder);
+}
+
+static froth_error_t frothy_ir_add_size(size_t lhs, size_t rhs, size_t *out) {
+  if (lhs > SIZE_MAX - rhs) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+  }
+
+  *out = lhs + rhs;
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_ir_copy_packed_string(const char *text,
+                                                  uint8_t **cursor,
+                                                  const uint8_t *end,
+                                                  char **out) {
+  size_t length;
+
+  if (text == NULL) {
+    return FROTH_ERROR_SIGNATURE;
+  }
+
+  length = strlen(text) + 1;
+  if ((size_t)(end - *cursor) < length) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+  }
+
+  memcpy(*cursor, text, length);
+  *out = (char *)*cursor;
+  *cursor += length;
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_ir_program_string_bytes(
+    const frothy_ir_program_t *program, size_t *string_bytes_out) {
+  size_t string_bytes = 0;
+  size_t i;
+
+  for (i = 0; i < program->literal_count; i++) {
+    if (program->literals[i].kind != FROTHY_IR_LITERAL_TEXT) {
+      continue;
+    }
+    FROTH_TRY(frothy_ir_add_size(string_bytes,
+                                 strlen(program->literals[i].as.text_value) + 1,
+                                 &string_bytes));
+  }
+
+  for (i = 0; i < program->node_count; i++) {
+    const frothy_ir_node_t *node = &program->nodes[i];
+
+    if (node->kind == FROTHY_IR_NODE_READ_SLOT) {
+      FROTH_TRY(frothy_ir_add_size(
+          string_bytes, strlen(node->as.read_slot.slot_name) + 1,
+          &string_bytes));
+    } else if (node->kind == FROTHY_IR_NODE_WRITE_SLOT) {
+      FROTH_TRY(frothy_ir_add_size(
+          string_bytes, strlen(node->as.write_slot.slot_name) + 1,
+          &string_bytes));
+    }
+  }
+
+  *string_bytes_out = string_bytes;
+  return FROTH_OK;
+}
+
 static froth_error_t
 frothy_ir_render_quoted(const char *text, frothy_string_builder_t *builder) {
   const unsigned char *cursor = (const unsigned char *)text;
@@ -819,12 +895,18 @@ frothy_ir_render_surface_block(const frothy_surface_render_t *render,
 void frothy_ir_program_init(frothy_ir_program_t *program) {
   memset(program, 0, sizeof(*program));
   program->root = FROTHY_IR_NODE_INVALID;
+  program->storage_kind = FROTHY_IR_STORAGE_DYNAMIC;
 }
 
 void frothy_ir_program_free(frothy_ir_program_t *program) {
   size_t i;
 
   if (program == NULL) {
+    return;
+  }
+
+  if (program->storage_kind == FROTHY_IR_STORAGE_VIEW) {
+    frothy_ir_program_init(program);
     return;
   }
 
@@ -846,6 +928,103 @@ void frothy_ir_program_free(frothy_ir_program_t *program) {
   free(program->nodes);
   free(program->links);
   frothy_ir_program_init(program);
+}
+
+froth_error_t frothy_ir_program_packed_size(size_t literal_count,
+                                            size_t node_count,
+                                            size_t link_count,
+                                            size_t string_bytes,
+                                            size_t *size_out) {
+  size_t size = 0;
+
+  if (literal_count > 0) {
+    size = frothy_ir_align_up(size, _Alignof(frothy_ir_literal_t));
+    FROTH_TRY(frothy_ir_add_size(size,
+                                 literal_count * sizeof(frothy_ir_literal_t),
+                                 &size));
+  }
+  if (node_count > 0) {
+    size = frothy_ir_align_up(size, _Alignof(frothy_ir_node_t));
+    FROTH_TRY(frothy_ir_add_size(size,
+                                 node_count * sizeof(frothy_ir_node_t), &size));
+  }
+  if (link_count > 0) {
+    size = frothy_ir_align_up(size, _Alignof(frothy_ir_node_id_t));
+    FROTH_TRY(frothy_ir_add_size(size,
+                                 link_count * sizeof(frothy_ir_node_id_t),
+                                 &size));
+  }
+  FROTH_TRY(frothy_ir_add_size(size, string_bytes, &size));
+  *size_out = size;
+  return FROTH_OK;
+}
+
+froth_error_t frothy_ir_program_clone_packed_size(
+    const frothy_ir_program_t *source, size_t *size_out) {
+  size_t string_bytes = 0;
+
+  FROTH_TRY(frothy_ir_program_string_bytes(source, &string_bytes));
+  return frothy_ir_program_packed_size(source->literal_count, source->node_count,
+                                       source->link_count, string_bytes,
+                                       size_out);
+}
+
+froth_error_t frothy_ir_program_init_packed_view(
+    frothy_ir_program_t *program, void *storage, size_t storage_size,
+    size_t literal_count, size_t node_count, size_t link_count,
+    uint8_t **string_cursor_out, uint8_t **storage_end_out) {
+  uint8_t *base = (uint8_t *)storage;
+  size_t cursor = 0;
+  size_t array_bytes = 0;
+
+  FROTH_TRY(frothy_ir_program_packed_size(literal_count, node_count, link_count,
+                                          0, &array_bytes));
+  if (storage_size < array_bytes) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+  }
+
+  frothy_ir_program_init(program);
+  if (storage_size > 0 && base == NULL) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  if (storage_size > 0) {
+    memset(base, 0, storage_size);
+  }
+
+  program->storage_kind = FROTHY_IR_STORAGE_VIEW;
+  program->storage_base = storage;
+  program->storage_size = storage_size;
+  program->literal_count = literal_count;
+  program->literal_capacity = literal_count;
+  program->node_count = node_count;
+  program->node_capacity = node_count;
+  program->link_count = link_count;
+  program->link_capacity = link_count;
+
+  if (literal_count > 0) {
+    cursor = frothy_ir_align_up(cursor, _Alignof(frothy_ir_literal_t));
+    program->literals = (frothy_ir_literal_t *)(base + cursor);
+    cursor += literal_count * sizeof(*program->literals);
+  }
+  if (node_count > 0) {
+    cursor = frothy_ir_align_up(cursor, _Alignof(frothy_ir_node_t));
+    program->nodes = (frothy_ir_node_t *)(base + cursor);
+    cursor += node_count * sizeof(*program->nodes);
+  }
+  if (link_count > 0) {
+    cursor = frothy_ir_align_up(cursor, _Alignof(frothy_ir_node_id_t));
+    program->links = (frothy_ir_node_id_t *)(base + cursor);
+    cursor += link_count * sizeof(*program->links);
+  }
+
+  if (string_cursor_out != NULL) {
+    *string_cursor_out = base + cursor;
+  }
+  if (storage_end_out != NULL) {
+    *storage_end_out = base + storage_size;
+  }
+  return FROTH_OK;
 }
 
 froth_error_t frothy_ir_program_clone(const frothy_ir_program_t *source,
@@ -918,6 +1097,62 @@ froth_error_t frothy_ir_program_clone(const frothy_ir_program_t *source,
     memcpy(dest->links, source->links, source->link_count * sizeof(*dest->links));
     dest->link_count = source->link_count;
     dest->link_capacity = source->link_count;
+  }
+
+  return FROTH_OK;
+}
+
+froth_error_t frothy_ir_program_clone_packed(const frothy_ir_program_t *source,
+                                             void *storage,
+                                             size_t storage_size,
+                                             frothy_ir_program_t *dest) {
+  uint8_t *string_cursor = NULL;
+  uint8_t *storage_end = NULL;
+  size_t needed = 0;
+  size_t i;
+
+  FROTH_TRY(frothy_ir_program_clone_packed_size(source, &needed));
+  if (storage_size < needed) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+  }
+
+  FROTH_TRY(frothy_ir_program_init_packed_view(
+      dest, storage, storage_size, source->literal_count, source->node_count,
+      source->link_count, &string_cursor, &storage_end));
+  dest->root = source->root;
+  dest->root_local_count = source->root_local_count;
+
+  if (source->literal_count > 0) {
+    memcpy(dest->literals, source->literals,
+           source->literal_count * sizeof(*dest->literals));
+  }
+  if (source->node_count > 0) {
+    memcpy(dest->nodes, source->nodes, source->node_count * sizeof(*dest->nodes));
+  }
+  if (source->link_count > 0) {
+    memcpy(dest->links, source->links,
+           source->link_count * sizeof(*dest->links));
+  }
+
+  for (i = 0; i < source->literal_count; i++) {
+    if (source->literals[i].kind != FROTHY_IR_LITERAL_TEXT) {
+      continue;
+    }
+    FROTH_TRY(frothy_ir_copy_packed_string(source->literals[i].as.text_value,
+                                           &string_cursor, storage_end,
+                                           &dest->literals[i].as.text_value));
+  }
+
+  for (i = 0; i < source->node_count; i++) {
+    if (source->nodes[i].kind == FROTHY_IR_NODE_READ_SLOT) {
+      FROTH_TRY(frothy_ir_copy_packed_string(
+          source->nodes[i].as.read_slot.slot_name, &string_cursor, storage_end,
+          &dest->nodes[i].as.read_slot.slot_name));
+    } else if (source->nodes[i].kind == FROTHY_IR_NODE_WRITE_SLOT) {
+      FROTH_TRY(frothy_ir_copy_packed_string(
+          source->nodes[i].as.write_slot.slot_name, &string_cursor, storage_end,
+          &dest->nodes[i].as.write_slot.slot_name));
+    }
   }
 
   return FROTH_OK;

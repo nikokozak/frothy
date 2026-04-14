@@ -20,6 +20,13 @@ file is wrong.
 
 ## Recent Landed Work
 
+- The 2026-04-13 runtime persistent-payload hardening tranche is landed:
+  live `Text` bytes and runtime `Code` program bodies now live in one
+  runtime-owned payload arena, runtime code clones are packed into one payload
+  block instead of segmented heap children, snapshot restore decodes code
+  directly into arena-backed storage instead of heap decode plus re-clone, and
+  the focused `parser`/`eval`/`snapshot`/`ffi` gate plus
+  `frothy_runtime_bench` now pin payload used/high-water behavior.
 - Next-stage language definition is closed on 2026-04-13:
   `docs/spec/Frothy_Language_Spec_vNext.md`,
   `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md`, and Frothy ADR-114 now
@@ -155,10 +162,11 @@ file is wrong.
   incoming follow-on.
 - Syntax tranche 1 is now closed on top of the landed runtime baseline, and
   the immediate control hardening plus reset slice is closed on top of that.
-- Runtime hardening is now landed. The next bounded-memory follow-on is the
-  remaining persistent payload surface: text bytes and cloned IR program
-  bodies. Parser growth, snapshot codec work buffers, and shell source
-  accumulation are now bounded in tree.
+- The bounded-memory runtime hardening queue is now landed in tree:
+  evaluator scratch, runtime object/free-span metadata, parser/canonical-IR
+  growth, shell source accumulation, snapshot codec work buffers, and runtime
+  text/code payload ownership are all explicit. The next queued artifact
+  remains CLI naming alignment, not another runtime memory-surface reopen.
 - Transport work should simplify ownership and framing. ADR-110 replaces the
   inherited daemon-plus-mux direction with a direct single-owner control
   session.

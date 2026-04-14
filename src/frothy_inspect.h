@@ -10,6 +10,11 @@ typedef struct {
   char *rendered;
 } frothy_inspect_binding_view_t;
 
+typedef enum {
+  FROTHY_INSPECT_RENDER_SURFACE = 0,
+  FROTHY_INSPECT_RENDER_CORE = 1,
+} frothy_inspect_render_mode_t;
+
 const char *frothy_inspect_class_name(frothy_value_class_t value_class);
 const char *frothy_inspect_persistability_name(
     frothy_value_class_t value_class);
@@ -18,6 +23,9 @@ const char *frothy_inspect_ownership_name(frothy_value_class_t value_class);
 froth_error_t frothy_inspect_collect_words(const char ***names_out,
                                            size_t *count_out);
 void frothy_inspect_free_words(const char **names);
+froth_error_t frothy_inspect_render_binding_text(
+    frothy_runtime_t *runtime, const char *name,
+    frothy_inspect_render_mode_t mode, char **out_text);
 froth_error_t frothy_inspect_render_binding_view(
     frothy_runtime_t *runtime, const char *name,
     frothy_inspect_binding_view_t *view_out);

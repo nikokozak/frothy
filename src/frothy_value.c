@@ -1,5 +1,6 @@
 #include "frothy_value.h"
 
+#include "frothy_ir_internal.h"
 #include "froth_slot_table.h"
 
 #include <stdarg.h>
@@ -157,6 +158,156 @@ static froth_error_t frothy_quote_text(const char *text, size_t length,
   return FROTH_OK;
 }
 
+static size_t frothy_payload_align_up(size_t value) {
+  const size_t alignment = _Alignof(max_align_t);
+  size_t remainder = value % alignment;
+
+  if (remainder == 0) {
+    return value;
+  }
+  return value + (alignment - remainder);
+}
+
+static void *frothy_runtime_payload_ptr(frothy_runtime_t *runtime,
+                                        size_t offset) {
+  return runtime->payload_storage.bytes + offset;
+}
+
+static const void *frothy_runtime_payload_const_ptr(
+    const frothy_runtime_t *runtime, size_t offset) {
+  return runtime->payload_storage.bytes + offset;
+}
+
+static void frothy_runtime_add_payload_free_span(frothy_runtime_t *runtime,
+                                                 size_t offset,
+                                                 size_t length) {
+  size_t insert;
+  size_t i;
+
+  if (length == 0) {
+    return;
+  }
+
+  insert = 0;
+  while (insert < runtime->payload_free_span_count &&
+         runtime->payload_free_spans[insert].offset < offset) {
+    insert++;
+  }
+
+  memmove(runtime->payload_free_spans + insert + 1,
+          runtime->payload_free_spans + insert,
+          (runtime->payload_free_span_count - insert) *
+              sizeof(*runtime->payload_free_spans));
+  runtime->payload_free_spans[insert].offset = offset;
+  runtime->payload_free_spans[insert].length = length;
+  runtime->payload_free_span_count++;
+
+  for (i = 1; i < runtime->payload_free_span_count; i++) {
+    frothy_payload_span_t *prev = &runtime->payload_free_spans[i - 1];
+    frothy_payload_span_t *current = &runtime->payload_free_spans[i];
+    size_t prev_end = prev->offset + prev->length;
+    size_t current_end = current->offset + current->length;
+
+    if (prev_end < current->offset) {
+      continue;
+    }
+
+    if (current_end > prev_end) {
+      prev->length = current_end - prev->offset;
+    }
+    memmove(current, current + 1,
+            (runtime->payload_free_span_count - i - 1) * sizeof(*current));
+    runtime->payload_free_span_count--;
+    i--;
+  }
+
+  while (runtime->payload_free_span_count > 0) {
+    frothy_payload_span_t *tail =
+        &runtime->payload_free_spans[runtime->payload_free_span_count - 1];
+
+    if (tail->offset + tail->length != runtime->payload_extent) {
+      break;
+    }
+
+    runtime->payload_extent = tail->offset;
+    runtime->payload_free_span_count--;
+  }
+}
+
+static bool frothy_runtime_take_payload_free_span(frothy_runtime_t *runtime,
+                                                  size_t length,
+                                                  size_t *offset_out) {
+  size_t i;
+
+  for (i = 0; i < runtime->payload_free_span_count; i++) {
+    frothy_payload_span_t *span = &runtime->payload_free_spans[i];
+
+    if (span->length < length) {
+      continue;
+    }
+
+    *offset_out = span->offset;
+    span->offset += length;
+    span->length -= length;
+    if (span->length == 0) {
+      memmove(span, span + 1,
+              (runtime->payload_free_span_count - i - 1) * sizeof(*span));
+      runtime->payload_free_span_count--;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+froth_error_t frothy_runtime_alloc_payload(frothy_runtime_t *runtime,
+                                           size_t length,
+                                           frothy_payload_span_t *span_out,
+                                           void **data_out) {
+  size_t reserved = frothy_payload_align_up(length);
+  size_t offset = 0;
+
+  if (span_out == NULL || data_out == NULL) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  span_out->offset = 0;
+  span_out->length = 0;
+  *data_out = NULL;
+  if (reserved == 0) {
+    return FROTH_OK;
+  }
+
+  if (!frothy_runtime_take_payload_free_span(runtime, reserved, &offset)) {
+    if (reserved > runtime->payload_capacity ||
+        runtime->payload_extent > runtime->payload_capacity - reserved) {
+      return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+    }
+    offset = runtime->payload_extent;
+    runtime->payload_extent += reserved;
+  }
+
+  runtime->payload_bytes_used += reserved;
+  if (runtime->payload_bytes_used > runtime->payload_bytes_high_water) {
+    runtime->payload_bytes_high_water = runtime->payload_bytes_used;
+  }
+
+  span_out->offset = offset;
+  span_out->length = reserved;
+  *data_out = frothy_runtime_payload_ptr(runtime, offset);
+  return FROTH_OK;
+}
+
+void frothy_runtime_release_payload(frothy_runtime_t *runtime,
+                                    frothy_payload_span_t span) {
+  if (span.length == 0) {
+    return;
+  }
+
+  runtime->payload_bytes_used -= span.length;
+  frothy_runtime_add_payload_free_span(runtime, span.offset, span.length);
+}
+
 static froth_error_t frothy_runtime_reserve_objects(frothy_runtime_t *runtime,
                                                     size_t needed) {
   if (needed <= runtime->object_capacity) {
@@ -255,12 +406,16 @@ static void frothy_runtime_discard_object(frothy_runtime_t *runtime,
 
   switch (object->kind) {
   case FROTHY_OBJECT_TEXT:
-    free(object->as.text.bytes);
+    frothy_runtime_release_payload(runtime, object->as.text.payload);
     break;
   case FROTHY_OBJECT_CELLS:
     break;
   case FROTHY_OBJECT_CODE:
-    frothy_ir_program_free(&object->as.code.program);
+    if (object->as.code.payload.length > 0) {
+      frothy_runtime_release_payload(runtime, object->as.code.payload);
+    } else {
+      frothy_ir_program_free(&object->as.code.program);
+    }
     break;
   case FROTHY_OBJECT_NATIVE:
   case FROTHY_OBJECT_FREE:
@@ -354,7 +509,7 @@ static froth_error_t frothy_runtime_clear_live_object(frothy_runtime_t *runtime,
 
   switch (object->kind) {
   case FROTHY_OBJECT_TEXT:
-    free(object->as.text.bytes);
+    frothy_runtime_release_payload(runtime, object->as.text.payload);
     break;
   case FROTHY_OBJECT_CELLS:
     base = object->as.cells.span.base;
@@ -368,7 +523,11 @@ static froth_error_t frothy_runtime_clear_live_object(frothy_runtime_t *runtime,
     frothy_runtime_add_free_span(runtime, base, length);
     break;
   case FROTHY_OBJECT_CODE:
-    frothy_ir_program_free(&object->as.code.program);
+    if (object->as.code.payload.length > 0) {
+      frothy_runtime_release_payload(runtime, object->as.code.payload);
+    } else {
+      frothy_ir_program_free(&object->as.code.program);
+    }
     break;
   case FROTHY_OBJECT_NATIVE:
   case FROTHY_OBJECT_FREE:
@@ -386,6 +545,9 @@ void frothy_runtime_init(frothy_runtime_t *runtime, froth_cellspace_t *cellspace
   runtime->object_capacity = FROTHY_OBJECT_CAPACITY;
   runtime->free_spans = runtime->free_span_storage;
   runtime->free_span_capacity = FROTHY_OBJECT_CAPACITY;
+  runtime->payload_free_spans = runtime->payload_free_span_storage;
+  runtime->payload_free_span_capacity = FROTHY_OBJECT_CAPACITY;
+  runtime->payload_capacity = FROTHY_PAYLOAD_CAPACITY;
   runtime->eval_values = runtime->eval_value_storage;
   runtime->eval_value_capacity = FROTHY_EVAL_VALUE_CAPACITY;
   runtime->eval_value_limit = FROTHY_EVAL_VALUE_CAPACITY;
@@ -444,6 +606,10 @@ froth_error_t frothy_runtime_clear_overlay_state(frothy_runtime_t *runtime) {
 
   runtime->object_count = 0;
   runtime->free_span_count = 0;
+  runtime->payload_free_span_count = 0;
+  runtime->payload_extent = 0;
+  runtime->payload_bytes_used = 0;
+  runtime->payload_bytes_high_water = 0;
   runtime->live_object_count = 0;
   runtime->object_high_water = 0;
   runtime->test_fail_next_append = false;
@@ -465,9 +631,18 @@ size_t frothy_runtime_eval_value_high_water(const frothy_runtime_t *runtime) {
   return runtime->eval_value_high_water;
 }
 
+size_t frothy_runtime_payload_used(const frothy_runtime_t *runtime) {
+  return runtime->payload_bytes_used;
+}
+
+size_t frothy_runtime_payload_high_water(const frothy_runtime_t *runtime) {
+  return runtime->payload_bytes_high_water;
+}
+
 void frothy_runtime_debug_reset_high_water(frothy_runtime_t *runtime) {
   runtime->object_high_water = 0;
   runtime->eval_value_high_water = 0;
+  runtime->payload_bytes_high_water = 0;
 }
 
 void frothy_runtime_test_set_object_limit(frothy_runtime_t *runtime,
@@ -609,8 +784,10 @@ froth_error_t frothy_value_render(const frothy_runtime_t *runtime,
     object = &runtime->objects[object_id];
     switch (object->kind) {
     case FROTHY_OBJECT_TEXT:
-      return frothy_quote_text(object->as.text.bytes, object->as.text.length,
-                               out_text);
+      return frothy_quote_text(
+          (const char *)frothy_runtime_payload_const_ptr(
+              runtime, object->as.text.payload.offset),
+          object->as.text.length, out_text);
     case FROTHY_OBJECT_CELLS:
       return frothy_strdup_printf(out_text, "<cells %d>",
                                   object->as.cells.span.length);
@@ -711,19 +888,23 @@ froth_error_t frothy_runtime_alloc_text(frothy_runtime_t *runtime,
                                         const char *text, size_t length,
                                         frothy_value_t *out) {
   frothy_object_t object;
+  void *bytes = NULL;
   froth_error_t err;
 
   memset(&object, 0, sizeof(object));
   object.kind = FROTHY_OBJECT_TEXT;
-  err = frothy_strdup(text, length, &object.as.text.bytes);
+  err = frothy_runtime_alloc_payload(runtime, length + 1, &object.as.text.payload,
+                                     &bytes);
   if (err != FROTH_OK) {
     return err;
   }
+  memcpy(bytes, text, length);
+  ((char *)bytes)[length] = '\0';
   object.as.text.length = length;
 
   err = frothy_runtime_append_object(runtime, &object, out);
   if (err != FROTH_OK) {
-    free(object.as.text.bytes);
+    frothy_runtime_release_payload(runtime, object.as.text.payload);
   }
   return err;
 }
@@ -735,7 +916,8 @@ froth_error_t frothy_runtime_get_text(const frothy_runtime_t *runtime,
 
   FROTH_TRY(frothy_runtime_get_object(runtime, value, FROTHY_OBJECT_TEXT,
                                       &object));
-  *text = object->as.text.bytes;
+  *text = (const char *)frothy_runtime_payload_const_ptr(
+      runtime, object->as.text.payload.offset);
   if (length_out != NULL) {
     *length_out = object->as.text.length;
   }
@@ -790,28 +972,94 @@ froth_error_t frothy_runtime_get_cells(const frothy_runtime_t *runtime,
   return FROTH_OK;
 }
 
+static froth_error_t frothy_runtime_code_payload_from_view(
+    const frothy_runtime_t *runtime, const frothy_ir_program_t *program,
+    frothy_payload_span_t *payload_out) {
+  const uint8_t *base = (const uint8_t *)program->storage_base;
+  const uint8_t *payload_base = runtime->payload_storage.bytes;
+  size_t offset;
+
+  if (program->storage_kind != FROTHY_IR_STORAGE_VIEW || payload_out == NULL) {
+    return FROTH_ERROR_BOUNDS;
+  }
+  if (program->storage_size == 0) {
+    payload_out->offset = 0;
+    payload_out->length = 0;
+    return FROTH_OK;
+  }
+  if (base == NULL || base < payload_base ||
+      base > payload_base + runtime->payload_capacity) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  offset = (size_t)(base - payload_base);
+  if (offset > runtime->payload_capacity ||
+      program->storage_size > runtime->payload_capacity - offset) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  payload_out->offset = offset;
+  payload_out->length = program->storage_size;
+  return FROTH_OK;
+}
+
+froth_error_t frothy_runtime_alloc_packed_code(frothy_runtime_t *runtime,
+                                               const frothy_ir_program_t *program,
+                                               frothy_ir_node_id_t body,
+                                               size_t arity,
+                                               size_t local_count,
+                                               frothy_value_t *out) {
+  frothy_object_t object;
+  frothy_payload_span_t payload = {0};
+  froth_error_t err;
+
+  memset(&object, 0, sizeof(object));
+  err = frothy_runtime_code_payload_from_view(runtime, program, &payload);
+  if (err != FROTH_OK) {
+    return err;
+  }
+
+  object.kind = FROTHY_OBJECT_CODE;
+  object.as.code.payload = payload;
+  object.as.code.arity = arity;
+  object.as.code.local_count = local_count;
+  object.as.code.body = body;
+  object.as.code.program = *program;
+  err = frothy_runtime_append_object(runtime, &object, out);
+  if (err != FROTH_OK) {
+    return err;
+  }
+  return FROTH_OK;
+}
+
 froth_error_t frothy_runtime_alloc_code(frothy_runtime_t *runtime,
                                         const frothy_ir_program_t *program,
                                         frothy_ir_node_id_t body, size_t arity,
                                         size_t local_count,
                                         frothy_value_t *out) {
-  frothy_object_t object;
+  frothy_ir_program_t packed_program;
+  frothy_payload_span_t payload;
   froth_error_t err;
+  void *storage = NULL;
 
-  memset(&object, 0, sizeof(object));
-  object.kind = FROTHY_OBJECT_CODE;
-  object.as.code.arity = arity;
-  object.as.code.local_count = local_count;
-  object.as.code.body = body;
-
-  err = frothy_ir_program_clone(program, &object.as.code.program);
+  err = frothy_ir_program_clone_packed_size(program, &payload.length);
   if (err != FROTH_OK) {
     return err;
   }
-
-  err = frothy_runtime_append_object(runtime, &object, out);
+  err = frothy_runtime_alloc_payload(runtime, payload.length, &payload, &storage);
   if (err != FROTH_OK) {
-    frothy_ir_program_free(&object.as.code.program);
+    return err;
+  }
+  err = frothy_ir_program_clone_packed(program, storage, payload.length,
+                                       &packed_program);
+  if (err != FROTH_OK) {
+    frothy_runtime_release_payload(runtime, payload);
+    return err;
+  }
+  err = frothy_runtime_alloc_packed_code(runtime, &packed_program, body, arity,
+                                         local_count, out);
+  if (err != FROTH_OK) {
+    frothy_runtime_release_payload(runtime, payload);
   }
   return err;
 }

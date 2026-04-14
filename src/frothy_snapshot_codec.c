@@ -4,6 +4,7 @@
 #include "froth_snapshot.h"
 #include "froth_vm.h"
 #include "frothy_ir.h"
+#include "frothy_ir_internal.h"
 #include "frothy_value.h"
 
 #include <limits.h>
@@ -739,7 +740,8 @@ static froth_error_t frothy_snapshot_write_object_table(
       FROTH_TRY(frothy_snapshot_writer_write_u32(
           writer, (uint32_t)object->as.text.length));
       FROTH_TRY(frothy_snapshot_writer_write_bytes(
-          writer, (const uint8_t *)object->as.text.bytes,
+          writer,
+          runtime->payload_storage.bytes + object->as.text.payload.offset,
           object->as.text.length));
       break;
     case FROTHY_OBJECT_CELLS: {
@@ -1279,10 +1281,203 @@ static froth_error_t frothy_snapshot_dup_symbol(
   return frothy_snapshot_strdup(symbol->name, symbol->length, out);
 }
 
+static froth_error_t frothy_snapshot_add_size(size_t lhs, size_t rhs,
+                                              size_t *out) {
+  if (lhs > SIZE_MAX - rhs) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+  }
+
+  *out = lhs + rhs;
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_snapshot_copy_string(const uint8_t *bytes,
+                                                 size_t length,
+                                                 uint8_t **cursor,
+                                                 const uint8_t *end,
+                                                 char **out) {
+  if ((size_t)(end - *cursor) < length + 1) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+  }
+
+  memcpy(*cursor, bytes, length);
+  (*cursor)[length] = '\0';
+  *out = (char *)*cursor;
+  *cursor += length + 1;
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_snapshot_copy_symbol_string(
+    const frothy_snapshot_symbol_t *symbol, uint8_t **cursor,
+    const uint8_t *end, char **out) {
+  return frothy_snapshot_copy_string((const uint8_t *)symbol->name,
+                                     symbol->length, cursor, end, out);
+}
+
+static froth_error_t frothy_snapshot_measure_code_object(
+    frothy_snapshot_reader_t *reader, const frothy_snapshot_symbol_t *symbols,
+    uint32_t symbol_count, uint32_t literal_count, uint32_t node_count,
+    uint32_t link_count, size_t *string_bytes_out) {
+  size_t string_bytes = 0;
+  uint32_t i;
+
+  for (i = 0; i < literal_count; i++) {
+    uint8_t kind = 0;
+
+    FROTH_TRY(frothy_snapshot_reader_read_u8(reader, &kind));
+    switch ((frothy_ir_literal_kind_t)kind) {
+    case FROTHY_IR_LITERAL_INT: {
+      int32_t ignored = 0;
+      FROTH_TRY(frothy_snapshot_reader_read_i32(reader, &ignored));
+      break;
+    }
+    case FROTHY_IR_LITERAL_BOOL: {
+      uint8_t ignored = 0;
+      FROTH_TRY(frothy_snapshot_reader_read_u8(reader, &ignored));
+      break;
+    }
+    case FROTHY_IR_LITERAL_NIL:
+      break;
+    case FROTHY_IR_LITERAL_TEXT: {
+      uint32_t length = 0;
+      const uint8_t *bytes = NULL;
+
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &length));
+      FROTH_TRY(frothy_snapshot_reader_read_bytes(reader, length, &bytes));
+      (void)bytes;
+      FROTH_TRY(
+          frothy_snapshot_add_size(string_bytes, (size_t)length + 1,
+                                   &string_bytes));
+      break;
+    }
+    }
+  }
+
+  for (i = 0; i < node_count; i++) {
+    uint8_t kind = 0;
+
+    FROTH_TRY(frothy_snapshot_reader_read_u8(reader, &kind));
+    switch ((frothy_ir_node_kind_t)kind) {
+    case FROTHY_IR_NODE_LIT: {
+      uint32_t ignored = 0;
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      break;
+    }
+    case FROTHY_IR_NODE_READ_LOCAL: {
+      uint32_t ignored = 0;
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      break;
+    }
+    case FROTHY_IR_NODE_WRITE_LOCAL: {
+      uint32_t ignored = 0;
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      break;
+    }
+    case FROTHY_IR_NODE_READ_SLOT: {
+      uint32_t symbol_index = 0;
+
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &symbol_index));
+      if (symbol_index >= symbol_count) {
+        return FROTH_ERROR_SNAPSHOT_FORMAT;
+      }
+      FROTH_TRY(frothy_snapshot_add_size(string_bytes,
+                                         symbols[symbol_index].length + 1,
+                                         &string_bytes));
+      break;
+    }
+    case FROTHY_IR_NODE_WRITE_SLOT: {
+      uint32_t symbol_index = 0;
+      uint32_t ignored = 0;
+      uint8_t require_existing = 0;
+
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &symbol_index));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u8(reader, &require_existing));
+      (void)require_existing;
+      if (symbol_index >= symbol_count) {
+        return FROTH_ERROR_SNAPSHOT_FORMAT;
+      }
+      FROTH_TRY(frothy_snapshot_add_size(string_bytes,
+                                         symbols[symbol_index].length + 1,
+                                         &string_bytes));
+      break;
+    }
+    case FROTHY_IR_NODE_READ_INDEX: {
+      uint32_t ignored = 0;
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      break;
+    }
+    case FROTHY_IR_NODE_WRITE_INDEX: {
+      uint32_t ignored = 0;
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      break;
+    }
+    case FROTHY_IR_NODE_FN: {
+      uint32_t ignored = 0;
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      break;
+    }
+    case FROTHY_IR_NODE_CALL: {
+      uint8_t builtin = 0;
+      uint32_t ignored = 0;
+
+      FROTH_TRY(frothy_snapshot_reader_read_u8(reader, &builtin));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      (void)builtin;
+      break;
+    }
+    case FROTHY_IR_NODE_IF: {
+      uint32_t ignored = 0;
+      uint8_t has_else = 0;
+
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u8(reader, &has_else));
+      (void)has_else;
+      break;
+    }
+    case FROTHY_IR_NODE_WHILE: {
+      uint32_t ignored = 0;
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      break;
+    }
+    case FROTHY_IR_NODE_SEQ: {
+      uint32_t ignored = 0;
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      break;
+    }
+    }
+  }
+
+  for (i = 0; i < link_count; i++) {
+    uint32_t ignored = 0;
+    FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+  }
+
+  *string_bytes_out = string_bytes;
+  return FROTH_OK;
+}
+
 static froth_error_t frothy_snapshot_decode_code_object(
     frothy_snapshot_reader_t *reader, const frothy_snapshot_symbol_t *symbols,
     uint32_t symbol_count, frothy_value_t *out) {
   frothy_ir_program_t program;
+  frothy_payload_span_t payload = {0};
+  uint8_t *string_cursor = NULL;
+  uint8_t *storage_end = NULL;
+  void *storage = NULL;
+  frothy_snapshot_reader_t measure;
   uint32_t arity = 0;
   uint32_t local_count = 0;
   uint32_t body = 0;
@@ -1291,6 +1486,8 @@ static froth_error_t frothy_snapshot_decode_code_object(
   uint32_t literal_count = 0;
   uint32_t node_count = 0;
   uint32_t link_count = 0;
+  size_t string_bytes = 0;
+  size_t packed_size = 0;
   uint32_t i;
   froth_error_t err = FROTH_OK;
 
@@ -1335,40 +1532,81 @@ static froth_error_t frothy_snapshot_decode_code_object(
     goto fail;
   }
 
-  if (literal_count > 0) {
-    program.literals = (frothy_ir_literal_t *)calloc(literal_count,
-                                                     sizeof(*program.literals));
-    if (program.literals == NULL) {
-      err = FROTH_ERROR_HEAP_OUT_OF_MEMORY;
-      goto fail;
-    }
+  measure = *reader;
+  err = frothy_snapshot_measure_code_object(&measure, symbols, symbol_count,
+                                            literal_count, node_count,
+                                            link_count, &string_bytes);
+  if (err != FROTH_OK) {
+    goto fail;
   }
-  if (node_count > 0) {
-    program.nodes = (frothy_ir_node_t *)calloc(node_count, sizeof(*program.nodes));
-    if (program.nodes == NULL) {
-      err = FROTH_ERROR_HEAP_OUT_OF_MEMORY;
-      goto fail;
-    }
+  err = frothy_ir_program_packed_size(literal_count, node_count, link_count,
+                                      string_bytes, &packed_size);
+  if (err != FROTH_OK) {
+    goto fail;
   }
-  if (link_count > 0) {
-    program.links = (frothy_ir_node_id_t *)calloc(link_count, sizeof(*program.links));
-    if (program.links == NULL) {
-      err = FROTH_ERROR_HEAP_OUT_OF_MEMORY;
-      goto fail;
-    }
+  err = frothy_runtime_alloc_payload(frothy_runtime(), packed_size, &payload,
+                                     &storage);
+  if (err != FROTH_OK) {
+    goto fail;
+  }
+  err = frothy_ir_program_init_packed_view(&program, storage, payload.length,
+                                           literal_count, node_count,
+                                           link_count, &string_cursor,
+                                           &storage_end);
+  if (err != FROTH_OK) {
+    goto fail;
   }
 
-  program.literal_count = literal_count;
-  program.literal_capacity = literal_count;
-  program.node_count = node_count;
-  program.node_capacity = node_count;
-  program.link_count = link_count;
-  program.link_capacity = link_count;
   program.root = root;
   program.root_local_count = root_local_count;
 
   for (i = 0; i < literal_count; i++) {
-    err = frothy_snapshot_decode_literal(reader, &program.literals[i]);
+    frothy_ir_literal_t *literal = &program.literals[i];
+    uint8_t kind = 0;
+
+    err = frothy_snapshot_reader_read_u8(reader, &kind);
+    if (err != FROTH_OK) {
+      goto fail;
+    }
+    literal->kind = (frothy_ir_literal_kind_t)kind;
+    switch (literal->kind) {
+    case FROTHY_IR_LITERAL_INT: {
+      int32_t value = 0;
+      err = frothy_snapshot_reader_read_i32(reader, &value);
+      if (err == FROTH_OK) {
+        literal->as.int_value = (froth_cell_t)value;
+      }
+      break;
+    }
+    case FROTHY_IR_LITERAL_BOOL: {
+      uint8_t value = 0;
+      err = frothy_snapshot_reader_read_u8(reader, &value);
+      if (err == FROTH_OK) {
+        literal->as.bool_value = value != 0;
+      }
+      break;
+    }
+    case FROTHY_IR_LITERAL_NIL:
+      err = FROTH_OK;
+      break;
+    case FROTHY_IR_LITERAL_TEXT: {
+      uint32_t length = 0;
+      const uint8_t *bytes = NULL;
+
+      err = frothy_snapshot_reader_read_u32(reader, &length);
+      if (err != FROTH_OK) {
+        break;
+      }
+      err = frothy_snapshot_reader_read_bytes(reader, length, &bytes);
+      if (err != FROTH_OK) {
+        break;
+      }
+      err = frothy_snapshot_copy_string(bytes, length, &string_cursor,
+                                        storage_end,
+                                        &literal->as.text_value);
+      break;
+    }
+    }
     if (err != FROTH_OK) {
       goto fail;
     }
@@ -1412,8 +1650,9 @@ static froth_error_t frothy_snapshot_decode_code_object(
         err = FROTH_ERROR_SNAPSHOT_FORMAT;
         break;
       }
-      err = frothy_snapshot_dup_symbol(&symbols[symbol_index],
-                                       &node->as.read_slot.slot_name);
+      err = frothy_snapshot_copy_symbol_string(
+          &symbols[symbol_index], &string_cursor, storage_end,
+          &node->as.read_slot.slot_name);
       break;
     }
     case FROTHY_IR_NODE_WRITE_SLOT: {
@@ -1437,8 +1676,9 @@ static froth_error_t frothy_snapshot_decode_code_object(
         err = FROTH_ERROR_SNAPSHOT_FORMAT;
         break;
       }
-      err = frothy_snapshot_dup_symbol(&symbols[symbol_index],
-                                       &node->as.write_slot.slot_name);
+      err = frothy_snapshot_copy_symbol_string(
+          &symbols[symbol_index], &string_cursor, storage_end,
+          &node->as.write_slot.slot_name);
       if (err == FROTH_OK) {
         node->as.write_slot.require_existing = require_existing != 0;
       }
@@ -1567,12 +1807,16 @@ static froth_error_t frothy_snapshot_decode_code_object(
     }
   }
 
-  err = frothy_runtime_alloc_code(frothy_runtime(), &program, body, arity,
-                                  local_count, out);
-  frothy_ir_program_free(&program);
-  return err;
+  err = frothy_runtime_alloc_packed_code(frothy_runtime(), &program, body,
+                                         arity, local_count, out);
+  if (err == FROTH_OK) {
+    return FROTH_OK;
+  }
 
 fail:
+  if (payload.length > 0) {
+    frothy_runtime_release_payload(frothy_runtime(), payload);
+  }
   frothy_ir_program_free(&program);
   return err;
 }
