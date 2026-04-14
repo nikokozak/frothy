@@ -477,11 +477,11 @@ func resolveEsptool() (string, error) {
 }
 
 func firmwareZipAssetName(version string) string {
-	return fmt.Sprintf("froth-v%s-%s.zip", version, prebuiltFirmwareBoard)
+	return fmt.Sprintf("frothy-v%s-%s.zip", version, prebuiltFirmwareBoard)
 }
 
 func checksumsAssetName(version string) string {
-	return fmt.Sprintf("froth-v%s-checksums.txt", version)
+	return fmt.Sprintf("frothy-v%s-checksums.txt", version)
 }
 
 func activateDirectory(targetDir string, sourceDir string) error {

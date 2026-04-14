@@ -46,6 +46,17 @@ func TestRunFlashManifestReportsFrothyPosixBinary(t *testing.T) {
 	}
 }
 
+func TestPrebuiltReleaseAssetNamesStayFrothyBranded(t *testing.T) {
+	version := "0.1.0"
+
+	if got := firmwareZipAssetName(version); got != "frothy-v0.1.0-esp32-devkit-v1.zip" {
+		t.Fatalf("firmwareZipAssetName(%q) = %q", version, got)
+	}
+	if got := checksumsAssetName(version); got != "frothy-v0.1.0-checksums.txt" {
+		t.Fatalf("checksumsAssetName(%q) = %q", version, got)
+	}
+}
+
 func TestRunFlashManifestAppliesRuntimeImageAfterESPIDFFlash(t *testing.T) {
 	resetCommandGlobals(t)
 

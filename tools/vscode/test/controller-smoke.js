@@ -335,9 +335,8 @@ async function main() {
     assertEq(controller.getSnapshot().device, null, "stale device should clear");
   });
 
-  await test("send file marks the session degraded after reset_unavailable", async () => {
+  await test("send file blocks whole-file send after reset_unavailable", async () => {
     const host = new FakeHost();
-    host.warningResponses.push("Send Anyway");
     const client = new FakeClient();
     client.resetImpl = async () => {
       throw new ControlSessionClientError({
@@ -349,7 +348,7 @@ async function main() {
     const controller = createController(host, client);
     await controller.connectToDevice();
     await controller.sendFile();
-    assertEq(controller.getSnapshot().degradedSendFile, true, "degraded flag");
+    assertEq(controller.getSnapshot().degradedSendFile, false, "degraded flag");
 
     client.resetImpl = async () => ({});
     await controller.sendFile();

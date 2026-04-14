@@ -10,9 +10,16 @@ surface:
 
 ## Install
 
-The extension requires the transitional `froth` CLI on your machine.
+The extension requires the installed Frothy CLI command, which is still
+spelled `froth` during the transition.
 
-Workshop install path:
+Supported attendee path:
+
+- macOS: install the `frothy` Homebrew formula, which provides `froth`
+- Linux x86_64: install the release tarball and place `froth` on `PATH`
+- Windows is not part of the maintained workshop path for this tranche
+
+Preferred macOS install:
 
 ```sh
 brew tap nikokozak/frothy
@@ -20,7 +27,7 @@ brew install frothy
 froth doctor
 ```
 
-Then install the release VSIX from the matching GitHub Release:
+Then install the matching release VSIX:
 
 ```sh
 code --install-extension /path/to/frothy-vscode-v<extension-version>.vsix
@@ -28,6 +35,12 @@ code --install-extension /path/to/frothy-vscode-v<extension-version>.vsix
 
 If VS Code cannot find `froth` on `PATH`, set `frothy.cliPath` to the absolute
 path of the installed binary.
+
+The public naming split is intentional for now:
+
+- product, docs, release assets, and commands palette: `Frothy`
+- installed CLI command: `froth`
+- repo-local checkout build: `tools/cli/froth-cli`
 
 ## Maintained Commands
 
@@ -60,4 +73,6 @@ npm run test:package
 ```
 
 `npm run test:package` builds a temporary VSIX and asserts that the packaged
-artifact ships only the curated runtime/doc files.
+artifact ships only the curated runtime/doc files. The full attendee
+quickstart lives at `docs/guide/Frothy_Workshop_Install_Quickstart.md` in the
+repo root.

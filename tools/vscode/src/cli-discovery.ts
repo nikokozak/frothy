@@ -2,7 +2,8 @@ import * as fs from "fs";
 import * as path from "path";
 
 export function cliCandidates(cwd: string): string[] {
-  // Prefer the installed `froth` CLI first, then fall back to repo-local builds.
+  // Prefer the installed Frothy CLI command (`froth`) first, then fall back
+  // to repo-local checkout builds.
   return dedupe([
     "froth",
     "/opt/homebrew/bin/froth",
@@ -45,7 +46,8 @@ function repoLocalCandidates(cwd: string): string[] {
 
   for (;;) {
     // Repo-local checkouts may expose either the default `froth-cli` build
-    // output or a manually named `froth` sibling without changing lookup order.
+    // output or a manually named `froth` sibling without changing lookup
+    // order.
     candidates.push(path.join(current, "tools", "cli", "froth-cli"));
     candidates.push(path.join(current, "tools", "cli", "froth"));
 

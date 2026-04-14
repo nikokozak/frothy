@@ -4,9 +4,9 @@ Frothy is a small live lexical language for programmable devices.
 
 Frothy `v0.1` is functionally closed.
 
-The active repo work is post-`v0.1` workshop hardening for 2026-04-16:
-install/release artifacts, attendee-facing naming cleanup, preflight and
-serial recovery, starter materials, and rehearsal.
+The live roadmap milestone is `evaluator execution-stack hardening`. The
+workshop-facing release/install surface stays intentionally narrow and
+truthful while that runtime tranche lands.
 
 The forward queue after that is explicit:
 
@@ -24,6 +24,83 @@ kept-vs-deferred stack.
 The repo reuses inherited Froth substrate where that is the simplest working
 path, but Froth's old roadmap, stack-centric user model, and language
 priorities are not active policy here.
+
+## Workshop Support Matrix
+
+The promised attendee path is smaller than the repo surface:
+
+| Surface | Published now | Workshop promise |
+| --- | --- | --- |
+| CLI release | `frothy-v<version>-darwin-arm64.tar.gz`, `frothy-v<version>-darwin-amd64.tar.gz`, `frothy-v<version>-linux-amd64.tar.gz` | macOS via Homebrew is the preferred attendee path; Linux x86_64 can use the release tarball directly |
+| VS Code | `frothy-vscode-v<extension-version>.vsix` | supported on the same machines that can already run the installed CLI |
+| Firmware / recovery | `frothy-v<version>-esp32-devkit-v1.zip` | preflashed `esp32-devkit-v1` only |
+| Source build | checkout build via `make build` | maintainer path, not required before the workshop |
+
+Windows, extra boards, and custom toolchain setups are not part of the
+maintained attendee promise for this tranche.
+
+## Naming Matrix
+
+The published naming split is explicit for now:
+
+| Thing | Name today |
+| --- | --- |
+| Product, repo, docs, release assets, Homebrew formula, and editor surface | `Frothy` / `frothy` |
+| Installed CLI command from released assets | `froth` |
+| Repo-local checkout CLI build | `tools/cli/froth-cli` |
+| Host runtime built from source | `build/Frothy` |
+
+That transitional split is deliberate. Frothy owns the public product and
+release identity; the shipped command name stays `froth` until a later CLI
+rename slice is worth the churn.
+
+## Workshop Install
+
+The attendee quickstart lives in
+`docs/guide/Frothy_Workshop_Install_Quickstart.md`.
+
+Install the maintained Frothy CLI path first.
+
+Preferred macOS workshop path:
+
+```sh
+brew tap nikokozak/frothy
+brew install frothy
+froth doctor
+```
+
+Linux x86_64 release-tarball path:
+
+```sh
+tar -xzf frothy-v<version>-linux-amd64.tar.gz
+mkdir -p "$HOME/.local/bin"
+install -m 0755 froth "$HOME/.local/bin/froth"
+froth doctor
+```
+
+Then install the matching VS Code extension asset from the GitHub Release:
+
+```sh
+code --install-extension /path/to/frothy-vscode-v<extension-version>.vsix
+```
+
+If VS Code cannot find `froth` on `PATH`, set `frothy.cliPath` to the absolute
+path of the installed binary.
+
+Attendees do not need a repo checkout, `esp-idf`, or source builds before they
+arrive. The maintained path assumes a preflashed `esp32-devkit-v1`.
+
+The maintained editor path stays on the accepted direct-control surface:
+
+- VS Code owns one helper child per window
+- the helper owns one direct control session at a time
+- there is no daemon, shared port owner, or local editor runtime in the
+  maintained workshop path
+
+`Send Selection / Line` is intentional additive eval.
+`Send File` is whole-file `reset + eval`; if the connected firmware is too old
+for control `reset`, the extension blocks the send and asks you to upgrade or
+reflash instead of replaying the file unsafely.
 
 ## Build And Test
 
@@ -46,13 +123,6 @@ The maintained test contract is:
 - `make test-all`: exhaustive local gate
 - `make test-list`: list maintained suites and profiles
 
-The current CLI naming split is explicit:
-
-- repo-local `froth-cli`: checkout builds produce `tools/cli/froth-cli`
-- release-time `froth`: packaged and installed CLI command name today
-- intended global `frothy`: product, repo, and editor identity that later
-  cleanup may converge toward
-
 Run the currently shipped CLI as `froth`:
 
 ```sh
@@ -63,39 +133,6 @@ froth flash
 froth connect
 froth send src/main.froth
 ```
-
-That command surface stays transitional for now. Frothy repo policy and release
-identity are separated from inherited Froth, but the command and
-implementation-symbol transition is deliberately narrower than the
-language/runtime cleanup.
-
-## Workshop Install
-
-Install the maintained Frothy CLI path first:
-
-```sh
-brew tap nikokozak/frothy
-brew install frothy
-froth doctor
-```
-
-Then install the matching VS Code extension asset from the GitHub Release:
-
-```sh
-code --install-extension /path/to/frothy-vscode-v<extension-version>.vsix
-```
-
-The maintained editor path stays on the accepted direct-control surface:
-
-- VS Code owns one helper child per window
-- the helper owns one direct control session at a time
-- there is no daemon, shared port owner, or local editor runtime in the
-  maintained workshop path
-
-`Send Selection / Line` is intentional additive eval.
-`Send File` is whole-file `reset + eval`; if the connected firmware is too old
-for control `reset`, the extension blocks the send and asks you to upgrade or
-reflash instead of replaying the file unsafely.
 
 ## Active Docs
 

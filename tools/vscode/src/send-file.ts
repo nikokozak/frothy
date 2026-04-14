@@ -38,12 +38,12 @@ export async function resolveSendSourceCommand(
 
     if (childErr.code === "ENOENT") {
       throw new Error(
-        "Frothy CLI not found. Install `froth` and ensure it is on PATH, or set frothy.cliPath.",
+        "Frothy CLI not found. Install the Frothy CLI (`froth`) and ensure it is on PATH, or set frothy.cliPath.",
       );
     }
     if (isMissingResolveSourceSupport(childErr)) {
       throw new Error(
-        "The detected froth CLI is too old for Frothy Send File. Upgrade `froth` to a build that supports `froth tooling resolve-source`.",
+        "The detected Frothy CLI (`froth`) is too old for Frothy Send File. Upgrade `froth` to a build that supports `froth tooling resolve-source`.",
       );
     }
     throw err;

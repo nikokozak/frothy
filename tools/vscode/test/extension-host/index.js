@@ -240,6 +240,7 @@ async function run() {
     const reportPath = path.join(os.tmpdir(), "frothy-editor-smoke-report.txt");
     fs.writeFileSync(reportPath, `${report}\n`, "utf8");
     trace("done");
+    await vscode.commands.executeCommand("workbench.action.closeWindow");
   } catch (err) {
     try {
       const extension = vscode.extensions.getExtension("frothy.frothy");

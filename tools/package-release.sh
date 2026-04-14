@@ -40,8 +40,25 @@ trap 'rm -rf "$STAGING_DIR"' EXIT INT TERM
 # Keep the shipped `froth` command name transitional inside Frothy-branded
 # release assets.
 cp "$BINARY" "$STAGING_DIR/froth"
+cat >"$STAGING_DIR/README.txt" <<EOF
+Frothy CLI release archive
+==========================
+
+Archive name: $(cli_asset_name "$VERSION" "$GOOS" "$GOARCH")
+Installed command: froth
+Repo-local checkout build: tools/cli/froth-cli
+
+This naming split is intentional during the current transition:
+- product, release assets, Homebrew formula, and VS Code surface use Frothy
+- the installed CLI command remains \`froth\`
+
+Direct-install reminder:
+- place \`froth\` somewhere on PATH
+- then run \`froth --version\`
+- then run \`froth doctor\`
+EOF
 ARCHIVE="$DIST_DIR/$(cli_asset_name "$VERSION" "$GOOS" "$GOARCH")"
-LC_ALL=C COPYFILE_DISABLE=1 tar -C "$STAGING_DIR" -czf "$ARCHIVE" froth
+LC_ALL=C COPYFILE_DISABLE=1 tar -C "$STAGING_DIR" -czf "$ARCHIVE" froth README.txt
 
 printf '%s\n' "$ARCHIVE"
 LC_ALL=C COPYFILE_DISABLE=1 tar -tzf "$ARCHIVE"
