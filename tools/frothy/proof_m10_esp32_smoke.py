@@ -22,6 +22,9 @@ BOOT_PROOF = os.path.join(
 CELLS_PROOF = os.path.join(
     ROOT_DIR, "tools", "frothy", "proof_m10_cells_adc.frothy"
 )
+WORKSHOP_PROOF = os.path.join(
+    ROOT_DIR, "tools", "frothy", "proof_m10_workshop_surface.frothy"
+)
 HOMEBREW_BIN = "/opt/homebrew/bin"
 
 
@@ -67,6 +70,15 @@ def require_count_at_least(text: str, needle: str, expected: int) -> None:
     actual = text.count(needle)
     if actual < expected:
         fail(f"expected at least {expected} occurrences of {needle!r}, got {actual}")
+
+
+def require_sequence(text: str, needles: list[str]) -> None:
+    index = 0
+    for needle in needles:
+        next_index = text.find(needle, index)
+        if next_index < 0:
+            fail(f"expected transcript sequence element: {needle}")
+        index = next_index + len(needle)
 
 
 def ensure_idf_available() -> None:
@@ -273,11 +285,82 @@ def run_phase_three(session: IdfMonitorSession) -> None:
 
 def run_phase_four(session: IdfMonitorSession) -> None:
     session.run_file(CELLS_PROOF)
+    session.run_file(WORKSHOP_PROOF)
     session.send_line("wipe()")
     transcript = session.text()
     matches = re.findall(r"sample\.read\(\d\)\r?\n(\d+)\r?\nfrothy> ", transcript)
     if len(matches) < 4:
         fail("expected four ADC sample readbacks in the transcript")
+    require_contains(transcript, "millis | base | native | non-persistable | foreign")
+    require_contains(transcript, "adc.percent | base | code | persistable | user")
+    require_count_at_least(transcript, "blink | base | code | persistable | user", 2)
+    require_sequence(
+        transcript,
+        [
+            '"millis.check"',
+            "true",
+        ],
+    )
+    require_sequence(
+        transcript,
+        [
+            '"gpio.low.check"',
+            "0",
+        ],
+    )
+    require_sequence(
+        transcript,
+        [
+            '"gpio.high.check"',
+            "1",
+        ],
+    )
+    require_sequence(
+        transcript,
+        [
+            '"gpio.toggle.check"',
+            "0",
+        ],
+    )
+    require_sequence(
+        transcript,
+        [
+            '"led.off.check"',
+            "0",
+            '"led.on.check"',
+            "1",
+            '"led.toggle.check"',
+            "0",
+        ],
+    )
+    require_match(transcript, r"adc\.percent\(A0\)\r?\n(\d+)\r?\nfrothy> ")
+    percent_match = re.search(r"adc\.percent\(A0\)\r?\n(\d+)\r?\nfrothy> ", transcript)
+    if percent_match is None:
+        fail("expected adc.percent(A0) in transcript")
+    percent_value = int(percent_match.group(1))
+    if percent_value < 0 or percent_value > 100:
+        fail(f"expected adc.percent(A0) in 0..100, got {percent_value}")
+    require_contains(transcript, "anim[0]")
+    require_contains(transcript, "anim[1]")
+    require_contains(transcript, "anim[2]")
+    require_match(transcript, r"anim\[0\]\r?\n41\r?\nfrothy> ")
+    require_match(transcript, r"anim\[1\]\r?\n42\r?\nfrothy> ")
+    require_match(transcript, r"anim\[2\]\r?\n43\r?\nfrothy> ")
+    require_sequence(
+        transcript,
+        [
+            '"overlay.blink.check"',
+            "blink | overlay | code | persistable | user",
+            "99",
+            '"restored.blink.check"',
+            "blink | base | code | persistable | user",
+            "[gpio] pin 2 -> OUTPUT",
+            "[gpio] pin 2 = LOW",
+            "[gpio] pin 2 = HIGH",
+            "[gpio] pin 2 = LOW",
+            "nil",
+        ],
+    )
 
 
 def main() -> int:
@@ -296,7 +379,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    for path in (BLINK_PROOF, BOOT_PROOF, CELLS_PROOF):
+    for path in (BLINK_PROOF, BOOT_PROOF, CELLS_PROOF, WORKSHOP_PROOF):
         if not os.path.isfile(path):
             fail(f"missing proof file: {path}")
 

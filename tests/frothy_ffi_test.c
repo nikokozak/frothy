@@ -207,6 +207,16 @@ static int install_test_bindings(void) {
   return 1;
 }
 
+static int install_board_base_slots(void) {
+  froth_error_t err = frothy_ffi_install_board_base_slots();
+
+  if (err != FROTH_OK) {
+    fprintf(stderr, "failed to install board base slots: %d\n", (int)err);
+    return 0;
+  }
+  return 1;
+}
+
 static int test_int_round_trip(void) {
   frothy_value_t value = frothy_value_make_nil();
   int ok = 1;
@@ -308,6 +318,80 @@ static int test_stack_cleanup_after_native_failure(void) {
   return ok;
 }
 
+static int test_board_millis_monotonic(void) {
+  frothy_value_t start = frothy_value_make_nil();
+  frothy_value_t after = frothy_value_make_nil();
+  int ok = 1;
+
+  reset_frothy_state();
+  ok &= install_board_base_slots();
+  ok &= expect_ok("millis()", &start);
+  ok &= frothy_value_is_int(start);
+  ok &= expect_ok("ms(20)", &after);
+  ok &= expect_nil_value(after, "ms(20)");
+  release_value(&after);
+  ok &= expect_ok("millis()", &after);
+  ok &= frothy_value_is_int(after);
+  if (ok && frothy_value_as_int(after) <= frothy_value_as_int(start)) {
+    fprintf(stderr, "millis() should advance across ms(20)\n");
+    ok = 0;
+  }
+  release_value(&start);
+  release_value(&after);
+  return ok;
+}
+
+static int test_board_gpio_read_round_trip(void) {
+  frothy_value_t value = frothy_value_make_nil();
+  int ok = 1;
+
+  reset_frothy_state();
+  ok &= install_board_base_slots();
+  ok &= expect_ok("gpio.mode(LED_BUILTIN, 1)", &value);
+  ok &= expect_nil_value(value, "gpio.mode");
+  release_value(&value);
+  ok &= expect_ok("gpio.write(LED_BUILTIN, 1)", &value);
+  ok &= expect_nil_value(value, "gpio.write high");
+  release_value(&value);
+  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
+  ok &= expect_int_value(value, 1, "gpio.read after high");
+  release_value(&value);
+  ok &= expect_ok("gpio.write(LED_BUILTIN, 0)", &value);
+  ok &= expect_nil_value(value, "gpio.write low");
+  release_value(&value);
+  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
+  ok &= expect_int_value(value, 0, "gpio.read after low");
+  release_value(&value);
+  return ok;
+}
+
+static int test_wrap_uptime_ms_payload(void) {
+  froth_cell_t wrapped = frothy_ffi_wrap_uptime_ms(UINT32_C(0xffffffff));
+  froth_cell_t round_trip = 0;
+  frothy_value_t value = frothy_value_make_nil();
+  int ok = 1;
+
+  reset_frothy_state();
+  if (froth_push(&froth_vm, wrapped) != FROTH_OK) {
+    fprintf(stderr, "wrapped uptime should fit the Froth payload range\n");
+    return 0;
+  }
+  if (froth_pop(&froth_vm, &round_trip) != FROTH_OK) {
+    fprintf(stderr, "wrapped uptime should round-trip through the Froth stack\n");
+    return 0;
+  }
+  if (round_trip != wrapped) {
+    fprintf(stderr, "wrapped uptime should preserve its payload value\n");
+    ok = 0;
+  }
+  if (frothy_value_make_int((int32_t)wrapped, &value) != FROTH_OK) {
+    fprintf(stderr, "wrapped uptime should fit the Frothy int range\n");
+    ok = 0;
+  }
+  release_value(&value);
+  return ok;
+}
+
 int main(void) {
   int ok = 1;
 
@@ -318,6 +402,9 @@ int main(void) {
   ok &= test_arity_error();
   ok &= test_type_mismatch();
   ok &= test_stack_cleanup_after_native_failure();
+  ok &= test_board_millis_monotonic();
+  ok &= test_board_gpio_read_round_trip();
+  ok &= test_wrap_uptime_ms_payload();
 
   frothy_runtime_free(runtime());
   return ok ? 0 : 1;

@@ -12,6 +12,7 @@
 #include "froth_console.h"
 #include "froth_fmt.h"
 #include "froth_types.h"
+#include "frothy_ffi.h"
 #include "platform.h"
 
 static froth_error_t throw_program_interrupted(froth_vm_t *froth_vm) {
@@ -66,10 +67,18 @@ static bool esp32_adc1_channel_for_pin(froth_cell_t pin,
   }
 }
 
+static bool esp32_gpio_pin_valid(froth_cell_t pin) {
+  return pin >= 0 && GPIO_IS_VALID_GPIO((gpio_num_t)pin);
+}
+
 FROTH_FFI_ARITY(esp32_gpio_mode, "gpio.mode", "( pin mode -- )", 2, 0,
                 "Set pin mode (1=output)") {
   FROTH_POP(mode);
   FROTH_POP(pin);
+
+  if (!esp32_gpio_pin_valid(pin)) {
+    return FROTH_ERROR_BOUNDS;
+  }
 
   esp_err_t err =
       gpio_set_direction(pin, mode == 1 ? GPIO_MODE_OUTPUT : GPIO_MODE_INPUT);
@@ -84,6 +93,10 @@ FROTH_FFI_ARITY(esp32_gpio_write, "gpio.write", "( pin level -- )", 2, 0,
   FROTH_POP(level);
   FROTH_POP(pin);
 
+  if (!esp32_gpio_pin_valid(pin)) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
   esp_err_t err = gpio_set_level(pin, level);
   if (err != ESP_OK) {
     return FROTH_ERROR_IO;
@@ -95,6 +108,10 @@ FROTH_FFI_ARITY(
     esp32_gpio_read, "gpio.read", "( pin -- level )", 1, 1,
     "Read pin level. Pin mode MUST be set, otherwise will always return 0.") {
   FROTH_POP(pin);
+
+  if (!esp32_gpio_pin_valid(pin)) {
+    return FROTH_ERROR_BOUNDS;
+  }
 
   froth_cell_t level = gpio_get_level(pin);
   FROTH_PUSH(level);
@@ -116,6 +133,12 @@ FROTH_FFI_ARITY(esp32_ms, "ms", "( ms -- )", 1, 0,
     FROTH_TRY(poll_interruptible_wait(froth_vm));
   }
 
+  return FROTH_OK;
+}
+
+FROTH_FFI_ARITY(esp32_millis, "millis", "( -- n )", 0, 1,
+                "Return wrapped monotonic uptime in milliseconds.") {
+  FROTH_PUSH(frothy_ffi_wrap_uptime_ms(platform_uptime_ms()));
   return FROTH_OK;
 }
 
@@ -802,6 +825,7 @@ FROTH_FFI_ARITY(
 FROTH_BOARD_BEGIN(froth_board_bindings)
 FROTH_BIND(esp32_gpio_mode), FROTH_BIND(esp32_gpio_read),
     FROTH_BIND(esp32_gpio_write), FROTH_BIND(esp32_ms),
+    FROTH_BIND(esp32_millis),
     FROTH_BIND(esp32_adc_read),
     FROTH_BIND(esp32_ledc_timer_config), FROTH_BIND(esp32_ledc_channel_config),
     FROTH_BIND(esp32_ledc_set_duty), FROTH_BIND(esp32_ledc_update_duty),

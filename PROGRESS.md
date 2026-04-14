@@ -36,6 +36,11 @@ file is wrong.
 - The approved follow-on order is now workshop-first: delivery/editor/recovery,
   inspection, board library and surface, readability language work, records,
   then performance/persistence closeout.
+- The first workshop base-image board/library cut is landed: `millis()` and
+  `gpio.read()` are now native base slots, the preflashed workshop helper
+  library is seeded as base image and survives `wipe()`, and the M10 proof
+  ladder now covers `blink`, `animate`, GPIO helpers, and `adc.percent`.
+  Reference: `docs/adr/117-workshop-base-image-board-library-surface.md`.
 
 ## Near-Term Priority Stack
 

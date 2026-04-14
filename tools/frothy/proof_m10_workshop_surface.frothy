@@ -1,0 +1,46 @@
+slotInfo("millis")
+slotInfo("blink")
+slotInfo("adc.percent")
+start = millis()
+ms(20)
+after = millis()
+"millis.check"
+after > start
+gpio.output(LED_BUILTIN)
+"gpio.low.check"
+gpio.low(LED_BUILTIN)
+gpio.read(LED_BUILTIN)
+"gpio.high.check"
+gpio.high(LED_BUILTIN)
+gpio.read(LED_BUILTIN)
+"gpio.toggle.check"
+gpio.toggle(LED_BUILTIN)
+gpio.read(LED_BUILTIN)
+"led.off.check"
+led.off()
+gpio.read(LED_BUILTIN)
+"led.on.check"
+led.on()
+gpio.read(LED_BUILTIN)
+"led.toggle.check"
+led.toggle()
+gpio.read(LED_BUILTIN)
+"led.blink.check"
+led.blink(1, 1)
+"adc.percent.check"
+adc.percent(A0)
+anim = cells(3)
+anim.step = fn(i) { set anim[i] = i + 41 }
+"anim.check"
+animate(3, 1, anim.step)
+anim[0]
+anim[1]
+anim[2]
+blink = fn(pin, count, wait) { 99 }
+"overlay.blink.check"
+slotInfo("blink")
+blink(LED_BUILTIN, 1, 1)
+wipe()
+"restored.blink.check"
+slotInfo("blink")
+blink(LED_BUILTIN, 1, 1)
