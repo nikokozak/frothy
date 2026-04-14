@@ -23,13 +23,13 @@ It is a sequencing and control document.
 
 This block is the live control surface for repo status.
 
-Current milestone: `[~] Next-stage language definition`
-Today's goal: keep spoken-ledger syntax tranche 1 frozen as the baseline while the remaining next-stage draft is tightened in a separate follow-on process
-Next artifact: tighten the remaining next-stage draft around records, modules, `cond`/`case`, `try/catch`, and binding/place values on top of the frozen spoken-ledger tranche 1 baseline
+Current milestone: `none`
+Today's goal: keep the next-stage language-definition closeout and the landed control/runtime follow-ons truthful while leaving CLI naming alignment explicitly next
+Next artifact: first CLI naming-alignment artifact across `README.md` and executable-adjacent tool surfaces
 Blocked by: none
-Next proof command: `make test-all && sh tools/frothy/proof_next_stage_docs.sh`
-Slip against plan: none; spoken-ledger syntax tranche 1 now lands without widening the evaluator or snapshot format
-Cut candidate if slip persists: keep `in prefix`, records, modules, `cond`/`case`, `try/catch`, and binding/place values as draft-only work until the remaining next-stage design is tighter
+Next proof command: `make test-all && rg -n 'repo-local \`froth-cli\`' README.md && rg -n 'release-time \`froth\`' README.md && rg -n 'intended global \`frothy\`' README.md && rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
+Slip against plan: none; next-stage language-definition docs landed as a doc-only closeout, control-session slice 2 and bounded-memory hardening landed, and CLI naming alignment stays next
+Cut candidate if slip persists: keep transitional `froth-cli` / release-time `froth` naming explicit in docs and tooling notes before touching binaries or release surfaces
 
 ## 3. Operating Rules
 
@@ -596,9 +596,8 @@ Operational label:
 
 Pending priority order:
 
-1. local helper broadening and CLI alignment
-2. next-stage language definition
-3. workspace and image-loading primitives
+1. CLI naming alignment
+2. workspace and image-loading primitives
 
 Already landed in this follow-on tranche:
 
@@ -609,6 +608,11 @@ Already landed in this follow-on tranche:
 5. immediate control hardening + `RESET`
 
 #### Next-stage language definition
+
+Status:
+
+- landed on 2026-04-13 as a doc-only closeout on top of the frozen
+  spoken-ledger syntax tranche 1 baseline
 
 Why now:
 
@@ -638,10 +642,55 @@ Approach:
 - do not widen runtime semantics from discussion alone; land the draft spec and
   ADR before implementation work
 
+Closeout:
+
+- `docs/spec/Frothy_Language_Spec_vNext.md` now treats spoken-ledger syntax
+  tranche 1 as the frozen baseline and keeps only records, modules,
+  `cond`/`case`, Frothy-native `try/catch`, and binding/place designators in
+  draft
+- `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md` now keeps `in prefix`
+  draft-only, narrows ordinary-code `@name`, and stops narrating already-landed
+  parser and shell work as pending
+- Frothy ADR-114 records the chosen remaining draft shape
+- no parser, evaluator, snapshot, or control-session semantics widened in this
+  closeout
+
+Proof:
+
+- `make test-all && sh tools/frothy/proof_next_stage_docs.sh`
+
+#### CLI naming alignment
+
+Status:
+
+- queued after the 2026-04-13 next-stage language-definition closeout
+
+Why now:
+
+- the language-definition docs are now tight enough that naming cleanup can
+  proceed against a stable control surface
+- repo-local `froth-cli`, release-time `froth`, and intended global `frothy`
+  still read as separate truths in executable-adjacent docs and tooling notes
+- the repo needs one explicit Frothy-first naming note before broader release
+  or discovery cleanup continues
+
+Approach:
+
+- keep runtime, transport, and language semantics unchanged
+- align repo-control docs and executable-adjacent notes around one explicit
+  Frothy-first CLI identity
+- preserve current binaries and proof paths where names remain transitional
+- avoid implicit renames without the matching control-doc update
+
 Next artifact:
 
-- `docs/spec/Frothy_Language_Spec_vNext.md`
-- `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md`
+- repo-control docs and executable-adjacent notes that explain the current
+  `froth-cli` / release-time `froth` / intended global `frothy` split in one
+  place
+
+Proof:
+
+- `make test-all && rg -n 'repo-local \`froth-cli\`' README.md && rg -n 'release-time \`froth\`' README.md && rg -n 'intended global \`frothy\`' README.md && rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
 
 #### Immediate control hardening + `RESET`
 
@@ -986,8 +1035,11 @@ If implementation resumed today, the next steps should be:
 - [x] add one maintained helper-plus-kernel end-to-end smoke on top of the
   landed direct control path, with final hardware confirmation tracked in the
   current-state block
-- [ ] land the next-stage language-definition docs for counted iteration,
-  records, module images, Frothy-native `try/catch`, and the explicit
-  recovery-boundary story before widening runtime semantics again
+- [x] land the next-stage language-definition docs for records, module slot
+  grouping, `cond`/`case`, Frothy-native `try/catch`, restricted
+  binding/place designators, and the explicit recovery-boundary story before
+  widening runtime semantics again
+- [ ] align repo-local `froth-cli`, release-time `froth`, and intended global
+  `frothy` naming notes before broader discovery and release cleanup
 - [ ] design slot-bundle / IR-capsule loading only after the helper and editor
   surfaces are stable

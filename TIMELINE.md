@@ -11,12 +11,11 @@ If this file and the roadmap disagree, the roadmap wins.
 
 ## Current Control Snapshot
 
-- Active milestone: `[~] Next-stage language definition`
+- Active milestone: `none`
 - Blocked by: none
-- Next artifact: tighten the remaining next-stage draft around records,
-  modules, `cond`/`case`, `try/catch`, and binding/place values on top of
-  the frozen spoken-ledger tranche 1 baseline
-- Next proof command: `make test-all && sh tools/frothy/proof_next_stage_docs.sh`
+- Next artifact: first CLI naming-alignment artifact across `README.md` and
+  executable-adjacent tool surfaces
+- Next proof command: `make test-all && rg -n 'repo-local \`froth-cli\`' README.md && rg -n 'release-time \`froth\`' README.md && rg -n 'intended global \`frothy\`' README.md && rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
 
 ## Milestone Ledger
 
@@ -37,7 +36,7 @@ If this file and the roadmap disagree, the roadmap wins.
 
 ## Current Follow-On Queue
 
-- Operational label: `Next-stage language definition`
+- Operational label: `queued follow-on only`
 - `Immediate control hardening + RESET`: landed on 2026-04-12. Builtin
   metadata now has one owner, `WORDS` / `SEE` stream across multiple value
   events, malformed bound-session requests fail explicitly, current firmware
@@ -61,15 +60,18 @@ If this file and the roadmap disagree, the roadmap wins.
 - `Spoken-ledger syntax tranche 1 baseline`: frozen on 2026-04-13. The next
   language-definition pass should treat that proved slice as fixed input and
   move the remaining design work in a separate process.
-- `Next-stage language definition`: remains active after the spoken-ledger
-  first slice. Records, modules, `cond`/`case`, Frothy-native `try/catch`,
-  and binding/place values remain draft-only next-stage design work before
-  runtime semantics widen again.
-- `CLI naming alignment`: queued after the next-stage language-definition
-  artifact. Align the repo-local `froth-cli` binary, release-time `froth`
-  binary, and transitional docs/tooling surfaces with the intended global
-  `frothy` name so build, release, and executable-adjacent repo discovery
-  agree on one tool identity.
+- `Next-stage language definition`: landed on 2026-04-13 as a doc-only
+  closeout. The vNext spec, surface proposal, and Frothy ADR-114 now freeze
+  spoken-ledger syntax tranche 1 as the baseline while keeping records,
+  modules, `cond`/`case`, Frothy-native `try/catch`, and restricted
+  binding/place designators as explicit draft-only work before runtime
+  semantics widen again.
+- `CLI naming alignment`: queued after the 2026-04-13
+  next-stage-language-definition closeout. Align the repo-local `froth-cli`
+  binary, release-time `froth` binary, and transitional docs/tooling surfaces
+  with the intended global `frothy` name so build, release, and
+  executable-adjacent repo discovery agree on one tool identity once a branch
+  that owns those surfaces takes it on.
 - `Urgent transport slice 1`: landed on 2026-04-12. Raw prompt `.control`
   now enters Frothy-owned structured mode with `HELLO`, `EVAL`, `WORDS`,
   `SEE`, `DETACH`, structured `OUTPUT` / `VALUE` / `ERROR` /

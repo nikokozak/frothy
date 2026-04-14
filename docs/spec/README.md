@@ -10,10 +10,11 @@ interactive profile, persistence contract, and FFI boundary expectations.
 Non-normative next-stage design work may live beside the active spec.
 Current example:
 
+- `Frothy_Language_Spec_vNext.md`
 - `Frothy_Surface_Syntax_Proposal_vNext.md`
 
-That proposal is exploratory and implementation-oriented.
-It does not override the accepted `v0.1` language contract unless and until a
+Those drafts are exploratory and implementation-oriented.
+They do not override the accepted `v0.1` language contract unless and until a
 later accepted spec or ADR says so.
 
 Retained Froth specs in this directory remain in-tree for substrate and

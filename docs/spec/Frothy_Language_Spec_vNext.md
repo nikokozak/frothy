@@ -12,6 +12,7 @@ Depends on:
 - `docs/adr/106-snapshot-format-and-overlay-walk-rules.md`
 - `docs/adr/107-interactive-profile-boot-and-interrupt.md`
 - `docs/adr/112-next-stage-language-growth-and-recovery-boundary.md`
+- `docs/adr/114-next-stage-structural-surface-and-recovery-shape.md`
 
 ## 1. Purpose
 
@@ -21,26 +22,7 @@ core.
 It does not replace the accepted `v0.1` contract.
 That contract remains the authority for current Frothy behavior.
 
-This proposal exists because the accepted core is now proven small and live,
-but still too narrow for ordinary library-scale work.
-The next stage should make Frothy feel:
-
-- workable for real programs,
-- strong enough for reusable libraries,
-- and more obviously distinct from both C-like batch languages and inherited
-  Froth stack-visible programming.
-
-The current draft surface direction for that next stage is a spoken and
-ledger-like hybrid optimized for heavy line-by-line REPL use:
-
-- `name is expr` for binding
-- `to name ... [ ... ]` for named code
-- `set place to expr` for mutation
-- bracketed blocks plus `;` for one-line separation
-- `:` as the primary call marker in files
-- and narrower bare-command sugar at the prompt
-
-The first implemented slice in tree is spoken-ledger syntax tranche 1:
+The frozen baseline for this next-stage work is spoken-ledger syntax tranche 1:
 
 - `name is expr`
 - `here name is expr`
@@ -52,9 +34,14 @@ The first implemented slice in tree is spoken-ledger syntax tranche 1:
 - prompt verbs `show`, `info`, and `remember`
 - prompt-only simple-call sugar
 
-That slice lowers onto existing canonical IR and evaluator machinery.
+That slice is already in tree.
+It lowers onto the existing canonical IR, evaluator, and snapshot machinery.
+
 After spoken-ledger syntax tranche 1, records, modules, cond/case,
-try/catch, and binding/place values remain draft.
+try/catch, and binding/place designators remain draft.
+
+This document narrows those remaining draft surfaces so later implementation
+work can widen runtime semantics deliberately rather than by drift.
 
 ## 2. What Must Stay True
 
@@ -63,8 +50,7 @@ The next stage must keep the parts of Frothy that are already correct.
 ### 2.1 Stable top-level slot identity stays central
 
 The top level remains one namespace of stable named slots.
-Modules, records, iteration helpers, and any later abstraction layer must not
-break this.
+Any record, module, or recovery surface must preserve that model.
 
 ### 2.2 Persistence stays image-oriented
 
@@ -74,8 +60,8 @@ non-persisted.
 
 ### 2.3 `Code` remains an ordinary value
 
-The next stage should not reopen the one-namespace rule.
 Callable names are still ordinary slots whose current value is `Code`.
+The next stage does not reopen the one-namespace rule.
 
 ### 2.4 Canonical IR stays the semantic truth
 
@@ -85,135 +71,112 @@ Canonical IR remains the persisted code truth.
 ### 2.5 No hidden closure machinery by accident
 
 The accepted non-capturing `Code` model remains the base.
-If Frothy later grows richer local abstraction, it should do so through
-explicit environment objects or another equally visible mechanism, not by
-silently implying hidden closure capture.
+Nothing in this draft implies hidden closure capture or invisible environments.
 
-## 3. Next-Stage Goal
+### 2.6 No hidden runtime broadening from this doc alone
 
-Frothy should still be explainable through a small number of composable rules,
-but the language now needs a larger expressive center.
+This draft is still a design artifact.
+It does not itself widen the parser, evaluator, snapshot, or control-session
+contracts.
 
-The missing pressure points are:
+## 3. Frozen Baseline
 
-- counted iteration,
-- multi-branch selection,
-- named data layout,
-- library encapsulation,
-- structured recovery inside ordinary code,
-- stronger binding and place inspection,
-- and a clearer statement of what recovery means without stack-visible
-  `catch`/`throw`.
+The following next-stage surfaces are already part of the frozen baseline:
 
-## 4. Required Additions
+- counted iteration through `repeat count [ ... ]` and
+  `repeat count as i [ ... ]`
+- short boolean control through `and` and `or`
+- single-branch control through `when` and `unless`
+- REPL inspection sugar through `show @name`, `core @name`, and `info @name`
 
-This section describes the features that should define the next-stage language
-effort.
+They are no longer open design questions in this document.
 
-### 4.1 Indexed counted iteration
+## 4. Remaining Draft Surfaces
 
-Frothy should add a first-class counted loop rather than forcing routine code
-to spell every loop as manual local initialization plus `while`.
+This section narrows the parts of the next-stage draft that are still open.
 
-The semantic requirements are:
+### 4.1 Multi-way selection with `cond` and `case`
 
-- zero or negative counts execute zero times,
-- an indexed form is available,
-- the iteration index is explicit in user code,
-- nested counted loops remain readable,
-- and the construct lowers to ordinary lexical and control-flow machinery
-  rather than to hidden loop-variable state.
-
-The preferred user-facing shape is:
+The remaining control additions are:
 
 ```txt
-repeat count [ block ]
-repeat count as i [ block ]
-```
+cond [
+  when condition [ block ]
+  when condition [ block ]
+  else [ block ]
+]
 
-Illustrative examples:
-
-```txt
-repeat 5 as i [
-  gpio.write: i, true
+case expr [
+  literal [ block ]
+  literal [ block ]
+  else [ block ]
 ]
 ```
 
+`cond` is ordered boolean clause selection.
+
+Rules:
+
+- clauses are considered from top to bottom
+- each `when` condition is evaluated left to right
+- the first `when` whose condition yields `true` runs its block
+- later clauses are skipped once one branch is chosen
+- `else` is optional
+- if no clause matches and there is no `else`, the whole form yields `nil`
+
+`case` is value-based dispatch.
+
+Rules:
+
+- the scrutinee expression is evaluated exactly once
+- clauses are matched from top to bottom
+- each clause literal must be one scalar literal from the current core:
+  `Int`, `Bool`, `Nil`, or `Text`
+- the first equal literal wins
+- later clauses are skipped once one branch is chosen
+- `else` is optional
+- if no clause matches and there is no `else`, the whole form yields `nil`
+- there is no fallthrough
+
+These forms are still draft-only in this branch.
+
+### 4.2 Fixed-layout records
+
+Records are the first named aggregate value in the remaining draft.
+
+The chosen draft surface is:
+
 ```txt
-repeat height as y [
-  repeat width as x [
-    drawPixel: x, y
-  ]
-]
+record Name [ field, field ]
+Name: expr, expr
+value->field
+set value->field to expr
 ```
 
-Why this matters:
+Rules:
 
-- it covers the practical role that `times.i` covered in Froth,
-- it fits Frothy's lexical user model better than a stack-visible combinator,
-- and it removes one of the biggest sources of avoidable boilerplate in small
-  hardware and library code.
+- `record Name [ field, ... ]` declares a fixed field set and stable field order
+- duplicate field names in one record declaration are an error
+- field layout does not change for the lifetime of that record definition
+- the declaration creates a top-level record definition plus a constructor slot
+  `Name`
+- `Name: ...` is the constructor call and has exact arity equal to the field
+  count
+- `value->field` reads a declared field
+- `set value->field to expr` mutates an existing record field place
+- missing or undeclared fields are errors
+- records are not dynamic objects, hash maps, or open property bags
 
-### 4.2 Short-circuit boolean and multi-way selection
+`->` is the chosen field-access spelling because `.` already belongs to the
+accepted top-level name model from `v0.1`.
 
-Frothy should grow beyond raw `if` and `while`.
+This feature remains draft-only in this branch.
 
-The minimum next-stage control additions should be:
+### 4.3 Module grouping through prefixed slots
 
-- short-circuit `and`
-- short-circuit `or`
-- `when condition [ block ]`
-- `unless condition [ block ]`
-- `cond` for ordered multi-branch selection
-- `case` for value-based dispatch
+Modules remain source-time grouping over stable top-level slots.
 
-The point is not surface novelty.
-The point is to stop making ordinary control flow expand into nested `if`
-shapes that hide the intent.
-
-### 4.3 Fixed-layout records
-
-Frothy should add fixed-layout records as the first named aggregate value.
-
-Records are not dynamic objects and not hash maps.
-They are declared fixed-shape values with named fields and stable field order.
-
-The semantic requirements are:
-
-- the field set is declared up front,
-- field layout is fixed for the lifetime of the record definition,
-- construction, field read, and explicit field update are supported,
-- persistence stays straightforward,
-- and implementation can lower record storage to fixed offsets rather than
-  dictionary lookup.
-
-The exact field-access spelling is still open.
-What matters first is the semantic shape:
-
-- named fields instead of magic indices,
-- predictable storage,
-- inspectable layout,
-- and clear compatibility with the overlay snapshot walk.
-
-Records are the natural next data step after `Cells`.
-They should make ordinary stateful code legible without reopening a dynamic
-object system.
-
-### 4.4 Module images built from slots
-
-Frothy should add a true module surface for library organization.
-
-Modules are not a second runtime namespace.
-They are a way to organize stable slots into explicit library-shaped groups.
-
-The preferred first-step module model is:
-
-- a module expands to stable top-level slots with a prefix,
-- the stable slot identity model remains intact,
-- module load/inspection can operate in terms of those grouped slots,
-- and a module can serve as the natural unit for checked-in library code.
-
-Illustrative shape:
+The chosen draft surface is:
 
 ```txt
 in led [
@@ -224,52 +187,60 @@ in led [
 ]
 ```
 
-The key property is that this remains compatible with the accepted slot model.
-A module is not a separate hidden object graph that bypasses slots.
-It is a structured way to define and reason about groups of prefixed stable
-slots.
+Rules:
 
-This makes modules the right main mechanism for libraries:
+- `in prefix [ item* ]` is source-time grouping only
+- each top-level definition in the body lowers to a prefixed top-level slot
+- nested `in` forms concatenate dotted prefixes
+- locals and parameters keep their ordinary lexical precedence
+- unqualified top-level references inside the body resolve through the active
+  prefix first, then through ordinary top-level lookup
+- the result is still one flat stable-slot image at runtime
+- there is no module object, second namespace, loader, registry, or package
+  system in this tranche
 
-- clearer encapsulation,
-- explicit grouping,
-- easier inspection,
-- and a path to loadable slot bundles or module images later.
+Module inspection in this draft means reasoning about grouped prefixed slots,
+not loading or persisting a separate module value.
 
-### 4.5 Binding and place values
+This feature remains draft-only in this branch.
 
-Frothy's inspection story should grow from command-only `@name` sugar into a
-real place-aware language feature.
+### 4.4 Binding and place designators
 
-The next stage should support binding-oriented operations in ordinary code,
-not only at the REPL.
+Binding/place work is narrowed to stable top-level slot designators only.
 
-The semantic goal is:
+The chosen draft surface is:
 
-- a program can refer to a named binding itself,
-- inspection and controlled rebinding can talk about stable slot identity
-  directly,
-- and modules remain built out of that same slot identity rather than
-  bypassing it.
+```txt
+@name
+@module.name
+```
 
-This feature should stay narrow.
-It exists to make Frothy's live image model more explicit, not to introduce a
-general reflection free-for-all.
+Rules:
 
-### 4.6 Frothy-native `try/catch`
+- these designate stable top-level slots directly
+- they are the narrow ordinary-code extension of the existing REPL inspection
+  sugar
+- they may be used where code needs slot identity explicitly, especially
+  inspection and `set`
+- they are not valid for locals, parameters, computed names, cells elements,
+  or record fields
+- they are designators, not a new persisted runtime value class
 
-Frothy should add a structured in-language recovery form.
+One practical consequence is that `set @count to expr` can name the top-level
+slot directly even if a local `count` is in scope.
 
-This should be a Frothy-native construct, not a return to Froth's old
-stack-visible global catch model.
+This feature remains draft-only in this branch.
 
-The preferred first-step shape is:
+### 4.5 Frothy-native `try/catch`
+
+The chosen recovery surface is:
 
 ```txt
 try [ block ] catch err [ block ]
+fail: err
 ```
 
-Illustrative example:
+Illustrative shape:
 
 ```txt
 to sample [
@@ -282,126 +253,64 @@ to sample [
 ]
 ```
 
-The semantic requirements are:
+Rules:
 
-- the `try` block is evaluated normally
-- if it succeeds, the whole expression yields that value
-- if a catchable runtime evaluation error occurs, the `catch` block runs
-- the catch binding receives a language-visible error value
+- the `try` block evaluates normally
+- if it succeeds, the whole expression yields that result
+- the `catch` block runs for explicit `fail: err` and for catchable runtime
+  evaluation failures
+- the catch binding is local to the `catch` block
 - the whole expression yields the `catch` block result on failure
 - there is no implicit rollback of already-completed side effects
-- slot writes, cells writes, and foreign side effects that completed before the
-  error remain visible
-- parse errors, startup restore failures, and module-load failures remain
-  top-level boundary errors rather than expression-level catch cases in the
-  first step
-- interrupt and reset should remain boundary-control events in the first step,
-  not ordinary catchable errors
+- completed slot writes, cells writes, and foreign side effects remain visible
+- parse, restore, startup, interrupt, and reset remain boundary-control
+  failures in this first step
+- because modules are source-time grouping only in this tranche, there are no
+  module-loader failures to catch here
 
-For Frothy, this feature should be paired with a narrow user-visible failure
-signal such as `raise(err)` or `fail(err)`.
-Without that, `try/catch` would only handle builtin and foreign failures and
-would be weaker than it needs to be for library code.
-
-The caught error should not be a raw anonymous integer if records are available
-in the same next-stage tranche.
-The preferred direction is a small named error value with fields such as:
+If records land in the same tranche, the preferred caught error value is a
+small fixed-layout `Error` record with fields:
 
 - `code`
 - `kind`
 - `origin`
 - `detail`
 
-## 5. Libraries And Encapsulation
+This feature remains draft-only in this branch.
 
-Modules and records serve different needs and should both exist.
+## 5. Libraries And Data Shape
 
-### 5.1 Modules organize programs
+Modules and records solve different problems and should both exist.
 
-Modules answer:
+- modules organize groups of stable top-level slots
+- records organize named data layout
+- a module may define record constructors and functions
+- a record value may live in a module-owned slot
 
-- which definitions belong together,
-- what a library unit contains,
-- how a user inspects or loads that unit,
-- and where encapsulation boundaries live.
-
-### 5.2 Records organize data
-
-Records answer:
-
-- what fields a value has,
-- how state is named,
-- how a value is inspected,
-- and how code stops depending on raw integer field positions.
-
-### 5.3 Neither replaces the other
-
-A module may define record constructors and functions.
-A record value may be stored in a slot owned by a module.
-These are orthogonal mechanisms.
+Neither replaces the other.
 
 ## 6. Error Model And Recovery Boundary
 
-The absence of a Froth-style language-visible `catch` in Frothy `v0.1` was not
-an accident.
-It followed from the current boundary of the language.
+The absence of a Froth-style language-visible global `catch` in Frothy `v0.1`
+was intentional.
+Current recovery still happens at the top-level shell, control-session, boot,
+and restore boundaries.
 
-### 6.1 Current recovery story
+The narrowed next-stage direction is:
 
-Today Frothy recovers at the top-level evaluation boundary:
-
-- the shell parses and evaluates one complete top-level form at a time,
-- parse and evaluation failures are reported and the prompt stays usable,
-- startup rebuilds the base image first,
-- restore and boot run through an explicit startup report path,
-- failed restore leaves the system in a usable base state,
-- and safe boot remains the recovery path for bad persisted startup code.
-
-This means Frothy already has recoverability without a language-visible global
-`catch`.
-
-### 6.2 Why `try/catch` was deferred in `v0.1`
-
-Adding an in-language `try/catch` is not just a parser exercise.
-It forces several semantic decisions:
-
-- which failures are catchable,
-- whether parse and load failures are catchable or stay boundary errors,
-- whether interrupt is catchable,
-- what happens to partial side effects before the error,
-- how caught errors interact with `save`, `restore`, `wipe`, and `boot`,
-- and how foreign failures appear to user code.
-
-Frothy `v0.1` deliberately deferred this because the live image and recovery
-story could already be made correct at the shell, control-session, and boot
-boundaries.
-
-### 6.3 Next-stage direction
-
-The next stage should now include a Frothy-native `try/catch`.
-The preferred direction is an expression- or block-oriented construct, not a
-return of Froth's stack-visible global catch model.
-
-That construct should obey these rules:
-
-- it catches runtime evaluation failures only unless explicitly widened,
-- it does not imply transactional rollback of side effects,
-- completed slot writes and cells writes remain visible unless a construct
-  explicitly says otherwise,
-- parser, restore, and module-load failures remain top-level boundary failures
-  unless later specified otherwise,
-- interrupt and reset remain boundary-control events in the first step,
-- and the feature should compose with the one-namespace slot model rather than
-  reintroducing hidden control objects.
+- `try/catch` handles runtime evaluation failures only in its first step
+- `fail: err` is the ordinary user-visible failure signal
+- `try/catch` is explicitly non-transactional
+- parser, restore, startup, interrupt, and reset stay boundary-control events
+- nothing here reintroduces Froth's old stack-visible global catch model
 
 ## 7. Staging
 
 This next-stage work should land in a disciplined order.
 
-### 7.1 First implemented slice
+### 7.1 Frozen baseline
 
-The first implemented slice after the helper/control hardening work is now
-spoken-ledger syntax tranche 1:
+Spoken-ledger syntax tranche 1 is already landed and frozen:
 
 1. spoken-ledger binding and mutation forms
 2. bracket blocks and `;`
@@ -410,44 +319,40 @@ spoken-ledger syntax tranche 1:
 5. `when`, `unless`, `and`, and `or`
 6. prompt verbs plus prompt-only simple-call sugar
 
-### 7.2 Remaining design order
+### 7.2 Remaining draft order
 
-The remaining next-stage design work should now stay narrower:
+The remaining design work stays narrower:
 
 1. records
 2. modules
 3. `cond` and `case`
-4. Frothy-native `try/catch` with named error values
-5. binding/place values after the above surfaces are explicit
+4. Frothy-native `try/catch` with `fail` and named error values
+5. binding/place designators after the above surfaces are explicit
 
 ### 7.3 Explicit non-goals for this tranche
 
-This proposal does not yet require:
+This proposal still does not require:
 
-- hidden closures,
-- a dynamic object system,
-- general hash maps,
-- effect handlers,
-- green threads,
-- hygienic macros,
-- or transactional rollback semantics.
-
-Those may become valuable later.
-They are not required to make Frothy feel workable and powerful in the next
-real step.
+- hidden closures
+- a dynamic object system
+- general hash maps
+- effect handlers
+- green threads
+- hygienic macros
+- transactional rollback semantics
+- a module loader, registry, or package surface
 
 ## 8. Summary
 
-The next Frothy language step should make five things true:
+The remaining next-stage draft is now intentionally smaller:
 
-- loops should read like ordinary loops, not manual `while` scaffolding
-- state should have named structure, not only indexed `Cells`
-- libraries should have explicit module boundaries
-- ordinary code should be able to recover with a Frothy-native `try/catch`
-  instead of depending only on the shell boundary
-- stable slot identity should become more inspectable and composable
-- recoverability should stay explicit without restoring Froth's old
-  stack-visible global `catch` model
+- counted iteration and short boolean control are frozen baseline
+- records are fixed-layout values with `->` field access
+- modules are source-time prefix grouping over stable slots only
+- `cond` and `case` are the only remaining multi-way control additions
+- `try/catch` is paired with `fail` and remains runtime-only plus
+  non-transactional
+- binding/place designators are restricted to stable top-level slots
 
-That is the smallest next language step that seems likely to make Frothy feel
-both usable and distinctly its own.
+That is the smallest coherent next draft that preserves Frothy's live-image
+center without widening runtime semantics in this branch.

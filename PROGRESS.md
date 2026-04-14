@@ -12,15 +12,26 @@ file is wrong.
 
 ## Current Control Snapshot
 
-- Active milestone: `[~] Next-stage language definition`
+- Active milestone: `none`
 - Blocked by: none
-- Next artifact: tighten the remaining next-stage draft around records,
-  modules, `cond`/`case`, `try/catch`, and binding/place values on top of
-  the frozen spoken-ledger tranche 1 baseline
-- Next proof: `make test-all && sh tools/frothy/proof_next_stage_docs.sh`
+- Next artifact: first CLI naming-alignment artifact across `README.md` and
+  executable-adjacent tool surfaces
+- Next proof: `make test-all && rg -n 'repo-local \`froth-cli\`' README.md && rg -n 'release-time \`froth\`' README.md && rg -n 'intended global \`frothy\`' README.md && rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
 
 ## Recent Landed Work
 
+- Next-stage language definition is closed on 2026-04-13:
+  `docs/spec/Frothy_Language_Spec_vNext.md`,
+  `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md`, and Frothy ADR-114 now
+  freeze spoken-ledger syntax tranche 1 as the baseline while keeping records,
+  modules, `cond`/`case`, Frothy-native `try/catch`, and restricted top-level
+  binding/place designators as explicit draft-only work. This landed as a
+  doc-only closeout and did not widen runtime semantics.
+- The 2026-04-13 direct control-session slice 2 is landed:
+  `save`, `restore`, `wipe`, `core`, and `slotInfo` now run as direct
+  control-session requests on current firmware, while helper-side `EVAL`
+  fallback stays compatibility-only for stale firmware and the host/local
+  proof surface remains green.
 - The 2026-04-13 transient work-buffer hardening tranche is landed:
   shell multiline accumulation now stays inside one fixed
   `FROTHY_SHELL_SOURCE_CAPACITY` buffer, parser and canonical-IR build
@@ -151,6 +162,10 @@ file is wrong.
 - Transport work should simplify ownership and framing. ADR-110 replaces the
   inherited daemon-plus-mux direction with a direct single-owner control
   session.
+- The remaining direct-control slice is now landed:
+  `save`, `restore`, `wipe`, `core`, and `slotInfo` no longer depend on
+  helper-side `EVAL` on current firmware, while stale-firmware fallback
+  remains compatibility-only.
 - The helper broadening slice is now landed in tree:
   shared CLI/session reuse plus flashing, new-project creation, and file
   send/apply workflows all sit on the maintained direct-control path.
@@ -159,19 +174,24 @@ file is wrong.
   the maintained F1 control smoke grows a public-CLI flash/apply/reconnect
   device path. That checked-in device proof is now confirmed on target
   hardware.
-- The next language-definition artifact after the active helper broadening
-  slice is now tighter: spoken-ledger syntax tranche 1 is in tree, while
-  records, modules, `cond`/`case`, Frothy-native `try/catch`, and
-  binding/place values remain the draft-only next-stage design surface.
+- The next-stage language-definition docs are now landed:
+  spoken-ledger syntax tranche 1 is the frozen baseline, while records,
+  modules, `cond`/`case`, Frothy-native `try/catch`, and binding/place
+  designators remain explicit draft-only design work until a later runtime
+  tranche takes them on.
+- CLI naming alignment remains the next queued follow-on artifact:
+  align repo-local `froth-cli`, release-time `froth`, and transitional
+  Frothy docs/tooling notes around one explicit Frothy-first tool-identity
+  story, but only in a branch that owns `README.md` and executable-adjacent
+  tool surfaces.
 - Workspace/image-loading primitives stay deferred until the control surface,
   helper surface, and editor integration story are smaller and clearer.
 
 ## Next Artifact
 
-- Tighten the remaining next-stage draft around records, modules,
-  `cond`/`case`, `try/catch`, and binding/place values on top of the frozen
-  spoken-ledger tranche 1 baseline.
+- First CLI naming-alignment artifact across `README.md` and
+  executable-adjacent tool surfaces.
 
 ## Next Proof
 
-- `make test-all && sh tools/frothy/proof_next_stage_docs.sh`
+- `make test-all && rg -n 'repo-local \`froth-cli\`' README.md && rg -n 'release-time \`froth\`' README.md && rg -n 'intended global \`frothy\`' README.md && rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
