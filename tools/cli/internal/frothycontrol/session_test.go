@@ -78,6 +78,26 @@ func buildControlErrorPayload(phase uint8, code uint16, detail string) []byte {
 	return append(payload, buildStringPayload(detail)...)
 }
 
+func buildOutputPayload(data []byte) []byte {
+	payload := make([]byte, 2+len(data))
+	binary.LittleEndian.PutUint16(payload[:2], uint16(len(data)))
+	copy(payload[2:], data)
+	return payload
+}
+
+func decodeWriteFrame(t *testing.T, wire []byte) (*baseproto.Header, []byte) {
+	t.Helper()
+
+	if len(wire) < 2 {
+		t.Fatalf("wire frame too short: %d", len(wire))
+	}
+	header, payload, err := decodeFrame(wire[1 : len(wire)-1])
+	if err != nil {
+		t.Fatalf("decode write frame: %v", err)
+	}
+	return header, payload
+}
+
 func TestSessionWordsAccumulatesValueChunks(t *testing.T) {
 	transport := &stubTransport{}
 	session := NewSession(transport)
@@ -126,6 +146,66 @@ func TestSessionSeeAccumulatesRenderedChunks(t *testing.T) {
 	}
 }
 
+func TestSessionDirectTextRequestsUseRequestSpecificOpcodes(t *testing.T) {
+	transport := &stubTransport{}
+	session := NewSession(transport)
+	session.sessionID = 0x42
+	session.nextSeq = 1
+
+	transport.queueFrame(t, session.sessionID, valueEvt, 1, buildStringPayload("nil"))
+	transport.queueFrame(t, session.sessionID, idleEvt, 1, nil)
+	saveValue, err := session.Save(100*time.Millisecond, nil)
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if saveValue != "nil" {
+		t.Fatalf("Save value = %q", saveValue)
+	}
+
+	transport.queueFrame(t, session.sessionID, outputEvt, 2,
+		buildOutputPayload([]byte("<native save/0>\n")))
+	transport.queueFrame(t, session.sessionID, valueEvt, 2, buildStringPayload("nil"))
+	transport.queueFrame(t, session.sessionID, idleEvt, 2, nil)
+
+	var output bytes.Buffer
+	coreValue, err := session.Core("save", 100*time.Millisecond, func(data []byte) {
+		output.Write(data)
+	})
+	if err != nil {
+		t.Fatalf("Core: %v", err)
+	}
+	if coreValue != "nil" {
+		t.Fatalf("Core value = %q", coreValue)
+	}
+	if output.String() != "<native save/0>\n" {
+		t.Fatalf("Core output = %q", output.String())
+	}
+
+	if len(transport.writes) != 2 {
+		t.Fatalf("write count = %d, want 2", len(transport.writes))
+	}
+
+	saveHeader, savePayload := decodeWriteFrame(t, transport.writes[0])
+	if saveHeader.MessageType != saveReq {
+		t.Fatalf("Save request type = %d, want %d", saveHeader.MessageType, saveReq)
+	}
+	if len(savePayload) != 0 {
+		t.Fatalf("Save payload len = %d, want 0", len(savePayload))
+	}
+
+	coreHeader, corePayload := decodeWriteFrame(t, transport.writes[1])
+	if coreHeader.MessageType != coreReq {
+		t.Fatalf("Core request type = %d, want %d", coreHeader.MessageType, coreReq)
+	}
+	name, err := parseStringPayload(corePayload)
+	if err != nil {
+		t.Fatalf("parse Core payload: %v", err)
+	}
+	if name != "save" {
+		t.Fatalf("Core payload name = %q, want save", name)
+	}
+}
+
 func TestManagerResetMapsUnknownRequestToResetUnavailable(t *testing.T) {
 	transport := &stubTransport{}
 	session := NewSession(transport)
@@ -147,5 +227,115 @@ func TestManagerResetMapsUnknownRequestToResetUnavailable(t *testing.T) {
 
 	if _, err := manager.Reset(); !errors.Is(err, ErrResetUnavailable) {
 		t.Fatalf("Reset error = %v, want ErrResetUnavailable", err)
+	}
+}
+
+func TestManagerBuiltinFallbacksUseEvalOnUnknownRequest(t *testing.T) {
+	cases := []struct {
+		name           string
+		run            func(*Manager) (string, error)
+		directReq      byte
+		wantEvalSource string
+	}{
+		{
+			name: "save",
+			run: func(m *Manager) (string, error) {
+				return m.Save(nil)
+			},
+			directReq:      saveReq,
+			wantEvalSource: "save()",
+		},
+		{
+			name: "restore",
+			run: func(m *Manager) (string, error) {
+				return m.Restore(nil)
+			},
+			directReq:      restoreReq,
+			wantEvalSource: "restore()",
+		},
+		{
+			name: "wipe",
+			run: func(m *Manager) (string, error) {
+				return m.Wipe(nil)
+			},
+			directReq:      wipeReq,
+			wantEvalSource: "wipe()",
+		},
+		{
+			name: "core",
+			run: func(m *Manager) (string, error) {
+				return m.Core("save", nil)
+			},
+			directReq:      coreReq,
+			wantEvalSource: `core("save")`,
+		},
+		{
+			name: "slot_info",
+			run: func(m *Manager) (string, error) {
+				return m.SlotInfo("save", nil)
+			},
+			directReq:      slotInfoReq,
+			wantEvalSource: `slotInfo("save")`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			transport := &stubTransport{}
+			session := NewSession(transport)
+			session.sessionID = 0x55
+			session.nextSeq = 1
+
+			transport.queueFrame(t, session.sessionID, errorEvt, 1,
+				buildControlErrorPayload(phaseControl, 256, "unknown request"))
+			transport.queueFrame(t, session.sessionID, idleEvt, 1, nil)
+			transport.queueFrame(t, session.sessionID, valueEvt, 2,
+				buildStringPayload("nil"))
+			transport.queueFrame(t, session.sessionID, idleEvt, 2, nil)
+
+			manager := NewManager(ManagerConfig{})
+			manager.conn = &managedConnection{
+				session: session,
+				info: &baseproto.HelloResponse{
+					Board:   "mock-board",
+					Version: "0.1.0-test",
+				},
+			}
+
+			value, err := tc.run(manager)
+			if err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			if value != "nil" {
+				t.Fatalf("value = %q, want nil", value)
+			}
+			if len(transport.writes) != 2 {
+				t.Fatalf("write count = %d, want 2", len(transport.writes))
+			}
+
+			directHeader, directPayload := decodeWriteFrame(t, transport.writes[0])
+			if directHeader.MessageType != tc.directReq {
+				t.Fatalf("direct type = %d, want %d", directHeader.MessageType,
+					tc.directReq)
+			}
+			if tc.directReq == saveReq || tc.directReq == restoreReq ||
+				tc.directReq == wipeReq {
+				if len(directPayload) != 0 {
+					t.Fatalf("direct payload len = %d, want 0", len(directPayload))
+				}
+			}
+
+			evalHeader, evalPayload := decodeWriteFrame(t, transport.writes[1])
+			if evalHeader.MessageType != evalReq {
+				t.Fatalf("fallback type = %d, want %d", evalHeader.MessageType, evalReq)
+			}
+			source, err := parseStringPayload(evalPayload)
+			if err != nil {
+				t.Fatalf("parse fallback payload: %v", err)
+			}
+			if source != tc.wantEvalSource {
+				t.Fatalf("fallback source = %q, want %q", source, tc.wantEvalSource)
+			}
+		})
 	}
 }

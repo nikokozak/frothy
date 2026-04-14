@@ -225,8 +225,41 @@ func (s *Session) Hello(timeout time.Duration) (*baseproto.HelloResponse, error)
 
 func (s *Session) Eval(source string, timeout time.Duration,
 	onOutput func([]byte)) (string, error) {
+	return s.runTextRequest(evalReq, buildStringPayload(source), timeout, onOutput,
+		"EVAL")
+}
+
+func (s *Session) Save(timeout time.Duration,
+	onOutput func([]byte)) (string, error) {
+	return s.runTextRequest(saveReq, nil, timeout, onOutput, "SAVE")
+}
+
+func (s *Session) Restore(timeout time.Duration,
+	onOutput func([]byte)) (string, error) {
+	return s.runTextRequest(restoreReq, nil, timeout, onOutput, "RESTORE")
+}
+
+func (s *Session) Wipe(timeout time.Duration,
+	onOutput func([]byte)) (string, error) {
+	return s.runTextRequest(wipeReq, nil, timeout, onOutput, "WIPE")
+}
+
+func (s *Session) Core(name string, timeout time.Duration,
+	onOutput func([]byte)) (string, error) {
+	return s.runTextRequest(coreReq, buildStringPayload(name), timeout, onOutput,
+		"CORE")
+}
+
+func (s *Session) SlotInfo(name string, timeout time.Duration,
+	onOutput func([]byte)) (string, error) {
+	return s.runTextRequest(slotInfoReq, buildStringPayload(name), timeout,
+		onOutput, "SLOT_INFO")
+}
+
+func (s *Session) runTextRequest(msgType byte, payload []byte,
+	timeout time.Duration, onOutput func([]byte), label string) (string, error) {
 	seq := s.nextSeq
-	outcome, err := s.runRequest(evalReq, seq, buildStringPayload(source), timeout, onOutput)
+	outcome, err := s.runRequest(msgType, seq, payload, timeout, onOutput)
 	if err != nil {
 		return "", err
 	}
@@ -240,11 +273,11 @@ func (s *Session) Eval(source string, timeout time.Duration,
 	if outcome.interrupted {
 		return "", ErrInterrupted
 	}
-	payload, err := singleValuePayload(outcome.valuePayloads, "EVAL")
+	valuePayload, err := singleValuePayload(outcome.valuePayloads, label)
 	if err != nil {
 		return "", err
 	}
-	return parseStringPayload(payload)
+	return parseStringPayload(valuePayload)
 }
 
 func (s *Session) Words(timeout time.Duration) ([]string, error) {

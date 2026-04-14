@@ -193,23 +193,33 @@ func (m *Manager) See(name string) (*SeeResult, error) {
 }
 
 func (m *Manager) Save(onOutput func([]byte)) (string, error) {
-	return m.evalBuiltin("save()", onOutput)
+	return m.runBuiltinCompat(func(session *Session) (string, error) {
+		return session.Save(controlCommandTimeout, onOutput)
+	}, "save()", onOutput)
 }
 
 func (m *Manager) Restore(onOutput func([]byte)) (string, error) {
-	return m.evalBuiltin("restore()", onOutput)
+	return m.runBuiltinCompat(func(session *Session) (string, error) {
+		return session.Restore(controlCommandTimeout, onOutput)
+	}, "restore()", onOutput)
 }
 
 func (m *Manager) Wipe(onOutput func([]byte)) (string, error) {
-	return m.evalBuiltin("wipe()", onOutput)
+	return m.runBuiltinCompat(func(session *Session) (string, error) {
+		return session.Wipe(controlCommandTimeout, onOutput)
+	}, "wipe()", onOutput)
 }
 
 func (m *Manager) Core(name string, onOutput func([]byte)) (string, error) {
-	return m.evalBuiltin(fmt.Sprintf(`core(%q)`, name), onOutput)
+	return m.runBuiltinCompat(func(session *Session) (string, error) {
+		return session.Core(name, controlCommandTimeout, onOutput)
+	}, fmt.Sprintf(`core(%q)`, name), onOutput)
 }
 
 func (m *Manager) SlotInfo(name string, onOutput func([]byte)) (string, error) {
-	return m.evalBuiltin(fmt.Sprintf(`slotInfo(%q)`, name), onOutput)
+	return m.runBuiltinCompat(func(session *Session) (string, error) {
+		return session.SlotInfo(name, controlCommandTimeout, onOutput)
+	}, fmt.Sprintf(`slotInfo(%q)`, name), onOutput)
 }
 
 func (m *Manager) Interrupt() error {
@@ -233,6 +243,17 @@ func (m *Manager) Interrupt() error {
 func (m *Manager) evalBuiltin(source string, onOutput func([]byte)) (string, error) {
 	return m.runTextOp(func(session *Session) (string, error) {
 		return session.Eval(source, 0, onOutput)
+	})
+}
+
+func (m *Manager) runBuiltinCompat(runDirect func(*Session) (string, error),
+	fallbackSource string, onOutput func([]byte)) (string, error) {
+	return m.runTextOp(func(session *Session) (string, error) {
+		value, err := runDirect(session)
+		if isUnknownRequestControlError(err) {
+			return session.Eval(fallbackSource, 0, onOutput)
+		}
+		return value, err
 	})
 }
 
@@ -470,6 +491,10 @@ func isFatalSessionError(err error) bool {
 }
 
 func isResetUnavailableControlError(err error) bool {
+	return isUnknownRequestControlError(err)
+}
+
+func isUnknownRequestControlError(err error) bool {
 	var controlErr *ControlError
 
 	if !errors.As(err, &controlErr) {

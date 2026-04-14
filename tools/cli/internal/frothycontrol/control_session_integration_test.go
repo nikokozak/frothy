@@ -35,24 +35,70 @@ func TestControlSessionServerLocalRuntime(t *testing.T) {
 		t.Fatalf("see result = %v", seeResult)
 	}
 
-	harness.send(t, controlSessionRequest{ID: 4, Command: "reset"})
-	resetResponse := consumeValueCycle(t, harness, 4)
+	harness.send(t, controlSessionRequest{ID: 4, Command: "save"})
+	saveResponse := consumeValueCycle(t, harness, 4)
+	saveResult, _ := saveResponse["result"].(map[string]any)
+	if saveResult["text"] != "nil" {
+		t.Fatalf("save result = %v", saveResult)
+	}
+
+	harness.send(t, controlSessionRequest{ID: 5, Command: "reset"})
+	resetResponse := consumeValueCycle(t, harness, 5)
 	resetResult, _ := resetResponse["result"].(map[string]any)
 	if resetResult["heap_size"] == nil || resetResult["version"] == nil {
 		t.Fatalf("reset result = %v", resetResult)
 	}
 
-	harness.send(t, controlSessionRequest{ID: 5, Command: "see", Name: "control.demo"})
-	seeMissing := consumeErrorCycle(t, harness, 5)
+	harness.send(t, controlSessionRequest{ID: 6, Command: "see", Name: "control.demo"})
+	seeMissing := consumeErrorCycle(t, harness, 6)
 	seeMissingError, _ := seeMissing["error"].(map[string]any)
 	if seeMissingError["code"] != "control_error" {
 		t.Fatalf("see after reset error = %v", seeMissingError)
 	}
 
-	harness.send(t, controlSessionRequest{ID: 6, Command: "save"})
-	consumeValueCycle(t, harness, 6)
+	harness.send(t, controlSessionRequest{ID: 7, Command: "restore"})
+	restoreResponse := consumeValueCycle(t, harness, 7)
+	restoreResult, _ := restoreResponse["result"].(map[string]any)
+	if restoreResult["text"] != "nil" {
+		t.Fatalf("restore result = %v", restoreResult)
+	}
 
-	harness.send(t, controlSessionRequest{ID: 7, Command: "disconnect"})
+	harness.send(t, controlSessionRequest{ID: 8, Command: "see", Name: "control.demo"})
+	restoredSee := consumeValueCycle(t, harness, 8)
+	restoredSeeResult, _ := restoredSee["result"].(map[string]any)
+	if restoredSeeResult["rendered"] != "42" {
+		t.Fatalf("restored see result = %v", restoredSeeResult)
+	}
+
+	harness.send(t, controlSessionRequest{ID: 9, Command: "core", Name: "save"})
+	coreResponse := consumeOutputValueCycle(t, harness, 9)
+	coreResult, _ := coreResponse["result"].(map[string]any)
+	if coreResult["text"] != "nil" {
+		t.Fatalf("core result = %v", coreResult)
+	}
+
+	harness.send(t, controlSessionRequest{ID: 10, Command: "slot_info", Name: "save"})
+	slotInfoResponse := consumeOutputValueCycle(t, harness, 10)
+	slotInfoResult, _ := slotInfoResponse["result"].(map[string]any)
+	if slotInfoResult["text"] != "nil" {
+		t.Fatalf("slot_info result = %v", slotInfoResult)
+	}
+
+	harness.send(t, controlSessionRequest{ID: 11, Command: "wipe"})
+	wipeResponse := consumeValueCycle(t, harness, 11)
+	wipeResult, _ := wipeResponse["result"].(map[string]any)
+	if wipeResult["text"] != "nil" {
+		t.Fatalf("wipe result = %v", wipeResult)
+	}
+
+	harness.send(t, controlSessionRequest{ID: 12, Command: "see", Name: "control.demo"})
+	wipedSee := consumeErrorCycle(t, harness, 12)
+	wipedSeeError, _ := wipedSee["error"].(map[string]any)
+	if wipedSeeError["code"] != "control_error" {
+		t.Fatalf("see after wipe error = %v", wipedSeeError)
+	}
+
+	harness.send(t, controlSessionRequest{ID: 13, Command: "disconnect"})
 	if event := harness.next(t); event["event"] != "disconnected" {
 		t.Fatalf("disconnect event = %v", event)
 	}
@@ -78,6 +124,15 @@ func consumeValueCycle(t *testing.T, harness *sessionHarness, requestID float64)
 		t.Fatalf("response id = %v, want %v", response["id"], requestID)
 	}
 	return response
+}
+
+func consumeOutputValueCycle(t *testing.T, harness *sessionHarness, requestID float64) map[string]any {
+	t.Helper()
+
+	if event := harness.next(t); event["event"] != "output" {
+		t.Fatalf("output event = %v", event)
+	}
+	return consumeValueCycle(t, harness, requestID)
 }
 
 func consumeErrorCycle(t *testing.T, harness *sessionHarness, requestID float64) map[string]any {

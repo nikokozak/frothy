@@ -6,6 +6,7 @@
 #include "frothy_base_image.h"
 #include "frothy_inspect.h"
 #include "frothy_shell.h"
+#include "frothy_snapshot.h"
 #include "platform.h"
 
 #include <stdbool.h>
@@ -209,6 +210,19 @@ static froth_error_t frothy_control_send_string_value(uint64_t session_id,
   FROTH_TRY(frothy_control_writer_str(&writer, text));
   return frothy_control_send_frame(session_id, FROTHY_CONTROL_VALUE_EVT, seq,
                                    payload, writer.pos);
+}
+
+static froth_error_t
+frothy_control_send_rendered_value(frothy_runtime_t *runtime, uint64_t session_id,
+                                   uint16_t seq, frothy_value_t value) {
+  char *rendered = NULL;
+  froth_error_t err = frothy_value_render(runtime, value, &rendered);
+
+  if (err == FROTH_OK) {
+    err = frothy_control_send_string_value(session_id, seq, rendered);
+  }
+  free(rendered);
+  return err;
 }
 
 static froth_error_t frothy_control_send_value_payload(uint64_t session_id,
@@ -469,6 +483,130 @@ frothy_control_parse_string_payload(const froth_link_header_t *header,
 }
 
 static froth_error_t
+frothy_control_handle_builtin_no_args(frothy_control_session_t *session,
+                                      const froth_link_header_t *header,
+                                      frothy_native_fn_t builtin,
+                                      frothy_control_phase_t phase,
+                                      const char *bad_detail,
+                                      const char *fail_detail) {
+  frothy_value_t result = frothy_value_make_nil();
+  froth_error_t err = frothy_control_expect_empty_payload(header);
+  froth_error_t stop_err = FROTH_OK;
+  froth_error_t out_err = FROTH_OK;
+
+  if (err != FROTH_OK) {
+    FROTH_TRY(frothy_control_send_error(session->session_id, header->seq,
+                                        FROTHY_CONTROL_PHASE_CONTROL, err,
+                                        bad_detail));
+    return frothy_control_send_idle(session->session_id, header->seq);
+  }
+
+  frothy_control_start_capture(session, header->seq);
+  err = builtin(&froth_vm.frothy_runtime, NULL, NULL, 0, &result);
+  stop_err = frothy_control_stop_capture(session);
+  if (err == FROTH_ERROR_PROGRAM_INTERRUPTED) {
+    if (stop_err != FROTH_OK) {
+      return stop_err;
+    }
+    FROTH_TRY(
+        frothy_control_send_interrupted(session->session_id, header->seq));
+    return frothy_control_send_idle(session->session_id, header->seq);
+  }
+  if (err != FROTH_OK) {
+    if (stop_err != FROTH_OK) {
+      return stop_err;
+    }
+    FROTH_TRY(frothy_control_send_error(session->session_id, header->seq, phase,
+                                        err, fail_detail));
+    return frothy_control_send_idle(session->session_id, header->seq);
+  }
+  if (stop_err != FROTH_OK) {
+    return stop_err;
+  }
+
+  out_err = frothy_control_send_rendered_value(&froth_vm.frothy_runtime,
+                                               session->session_id, header->seq,
+                                               result);
+  if (out_err == FROTH_OK) {
+    out_err = frothy_control_send_idle(session->session_id, header->seq);
+  }
+  return out_err;
+}
+
+static froth_error_t
+frothy_control_handle_builtin_string_arg(frothy_control_session_t *session,
+                                         const froth_link_header_t *header,
+                                         const uint8_t *payload,
+                                         frothy_native_fn_t builtin,
+                                         frothy_control_phase_t phase,
+                                         const char *bad_detail,
+                                         const char *fail_detail) {
+  char *text = NULL;
+  frothy_value_t arg = frothy_value_make_nil();
+  frothy_value_t result = frothy_value_make_nil();
+  frothy_value_t args[1];
+  bool arg_ready = false;
+  froth_error_t err;
+  froth_error_t stop_err = FROTH_OK;
+  froth_error_t out_err = FROTH_OK;
+
+  err = frothy_control_parse_string_payload(header, payload, &text);
+  if (err != FROTH_OK) {
+    FROTH_TRY(frothy_control_send_error(session->session_id, header->seq,
+                                        FROTHY_CONTROL_PHASE_CONTROL, err,
+                                        bad_detail));
+    return frothy_control_send_idle(session->session_id, header->seq);
+  }
+
+  err = frothy_runtime_alloc_text(&froth_vm.frothy_runtime, text, strlen(text),
+                                  &arg);
+  free(text);
+  text = NULL;
+  if (err != FROTH_OK) {
+    FROTH_TRY(frothy_control_send_error(session->session_id, header->seq, phase,
+                                        err, fail_detail));
+    return frothy_control_send_idle(session->session_id, header->seq);
+  }
+  arg_ready = true;
+  args[0] = arg;
+
+  frothy_control_start_capture(session, header->seq);
+  err = builtin(&froth_vm.frothy_runtime, NULL, args, 1, &result);
+  stop_err = frothy_control_stop_capture(session);
+  if (arg_ready) {
+    frothy_value_release(&froth_vm.frothy_runtime, arg);
+    arg_ready = false;
+  }
+  if (err == FROTH_ERROR_PROGRAM_INTERRUPTED) {
+    if (stop_err != FROTH_OK) {
+      return stop_err;
+    }
+    FROTH_TRY(
+        frothy_control_send_interrupted(session->session_id, header->seq));
+    return frothy_control_send_idle(session->session_id, header->seq);
+  }
+  if (err != FROTH_OK) {
+    if (stop_err != FROTH_OK) {
+      return stop_err;
+    }
+    FROTH_TRY(frothy_control_send_error(session->session_id, header->seq, phase,
+                                        err, fail_detail));
+    return frothy_control_send_idle(session->session_id, header->seq);
+  }
+  if (stop_err != FROTH_OK) {
+    return stop_err;
+  }
+
+  out_err = frothy_control_send_rendered_value(&froth_vm.frothy_runtime,
+                                               session->session_id, header->seq,
+                                               result);
+  if (out_err == FROTH_OK) {
+    out_err = frothy_control_send_idle(session->session_id, header->seq);
+  }
+  return out_err;
+}
+
+static froth_error_t
 frothy_control_handle_eval(frothy_control_session_t *session,
                            const froth_link_header_t *header,
                            const uint8_t *payload) {
@@ -664,6 +802,32 @@ static froth_error_t frothy_control_dispatch(
     break;
   case FROTHY_CONTROL_RESET_REQ:
     FROTH_TRY(frothy_control_handle_reset(session, header));
+    break;
+  case FROTHY_CONTROL_SAVE_REQ:
+    FROTH_TRY(frothy_control_handle_builtin_no_args(
+        session, header, frothy_builtin_save, FROTHY_CONTROL_PHASE_EVAL,
+        "bad SAVE payload", "save failed"));
+    break;
+  case FROTHY_CONTROL_RESTORE_REQ:
+    FROTH_TRY(frothy_control_handle_builtin_no_args(
+        session, header, frothy_builtin_restore, FROTHY_CONTROL_PHASE_EVAL,
+        "bad RESTORE payload", "restore failed"));
+    break;
+  case FROTHY_CONTROL_WIPE_REQ:
+    FROTH_TRY(frothy_control_handle_builtin_no_args(
+        session, header, frothy_builtin_wipe, FROTHY_CONTROL_PHASE_EVAL,
+        "bad WIPE payload", "wipe failed"));
+    break;
+  case FROTHY_CONTROL_CORE_REQ:
+    FROTH_TRY(frothy_control_handle_builtin_string_arg(
+        session, header, payload, frothy_builtin_core,
+        FROTHY_CONTROL_PHASE_INSPECT, "bad CORE payload", "core failed"));
+    break;
+  case FROTHY_CONTROL_SLOT_INFO_REQ:
+    FROTH_TRY(frothy_control_handle_builtin_string_arg(
+        session, header, payload, frothy_builtin_slot_info,
+        FROTHY_CONTROL_PHASE_INSPECT, "bad SLOT_INFO payload",
+        "slot info failed"));
     break;
   case FROTHY_CONTROL_DETACH_REQ:
     err = frothy_control_expect_empty_payload(header);

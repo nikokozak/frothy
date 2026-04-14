@@ -28,6 +28,12 @@ type fakeBackend struct {
 	disconnectErr  error
 	disconnectHits int
 	blockEval      chan struct{}
+	coreValue      string
+	coreOutput     []byte
+	coreErr        error
+	slotInfoValue  string
+	slotInfoOutput []byte
+	slotInfoErr    error
 }
 
 func (b *fakeBackend) IsConnected() bool {
@@ -93,12 +99,26 @@ func (b *fakeBackend) Wipe(onOutput func([]byte)) (string, error) {
 	return b.Eval("wipe()", onOutput)
 }
 
-func (b *fakeBackend) Core(string, func([]byte)) (string, error) {
-	return "nil", nil
+func (b *fakeBackend) Core(name string, onOutput func([]byte)) (string, error) {
+	_ = name
+	if len(b.coreOutput) > 0 {
+		onOutput(b.coreOutput)
+	}
+	if b.coreValue == "" && b.coreErr == nil {
+		return "nil", nil
+	}
+	return b.coreValue, b.coreErr
 }
 
-func (b *fakeBackend) SlotInfo(string, func([]byte)) (string, error) {
-	return "nil", nil
+func (b *fakeBackend) SlotInfo(name string, onOutput func([]byte)) (string, error) {
+	_ = name
+	if len(b.slotInfoOutput) > 0 {
+		onOutput(b.slotInfoOutput)
+	}
+	if b.slotInfoValue == "" && b.slotInfoErr == nil {
+		return "nil", nil
+	}
+	return b.slotInfoValue, b.slotInfoErr
 }
 
 type sessionHarness struct {
@@ -312,6 +332,30 @@ func TestControlSessionServerReportsStructuredErrors(t *testing.T) {
 	errorPayload, _ := response["error"].(map[string]any)
 	if errorPayload["code"] != "control_error" {
 		t.Fatalf("error payload = %v", errorPayload)
+	}
+}
+
+func TestControlSessionServerCorePreservesOutputCycle(t *testing.T) {
+	backend := &fakeBackend{
+		coreOutput: []byte("<native save/0>\n"),
+		coreValue:  "nil",
+	}
+	harness := startHarness(t, backend)
+	defer harness.close(t)
+
+	harness.send(t, controlSessionRequest{ID: 1, Command: "core", Name: "save"})
+	if event := harness.next(t); event["event"] != "output" {
+		t.Fatalf("core output event = %v", event)
+	}
+	if event := harness.next(t); event["event"] != "value" {
+		t.Fatalf("core value event = %v", event)
+	}
+	if event := harness.next(t); event["event"] != "idle" {
+		t.Fatalf("core idle event = %v", event)
+	}
+	response := harness.next(t)
+	if response["ok"] != true {
+		t.Fatalf("core response = %v", response)
 	}
 }
 

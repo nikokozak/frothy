@@ -85,6 +85,7 @@ func RunSmoke(cfg SmokeConfig) error {
 	}
 
 	session := NewSession(transport)
+	var controlErr *ControlError
 	if err := session.AcquirePrompt(rawPromptTimeout); err != nil {
 		return fmt.Errorf("acquire prompt: %w", err)
 	}
@@ -110,18 +111,33 @@ func RunSmoke(cfg SmokeConfig) error {
 	}
 
 	var output bytes.Buffer
-	value, err = session.Eval(`core("save")`, controlCommandTimeout,
+	value, err = session.Core("save", controlCommandTimeout,
 		func(data []byte) {
 			output.Write(data)
 		})
 	if err != nil {
-		return fmt.Errorf(`EVAL core("save"): %w`, err)
+		return fmt.Errorf("CORE save: %w", err)
 	}
 	if value != "nil" {
 		return fmt.Errorf("unexpected output-producing value %q", value)
 	}
 	if !strings.Contains(output.String(), "<native save/0>") {
 		return fmt.Errorf("missing structured output: %q", output.String())
+	}
+
+	output.Reset()
+	value, err = session.SlotInfo("save", controlCommandTimeout, func(data []byte) {
+		output.Write(data)
+	})
+	if err != nil {
+		return fmt.Errorf("SLOT_INFO save: %w", err)
+	}
+	if value != "nil" {
+		return fmt.Errorf("unexpected slot info value %q", value)
+	}
+	if !strings.Contains(output.String(),
+		"save | base | native | non-persistable | foreign") {
+		return fmt.Errorf("missing slot info output: %q", output.String())
 	}
 
 	words, err := session.Words(controlCommandTimeout)
@@ -141,6 +157,53 @@ func RunSmoke(cfg SmokeConfig) error {
 	}
 	if see.Name != "control.demo" || see.Rendered != "42" || !see.IsOverlay {
 		return fmt.Errorf("unexpected SEE result: %+v", see)
+	}
+
+	value, err = session.Save(controlCommandTimeout, nil)
+	if err != nil {
+		return fmt.Errorf("SAVE: %w", err)
+	}
+	if value != "nil" {
+		return fmt.Errorf("unexpected SAVE value %q", value)
+	}
+	value, err = session.Eval("control.demo = 7", controlCommandTimeout, nil)
+	if err != nil {
+		return fmt.Errorf("mutate after save: %w", err)
+	}
+	if value != "nil" {
+		return fmt.Errorf("unexpected mutation value %q", value)
+	}
+	value, err = session.Restore(controlCommandTimeout, nil)
+	if err != nil {
+		return fmt.Errorf("RESTORE: %w", err)
+	}
+	if value != "nil" {
+		return fmt.Errorf("unexpected RESTORE value %q", value)
+	}
+	see, err = session.See("control.demo", controlCommandTimeout)
+	if err != nil {
+		return fmt.Errorf("SEE control.demo after restore: %w", err)
+	}
+	if see.Rendered != "42" {
+		return fmt.Errorf("unexpected restored SEE render %q", see.Rendered)
+	}
+	value, err = session.Wipe(controlCommandTimeout, nil)
+	if err != nil {
+		return fmt.Errorf("WIPE: %w", err)
+	}
+	if value != "nil" {
+		return fmt.Errorf("unexpected WIPE value %q", value)
+	}
+	_, err = session.See("control.demo", controlCommandTimeout)
+	if !errors.As(err, &controlErr) || controlErr.Phase != phaseInspect {
+		return fmt.Errorf("SEE control.demo after wipe: %v", err)
+	}
+	value, err = session.Eval("control.demo = 42", controlCommandTimeout, nil)
+	if err != nil {
+		return fmt.Errorf("reseed control.demo after wipe: %w", err)
+	}
+	if value != "nil" {
+		return fmt.Errorf("unexpected reseed value %q", value)
 	}
 
 	bigText := strings.Repeat("a", 240)
@@ -188,7 +251,6 @@ func RunSmoke(cfg SmokeConfig) error {
 	}
 
 	_, err = session.See("control.demo", controlCommandTimeout)
-	var controlErr *ControlError
 	if !errors.As(err, &controlErr) || controlErr.Phase != phaseInspect {
 		return fmt.Errorf("SEE control.demo after reset: %v", err)
 	}

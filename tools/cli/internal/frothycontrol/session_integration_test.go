@@ -1,6 +1,7 @@
 package frothycontrol
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
@@ -124,9 +125,49 @@ func TestLocalRuntimeSessionMalformedRequestsReturnStructuredErrors(t *testing.T
 			wantDetail: "unknown request",
 		},
 		{
+			name:       "bad save payload",
+			msgType:    saveReq,
+			seq:        5,
+			payload:    []byte{0x01},
+			wantCode:   108,
+			wantDetail: "bad SAVE payload",
+		},
+		{
+			name:       "bad restore payload",
+			msgType:    restoreReq,
+			seq:        6,
+			payload:    []byte{0x01},
+			wantCode:   108,
+			wantDetail: "bad RESTORE payload",
+		},
+		{
+			name:       "bad wipe payload",
+			msgType:    wipeReq,
+			seq:        7,
+			payload:    []byte{0x01},
+			wantCode:   108,
+			wantDetail: "bad WIPE payload",
+		},
+		{
+			name:       "truncated core payload",
+			msgType:    coreReq,
+			seq:        8,
+			payload:    []byte{0x05, 0x00, 'a'},
+			wantCode:   251,
+			wantDetail: "bad CORE payload",
+		},
+		{
+			name:       "slot info payload trailing bytes",
+			msgType:    slotInfoReq,
+			seq:        9,
+			payload:    append(buildStringPayload("save"), 0x00),
+			wantCode:   108,
+			wantDetail: "bad SLOT_INFO payload",
+		},
+		{
 			name:       "unexpected sequence",
 			msgType:    wordsReq,
-			seq:        6,
+			seq:        11,
 			wantCode:   108,
 			wantDetail: "unexpected sequence",
 		},
@@ -150,7 +191,7 @@ func TestLocalRuntimeSessionMalformedRequestsReturnStructuredErrors(t *testing.T
 		})
 	}
 
-	outcome, err := session.runRequest(wordsReq, 5, nil, controlCommandTimeout, nil)
+	outcome, err := session.runRequest(wordsReq, 10, nil, controlCommandTimeout, nil)
 	if err != nil {
 		t.Fatalf("recovery WORDS: %v", err)
 	}
@@ -164,7 +205,7 @@ func TestLocalRuntimeSessionMalformedRequestsReturnStructuredErrors(t *testing.T
 	if len(names) == 0 {
 		t.Fatalf("recovery WORDS returned no bindings")
 	}
-	session.nextSeq = 6
+	session.nextSeq = 11
 }
 
 func TestLocalRuntimeSessionMultilineInterruptEntersControl(t *testing.T) {
@@ -282,6 +323,93 @@ func TestLocalRuntimeSessionOversizedInspectFailsWithoutValueEvents(t *testing.T
 	}
 
 	session.nextSeq = 3
+}
+
+func TestLocalRuntimeSessionDirectBuiltinRequests(t *testing.T) {
+	runtime, session := openLocalRuntimeSession(t)
+	defer closeLocalRuntimeSession(t, runtime, session)
+
+	value, err := session.Eval("control.demo = 42", controlCommandTimeout, nil)
+	if err != nil {
+		t.Fatalf("seed control.demo: %v", err)
+	}
+	if value != "nil" {
+		t.Fatalf("seed value = %q", value)
+	}
+
+	value, err = session.Save(controlCommandTimeout, nil)
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if value != "nil" {
+		t.Fatalf("Save value = %q", value)
+	}
+
+	if _, err := session.Eval("control.demo = 99", controlCommandTimeout, nil); err != nil {
+		t.Fatalf("mutate control.demo: %v", err)
+	}
+
+	value, err = session.Restore(controlCommandTimeout, nil)
+	if err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if value != "nil" {
+		t.Fatalf("Restore value = %q", value)
+	}
+
+	value, err = session.Eval("control.demo", controlCommandTimeout, nil)
+	if err != nil {
+		t.Fatalf("read restored control.demo: %v", err)
+	}
+	if value != "42" {
+		t.Fatalf("restored control.demo = %q", value)
+	}
+
+	var coreOutput bytes.Buffer
+	value, err = session.Core("save", controlCommandTimeout, func(data []byte) {
+		coreOutput.Write(data)
+	})
+	if err != nil {
+		t.Fatalf("Core: %v", err)
+	}
+	if value != "nil" {
+		t.Fatalf("Core value = %q", value)
+	}
+	if !strings.Contains(coreOutput.String(), "<native save/0>") {
+		t.Fatalf("Core output = %q", coreOutput.String())
+	}
+
+	var slotInfoOutput bytes.Buffer
+	value, err = session.SlotInfo("save", controlCommandTimeout, func(data []byte) {
+		slotInfoOutput.Write(data)
+	})
+	if err != nil {
+		t.Fatalf("SlotInfo: %v", err)
+	}
+	if value != "nil" {
+		t.Fatalf("SlotInfo value = %q", value)
+	}
+	if !strings.Contains(slotInfoOutput.String(),
+		"save | base | native | non-persistable | foreign") {
+		t.Fatalf("SlotInfo output = %q", slotInfoOutput.String())
+	}
+
+	value, err = session.Wipe(controlCommandTimeout, nil)
+	if err != nil {
+		t.Fatalf("Wipe: %v", err)
+	}
+	if value != "nil" {
+		t.Fatalf("Wipe value = %q", value)
+	}
+
+	_, err = session.See("control.demo", controlCommandTimeout)
+	var controlErr *ControlError
+	if !errors.As(err, &controlErr) {
+		t.Fatalf("See after wipe error = %v, want ControlError", err)
+	}
+	if controlErr.Phase != phaseInspect || controlErr.Detail != "see failed" {
+		t.Fatalf("See after wipe control error = %+v", controlErr)
+	}
 }
 
 func openLocalRuntimeRaw(t *testing.T) (*LocalRuntime, *Session) {

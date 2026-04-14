@@ -15,6 +15,11 @@ const (
 	seeReq       = 0x05
 	detachReq    = 0x06
 	resetReq     = 0x07
+	saveReq      = 0x08
+	restoreReq   = 0x09
+	wipeReq      = 0x0A
+	coreReq      = 0x0B
+	slotInfoReq  = 0x0C
 	outputEvt    = 0x10
 	valueEvt     = 0x11
 	errorEvt     = 0x12
