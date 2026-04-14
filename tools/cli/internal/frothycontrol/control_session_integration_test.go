@@ -99,12 +99,7 @@ func TestControlSessionServerLocalRuntime(t *testing.T) {
 	}
 
 	harness.send(t, controlSessionRequest{ID: 13, Command: "disconnect"})
-	if event := harness.next(t); event["event"] != "disconnected" {
-		t.Fatalf("disconnect event = %v", event)
-	}
-	if response := harness.next(t); response["ok"] != true {
-		t.Fatalf("disconnect response = %v", response)
-	}
+	consumeDisconnectCycle(t, harness, 13)
 }
 
 func consumeValueCycle(t *testing.T, harness *sessionHarness, requestID float64) map[string]any {
@@ -174,6 +169,32 @@ func consumeErrorCycle(t *testing.T, harness *sessionHarness, requestID float64)
 		t.Fatalf("response id = %v, want %v", response["id"], requestID)
 	}
 	return response
+}
+
+func consumeDisconnectCycle(t *testing.T, harness *sessionHarness,
+	requestID float64) map[string]any {
+	t.Helper()
+
+	sawCurrentDisconnect := false
+	for {
+		message := harness.next(t)
+		if message["event"] == "disconnected" {
+			if message["request_id"] == requestID {
+				sawCurrentDisconnect = true
+			}
+			continue
+		}
+		if message["ok"] != true {
+			t.Fatalf("disconnect response = %v", message)
+		}
+		if message["id"] != requestID {
+			t.Fatalf("disconnect response id = %v, want %v", message["id"], requestID)
+		}
+		if !sawCurrentDisconnect {
+			t.Fatalf("disconnect response arrived before current disconnect event: %v", message)
+		}
+		return message
+	}
 }
 
 func findLocalRuntimeBinary(t *testing.T) string {

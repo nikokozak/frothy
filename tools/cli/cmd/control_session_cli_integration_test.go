@@ -81,12 +81,7 @@ func TestIntegrationToolingControlSessionLocalRuntime(t *testing.T) {
 	}
 
 	session.send(t, map[string]any{"id": 6, "command": "disconnect"})
-	if event := session.next(t); event["event"] != "disconnected" {
-		t.Fatalf("disconnect event = %v", event)
-	}
-	if response := session.next(t); response["ok"] != true {
-		t.Fatalf("disconnect response = %v", response)
-	}
+	session.expectDisconnectCycle(t, 6)
 }
 
 type controlSessionCLI struct {
@@ -235,6 +230,32 @@ func (s *controlSessionCLI) expectValueCycleNoOutput(t *testing.T, requestID flo
 		t.Fatalf("response id = %v, want %v", response["id"], requestID)
 	}
 	return response
+}
+
+func (s *controlSessionCLI) expectDisconnectCycle(t *testing.T,
+	requestID float64) map[string]any {
+	t.Helper()
+
+	sawCurrentDisconnect := false
+	for {
+		message := s.next(t)
+		if message["event"] == "disconnected" {
+			if message["request_id"] == requestID {
+				sawCurrentDisconnect = true
+			}
+			continue
+		}
+		if message["ok"] != true {
+			t.Fatalf("disconnect response = %v", message)
+		}
+		if message["id"] != requestID {
+			t.Fatalf("disconnect response id = %v, want %v", message["id"], requestID)
+		}
+		if !sawCurrentDisconnect {
+			t.Fatalf("disconnect response arrived before current disconnect event: %v", message)
+		}
+		return message
+	}
 }
 
 func (s *controlSessionCLI) close(t *testing.T) {
