@@ -24,23 +24,23 @@ It is a sequencing and control document.
 This block is the live control surface for repo status.
 
 Current milestone: `queued follow-on only`
-Today's goal: keep the control docs thin and aligned, reorder the post-`v0.1`
-priority stack around workshop failure modes for 2026-04-16, and make the
-next implementation cut the first workshop install/editor/recovery hardening
+Today's goal: keep the control docs thin and aligned, move the live queue from
+the landed workshop implementation tranches to operational workshop hardening
+for 2026-04-16, and make the next cut the attendee install/naming/preflight
 tranche
-Next artifact: first workshop install/editor/recovery hardening cut across CLI release, VSCode distribution, and reset-safe send
+Next artifact: attendee install, naming-alignment, and preflight hardening cut across CLI/VSCode release artifacts, serial readiness, and workshop starter materials
 Blocked by: none
 Next proof command: `sh tools/frothy/proof_control_surface_docs.sh`
-Slip against plan: none; the next-stage language-definition docs, direct
-control-session slice 2, bounded-memory hardening, CLI naming alignment, and
-workspace/image-flow tranche 1 are already landed; the repo now has a
-workshop-first follow-on queue, but the install/editor/recovery tranche still
-needs to prove that another person can reach a clean maintained Frothy session
-quickly
-Cut candidate if slip persists: keep the first workshop cut limited to install,
-editor, recovery, and inspection exposure; defer broader board-library growth,
-language widening beyond `in prefix` / `cond` / `case` / ordinary-code `@`,
-records, and all later workspace/image-flow work
+Slip against plan: none; the install/editor/recovery, inspection, workshop
+base-image, readability-language, and records tranches are landed on `main`,
+so the unclear part is now whether another person can install Frothy, survive
+the Frothy-versus-`froth` naming split, pass preflight, connect over serial,
+open a sanctioned starter project, and recover cleanly on the maintained path
+before the 2026-04-16 workshop
+Cut candidate if slip persists: freeze the promised support matrix to macOS
+Intel, macOS Apple Silicon, and Linux x86_64; ship a VSIX-first extension
+path; keep the starter project narrow; and defer wider docs polish, classroom
+niceties, and all workspace/image-flow work
 
 ## 3. Operating Rules
 

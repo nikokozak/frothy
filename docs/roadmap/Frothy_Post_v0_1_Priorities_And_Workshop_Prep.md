@@ -28,152 +28,190 @@ What is already settled:
   hardening slices are landed
 
 What still needs explicit surfacing is the order of the next follow-on work.
-The workshop path now leads the queue; slot-bundle-first follow-on work does
-not.
+The workshop implementation tranche is now landed on `main`, so the workshop
+path no longer starts with language or board feature growth. It starts with
+operational hardening for another person's laptop, cable, serial permissions,
+starter folder, recovery path, and naming surface.
 
 ## Priority Stack
 
-### 1. Workshop install, editor, and recovery surface
+### 1. Support matrix and release/install artifacts
 
 Goal:
 
-- make `brew install frothy`, VSCode setup, device discovery, connect,
-  interrupt, reconnect, and reset-safe send reliable enough that another
-  person can reach a clean maintained Frothy session quickly
+- freeze the promised attendee platform matrix and ship a truthful CLI plus
+  VSIX install path
 
 Held boundary:
 
-- keep the accepted single-owner direct-control path
-- keep the first cut shipping- and recovery-focused rather than widening the
-  editor surface opportunistically
+- promise only the release targets that actually exist
+- keep the install story concrete and release-shaped rather than aspirational
 
 References:
 
 - `README.md`
 - `tools/package-release.sh`
 - `.github/workflows/release.yml`
+- `tools/vscode/README.md`
+
+### 2. Attendee-facing naming alignment
+
+Goal:
+
+- converge the workshop-facing product, CLI, extension, and docs story so
+  attendees do not bounce between Frothy, `froth`, and `froth-cli`
+
+Held boundary:
+
+- prefer one truthful transitional story over ambiguous mixed naming
+- do not break release/install compatibility late; if a full rename is risky,
+  use compatibility shims and explicit wording instead of half-renaming
+
+References:
+
+- `README.md`
+- `tools/vscode/README.md`
+- `tools/package-release.sh`
+- `tools/cli/Makefile`
+
+### 3. Attendee install email and quickstart
+
+Goal:
+
+- send one clear install note that tells attendees what to install, why the
+  CLI and extension are both needed, what platforms are supported, and what to
+  expect before they arrive
+
+Held boundary:
+
+- keep this note short, direct, and operational
+- explain the Frothy product name versus the transitional `froth` CLI name
+  truthfully instead of papering over it
+
+References:
+
+- `README.md`
+- `tools/vscode/README.md`
+- `docs/guide/Frothy_From_The_Ground_Up.md`
+
+### 4. Workshop preflight and serial recovery path
+
+Goal:
+
+- verify CLI presence, extension compatibility, serial visibility, board
+  handshake, and fallback recovery on the maintained Frothy path
+
+Held boundary:
+
+- do not require firmware build tooling just to confirm a preflashed attendee
+  board is workshop-ready
+- make the recovery story explicit before the workshop rather than discovering
+  it live at the tables
+
+References:
+
+- `tools/cli/cmd/doctor.go`
+- `tools/cli/internal/serial/discover.go`
+- `tools/vscode/src/control-session-client.ts`
 - `docs/adr/110-single-owner-control-session-transport.md`
 - `docs/adr/111-vscode-extension-owned-control-session.md`
-- `docs/adr/113-manifest-owned-project-target-selection.md`
 
-### 2. Inspection-first teaching surface
+### 5. Workshop starter project and frozen board/game surface
 
 Goal:
 
-- make `words`, `see`, `core`, `slotInfo`, and `@` clean enough to support
-  slot introspection, the workshop exploration puzzle, and a truthful teaching
-  story
+- give attendees one sanctioned folder shape and one sanctioned board/display
+  API for the puzzle, blink, animation, sensor, and small-game path
 
 Held boundary:
 
-- improve inspection quality and metadata exposure before introducing heavier
-  runtime features
-- keep this tranche focused on discoverability rather than generic UI growth
+- keep the starter narrow and teachable
+- use the maintained Frothy workshop surface rather than inventing a second
+  one-off demo stack
 
 References:
 
-- `docs/spec/Frothy_Language_Spec_v0_1.md`
-- `docs/adr/107-interactive-profile-boot-and-interrupt.md`
-- `docs/spec/Frothy_Language_Spec_vNext.md`
-- `docs/adr/114-next-stage-structural-surface-and-recovery-shape.md`
+- `tools/cli/cmd/new.go`
+- `tools/frothy/`
+- `boards/esp32-devkit-v1/`
+- `docs/adr/117-workshop-base-image-board-library-surface.md`
 
-### 3. Workshop base-image library and board surface
+### 6. Minimal docs front door and quick reference
 
 Goal:
 
-- define the preflashed workshop base library and board-facing surface for
-  blink, animation, `millis`, ADC, GPIO, and related utilities while keeping
-  that surface small, explicit, and easy to teach
+- publish a minimal documentation front door for install, first connect,
+  inspection, board API, persistence, and troubleshooting
 
 Held boundary:
 
-- no broad native ABI redesign first
-- no inherited Froth library carry-over without a Frothy-native surface review
+- do not try to mirror a whole site before the workshop
+- point everything at the maintained Frothy path and the sanctioned starter
 
 References:
 
-- `docs/adr/108-frothy-ffi-boundary.md`
-- `docs/roadmap/Frothy_M9_Board_FFI_Closeout.md`
-- `docs/spec/Frothy_Language_Spec_v0_1.md`, Appendix C
+- `README.md`
+- `tools/vscode/README.md`
+- `docs/guide/Frothy_From_The_Ground_Up.md`
 
-### 4. Readability language tranche: `in prefix`, `cond`, `case`, and ordinary-code `@`
+### 7. Clean-machine validation on promised platforms
 
 Goal:
 
-- land the narrow language additions that most improve workshop code and small
-  library readability without reopening the slot/image model
+- prove the attendee path on the platforms we actually promise before people
+  walk in with their laptops
 
 Held boundary:
 
-- `in prefix` remains source-time grouping over prefixed stable slots only
-- `cond` / `case` remain narrow control additions
-- ordinary-code `@` remains a stable top-level slot designator, not a new
-  persisted value class
+- promise only what has been exercised on clean machines
+- treat install failure as a top-level workshop blocker rather than a late bug
 
 References:
 
-- `docs/adr/112-next-stage-language-growth-and-recovery-boundary.md`
-- `docs/spec/Frothy_Language_Spec_vNext.md`
-- `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md`
-- `docs/adr/114-next-stage-structural-surface-and-recovery-shape.md`
+- `.github/workflows/release.yml`
+- `README.md`
+- `tools/vscode/README.md`
 
-### 5. Records for workshop/game objects
+### 8. Classroom hardware and recovery kit
 
 Goal:
 
-- add fixed-layout records for workshop and game-object use without widening
-  Frothy into dynamic object bags
+- make the room-side hardware path resilient: preflashed boards, known-good
+  cables, spare parts, labels, and a written recovery procedure
 
 Held boundary:
 
-- keep record layout fixed and explicit
-- do not reopen the one-namespace stable-slot model
+- do not let the software path depend on unplanned reflashing or ad hoc cable
+  triage
+- keep the fallback CLI path ready if the extension misbehaves on a given
+  machine
 
 References:
 
-- `docs/adr/112-next-stage-language-growth-and-recovery-boundary.md`
-- `docs/spec/Frothy_Language_Spec_vNext.md`
-- `docs/adr/114-next-stage-structural-surface-and-recovery-shape.md`
+- `tools/frothy/proof_m10_smoke.sh`
+- `tools/frothy/m10_esp32_proof_transcript.txt`
+- `boards/`
 
-### 6. Performance and persistence closeout on workshop programs
+### 9. Workshop rehearsal plus measured performance/persistence closeout
 
 Goal:
 
-- prove the real workshop loops, input paths, and `save` / `restore` / `wipe`
-  story under measured before/after checks rather than guessed optimization
+- run the actual lesson path end to end, verify loop cadence, sensor flow, and
+  `save` / `restore` / `wipe`, and freeze the take-home path
 
 Held boundary:
 
 - no speculative rewrite
-- tie the proof surface to actual workshop programs and board behavior
+- tie the proof surface to the actual workshop puzzle, blink, animation,
+  sensor, and small-game flow
 
 References:
 
 - `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md`
 - `docs/spec/Frothy_Language_Spec_v0_1.md`
-- `docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
-
-### 7. Workshop content and rehearsal
-
-Goal:
-
-- freeze the teaching arc, puzzle path, proofs, and handoff so the maintained
-  Frothy path works without extra spoken repair
-
-Held boundary:
-
-- only add features or examples that materially improve the actual workshop
-  lesson path
-- keep the demo path on the maintained Frothy surface
-
-References:
-
-- `README.md`
-- `PROGRESS.md`
-- `TIMELINE.md`
 - `tools/frothy/`
 
-### 8. Later workspace/image-flow work
+### 10. Later workspace/image-flow work
 
 Goal:
 
@@ -194,14 +232,14 @@ References:
 
 Before the 2026-04-16 workshop:
 
-- keep the install, editor, and recovery story strong enough that workshop
-  participants can reach a clean session quickly
+- publish a truthful install path with a frozen support matrix
+- publish one clear naming story for Frothy versus `froth`
+- give attendees a sendable install note and a preflight path before they
+  arrive
 - keep the introspection, puzzle, blink, animation, sensor, and persistence
-  path on the maintained Frothy surface
-- keep accepted `v0.1` semantics authoritative until a deliberate follow-on
-  tranche changes them
+  path on one sanctioned starter and one maintained board surface
+- prove the path on clean machines and carry a recovery kit into the room
 - keep workspace/image flow deferred behind the workshop-critical tranches
-- keep the later queue visible enough that pausing discussion does not erase it
 
 ## Reordering Rule
 

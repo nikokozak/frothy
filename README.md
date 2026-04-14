@@ -4,10 +4,9 @@ Frothy is a small live lexical language for programmable devices.
 
 Frothy `v0.1` is functionally closed.
 
-The active repo work is post-`v0.1` control-surface repair and workshop
-readiness for 2026-04-16, with the next implementation cut kept deliberately
-small: first workshop install/editor/recovery hardening across CLI release,
-VS Code distribution, and reset-safe whole-file send.
+The active repo work is post-`v0.1` workshop hardening for 2026-04-16:
+install/release artifacts, attendee-facing naming cleanup, preflight and
+serial recovery, starter materials, and rehearsal.
 
 The forward queue after that is explicit:
 

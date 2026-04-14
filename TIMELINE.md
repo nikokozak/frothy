@@ -13,7 +13,7 @@ If this file and the roadmap disagree, the roadmap wins.
 
 - Active milestone: `queued follow-on only`
 - Blocked by: none
-- Next artifact: first workshop install/editor/recovery hardening cut across CLI release, VSCode distribution, and reset-safe send
+- Next artifact: attendee install, naming-alignment, and preflight hardening cut across CLI/VSCode release artifacts, serial readiness, and workshop starter materials
 - Next proof command: `sh tools/frothy/proof_control_surface_docs.sh`
 
 ## Closed v0.1 Ladder
@@ -66,42 +66,87 @@ keep each item's description and references so deferral does not erase context.
   `AGENTS.md`, and one forward-priority note.
   References: Frothy ADR-116 and
   `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`.
-- [ ] Workshop install, editor, and recovery surface
+- [x] Workshop install, editor, and recovery surface
   Deliverable: make install, device discovery, connect, interrupt, reconnect,
   and reset-safe send dependable on the maintained Frothy path.
   References: Frothy ADR-110, Frothy ADR-111, Frothy ADR-113,
   `tools/package-release.sh`, and `.github/workflows/release.yml`.
-- [ ] Inspection-first teaching surface
+- [x] Inspection-first teaching surface
   Deliverable: make `words`, `see`, `core`, `slotInfo`, and `@` clean enough
   for the workshop exploration and puzzle path.
   References: `docs/spec/Frothy_Language_Spec_v0_1.md`,
   Frothy ADR-107, `docs/spec/Frothy_Language_Spec_vNext.md`, and
   Frothy ADR-114.
-- [ ] Workshop base-image library and board surface
+- [x] Workshop base-image library and board surface
   Deliverable: define the preflashed workshop base library and the board
   surface for blink, animation, `millis`, ADC, GPIO, and related helpers.
   References: Frothy ADR-108,
   `docs/roadmap/Frothy_M9_Board_FFI_Closeout.md`, and
   `docs/spec/Frothy_Language_Spec_v0_1.md`, Appendix C.
-- [ ] Readability language tranche: `in prefix`, `cond`, `case`, and ordinary-code `@`
+- [x] Readability language tranche: `in prefix`, `cond`, `case`, and ordinary-code `@`
   Deliverable: land the narrow language additions that most improve workshop
   code and small-library readability without reopening the slot/image model.
   References: Frothy ADR-112, `docs/spec/Frothy_Language_Spec_vNext.md`,
   `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md`, and Frothy ADR-114.
-- [ ] Records for workshop/game objects
+- [x] Records for workshop/game objects
   Deliverable: add fixed-layout records for workshop and game-object use
   without widening Frothy into dynamic object bags.
   References: Frothy ADR-112, `docs/spec/Frothy_Language_Spec_vNext.md`, and
   Frothy ADR-114.
-- [ ] Performance and persistence closeout on workshop programs
-  Deliverable: prove the real workshop loops, input paths, and
-  `save` / `restore` / `wipe` story with measured before/after checks.
+- [x] Workshop-tranche safety closeout
+  Deliverable: fix tranche-local regressions, rerun the proof ladder, and stop
+  only after repeated review passes stop surfacing major findings.
+  References: `make test`, `make test-cli-local`, `make test-integration`, and
+  `make test-all`.
+- [ ] Support matrix and release/install artifacts
+  Deliverable: freeze the promised platforms and publish a truthful CLI plus
+  VSIX install path for attendees.
+  References: `.github/workflows/release.yml`, `tools/package-release.sh`,
+  `tools/vscode/README.md`, and `README.md`.
+- [ ] Attendee-facing naming alignment
+  Deliverable: converge the workshop-facing product, CLI, extension, and docs
+  story so attendees do not bounce between Frothy, `froth`, and `froth-cli`;
+  if a full rename is too risky, ship one explicit transitional story instead.
+  References: `README.md`, `tools/vscode/README.md`,
+  `tools/package-release.sh`, and `tools/cli/Makefile`.
+- [ ] Attendee install email and quickstart
+  Deliverable: one sendable install note that explains the CLI/extension split,
+  supported platforms, serial expectations, and the first-run path.
+  References: `README.md`, `tools/vscode/README.md`, and
+  `docs/guide/Frothy_From_The_Ground_Up.md`.
+- [ ] Workshop preflight and serial recovery path
+  Deliverable: a clean preflight path for CLI presence, extension
+  compatibility, serial visibility, board handshake, and fallback recovery.
+  References: `tools/cli/cmd/doctor.go`,
+  `tools/cli/internal/serial/discover.go`, and
+  `tools/vscode/src/control-session-client.ts`.
+- [ ] Workshop starter project and frozen board/game surface
+  Deliverable: one sanctioned project folder and one sanctioned board/display
+  API for the workshop lesson arc.
+  References: `tools/cli/cmd/new.go`, `tools/frothy/`,
+  `boards/esp32-devkit-v1/`, and
+  `docs/adr/117-workshop-base-image-board-library-surface.md`.
+- [ ] Minimal docs front door and quick reference
+  Deliverable: install, first connect, inspection, board API, persistence, and
+  troubleshooting docs that point at the maintained Frothy path.
+  References: `README.md`, `docs/guide/Frothy_From_The_Ground_Up.md`, and
+  `tools/vscode/README.md`.
+- [ ] Clean-machine validation on promised platforms
+  Deliverable: prove the attendee path on at least macOS Apple Silicon, macOS
+  Intel, and Linux x86_64 before the workshop.
+  References: `.github/workflows/release.yml`, `README.md`, and the workshop
+  install path above.
+- [ ] Classroom hardware and recovery kit
+  Deliverable: preflashed boards, known-good data cables, spare hardware,
+  board labels, and a written reflash/fallback procedure.
+  References: `tools/frothy/proof_m10_smoke.sh`,
+  `tools/frothy/m10_esp32_proof_transcript.txt`, and `boards/`.
+- [ ] Workshop rehearsal plus measured performance/persistence closeout
+  Deliverable: run the real lesson path end to end, verify loop cadence,
+  sensor flow, and `save` / `restore` / `wipe`, and freeze the take-home path.
   References: `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md`,
-  `docs/spec/Frothy_Language_Spec_v0_1.md`, and the roadmap follow-on queue.
-- [ ] Workshop content and rehearsal
-  Deliverable: freeze the lesson arc, puzzle path, proofs, and handoff so the
-  maintained Frothy path works without extra spoken repair.
-  References: `README.md`, `PROGRESS.md`, `TIMELINE.md`, and `tools/frothy/`.
+  `docs/spec/Frothy_Language_Spec_v0_1.md`, `tools/frothy/`, and the starter
+  project above.
 - [ ] Host-only slot-bundle inspection/generation in the CLI project layer
   Deliverable: the first workspace/image-flow implementation cut only, after
   the workshop-critical tranches above are stable.
