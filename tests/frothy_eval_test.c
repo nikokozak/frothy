@@ -6,6 +6,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -125,6 +126,45 @@ static int expect_bool_value(frothy_value_t value, bool expected,
     return 0;
   }
   return 1;
+}
+
+static int expect_binding_view(const char *name,
+                               frothy_value_class_t expected_class,
+                               const char *expected_render,
+                               const char *label) {
+  froth_cell_u_t slot_index = 0;
+  froth_cell_t impl = 0;
+  frothy_value_t value = frothy_value_make_nil();
+  frothy_value_class_t value_class;
+  char *rendered = NULL;
+  int ok = 1;
+
+  if (froth_slot_find_name(name, &slot_index) != FROTH_OK ||
+      froth_slot_get_impl(slot_index, &impl) != FROTH_OK) {
+    fprintf(stderr, "%s failed to resolve slot `%s`\n", label, name);
+    return 0;
+  }
+  value = frothy_value_from_cell(impl);
+  if (frothy_value_class(runtime(), value, &value_class) != FROTH_OK) {
+    fprintf(stderr, "%s failed to classify `%s`\n", label, name);
+    return 0;
+  }
+  if (frothy_value_render(runtime(), value, &rendered) != FROTH_OK) {
+    fprintf(stderr, "%s failed to render `%s`\n", label, name);
+    return 0;
+  }
+  if (value_class != expected_class) {
+    fprintf(stderr, "%s expected class %d for `%s`, got %d\n", label,
+            (int)expected_class, name, (int)value_class);
+    ok = 0;
+  }
+  if (strcmp(rendered, expected_render) != 0) {
+    fprintf(stderr, "%s expected render `%s` for `%s`, got `%s`\n", label,
+            expected_render, name, rendered);
+    ok = 0;
+  }
+  free(rendered);
+  return ok;
 }
 
 static int expect_live_objects(size_t expected, const char *label) {
@@ -434,6 +474,64 @@ static int test_top_level_set_forms(void) {
   ok &= expect_ok("frame[0]", &value);
   ok &= expect_int_value(value, 7, "frame[0]");
   release_value(&value);
+
+  return ok;
+}
+
+static int test_fixed_layout_records(void) {
+  frothy_value_t value = frothy_value_make_nil();
+  int ok = 1;
+
+  reset_frothy_state();
+
+  ok &= expect_ok("record Point [ x, y ]", &value);
+  ok &= expect_nil_value(value, "record Point");
+  release_value(&value);
+  ok &= expect_binding_view("Point", FROTHY_VALUE_CLASS_RECORD_DEF,
+                            "record Point [ x, y ]", "record def inspect");
+
+  ok &= expect_ok("point = Point: 10, 20", &value);
+  ok &= expect_nil_value(value, "point binding");
+  release_value(&value);
+  ok &= expect_binding_view("point", FROTHY_VALUE_CLASS_RECORD,
+                            "Point: 10, 20", "record value inspect");
+
+  ok &= expect_ok("point->x", &value);
+  ok &= expect_int_value(value, 10, "point->x");
+  release_value(&value);
+  ok &= expect_ok("set point->x to 11", &value);
+  ok &= expect_nil_value(value, "set point->x");
+  release_value(&value);
+  ok &= expect_ok("point->x", &value);
+  ok &= expect_int_value(value, 11, "point->x after write");
+  release_value(&value);
+
+  ok &= expect_error("Point: 1", FROTH_ERROR_SIGNATURE);
+  ok &= expect_error("point->missing", FROTH_ERROR_BOUNDS);
+  ok &= expect_error("set point->x to fn() { 1 }", FROTH_ERROR_TYPE_MISMATCH);
+
+  ok &= expect_ok("frame = cells(1)", &value);
+  release_value(&value);
+  ok &= expect_ok("set frame[0] = point", &value);
+  ok &= expect_nil_value(value, "set frame[0] = point");
+  release_value(&value);
+  ok &= expect_ok("frame[0]->x", &value);
+  ok &= expect_int_value(value, 11, "frame[0]->x");
+  release_value(&value);
+
+  ok &= expect_ok("record Point [ x ]", &value);
+  ok &= expect_nil_value(value, "record Point rebind");
+  release_value(&value);
+  ok &= expect_ok("saved = Point: 7", &value);
+  ok &= expect_nil_value(value, "saved binding");
+  release_value(&value);
+  ok &= expect_ok("record Point [ y ]", &value);
+  ok &= expect_nil_value(value, "record Point second rebind");
+  release_value(&value);
+  ok &= expect_ok("saved->x", &value);
+  ok &= expect_int_value(value, 7, "saved->x after rebind");
+  release_value(&value);
+  ok &= expect_error("saved->y", FROTH_ERROR_BOUNDS);
 
   return ok;
 }
@@ -831,6 +929,7 @@ int main(void) {
   ok &= test_cells_store_rules_and_overwrite_reclamation();
   ok &= test_cells_sample_program();
   ok &= test_top_level_set_forms();
+  ok &= test_fixed_layout_records();
   ok &= test_spoken_ledger_surface_and_control_forms();
   ok &= test_temporary_results_release_cleanly();
   ok &= test_code_payload_reuse_with_factory_churn();

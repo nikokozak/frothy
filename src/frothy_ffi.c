@@ -66,6 +66,8 @@ static froth_error_t frothy_ffi_push_value(frothy_runtime_t *runtime,
   case FROTHY_VALUE_CLASS_CELLS:
   case FROTHY_VALUE_CLASS_CODE:
   case FROTHY_VALUE_CLASS_NATIVE:
+  case FROTHY_VALUE_CLASS_RECORD_DEF:
+  case FROTHY_VALUE_CLASS_RECORD:
     return FROTH_ERROR_TYPE_MISMATCH;
   }
 

@@ -158,6 +158,108 @@ static froth_error_t frothy_quote_text(const char *text, size_t length,
   return FROTH_OK;
 }
 
+typedef struct {
+  char *data;
+  size_t length;
+  size_t capacity;
+} frothy_string_builder_t;
+
+static void frothy_sb_init(frothy_string_builder_t *builder) {
+  builder->data = NULL;
+  builder->length = 0;
+  builder->capacity = 0;
+}
+
+static froth_error_t frothy_sb_reserve(frothy_string_builder_t *builder,
+                                       size_t extra) {
+  size_t needed = builder->length + extra + 1;
+  size_t capacity = builder->capacity == 0 ? 128 : builder->capacity;
+  char *resized;
+
+  while (capacity < needed) {
+    capacity *= 2;
+  }
+
+  if (capacity == builder->capacity) {
+    return FROTH_OK;
+  }
+
+  resized = (char *)realloc(builder->data, capacity);
+  if (resized == NULL) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+  }
+
+  builder->data = resized;
+  builder->capacity = capacity;
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_sb_append_text(frothy_string_builder_t *builder,
+                                           const char *text) {
+  size_t length = strlen(text);
+
+  FROTH_TRY(frothy_sb_reserve(builder, length));
+  memcpy(builder->data + builder->length, text, length);
+  builder->length += length;
+  builder->data[builder->length] = '\0';
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_sb_append_char(frothy_string_builder_t *builder,
+                                           char ch) {
+  FROTH_TRY(frothy_sb_reserve(builder, 1));
+  builder->data[builder->length++] = ch;
+  builder->data[builder->length] = '\0';
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_sb_appendf(frothy_string_builder_t *builder,
+                                       const char *format, ...) {
+  va_list args;
+  va_list copy;
+  int needed;
+
+  va_start(args, format);
+  va_copy(copy, args);
+  needed = vsnprintf(NULL, 0, format, copy);
+  va_end(copy);
+
+  if (needed < 0) {
+    va_end(args);
+    return FROTH_ERROR_IO;
+  }
+
+  FROTH_TRY(frothy_sb_reserve(builder, (size_t)needed));
+  (void)vsnprintf(builder->data + builder->length,
+                  builder->capacity - builder->length, format, args);
+  va_end(args);
+  builder->length += (size_t)needed;
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_sb_append_quoted(frothy_string_builder_t *builder,
+                                             const char *text, size_t length) {
+  char *quoted = NULL;
+  froth_error_t err;
+
+  err = frothy_quote_text(text, length, &quoted);
+  if (err != FROTH_OK) {
+    return err;
+  }
+  err = frothy_sb_append_text(builder, quoted);
+  free(quoted);
+  return err;
+}
+
+static froth_error_t frothy_add_size(size_t lhs, size_t rhs, size_t *out) {
+  if (lhs > SIZE_MAX - rhs) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+  }
+
+  *out = lhs + rhs;
+  return FROTH_OK;
+}
+
 static size_t frothy_payload_align_up(size_t value) {
   const size_t alignment = _Alignof(max_align_t);
   size_t remainder = value % alignment;
@@ -176,6 +278,77 @@ static void *frothy_runtime_payload_ptr(frothy_runtime_t *runtime,
 static const void *frothy_runtime_payload_const_ptr(
     const frothy_runtime_t *runtime, size_t offset) {
   return runtime->payload_storage.bytes + offset;
+}
+
+static froth_error_t frothy_record_def_next_string(const char **cursor_io,
+                                                   const char *end,
+                                                   const char **text_out) {
+  const char *cursor = *cursor_io;
+  const char *nul;
+
+  if (cursor > end) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  nul = (const char *)memchr(cursor, '\0', (size_t)(end - cursor));
+  if (nul == NULL) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  *text_out = cursor;
+  *cursor_io = nul + 1;
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_runtime_record_def_object_view(
+    const frothy_runtime_t *runtime, const frothy_object_t *object,
+    const char **name_out, size_t *field_count_out, const char **fields_out) {
+  const char *cursor;
+  const char *end;
+  uint32_t stored_field_count = 0;
+
+  if (object->kind != FROTHY_OBJECT_RECORD_DEF ||
+      object->as.record_def.payload.length < sizeof(stored_field_count)) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  cursor = (const char *)frothy_runtime_payload_const_ptr(
+      runtime, object->as.record_def.payload.offset);
+  end = cursor + object->as.record_def.payload.length;
+  memcpy(&stored_field_count, cursor, sizeof(stored_field_count));
+  cursor += sizeof(stored_field_count);
+
+  FROTH_TRY(frothy_record_def_next_string(&cursor, end, name_out));
+  if (field_count_out != NULL) {
+    *field_count_out = (size_t)stored_field_count;
+  }
+  if (fields_out != NULL) {
+    *fields_out = cursor;
+  }
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_runtime_record_field_values(
+    frothy_runtime_t *runtime, frothy_object_t *object, frothy_value_t **fields_out) {
+  if (object->kind != FROTHY_OBJECT_RECORD) {
+    return FROTH_ERROR_TYPE_MISMATCH;
+  }
+
+  *fields_out = (frothy_value_t *)frothy_runtime_payload_ptr(
+      runtime, object->as.record.payload.offset);
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_runtime_record_field_values_const(
+    const frothy_runtime_t *runtime, const frothy_object_t *object,
+    const frothy_value_t **fields_out) {
+  if (object->kind != FROTHY_OBJECT_RECORD) {
+    return FROTH_ERROR_TYPE_MISMATCH;
+  }
+
+  *fields_out = (const frothy_value_t *)frothy_runtime_payload_const_ptr(
+      runtime, object->as.record.payload.offset);
+  return FROTH_OK;
 }
 
 static void frothy_runtime_add_payload_free_span(frothy_runtime_t *runtime,
@@ -417,6 +590,12 @@ static void frothy_runtime_discard_object(frothy_runtime_t *runtime,
       frothy_ir_program_free(&object->as.code.program);
     }
     break;
+  case FROTHY_OBJECT_RECORD_DEF:
+    frothy_runtime_release_payload(runtime, object->as.record_def.payload);
+    break;
+  case FROTHY_OBJECT_RECORD:
+    frothy_runtime_release_payload(runtime, object->as.record.payload);
+    break;
   case FROTHY_OBJECT_NATIVE:
   case FROTHY_OBJECT_FREE:
     break;
@@ -529,6 +708,22 @@ static froth_error_t frothy_runtime_clear_live_object(frothy_runtime_t *runtime,
       frothy_ir_program_free(&object->as.code.program);
     }
     break;
+  case FROTHY_OBJECT_RECORD_DEF:
+    frothy_runtime_release_payload(runtime, object->as.record_def.payload);
+    break;
+  case FROTHY_OBJECT_RECORD: {
+    frothy_value_t *fields = NULL;
+    size_t i;
+
+    FROTH_TRY(frothy_runtime_record_field_values(runtime, object, &fields));
+    for (i = 0; i < object->as.record.field_count; i++) {
+      FROTH_TRY(frothy_value_release(runtime, fields[i]));
+    }
+    FROTH_TRY(
+        frothy_value_release(runtime, object->as.record.definition));
+    frothy_runtime_release_payload(runtime, object->as.record.payload);
+    break;
+  }
   case FROTHY_OBJECT_NATIVE:
   case FROTHY_OBJECT_FREE:
     break;
@@ -729,6 +924,12 @@ froth_error_t frothy_value_class(const frothy_runtime_t *runtime,
     case FROTHY_OBJECT_NATIVE:
       *out = FROTHY_VALUE_CLASS_NATIVE;
       return FROTH_OK;
+    case FROTHY_OBJECT_RECORD_DEF:
+      *out = FROTHY_VALUE_CLASS_RECORD_DEF;
+      return FROTH_OK;
+    case FROTHY_OBJECT_RECORD:
+      *out = FROTHY_VALUE_CLASS_RECORD;
+      return FROTH_OK;
     case FROTHY_OBJECT_FREE:
       return FROTH_ERROR_BOUNDS;
     }
@@ -757,21 +958,120 @@ froth_error_t frothy_value_from_literal(frothy_runtime_t *runtime,
   return FROTH_ERROR_SIGNATURE;
 }
 
-froth_error_t frothy_value_render(const frothy_runtime_t *runtime,
-                                  frothy_value_t value, char **out_text) {
-  *out_text = NULL;
+static froth_error_t frothy_record_value_allowed(const frothy_runtime_t *runtime,
+                                                 frothy_value_t value) {
+  frothy_value_class_t value_class;
 
+  FROTH_TRY(frothy_value_class(runtime, value, &value_class));
+  switch (value_class) {
+  case FROTHY_VALUE_CLASS_INT:
+  case FROTHY_VALUE_CLASS_BOOL:
+  case FROTHY_VALUE_CLASS_NIL:
+  case FROTHY_VALUE_CLASS_TEXT:
+  case FROTHY_VALUE_CLASS_RECORD:
+    return FROTH_OK;
+  case FROTHY_VALUE_CLASS_CELLS:
+  case FROTHY_VALUE_CLASS_CODE:
+  case FROTHY_VALUE_CLASS_NATIVE:
+  case FROTHY_VALUE_CLASS_RECORD_DEF:
+    return FROTH_ERROR_TYPE_MISMATCH;
+  }
+
+  return FROTH_ERROR_TYPE_MISMATCH;
+}
+
+static bool frothy_record_stack_contains(const size_t *stack, size_t depth,
+                                         size_t object_id) {
+  size_t i;
+
+  for (i = 0; i < depth; i++) {
+    if (stack[i] == object_id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static froth_error_t frothy_value_render_append(
+    const frothy_runtime_t *runtime, frothy_value_t value,
+    frothy_string_builder_t *builder, size_t *record_stack, size_t depth);
+
+static froth_error_t frothy_record_def_render_append(
+    const frothy_runtime_t *runtime, const frothy_object_t *object,
+    frothy_string_builder_t *builder) {
+  const char *name = NULL;
+  const char *cursor = NULL;
+  const char *end;
+  size_t field_count = 0;
+  size_t i;
+
+  FROTH_TRY(frothy_runtime_record_def_object_view(runtime, object, &name,
+                                                  &field_count, &cursor));
+  end = (const char *)frothy_runtime_payload_const_ptr(
+            runtime, object->as.record_def.payload.offset) +
+        object->as.record_def.payload.length;
+  FROTH_TRY(frothy_sb_append_text(builder, "record "));
+  FROTH_TRY(frothy_sb_append_text(builder, name));
+  FROTH_TRY(frothy_sb_append_text(builder, " [ "));
+  for (i = 0; i < field_count; i++) {
+    const char *field_name = NULL;
+
+    FROTH_TRY(frothy_record_def_next_string(&cursor, end, &field_name));
+    if (i != 0) {
+      FROTH_TRY(frothy_sb_append_text(builder, ", "));
+    }
+    FROTH_TRY(frothy_sb_append_text(builder, field_name));
+  }
+  return frothy_sb_append_text(builder, " ]");
+}
+
+static froth_error_t frothy_record_render_append(
+    const frothy_runtime_t *runtime, size_t object_id,
+    const frothy_object_t *object, frothy_string_builder_t *builder,
+    size_t *record_stack, size_t depth) {
+  const frothy_value_t *fields = NULL;
+  const char *name = NULL;
+  size_t field_count = 0;
+  size_t i;
+
+  if (frothy_record_stack_contains(record_stack, depth, object_id)) {
+    return frothy_sb_append_text(builder, "<cycle>");
+  }
+
+  FROTH_TRY(frothy_runtime_get_record_def(runtime, object->as.record.definition,
+                                          &name, &field_count));
+  FROTH_TRY(
+      frothy_runtime_record_field_values_const(runtime, object, &fields));
+  record_stack[depth] = object_id;
+
+  FROTH_TRY(frothy_sb_append_text(builder, name));
+  FROTH_TRY(frothy_sb_append_char(builder, ':'));
+  if (field_count == 0) {
+    return FROTH_OK;
+  }
+  FROTH_TRY(frothy_sb_append_char(builder, ' '));
+  for (i = 0; i < field_count; i++) {
+    if (i != 0) {
+      FROTH_TRY(frothy_sb_append_text(builder, ", "));
+    }
+    FROTH_TRY(frothy_value_render_append(runtime, fields[i], builder,
+                                         record_stack, depth + 1));
+  }
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_value_render_append(
+    const frothy_runtime_t *runtime, frothy_value_t value,
+    frothy_string_builder_t *builder, size_t *record_stack, size_t depth) {
   if (frothy_value_is_int(value)) {
-    return frothy_strdup_printf(out_text, "%d", frothy_value_as_int(value));
+    return frothy_sb_appendf(builder, "%d", frothy_value_as_int(value));
   }
   if (frothy_value_is_bool(value)) {
-    if (frothy_value_as_bool(value)) {
-      return frothy_strdup("true", 4, out_text);
-    }
-    return frothy_strdup("false", 5, out_text);
+    return frothy_sb_append_text(builder,
+                                 frothy_value_as_bool(value) ? "true" : "false");
   }
   if (frothy_value_is_nil(value)) {
-    return frothy_strdup("nil", 3, out_text);
+    return frothy_sb_append_text(builder, "nil");
   }
   if (frothy_value_is_object_ref(value)) {
     const frothy_object_t *object;
@@ -784,26 +1084,48 @@ froth_error_t frothy_value_render(const frothy_runtime_t *runtime,
     object = &runtime->objects[object_id];
     switch (object->kind) {
     case FROTHY_OBJECT_TEXT:
-      return frothy_quote_text(
+      return frothy_sb_append_quoted(
+          builder,
           (const char *)frothy_runtime_payload_const_ptr(
               runtime, object->as.text.payload.offset),
-          object->as.text.length, out_text);
+          object->as.text.length);
     case FROTHY_OBJECT_CELLS:
-      return frothy_strdup_printf(out_text, "<cells %d>",
-                                  object->as.cells.span.length);
+      return frothy_sb_appendf(builder, "<cells %d>",
+                               object->as.cells.span.length);
     case FROTHY_OBJECT_CODE:
-      return frothy_strdup_printf(out_text, "<fn/%zu>",
-                                  object->as.code.arity);
+      return frothy_sb_appendf(builder, "<fn/%zu>", object->as.code.arity);
     case FROTHY_OBJECT_NATIVE:
-      return frothy_strdup_printf(out_text, "<native %s/%zu>",
-                                  object->as.native.name,
-                                  object->as.native.arity);
+      return frothy_sb_appendf(builder, "<native %s/%zu>",
+                               object->as.native.name,
+                               object->as.native.arity);
+    case FROTHY_OBJECT_RECORD_DEF:
+      return frothy_record_def_render_append(runtime, object, builder);
+    case FROTHY_OBJECT_RECORD:
+      return frothy_record_render_append(runtime, object_id, object, builder,
+                                         record_stack, depth);
     case FROTHY_OBJECT_FREE:
       return FROTH_ERROR_BOUNDS;
     }
   }
 
   return FROTH_ERROR_TYPE_MISMATCH;
+}
+
+froth_error_t frothy_value_render(const frothy_runtime_t *runtime,
+                                  frothy_value_t value, char **out_text) {
+  frothy_string_builder_t builder;
+  size_t record_stack[FROTHY_OBJECT_CAPACITY];
+  froth_error_t err;
+
+  *out_text = NULL;
+  frothy_sb_init(&builder);
+  err = frothy_value_render_append(runtime, value, &builder, record_stack, 0);
+  if (err != FROTH_OK) {
+    free(builder.data);
+    return err;
+  }
+  *out_text = builder.data;
+  return FROTH_OK;
 }
 
 froth_error_t frothy_value_equals(const frothy_runtime_t *runtime,
@@ -1131,5 +1453,278 @@ froth_error_t frothy_runtime_get_native(const frothy_runtime_t *runtime,
   if (arity_out != NULL) {
     *arity_out = object->as.native.arity;
   }
+  return FROTH_OK;
+}
+
+froth_error_t frothy_runtime_alloc_record_def(frothy_runtime_t *runtime,
+                                              const char *name,
+                                              const char *const *field_names,
+                                              size_t field_count,
+                                              frothy_value_t *out) {
+  frothy_object_t object;
+  uint8_t *cursor = NULL;
+  size_t payload_size = sizeof(uint32_t);
+  size_t i;
+  froth_error_t err;
+
+  if (name == NULL || field_names == NULL || field_count == 0) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  FROTH_TRY(frothy_add_size(payload_size, strlen(name) + 1, &payload_size));
+  for (i = 0; i < field_count; i++) {
+    if (field_names[i] == NULL || field_names[i][0] == '\0') {
+      return FROTH_ERROR_BOUNDS;
+    }
+    FROTH_TRY(frothy_add_size(payload_size, strlen(field_names[i]) + 1,
+                              &payload_size));
+  }
+
+  memset(&object, 0, sizeof(object));
+  object.kind = FROTHY_OBJECT_RECORD_DEF;
+  object.as.record_def.field_count = field_count;
+  err = frothy_runtime_alloc_payload(runtime, payload_size,
+                                     &object.as.record_def.payload,
+                                     (void **)&cursor);
+  if (err != FROTH_OK) {
+    return err;
+  }
+
+  {
+    uint32_t stored_field_count = (uint32_t)field_count;
+
+    memcpy(cursor, &stored_field_count, sizeof(stored_field_count));
+    cursor += sizeof(stored_field_count);
+  }
+  memcpy(cursor, name, strlen(name) + 1);
+  cursor += strlen(name) + 1;
+  for (i = 0; i < field_count; i++) {
+    memcpy(cursor, field_names[i], strlen(field_names[i]) + 1);
+    cursor += strlen(field_names[i]) + 1;
+  }
+
+  err = frothy_runtime_append_object(runtime, &object, out);
+  if (err != FROTH_OK) {
+    frothy_runtime_release_payload(runtime, object.as.record_def.payload);
+  }
+  return err;
+}
+
+froth_error_t frothy_runtime_get_record_def(const frothy_runtime_t *runtime,
+                                            frothy_value_t value,
+                                            const char **name_out,
+                                            size_t *field_count_out) {
+  const frothy_object_t *object;
+
+  FROTH_TRY(frothy_runtime_get_object(runtime, value, FROTHY_OBJECT_RECORD_DEF,
+                                      &object));
+  return frothy_runtime_record_def_object_view(runtime, object, name_out,
+                                               field_count_out, NULL);
+}
+
+froth_error_t frothy_runtime_record_def_field_name(
+    const frothy_runtime_t *runtime, frothy_value_t value, size_t field_index,
+    const char **field_name_out) {
+  const frothy_object_t *object;
+  const char *name = NULL;
+  const char *cursor = NULL;
+  const char *end;
+  size_t field_count = 0;
+  size_t i;
+
+  FROTH_TRY(frothy_runtime_get_object(runtime, value, FROTHY_OBJECT_RECORD_DEF,
+                                      &object));
+  FROTH_TRY(frothy_runtime_record_def_object_view(runtime, object, &name,
+                                                  &field_count, &cursor));
+  (void)name;
+  if (field_index >= field_count) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  end = (const char *)frothy_runtime_payload_const_ptr(
+            runtime, object->as.record_def.payload.offset) +
+        object->as.record_def.payload.length;
+  for (i = 0; i <= field_index; i++) {
+    FROTH_TRY(frothy_record_def_next_string(&cursor, end, field_name_out));
+  }
+  return FROTH_OK;
+}
+
+froth_error_t frothy_runtime_record_def_field_index(
+    const frothy_runtime_t *runtime, frothy_value_t value, const char *field_name,
+    size_t *field_index_out) {
+  const frothy_object_t *object;
+  const char *name = NULL;
+  const char *cursor = NULL;
+  const char *end;
+  size_t field_count = 0;
+  size_t i;
+
+  if (field_name == NULL || field_index_out == NULL) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  FROTH_TRY(frothy_runtime_get_object(runtime, value, FROTHY_OBJECT_RECORD_DEF,
+                                      &object));
+  FROTH_TRY(frothy_runtime_record_def_object_view(runtime, object, &name,
+                                                  &field_count, &cursor));
+  (void)name;
+  end = (const char *)frothy_runtime_payload_const_ptr(
+            runtime, object->as.record_def.payload.offset) +
+        object->as.record_def.payload.length;
+  for (i = 0; i < field_count; i++) {
+    const char *candidate = NULL;
+
+    FROTH_TRY(frothy_record_def_next_string(&cursor, end, &candidate));
+    if (strcmp(candidate, field_name) == 0) {
+      *field_index_out = i;
+      return FROTH_OK;
+    }
+  }
+
+  return FROTH_ERROR_BOUNDS;
+}
+
+froth_error_t frothy_runtime_alloc_record(frothy_runtime_t *runtime,
+                                          frothy_value_t definition,
+                                          const frothy_value_t *fields,
+                                          size_t field_count,
+                                          frothy_value_t *out) {
+  frothy_object_t object;
+  const char *name = NULL;
+  size_t expected_field_count = 0;
+  frothy_value_t *storage = NULL;
+  size_t i;
+  froth_error_t err;
+
+  if (fields == NULL || field_count == 0) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  FROTH_TRY(frothy_runtime_get_record_def(runtime, definition, &name,
+                                          &expected_field_count));
+  (void)name;
+  if (field_count != expected_field_count) {
+    return FROTH_ERROR_SIGNATURE;
+  }
+  for (i = 0; i < field_count; i++) {
+    FROTH_TRY(frothy_record_value_allowed(runtime, fields[i]));
+  }
+
+  memset(&object, 0, sizeof(object));
+  object.kind = FROTHY_OBJECT_RECORD;
+  object.as.record.definition = definition;
+  object.as.record.field_count = field_count;
+  err = frothy_runtime_alloc_payload(runtime,
+                                     field_count * sizeof(*storage),
+                                     &object.as.record.payload,
+                                     (void **)&storage);
+  if (err != FROTH_OK) {
+    return err;
+  }
+
+  err = frothy_value_retain(runtime, definition);
+  if (err != FROTH_OK) {
+    frothy_runtime_release_payload(runtime, object.as.record.payload);
+    return err;
+  }
+  for (i = 0; i < field_count; i++) {
+    err = frothy_value_retain(runtime, fields[i]);
+    if (err != FROTH_OK) {
+      size_t j;
+
+      for (j = 0; j < i; j++) {
+        (void)frothy_value_release(runtime, fields[j]);
+      }
+      (void)frothy_value_release(runtime, definition);
+      frothy_runtime_release_payload(runtime, object.as.record.payload);
+      return err;
+    }
+    storage[i] = fields[i];
+  }
+
+  err = frothy_runtime_append_object(runtime, &object, out);
+  if (err != FROTH_OK) {
+    for (i = 0; i < field_count; i++) {
+      (void)frothy_value_release(runtime, fields[i]);
+    }
+    (void)frothy_value_release(runtime, definition);
+    frothy_runtime_release_payload(runtime, object.as.record.payload);
+  }
+  return err;
+}
+
+froth_error_t frothy_runtime_get_record(const frothy_runtime_t *runtime,
+                                        frothy_value_t value,
+                                        frothy_value_t *definition_out,
+                                        size_t *field_count_out,
+                                        const frothy_value_t **fields_out) {
+  const frothy_object_t *object;
+
+  FROTH_TRY(frothy_runtime_get_object(runtime, value, FROTHY_OBJECT_RECORD,
+                                      &object));
+  if (definition_out != NULL) {
+    *definition_out = object->as.record.definition;
+  }
+  if (field_count_out != NULL) {
+    *field_count_out = object->as.record.field_count;
+  }
+  if (fields_out != NULL) {
+    FROTH_TRY(frothy_runtime_record_field_values_const(runtime, object,
+                                                       fields_out));
+  }
+  return FROTH_OK;
+}
+
+froth_error_t frothy_runtime_record_read_field(const frothy_runtime_t *runtime,
+                                               frothy_value_t value,
+                                               const char *field_name,
+                                               frothy_value_t *out) {
+  frothy_value_t definition = frothy_value_make_nil();
+  const frothy_value_t *fields = NULL;
+  size_t field_count = 0;
+  size_t field_index = 0;
+
+  FROTH_TRY(frothy_runtime_get_record(runtime, value, &definition, &field_count,
+                                      &fields));
+  (void)field_count;
+  FROTH_TRY(frothy_runtime_record_def_field_index(runtime, definition, field_name,
+                                                  &field_index));
+  *out = fields[field_index];
+  return frothy_value_retain((frothy_runtime_t *)runtime, *out);
+}
+
+froth_error_t frothy_runtime_record_write_field(frothy_runtime_t *runtime,
+                                                frothy_value_t value,
+                                                const char *field_name,
+                                                frothy_value_t stored_value) {
+  froth_error_t err;
+  size_t object_id;
+  frothy_object_t *object;
+  frothy_value_t *fields = NULL;
+  size_t field_index = 0;
+
+  FROTH_TRY(frothy_record_value_allowed(runtime, stored_value));
+  if (!frothy_value_is_object_ref(value)) {
+    return FROTH_ERROR_TYPE_MISMATCH;
+  }
+
+  object_id = frothy_value_object_index(value);
+  if (object_id >= runtime->object_count || !runtime->objects[object_id].live) {
+    return FROTH_ERROR_BOUNDS;
+  }
+  object = &runtime->objects[object_id];
+  if (object->kind != FROTHY_OBJECT_RECORD) {
+    return FROTH_ERROR_TYPE_MISMATCH;
+  }
+
+  FROTH_TRY(frothy_runtime_record_def_field_index(
+      runtime, object->as.record.definition, field_name, &field_index));
+  FROTH_TRY(frothy_runtime_record_field_values(runtime, object, &fields));
+  err = frothy_value_release(runtime, fields[field_index]);
+  if (err != FROTH_OK) {
+    return err;
+  }
+  fields[field_index] = stored_value;
   return FROTH_OK;
 }

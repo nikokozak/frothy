@@ -1,0 +1,1 @@
+(write-slot "Point" (record-def "Point" "x" "y"))

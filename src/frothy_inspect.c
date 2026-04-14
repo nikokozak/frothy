@@ -54,6 +54,10 @@ const char *frothy_inspect_class_name(frothy_value_class_t value_class) {
     return "code";
   case FROTHY_VALUE_CLASS_NATIVE:
     return "native";
+  case FROTHY_VALUE_CLASS_RECORD_DEF:
+    return "record-def";
+  case FROTHY_VALUE_CLASS_RECORD:
+    return "record";
   }
 
   return "value";

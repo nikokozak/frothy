@@ -1,0 +1,1 @@
+(read-field (read-slot "point") "x")

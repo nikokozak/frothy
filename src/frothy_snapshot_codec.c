@@ -13,7 +13,7 @@
 #include <string.h>
 
 #define FROTHY_SNAPSHOT_MAGIC "FRTY"
-#define FROTHY_SNAPSHOT_VERSION 1u
+#define FROTHY_SNAPSHOT_VERSION 2u
 #define FROTHY_SNAPSHOT_IR_VERSION 1u
 #define FROTHY_SNAPSHOT_INVALID_INDEX UINT32_MAX
 
@@ -65,6 +65,7 @@ typedef struct {
   uint32_t object_count;
   uint32_t binding_count;
   uint8_t *object_kinds;
+  uint32_t *record_def_field_counts;
 } frothy_snapshot_layout_t;
 
 typedef struct {
@@ -73,6 +74,7 @@ typedef struct {
   frothy_snapshot_object_t object_items[FROTHY_OBJECT_CAPACITY];
   size_t object_index_by_runtime_id[FROTHY_OBJECT_CAPACITY];
   uint8_t layout_object_kinds[FROTHY_OBJECT_CAPACITY];
+  uint32_t layout_record_def_field_counts[FROTHY_OBJECT_CAPACITY];
   frothy_snapshot_symbol_t decoded_symbols[FROTH_SLOT_TABLE_SIZE];
   frothy_value_t decoded_objects[FROTHY_OBJECT_CAPACITY];
 } frothy_snapshot_codec_workspace_t;
@@ -100,6 +102,8 @@ static void frothy_snapshot_workspace_reset(
          sizeof(workspace->object_index_by_runtime_id));
   memset(workspace->layout_object_kinds, 0,
          sizeof(workspace->layout_object_kinds));
+  memset(workspace->layout_record_def_field_counts, 0,
+         sizeof(workspace->layout_record_def_field_counts));
   memset(workspace->decoded_symbols, 0, sizeof(workspace->decoded_symbols));
   memset(workspace->decoded_objects, 0, sizeof(workspace->decoded_objects));
 }
@@ -126,6 +130,22 @@ static froth_error_t frothy_snapshot_strdup(const char *text, size_t length,
   *out = copy;
   return FROTH_OK;
 }
+
+static bool frothy_snapshot_name_bytes_are_simple(const uint8_t *bytes,
+                                                  size_t length) {
+  size_t i;
+
+  if (length == 0) {
+    return false;
+  }
+  for (i = 0; i < length; i++) {
+    if (bytes[i] == '.' || bytes[i] == '\0') {
+      return false;
+    }
+  }
+  return true;
+}
+
 
 static froth_error_t frothy_snapshot_writer_write_u8(
     frothy_snapshot_writer_t *writer, uint8_t value) {
@@ -231,6 +251,27 @@ static froth_error_t frothy_snapshot_reader_read_bytes(
   *out = reader->data + reader->offset;
   reader->offset += length;
   return FROTH_OK;
+}
+
+static froth_error_t frothy_snapshot_write_string(
+    frothy_snapshot_writer_t *writer, const char *text, size_t length) {
+  if (length > UINT16_MAX) {
+    return FROTH_ERROR_SNAPSHOT_OVERFLOW;
+  }
+
+  FROTH_TRY(frothy_snapshot_writer_write_u16(writer, (uint16_t)length));
+  return frothy_snapshot_writer_write_bytes(writer, (const uint8_t *)text,
+                                            length);
+}
+
+static froth_error_t frothy_snapshot_read_string_bytes(
+    frothy_snapshot_reader_t *reader, uint16_t *length_out,
+    const uint8_t **bytes_out) {
+  FROTH_TRY(frothy_snapshot_reader_read_u16(reader, length_out));
+  if (*length_out == 0) {
+    return FROTH_ERROR_SNAPSHOT_FORMAT;
+  }
+  return frothy_snapshot_reader_read_bytes(reader, *length_out, bytes_out);
 }
 
 static froth_error_t frothy_snapshot_symbols_reserve(
@@ -356,6 +397,52 @@ static uint32_t frothy_snapshot_binding_count(void) {
   return count;
 }
 
+static bool frothy_snapshot_record_stack_contains(const size_t *stack,
+                                                  size_t depth,
+                                                  size_t runtime_object_id) {
+  size_t i;
+
+  for (i = 0; i < depth; i++) {
+    if (stack[i] == runtime_object_id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static froth_error_t frothy_snapshot_record_def_view(
+    const frothy_runtime_t *runtime, const frothy_object_t *object,
+    const char **name_out, uint32_t *field_count_out, const char **fields_out,
+    const char **end_out) {
+  const char *cursor;
+  const char *end;
+  const char *nul;
+  uint32_t stored_field_count = 0;
+
+  if (object->kind != FROTHY_OBJECT_RECORD_DEF ||
+      object->as.record_def.payload.length < sizeof(stored_field_count)) {
+    return FROTH_ERROR_SNAPSHOT_FORMAT;
+  }
+
+  cursor = (const char *)runtime->payload_storage.bytes +
+           object->as.record_def.payload.offset;
+  end = cursor + object->as.record_def.payload.length;
+  memcpy(&stored_field_count, cursor, sizeof(stored_field_count));
+  cursor += sizeof(stored_field_count);
+  nul = (const char *)memchr(cursor, '\0', (size_t)(end - cursor));
+  if (nul == NULL || nul == cursor) {
+    return FROTH_ERROR_SNAPSHOT_FORMAT;
+  }
+
+  *name_out = cursor;
+  *field_count_out = stored_field_count;
+  *fields_out = nul + 1;
+  if (end_out != NULL) {
+    *end_out = end;
+  }
+  return FROTH_OK;
+}
+
 static froth_error_t frothy_snapshot_collect_program_symbols(
     const frothy_ir_program_t *program, frothy_snapshot_symbol_table_t *symbols) {
   size_t i;
@@ -381,10 +468,11 @@ static froth_error_t frothy_snapshot_collect_program_symbols(
   return FROTH_OK;
 }
 
-static froth_error_t frothy_snapshot_collect_value(
+static froth_error_t frothy_snapshot_collect_value_visit(
     const frothy_runtime_t *runtime, frothy_value_t value,
     frothy_snapshot_symbol_table_t *symbols,
-    frothy_snapshot_object_table_t *objects) {
+    frothy_snapshot_object_table_t *objects, size_t *record_stack,
+    size_t depth) {
   const frothy_object_t *object;
   uint32_t ignored;
   size_t runtime_object_id;
@@ -399,13 +487,18 @@ static froth_error_t frothy_snapshot_collect_value(
   if (runtime_object_id >= runtime->object_count) {
     return FROTH_ERROR_BOUNDS;
   }
-  if (frothy_snapshot_objects_lookup(objects, runtime_object_id, &ignored)) {
-    return FROTH_OK;
-  }
 
   object = &runtime->objects[runtime_object_id];
   if (!object->live) {
     return FROTH_ERROR_BOUNDS;
+  }
+  if (object->kind == FROTHY_OBJECT_RECORD &&
+      frothy_snapshot_record_stack_contains(record_stack, depth,
+                                            runtime_object_id)) {
+    return FROTH_ERROR_NOT_PERSISTABLE;
+  }
+  if (frothy_snapshot_objects_lookup(objects, runtime_object_id, &ignored)) {
+    return FROTH_OK;
   }
 
   switch (object->kind) {
@@ -423,12 +516,15 @@ static froth_error_t frothy_snapshot_collect_value(
       case FROTHY_VALUE_CLASS_NIL:
         break;
       case FROTHY_VALUE_CLASS_TEXT:
+      case FROTHY_VALUE_CLASS_RECORD:
         FROTH_TRY(
-            frothy_snapshot_collect_value(runtime, item, symbols, objects));
+            frothy_snapshot_collect_value_visit(runtime, item, symbols, objects,
+                                               record_stack, depth));
         break;
       case FROTHY_VALUE_CLASS_CELLS:
       case FROTHY_VALUE_CLASS_CODE:
       case FROTHY_VALUE_CLASS_NATIVE:
+      case FROTHY_VALUE_CLASS_RECORD_DEF:
         return FROTH_ERROR_NOT_PERSISTABLE;
       }
     }
@@ -437,6 +533,38 @@ static froth_error_t frothy_snapshot_collect_value(
     FROTH_TRY(
         frothy_snapshot_collect_program_symbols(&object->as.code.program, symbols));
     return frothy_snapshot_objects_add(objects, runtime_object_id, &ignored);
+  case FROTHY_OBJECT_RECORD_DEF:
+    return frothy_snapshot_objects_add(objects, runtime_object_id, &ignored);
+  case FROTHY_OBJECT_RECORD: {
+    const frothy_value_t *fields =
+        (const frothy_value_t *)(runtime->payload_storage.bytes +
+                                 object->as.record.payload.offset);
+
+    record_stack[depth] = runtime_object_id;
+    FROTH_TRY(frothy_snapshot_collect_value_visit(
+        runtime, object->as.record.definition, symbols, objects, record_stack,
+        depth + 1));
+    for (i = 0; i < object->as.record.field_count; i++) {
+      FROTH_TRY(frothy_value_class(runtime, fields[i], &value_class));
+      switch (value_class) {
+      case FROTHY_VALUE_CLASS_INT:
+      case FROTHY_VALUE_CLASS_BOOL:
+      case FROTHY_VALUE_CLASS_NIL:
+        break;
+      case FROTHY_VALUE_CLASS_TEXT:
+      case FROTHY_VALUE_CLASS_RECORD:
+        FROTH_TRY(frothy_snapshot_collect_value_visit(
+            runtime, fields[i], symbols, objects, record_stack, depth + 1));
+        break;
+      case FROTHY_VALUE_CLASS_CELLS:
+      case FROTHY_VALUE_CLASS_CODE:
+      case FROTHY_VALUE_CLASS_NATIVE:
+      case FROTHY_VALUE_CLASS_RECORD_DEF:
+        return FROTH_ERROR_NOT_PERSISTABLE;
+      }
+    }
+    return frothy_snapshot_objects_add(objects, runtime_object_id, &ignored);
+  }
   case FROTHY_OBJECT_NATIVE:
     return FROTH_ERROR_NOT_PERSISTABLE;
   case FROTHY_OBJECT_FREE:
@@ -444,6 +572,16 @@ static froth_error_t frothy_snapshot_collect_value(
   }
 
   return FROTH_ERROR_BOUNDS;
+}
+
+static froth_error_t frothy_snapshot_collect_value(
+    const frothy_runtime_t *runtime, frothy_value_t value,
+    frothy_snapshot_symbol_table_t *symbols,
+    frothy_snapshot_object_table_t *objects) {
+  size_t record_stack[FROTHY_OBJECT_CAPACITY];
+
+  return frothy_snapshot_collect_value_visit(runtime, value, symbols, objects,
+                                             record_stack, 0);
 }
 
 static froth_error_t frothy_snapshot_collect_overlay(
@@ -526,7 +664,7 @@ static froth_error_t frothy_snapshot_write_value(
   return frothy_snapshot_writer_write_u32(writer, object_index);
 }
 
-static froth_error_t frothy_snapshot_write_cells_value(
+static froth_error_t frothy_snapshot_write_restricted_value(
     frothy_snapshot_writer_t *writer, const frothy_runtime_t *runtime,
     const frothy_snapshot_object_table_t *objects, frothy_value_t value) {
   frothy_value_class_t value_class;
@@ -545,6 +683,7 @@ static froth_error_t frothy_snapshot_write_cells_value(
         writer, frothy_value_as_bool(value) ? FROTHY_SNAPSHOT_VALUE_TRUE
                                             : FROTHY_SNAPSHOT_VALUE_FALSE);
   case FROTHY_VALUE_CLASS_TEXT:
+  case FROTHY_VALUE_CLASS_RECORD:
     FROTH_TRY(frothy_snapshot_encode_object_ref(runtime, objects, value,
                                                 &object_index));
     FROTH_TRY(
@@ -553,6 +692,7 @@ static froth_error_t frothy_snapshot_write_cells_value(
   case FROTHY_VALUE_CLASS_CELLS:
   case FROTHY_VALUE_CLASS_CODE:
   case FROTHY_VALUE_CLASS_NATIVE:
+  case FROTHY_VALUE_CLASS_RECORD_DEF:
     return FROTH_ERROR_NOT_PERSISTABLE;
   }
 
@@ -603,6 +743,57 @@ static froth_error_t frothy_snapshot_write_literal(
   return FROTH_ERROR_SNAPSHOT_FORMAT;
 }
 
+static froth_error_t frothy_snapshot_write_record_def_object(
+    frothy_snapshot_writer_t *writer, const frothy_runtime_t *runtime,
+    const frothy_object_t *object) {
+  const char *name = NULL;
+  const char *cursor = NULL;
+  const char *end = NULL;
+  const char *field_names[FROTHY_IR_LINK_CAPACITY];
+  size_t field_lengths[FROTHY_IR_LINK_CAPACITY];
+  uint32_t field_count = 0;
+  size_t i;
+  size_t j;
+
+  FROTH_TRY(frothy_snapshot_record_def_view(runtime, object, &name, &field_count,
+                                            &cursor, &end));
+  if (field_count == 0 || field_count > FROTHY_IR_LINK_CAPACITY) {
+    return FROTH_ERROR_NOT_PERSISTABLE;
+  }
+  if (!frothy_snapshot_name_bytes_are_simple((const uint8_t *)name,
+                                             strlen(name))) {
+    return FROTH_ERROR_NOT_PERSISTABLE;
+  }
+
+  FROTH_TRY(frothy_snapshot_writer_write_u32(writer, field_count));
+  FROTH_TRY(frothy_snapshot_write_string(writer, name, strlen(name)));
+  for (i = 0; i < field_count; i++) {
+    const char *field_name = cursor;
+    const char *nul = (const char *)memchr(cursor, '\0', (size_t)(end - cursor));
+
+    if (nul == NULL || nul == cursor) {
+      return FROTH_ERROR_NOT_PERSISTABLE;
+    }
+    if (!frothy_snapshot_name_bytes_are_simple((const uint8_t *)field_name,
+                                               (size_t)(nul - field_name))) {
+      return FROTH_ERROR_NOT_PERSISTABLE;
+    }
+    for (j = 0; j < i; j++) {
+      if (field_lengths[j] == (size_t)(nul - field_name) &&
+          memcmp(field_names[j], field_name, field_lengths[j]) == 0) {
+        return FROTH_ERROR_NOT_PERSISTABLE;
+      }
+    }
+    FROTH_TRY(frothy_snapshot_write_string(writer, field_name,
+                                           (size_t)(nul - field_name)));
+    field_names[i] = field_name;
+    field_lengths[i] = (size_t)(nul - field_name);
+    cursor = nul + 1;
+  }
+
+  return FROTH_OK;
+}
+
 static froth_error_t frothy_snapshot_write_node(
     frothy_snapshot_writer_t *writer, const frothy_ir_node_t *node,
     const frothy_snapshot_symbol_table_t *symbols) {
@@ -633,6 +824,8 @@ static froth_error_t frothy_snapshot_write_node(
         writer, (uint32_t)node->as.write_slot.value));
     return frothy_snapshot_writer_write_u8(
         writer, node->as.write_slot.require_existing ? 1u : 0u);
+  case FROTHY_IR_NODE_RECORD_DEF:
+    return FROTH_ERROR_NOT_PERSISTABLE;
   case FROTHY_IR_NODE_READ_INDEX:
     FROTH_TRY(frothy_snapshot_writer_write_u32(
         writer, (uint32_t)node->as.read_index.base));
@@ -645,6 +838,18 @@ static froth_error_t frothy_snapshot_write_node(
         writer, (uint32_t)node->as.write_index.index));
     return frothy_snapshot_writer_write_u32(
         writer, (uint32_t)node->as.write_index.value);
+  case FROTHY_IR_NODE_READ_FIELD:
+    FROTH_TRY(frothy_snapshot_writer_write_u32(
+        writer, (uint32_t)node->as.read_field.base));
+    return frothy_snapshot_write_string(writer, node->as.read_field.field_name,
+                                        strlen(node->as.read_field.field_name));
+  case FROTHY_IR_NODE_WRITE_FIELD:
+    FROTH_TRY(frothy_snapshot_writer_write_u32(
+        writer, (uint32_t)node->as.write_field.base));
+    FROTH_TRY(frothy_snapshot_write_string(writer, node->as.write_field.field_name,
+                                           strlen(node->as.write_field.field_name)));
+    return frothy_snapshot_writer_write_u32(
+        writer, (uint32_t)node->as.write_field.value);
   case FROTHY_IR_NODE_FN:
     FROTH_TRY(frothy_snapshot_writer_write_u32(writer,
                                                (uint32_t)node->as.fn.arity));
@@ -756,13 +961,37 @@ static froth_error_t frothy_snapshot_write_object_table(
                                      (froth_cell_t)cell_index]);
 
         FROTH_TRY(
-            frothy_snapshot_write_cells_value(writer, runtime, objects, item));
+            frothy_snapshot_write_restricted_value(writer, runtime, objects, item));
       }
       break;
     }
     case FROTHY_OBJECT_CODE:
       FROTH_TRY(frothy_snapshot_write_code_object(writer, object, symbols));
       break;
+    case FROTHY_OBJECT_RECORD_DEF:
+      FROTH_TRY(
+          frothy_snapshot_write_record_def_object(writer, runtime, object));
+      break;
+    case FROTHY_OBJECT_RECORD: {
+      const frothy_value_t *fields =
+          (const frothy_value_t *)(runtime->payload_storage.bytes +
+                                   object->as.record.payload.offset);
+      uint32_t definition_index = 0;
+      size_t field_index;
+
+      FROTH_TRY(frothy_snapshot_encode_object_ref(runtime, objects,
+                                                  object->as.record.definition,
+                                                  &definition_index));
+      FROTH_TRY(frothy_snapshot_writer_write_u32(writer, definition_index));
+      FROTH_TRY(frothy_snapshot_writer_write_u32(
+          writer, (uint32_t)object->as.record.field_count));
+      for (field_index = 0; field_index < object->as.record.field_count;
+           field_index++) {
+        FROTH_TRY(frothy_snapshot_write_restricted_value(writer, runtime, objects,
+                                                         fields[field_index]));
+      }
+      break;
+    }
     case FROTHY_OBJECT_NATIVE:
       return FROTH_ERROR_NOT_PERSISTABLE;
     case FROTHY_OBJECT_FREE:
@@ -851,7 +1080,8 @@ static froth_error_t frothy_snapshot_validate_node_id(uint32_t node_id,
 
 static froth_error_t frothy_snapshot_validate_value(
     frothy_snapshot_reader_t *reader, const uint8_t *object_kinds,
-    uint32_t object_count, bool text_only) {
+    uint32_t object_count, bool restricted_objects,
+    uint32_t max_object_index) {
   uint8_t tag = 0;
   uint32_t object_index = 0;
   int32_t ignored_int = 0;
@@ -869,10 +1099,18 @@ static froth_error_t frothy_snapshot_validate_value(
     if (object_index >= object_count) {
       return FROTH_ERROR_SNAPSHOT_FORMAT;
     }
-    if (text_only && object_kinds[object_index] != FROTHY_OBJECT_TEXT) {
+    if (max_object_index != FROTHY_SNAPSHOT_INVALID_INDEX &&
+        object_index >= max_object_index) {
+      return FROTH_ERROR_SNAPSHOT_FORMAT;
+    }
+    if (restricted_objects &&
+        object_kinds[object_index] != FROTHY_OBJECT_TEXT &&
+        object_kinds[object_index] != FROTHY_OBJECT_RECORD) {
       return FROTH_ERROR_NOT_PERSISTABLE;
     }
-    if (!text_only && object_kinds[object_index] == FROTHY_OBJECT_NATIVE) {
+    if (!restricted_objects &&
+        (object_kinds[object_index] == FROTHY_OBJECT_NATIVE ||
+         object_kinds[object_index] == FROTHY_OBJECT_FREE)) {
       return FROTH_ERROR_NOT_PERSISTABLE;
     }
     return FROTH_OK;
@@ -905,8 +1143,50 @@ static froth_error_t frothy_snapshot_validate_literal(
   return FROTH_ERROR_SNAPSHOT_FORMAT;
 }
 
+static froth_error_t frothy_snapshot_validate_record_def_object(
+    frothy_snapshot_reader_t *reader, uint32_t *field_count_out) {
+  uint32_t field_count = 0;
+  uint16_t length = 0;
+  const uint8_t *bytes = NULL;
+  const uint8_t *field_names[FROTHY_IR_LINK_CAPACITY];
+  uint16_t field_lengths[FROTHY_IR_LINK_CAPACITY];
+  uint32_t i;
+  uint32_t j;
+
+  FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &field_count));
+  if (field_count == 0 || field_count > FROTHY_IR_LINK_CAPACITY) {
+    return FROTH_ERROR_SNAPSHOT_FORMAT;
+  }
+
+  FROTH_TRY(frothy_snapshot_read_string_bytes(reader, &length, &bytes));
+  if (!frothy_snapshot_name_bytes_are_simple(bytes, length)) {
+    return FROTH_ERROR_SNAPSHOT_BAD_NAME;
+  }
+
+  for (i = 0; i < field_count; i++) {
+    FROTH_TRY(frothy_snapshot_read_string_bytes(reader, &length, &bytes));
+    if (!frothy_snapshot_name_bytes_are_simple(bytes, length)) {
+      return FROTH_ERROR_SNAPSHOT_BAD_NAME;
+    }
+    for (j = 0; j < i; j++) {
+      if (field_lengths[j] == length &&
+          memcmp(field_names[j], bytes, length) == 0) {
+        return FROTH_ERROR_SNAPSHOT_FORMAT;
+      }
+    }
+    field_names[i] = bytes;
+    field_lengths[i] = length;
+  }
+
+  if (field_count_out != NULL) {
+    *field_count_out = field_count;
+  }
+  return FROTH_OK;
+}
+
 static froth_error_t frothy_snapshot_validate_code_object(
-    frothy_snapshot_reader_t *reader, uint32_t symbol_count) {
+    frothy_snapshot_reader_t *reader, uint32_t symbol_count,
+    const uint8_t *object_kinds, uint32_t object_count) {
   uint32_t arity = 0;
   uint32_t local_count = 0;
   uint32_t body = 0;
@@ -916,6 +1196,9 @@ static froth_error_t frothy_snapshot_validate_code_object(
   uint32_t node_count = 0;
   uint32_t link_count = 0;
   uint32_t i;
+
+  (void)object_kinds;
+  (void)object_count;
 
   FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &arity));
   FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &local_count));
@@ -980,6 +1263,8 @@ static froth_error_t frothy_snapshot_validate_code_object(
       FROTH_TRY(frothy_snapshot_validate_node_id(b, node_count, false));
       (void)flag;
       break;
+    case FROTHY_IR_NODE_RECORD_DEF:
+      return FROTH_ERROR_NOT_PERSISTABLE;
     case FROTHY_IR_NODE_READ_INDEX:
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &a));
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &b));
@@ -994,6 +1279,32 @@ static froth_error_t frothy_snapshot_validate_code_object(
       FROTH_TRY(frothy_snapshot_validate_node_id(b, node_count, false));
       FROTH_TRY(frothy_snapshot_validate_node_id(c, node_count, false));
       break;
+    case FROTHY_IR_NODE_READ_FIELD: {
+      uint16_t length = 0;
+      const uint8_t *bytes = NULL;
+
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &a));
+      FROTH_TRY(frothy_snapshot_read_string_bytes(reader, &length, &bytes));
+      if (!frothy_snapshot_name_bytes_are_simple(bytes, length)) {
+        return FROTH_ERROR_SNAPSHOT_BAD_NAME;
+      }
+      FROTH_TRY(frothy_snapshot_validate_node_id(a, node_count, false));
+      break;
+    }
+    case FROTHY_IR_NODE_WRITE_FIELD: {
+      uint16_t length = 0;
+      const uint8_t *bytes = NULL;
+
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &a));
+      FROTH_TRY(frothy_snapshot_read_string_bytes(reader, &length, &bytes));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &b));
+      if (!frothy_snapshot_name_bytes_are_simple(bytes, length)) {
+        return FROTH_ERROR_SNAPSHOT_BAD_NAME;
+      }
+      FROTH_TRY(frothy_snapshot_validate_node_id(a, node_count, false));
+      FROTH_TRY(frothy_snapshot_validate_node_id(b, node_count, false));
+      break;
+    }
     case FROTHY_IR_NODE_FN:
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &a));
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &b));
@@ -1066,10 +1377,13 @@ static froth_error_t frothy_snapshot_validate(
   const uint8_t *magic = NULL;
   const uint8_t *ignored = NULL;
   uint8_t *object_kinds = layout_out->object_kinds;
+  uint32_t *record_def_field_counts = layout_out->record_def_field_counts;
 
   memset(layout_out, 0, sizeof(*layout_out));
   layout_out->object_kinds = object_kinds;
-  if (layout_out->object_kinds == NULL) {
+  layout_out->record_def_field_counts = record_def_field_counts;
+  if (layout_out->object_kinds == NULL ||
+      layout_out->record_def_field_counts == NULL) {
     return FROTH_ERROR_BOUNDS;
   }
   FROTH_TRY(frothy_snapshot_reader_read_bytes(&reader, 4, &magic));
@@ -1111,6 +1425,9 @@ static froth_error_t frothy_snapshot_validate(
   if (layout_out->object_count > 0) {
     memset(layout_out->object_kinds, 0,
            layout_out->object_count * sizeof(*layout_out->object_kinds));
+    memset(layout_out->record_def_field_counts, 0,
+           layout_out->object_count *
+               sizeof(*layout_out->record_def_field_counts));
   }
 
   for (i = 0; i < layout_out->object_count; i++) {
@@ -1129,14 +1446,42 @@ static froth_error_t frothy_snapshot_validate(
         return FROTH_ERROR_SNAPSHOT_FORMAT;
       }
       while (count-- > 0) {
-        FROTH_TRY(frothy_snapshot_validate_value(&reader, layout_out->object_kinds,
-                                                 layout_out->object_count, true));
+        FROTH_TRY(frothy_snapshot_validate_value(
+            &reader, layout_out->object_kinds, layout_out->object_count, true,
+            i));
       }
       break;
     case FROTHY_OBJECT_CODE:
-      FROTH_TRY(
-          frothy_snapshot_validate_code_object(&reader, layout_out->symbol_count));
+      FROTH_TRY(frothy_snapshot_validate_code_object(
+          &reader, layout_out->symbol_count, layout_out->object_kinds,
+          layout_out->object_count));
       break;
+    case FROTHY_OBJECT_RECORD_DEF:
+      FROTH_TRY(frothy_snapshot_validate_record_def_object(
+          &reader, &layout_out->record_def_field_counts[i]));
+      break;
+    case FROTHY_OBJECT_RECORD: {
+      uint32_t definition_index = 0;
+
+      FROTH_TRY(frothy_snapshot_reader_read_u32(&reader, &definition_index));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(&reader, &count));
+      if (count == 0 || count > FROTHY_IR_LINK_CAPACITY) {
+        return FROTH_ERROR_SNAPSHOT_FORMAT;
+      }
+      if (definition_index >= i ||
+          layout_out->object_kinds[definition_index] != FROTHY_OBJECT_RECORD_DEF) {
+        return FROTH_ERROR_SNAPSHOT_FORMAT;
+      }
+      if (count != layout_out->record_def_field_counts[definition_index]) {
+        return FROTH_ERROR_SNAPSHOT_FORMAT;
+      }
+      while (count-- > 0) {
+        FROTH_TRY(frothy_snapshot_validate_value(
+            &reader, layout_out->object_kinds, layout_out->object_count, true,
+            i));
+      }
+      break;
+    }
     case FROTHY_OBJECT_NATIVE:
     case FROTHY_OBJECT_FREE:
     default:
@@ -1150,8 +1495,9 @@ static froth_error_t frothy_snapshot_validate(
     if (count >= layout_out->symbol_count) {
       return FROTH_ERROR_SNAPSHOT_FORMAT;
     }
-    FROTH_TRY(frothy_snapshot_validate_value(&reader, layout_out->object_kinds,
-                                             layout_out->object_count, false));
+    FROTH_TRY(frothy_snapshot_validate_value(
+        &reader, layout_out->object_kinds, layout_out->object_count, false,
+        FROTHY_SNAPSHOT_INVALID_INDEX));
   }
 
   if (reader.offset != reader.length) {
@@ -1166,6 +1512,7 @@ static void frothy_snapshot_layout_init(
     frothy_snapshot_codec_workspace_t *workspace) {
   memset(layout, 0, sizeof(*layout));
   layout->object_kinds = workspace->layout_object_kinds;
+  layout->record_def_field_counts = workspace->layout_record_def_field_counts;
 }
 
 static void frothy_snapshot_layout_free(frothy_snapshot_layout_t *layout) {
@@ -1403,6 +1750,8 @@ static froth_error_t frothy_snapshot_measure_code_object(
                                          &string_bytes));
       break;
     }
+    case FROTHY_IR_NODE_RECORD_DEF:
+      return FROTH_ERROR_NOT_PERSISTABLE;
     case FROTHY_IR_NODE_READ_INDEX: {
       uint32_t ignored = 0;
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
@@ -1414,6 +1763,31 @@ static froth_error_t frothy_snapshot_measure_code_object(
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      break;
+    }
+    case FROTHY_IR_NODE_READ_FIELD: {
+      uint32_t ignored = 0;
+      uint16_t length = 0;
+      const uint8_t *bytes = NULL;
+
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_read_string_bytes(reader, &length, &bytes));
+      (void)bytes;
+      FROTH_TRY(frothy_snapshot_add_size(string_bytes, (size_t)length + 1,
+                                         &string_bytes));
+      break;
+    }
+    case FROTHY_IR_NODE_WRITE_FIELD: {
+      uint32_t ignored = 0;
+      uint16_t length = 0;
+      const uint8_t *bytes = NULL;
+
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_read_string_bytes(reader, &length, &bytes));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      (void)bytes;
+      FROTH_TRY(frothy_snapshot_add_size(string_bytes, (size_t)length + 1,
+                                         &string_bytes));
       break;
     }
     case FROTHY_IR_NODE_FN: {
@@ -1684,6 +2058,9 @@ static froth_error_t frothy_snapshot_decode_code_object(
       }
       break;
     }
+    case FROTHY_IR_NODE_RECORD_DEF:
+      err = FROTH_ERROR_NOT_PERSISTABLE;
+      break;
     case FROTHY_IR_NODE_READ_INDEX:
       err = frothy_snapshot_reader_read_u32(
           reader, (uint32_t *)&node->as.read_index.base);
@@ -1707,6 +2084,47 @@ static froth_error_t frothy_snapshot_decode_code_object(
       err = frothy_snapshot_reader_read_u32(
           reader, (uint32_t *)&node->as.write_index.value);
       break;
+    case FROTHY_IR_NODE_READ_FIELD: {
+      uint16_t length = 0;
+      const uint8_t *bytes = NULL;
+
+      err = frothy_snapshot_reader_read_u32(
+          reader, (uint32_t *)&node->as.read_field.base);
+      if (err != FROTH_OK) {
+        break;
+      }
+      err = frothy_snapshot_read_string_bytes(reader, &length, &bytes);
+      if (err != FROTH_OK) {
+        break;
+      }
+      err = frothy_snapshot_copy_string(bytes, length, &string_cursor,
+                                        storage_end,
+                                        &node->as.read_field.field_name);
+      break;
+    }
+    case FROTHY_IR_NODE_WRITE_FIELD: {
+      uint16_t length = 0;
+      const uint8_t *bytes = NULL;
+
+      err = frothy_snapshot_reader_read_u32(
+          reader, (uint32_t *)&node->as.write_field.base);
+      if (err != FROTH_OK) {
+        break;
+      }
+      err = frothy_snapshot_read_string_bytes(reader, &length, &bytes);
+      if (err != FROTH_OK) {
+        break;
+      }
+      err = frothy_snapshot_reader_read_u32(
+          reader, (uint32_t *)&node->as.write_field.value);
+      if (err != FROTH_OK) {
+        break;
+      }
+      err = frothy_snapshot_copy_string(bytes, length, &string_cursor,
+                                        storage_end,
+                                        &node->as.write_field.field_name);
+      break;
+    }
     case FROTHY_IR_NODE_FN:
       err = frothy_snapshot_reader_read_u32(
           reader, (uint32_t *)&node->as.fn.arity);
@@ -1831,6 +2249,17 @@ static froth_error_t frothy_snapshot_bind_slot_value(const char *name,
   froth_error_t err;
   size_t arity = 0;
   bool had_old_impl = false;
+  bool is_record_def = false;
+  const char *record_name = NULL;
+
+  if (frothy_runtime_get_record_def(frothy_runtime(), value, &record_name,
+                                    &arity) == FROTH_OK) {
+    is_record_def = true;
+    if (strlen(record_name) != length ||
+        memcmp(record_name, name, length) != 0) {
+      return FROTH_ERROR_SNAPSHOT_BAD_NAME;
+    }
+  }
 
   FROTH_TRY(froth_slot_find_name_or_create_n(&froth_vm.heap, name, length,
                                              &slot_index));
@@ -1849,6 +2278,8 @@ static froth_error_t frothy_snapshot_bind_slot_value(const char *name,
   } else if (frothy_runtime_get_native(frothy_runtime(), value, NULL, NULL,
                                        NULL, &arity) == FROTH_OK &&
              arity < FROTH_SLOT_ARITY_UNKNOWN) {
+    err = froth_slot_set_arity(slot_index, (uint8_t)arity, 1);
+  } else if (is_record_def && arity < FROTH_SLOT_ARITY_UNKNOWN) {
     err = froth_slot_set_arity(slot_index, (uint8_t)arity, 1);
   } else {
     err = froth_slot_clear_arity(slot_index);
@@ -1872,6 +2303,57 @@ static froth_error_t frothy_snapshot_bind_slot_value(const char *name,
         frothy_value_release(frothy_runtime(), frothy_value_from_cell(old_impl)));
   }
   return FROTH_OK;
+}
+
+static froth_error_t frothy_snapshot_decode_record_def_object(
+    frothy_snapshot_reader_t *reader, frothy_value_t *out) {
+  char *name = NULL;
+  char *field_storage[FROTHY_IR_LINK_CAPACITY];
+  const char *field_names[FROTHY_IR_LINK_CAPACITY];
+  uint32_t field_count = 0;
+  uint16_t length = 0;
+  const uint8_t *bytes = NULL;
+  uint32_t i;
+  froth_error_t err;
+
+  memset(field_storage, 0, sizeof(field_storage));
+  FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &field_count));
+  if (field_count == 0 || field_count > FROTHY_IR_LINK_CAPACITY) {
+    return FROTH_ERROR_SNAPSHOT_FORMAT;
+  }
+
+  FROTH_TRY(frothy_snapshot_read_string_bytes(reader, &length, &bytes));
+  FROTH_TRY(frothy_snapshot_strdup((const char *)bytes, length, &name));
+  for (i = 0; i < field_count; i++) {
+    err = frothy_snapshot_read_string_bytes(reader, &length, &bytes);
+    if (err != FROTH_OK) {
+      goto fail;
+    }
+    err = frothy_snapshot_strdup((const char *)bytes, length, &field_storage[i]);
+    if (err != FROTH_OK) {
+      goto fail;
+    }
+    field_names[i] = field_storage[i];
+  }
+
+  err = frothy_runtime_alloc_record_def(frothy_runtime(), name, field_names,
+                                        field_count, out);
+  if (err != FROTH_OK) {
+    goto fail;
+  }
+
+  free(name);
+  for (i = 0; i < field_count; i++) {
+    free(field_storage[i]);
+  }
+  return FROTH_OK;
+
+fail:
+  free(name);
+  for (i = 0; i < field_count; i++) {
+    free(field_storage[i]);
+  }
+  return err;
 }
 
 static froth_error_t frothy_snapshot_decode_objects(
@@ -1928,6 +2410,34 @@ static froth_error_t frothy_snapshot_decode_objects(
       FROTH_TRY(frothy_snapshot_decode_code_object(
           reader, symbols, symbol_count, &objects_out[i]));
       break;
+    case FROTHY_OBJECT_RECORD_DEF:
+      FROTH_TRY(frothy_snapshot_decode_record_def_object(reader, &objects_out[i]));
+      break;
+    case FROTHY_OBJECT_RECORD: {
+      frothy_value_t definition = frothy_value_make_nil();
+      frothy_value_t fields[FROTHY_IR_LINK_CAPACITY];
+      uint32_t definition_index = 0;
+      uint32_t field_count = 0;
+      uint32_t field_index;
+
+      for (field_index = 0; field_index < FROTHY_IR_LINK_CAPACITY; field_index++) {
+        fields[field_index] = frothy_value_make_nil();
+      }
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &definition_index));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &field_count));
+      if (definition_index >= object_count || field_count == 0 ||
+          field_count > FROTHY_IR_LINK_CAPACITY) {
+        return FROTH_ERROR_SNAPSHOT_FORMAT;
+      }
+      definition = objects_out[definition_index];
+      for (field_index = 0; field_index < field_count; field_index++) {
+        FROTH_TRY(frothy_snapshot_decode_value(reader, objects_out, object_count,
+                                               false, &fields[field_index]));
+      }
+      FROTH_TRY(frothy_runtime_alloc_record(frothy_runtime(), definition, fields,
+                                            field_count, &objects_out[i]));
+      break;
+    }
     case FROTHY_OBJECT_NATIVE:
     case FROTHY_OBJECT_FREE:
     default:
