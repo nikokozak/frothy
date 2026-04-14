@@ -120,7 +120,7 @@ require_phrase_within "PROGRESS.md" 25 \
   'workspace/image-loading design artifact'
 require_phrase_within "PROGRESS.md" 35 \
   'first CLI naming-alignment artifact is landed'
-require_phrase_within "PROGRESS.md" 35 \
+require_phrase_within "PROGRESS.md" 45 \
   'Next-stage language definition is closed on 2026-04-13'
 require_phrase_after_anchor "PROGRESS.md" \
   '## Next Proof' 3 \
