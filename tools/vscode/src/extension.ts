@@ -271,14 +271,13 @@ class FrothyController {
       return;
     }
 
-    this.output.show(true);
-    this.output.appendLine(`[frothy] send ${document.uri.fsPath}`);
-
     const resetReady = await this.prepareFileSendReset();
     if (!resetReady) {
       return;
     }
 
+    this.output.show(true);
+    this.output.appendLine(`[frothy] send ${document.uri.fsPath}`);
     this.output.appendLine(`> ${previewText(source)}`);
     await this.runTextOperation("send", () => this.client!.eval(source), true);
   }
@@ -426,7 +425,7 @@ class FrothyController {
     return prepareSendFileReset(
       this.client!,
       this.output,
-      vscode.window.showWarningMessage,
+      vscode.window.showErrorMessage,
       (label, err) => this.handleClientError(label, err),
     );
   }

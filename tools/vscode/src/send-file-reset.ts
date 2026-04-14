@@ -2,10 +2,9 @@ import { ControlSessionClientError } from "./control-session-client";
 
 export const resetLogLine = "[frothy] reset";
 export const resetUnavailableLogLine =
-  "[frothy] control reset unavailable on connected firmware; sending file additively (unsafe)";
-export const resetUnavailableWarning =
-  "The connected Frothy firmware does not support control reset. Send File will append definitions additively and may leave deleted bindings behind.";
-export const resetUnavailableAction = "Send Anyway";
+  "[frothy] whole-file Send File aborted: control reset unavailable on connected firmware";
+export const resetUnavailableError =
+  "Whole-file Send File requires control reset. The connected Frothy firmware is too old for safe whole-file send. Upgrade or reflash the firmware, or use Send Selection / Line for intentional additive eval.";
 
 type ResetClient = {
   reset(): Promise<unknown>;
@@ -15,17 +14,15 @@ type ResetOutput = {
   appendLine(line: string): void;
 };
 
-type WarningFn = (
-  message: string,
-  ...items: string[]
-) => PromiseLike<string | undefined> | string | undefined;
+type MessageFn =
+  (message: string) => PromiseLike<string | undefined> | string | undefined;
 
 type ErrorFn = (label: string, err: unknown) => void;
 
 export async function prepareSendFileReset(
   client: ResetClient,
   output: ResetOutput,
-  showWarningMessage: WarningFn,
+  showErrorMessage: MessageFn,
   handleError: ErrorFn,
 ): Promise<boolean> {
   try {
@@ -38,11 +35,8 @@ export async function prepareSendFileReset(
       err.code === "reset_unavailable"
     ) {
       output.appendLine(resetUnavailableLogLine);
-      const action = await showWarningMessage(
-        resetUnavailableWarning,
-        resetUnavailableAction,
-      );
-      return action === resetUnavailableAction;
+      await showErrorMessage(resetUnavailableError);
+      return false;
     }
 
     handleError("reset", err);

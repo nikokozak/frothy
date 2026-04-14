@@ -123,6 +123,39 @@ async function main() {
     client.dispose();
   });
 
+  await test("client reconnects on the same helper-owned path", async () => {
+    const helperPath = path.join(__dirname, "mock-control-session.js");
+    const client = new ControlSessionClient(process.execPath, process.cwd(), [
+      helperPath,
+    ]);
+    const connectedPorts = [];
+    const disconnected = [];
+
+    client.onEvent((event) => {
+      if (event.event === "connected" && event.device) {
+        connectedPorts.push(event.device.port);
+      }
+      if (event.event === "disconnected") {
+        disconnected.push(true);
+      }
+    });
+
+    await client.start();
+    const firstDevice = await client.connect("/dev/cu.first");
+    assertEq(firstDevice.port, "/dev/cu.first", "first connect port");
+    await client.disconnect();
+
+    const secondDevice = await client.connect("/dev/cu.second");
+    assertEq(secondDevice.port, "/dev/cu.second", "second connect port");
+    await client.disconnect();
+    client.dispose();
+
+    assertEq(connectedPorts.length, 2, "connected event count");
+    assertEq(connectedPorts[0], "/dev/cu.first", "first connected event port");
+    assertEq(connectedPorts[1], "/dev/cu.second", "second connected event port");
+    assertEq(disconnected.length, 2, "disconnected event count");
+  });
+
   await test("CLI discovery still prefers froth and repo-local paths", async () => {
     const cwd = path.resolve(__dirname, "..", "..");
     const candidates = cliCandidates(cwd);
