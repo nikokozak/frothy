@@ -74,6 +74,12 @@ async function main() {
     const see = await client.see("control.demo");
     assertEq(see.rendered, "42", "see result");
 
+    const core = await client.core("save");
+    assertEq(core.text, "nil", "core result");
+
+    const slotInfo = await client.slotInfo("save");
+    assertEq(slotInfo.text, "nil", "slotInfo result");
+
     const reset = await client.reset();
     assert(reset.heap_size > 0, "reset heap size");
     assertEq(reset.version, "0.1.0-test", "reset version");
@@ -92,6 +98,12 @@ async function main() {
     assert(events.some((event) => event.event === "output"), "output event");
     assert(events.some((event) => event.event === "interrupted"), "interrupted event");
     assert(events.some((event) => event.event === "disconnected"), "disconnected event");
+    const outputText = events
+      .filter((event) => event.event === "output" && event.data)
+      .map((event) => Buffer.from(event.data, "base64").toString("utf8"))
+      .join("");
+    assert(outputText.includes("core: <native save/0>"), "core output text");
+    assert(outputText.includes("owner: runtime builtin"), "slotInfo output text");
   });
 
   await test("stale firmware keeps reset_unavailable compatibility", async () => {

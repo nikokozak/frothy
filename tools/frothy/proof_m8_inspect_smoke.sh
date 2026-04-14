@@ -112,9 +112,15 @@ BASE_TRANSCRIPT="$(
     'quit'
 )"
 printf '%s\n' "$BASE_TRANSCRIPT"
-require_contains "$BASE_TRANSCRIPT" 'save | base | native'
-require_contains "$BASE_TRANSCRIPT" '<native save/0>'
-require_contains "$BASE_TRANSCRIPT" 'save | base | native | non-persistable | foreign'
+require_contains "$BASE_TRANSCRIPT" 'save'
+require_contains "$BASE_TRANSCRIPT" '  slot: base'
+require_contains "$BASE_TRANSCRIPT" '  kind: native'
+require_contains "$BASE_TRANSCRIPT" '  call: 0 -> 1'
+require_contains "$BASE_TRANSCRIPT" '  owner: runtime builtin'
+require_contains "$BASE_TRANSCRIPT" '  persistence: not saved'
+require_contains "$BASE_TRANSCRIPT" '  help: Save the current overlay snapshot.'
+require_contains "$BASE_TRANSCRIPT" '  see: <native save/0>'
+require_contains "$BASE_TRANSCRIPT" '  core: <native save/0>'
 require_not_contains "$BASE_TRANSCRIPT" 'eval error ('
 require_not_contains "$BASE_TRANSCRIPT" 'parse error ('
 
@@ -128,10 +134,14 @@ INSPECT_TRANSCRIPT="$(
     'quit'
 )"
 printf '%s\n' "$INSPECT_TRANSCRIPT"
-require_contains "$INSPECT_TRANSCRIPT" 'alias | overlay | code'
-require_contains "$INSPECT_TRANSCRIPT" 'to alias with arg0 [ arg0 + 1 ]'
-require_contains "$INSPECT_TRANSCRIPT" '(fn arity=1 locals=1 (seq (call (builtin "+") (read-local 0) (lit 1))))'
-require_contains "$INSPECT_TRANSCRIPT" 'alias | overlay | code | persistable | user'
+require_contains "$INSPECT_TRANSCRIPT" 'alias'
+require_contains "$INSPECT_TRANSCRIPT" '  slot: overlay'
+require_contains "$INSPECT_TRANSCRIPT" '  kind: code'
+require_contains "$INSPECT_TRANSCRIPT" '  call: 1 -> 1'
+require_contains "$INSPECT_TRANSCRIPT" '  owner: overlay image'
+require_contains "$INSPECT_TRANSCRIPT" '  persistence: saved in snapshot'
+require_contains "$INSPECT_TRANSCRIPT" '  see: to alias with arg0 [ arg0 + 1 ]'
+require_contains "$INSPECT_TRANSCRIPT" '  core: (fn arity=1 locals=1 (seq (call (builtin "+") (read-local 0) (lit 1))))'
 require_not_contains "$INSPECT_TRANSCRIPT" 'eval error ('
 require_not_contains "$INSPECT_TRANSCRIPT" 'parse error ('
 
@@ -168,7 +178,9 @@ REBIND_TRANSCRIPT="$(
     'quit'
 )"
 printf '%s\n' "$REBIND_TRANSCRIPT"
-require_contains "$REBIND_TRANSCRIPT" 'see | overlay | code | persistable | user'
+require_contains "$REBIND_TRANSCRIPT" 'see'
+require_contains "$REBIND_TRANSCRIPT" '  owner: overlay image'
+require_contains "$REBIND_TRANSCRIPT" '  persistence: saved in snapshot'
 require_contains "$REBIND_TRANSCRIPT" '42'
 require_not_contains "$REBIND_TRANSCRIPT" 'eval error ('
 require_not_contains "$REBIND_TRANSCRIPT" 'parse error ('
@@ -189,9 +201,12 @@ COMMAND_TRANSCRIPT="$(
     'quit'
 )"
 printf '%s\n' "$COMMAND_TRANSCRIPT"
-require_contains "$COMMAND_TRANSCRIPT" 'alias | overlay | code'
-require_contains "$COMMAND_TRANSCRIPT" 'to alias [ 42 ]'
-require_contains "$COMMAND_TRANSCRIPT" 'alias | overlay | code | persistable | user'
+require_contains "$COMMAND_TRANSCRIPT" 'alias'
+require_contains "$COMMAND_TRANSCRIPT" '  slot: overlay'
+require_contains "$COMMAND_TRANSCRIPT" '  kind: code'
+require_contains "$COMMAND_TRANSCRIPT" '  see: to alias [ 42 ]'
+require_contains "$COMMAND_TRANSCRIPT" '  core: (fn arity=0 locals=0 (seq (lit 42)))'
+require_contains "$COMMAND_TRANSCRIPT" '  persistence: saved in snapshot'
 require_contains "$COMMAND_TRANSCRIPT" 'frothy> "saved"'
 require_contains "$COMMAND_TRANSCRIPT" 'eval error ('
 require_not_contains "$COMMAND_TRANSCRIPT" 'frothy> nil'
@@ -224,7 +239,7 @@ CALLABLE_TRANSCRIPT="$(
     'quit'
 )"
 printf '%s\n' "$CALLABLE_TRANSCRIPT"
-require_contains "$CALLABLE_TRANSCRIPT" 'save | base | native'
+require_contains "$CALLABLE_TRANSCRIPT" '  see: <native save/0>'
 require_contains "$CALLABLE_TRANSCRIPT" 'frothy> "saved"'
 require_contains "$CALLABLE_TRANSCRIPT" 'eval error ('
 if [ "$(count_occurrences "$CALLABLE_TRANSCRIPT" 'frothy> nil')" -ne 3 ]; then
