@@ -69,7 +69,7 @@ require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 35 \
 require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 35 \
   'Blocked by: none'
 require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 35 \
-  "rg -n 'repo-local \\`froth-cli\\`' README.md"
+  "rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md"
 require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 35 \
   'keep transitional `froth-cli` / release-time `froth` naming explicit in docs and tooling notes before touching binaries or release surfaces'
 require_phrase_after_anchor "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" \
@@ -96,7 +96,7 @@ require_phrase_within "PROGRESS.md" 25 \
 require_phrase_within "PROGRESS.md" 25 \
   'CLI naming-alignment artifact'
 require_phrase_within "PROGRESS.md" 25 \
-  "rg -n 'repo-local \\`froth-cli\\`' README.md"
+  "rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md"
 require_phrase_within "PROGRESS.md" 25 \
   'Next proof:'
 require_phrase_within "PROGRESS.md" 25 \
@@ -105,7 +105,7 @@ require_phrase_within "PROGRESS.md" 35 \
   'Next-stage language definition is closed on 2026-04-13'
 require_phrase_after_anchor "PROGRESS.md" \
   '## Next Proof' 3 \
-  "rg -n 'repo-local \\`froth-cli\\`' README.md"
+  "rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md"
 require_phrase_after_anchor "PROGRESS.md" \
   '## Next Artifact' 3 \
   'CLI naming-alignment artifact'
@@ -121,7 +121,7 @@ require_phrase_within "TIMELINE.md" 25 \
 require_phrase_within "TIMELINE.md" 25 \
   'Next proof command:'
 require_phrase_within "TIMELINE.md" 25 \
-  "rg -n 'repo-local \\`froth-cli\\`' README.md"
+  "rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md"
 require_phrase_within "TIMELINE.md" 25 \
   'executable-adjacent tool surfaces'
 require_phrase_within "TIMELINE.md" 80 \
