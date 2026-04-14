@@ -84,10 +84,18 @@ require_phrase_after_anchor "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" \
 require_phrase_after_anchor "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" \
   '#### CLI naming alignment' 20 \
   'queued after the 2026-04-13 next-stage language-definition closeout'
+require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 620 \
+  'Operational label:'
+require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 620 \
+  '`queued follow-on only`'
 reject_phrase "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" \
   'land the next-stage language-definition docs for counted iteration,'
 reject_phrase "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" \
   'rg -n '\''froth-cli|release-time `froth`|intended global `frothy`'\'' README.md PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md'
+reject_phrase "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" \
+  '`F1 Core hardening`'
+reject_phrase "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" \
+  'binding/place values in the draft'
 
 require_phrase_within "PROGRESS.md" 25 \
   'Active milestone: `none`'

@@ -592,7 +592,7 @@ Purpose:
 
 Operational label:
 
-- `F1 Core hardening`
+- `queued follow-on only`
 
 Pending priority order:
 
@@ -634,8 +634,8 @@ Approach:
 - keep that first slice parser-lowered onto the existing canonical IR,
   evaluator, and snapshot machinery
 - keep records, modules, `cond`/`case`, Frothy-native `try/catch`, and
-  binding/place values in the draft, but do not widen runtime semantics for
-  them yet
+  restricted top-level binding/place designators in the draft, but do not
+  widen runtime semantics for them yet
 - keep recovery terminology honest: top-level shell/control/boot recovery is
   current reality, and the next in-language `try/catch` surface must stay
   explicitly non-transactional and narrower than Froth's old global catch
