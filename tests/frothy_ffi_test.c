@@ -365,6 +365,33 @@ static int test_board_gpio_read_round_trip(void) {
   return ok;
 }
 
+static int test_board_workshop_parity_guards(void) {
+  frothy_value_t value = frothy_value_make_nil();
+  frothy_value_t delay = frothy_value_make_nil();
+  int ok = 1;
+
+  reset_frothy_state();
+  ok &= install_board_base_slots();
+  ok &= expect_error("gpio.mode: 99, 1", FROTH_ERROR_BOUNDS);
+  ok &= expect_error("gpio.write: 99, 1", FROTH_ERROR_BOUNDS);
+  ok &= expect_error("gpio.read: 99", FROTH_ERROR_BOUNDS);
+  ok &= expect_error("adc.read: 99", FROTH_ERROR_BOUNDS);
+  ok &= expect_ok("ms: -1", &value);
+  ok &= expect_nil_value(value, "ms: -1");
+  release_value(&value);
+
+  ok &= frothy_value_make_int(20, &delay) == FROTH_OK;
+  if (ok) {
+    froth_vm.interrupted = 1;
+    ok &= expect_native_call("ms", &delay, 1, &value,
+                             FROTH_ERROR_PROGRAM_INTERRUPTED);
+    froth_vm.interrupted = 0;
+  }
+  release_value(&delay);
+  release_value(&value);
+  return ok;
+}
+
 static int test_wrap_uptime_ms_payload(void) {
   froth_cell_t wrapped = frothy_ffi_wrap_uptime_ms(UINT32_C(0xffffffff));
   froth_cell_t round_trip = 0;
@@ -404,6 +431,7 @@ int main(void) {
   ok &= test_stack_cleanup_after_native_failure();
   ok &= test_board_millis_monotonic();
   ok &= test_board_gpio_read_round_trip();
+  ok &= test_board_workshop_parity_guards();
   ok &= test_wrap_uptime_ms_payload();
 
   frothy_runtime_free(runtime());

@@ -1,3 +1,4 @@
+#include "froth_vm.h"
 #include "ffi.h"
 #include "froth_fmt.h"
 #include "frothy_ffi.h"
@@ -13,7 +14,12 @@
 #define POSIX_I2C_MAX_BUSES 2
 #define POSIX_I2C_MAX_DEVICES 8
 #define POSIX_UART_MAX_PORTS 2
-#define POSIX_GPIO_PIN_LIMIT 128
+#define POSIX_PIN_A0 0
+#define POSIX_PIN_LED_BUILTIN 2
+#define POSIX_PIN_UART_RX 16
+#define POSIX_PIN_UART_TX 17
+#define POSIX_PIN_SDA 21
+#define POSIX_PIN_SCL 22
 
 typedef struct {
   int in_use;
@@ -40,8 +46,8 @@ typedef struct {
 static posix_i2c_bus_t posix_i2c_buses[POSIX_I2C_MAX_BUSES];
 static posix_i2c_device_t posix_i2c_devices[POSIX_I2C_MAX_DEVICES];
 static posix_uart_t posix_uarts[POSIX_UART_MAX_PORTS];
-static uint8_t posix_gpio_known[POSIX_GPIO_PIN_LIMIT];
-static froth_cell_t posix_gpio_levels[POSIX_GPIO_PIN_LIMIT];
+static uint8_t posix_gpio_known[40];
+static froth_cell_t posix_gpio_levels[40];
 static const uint8_t posix_uart_readback[] = {'f', 'r', 'o', 't', 'h'};
 
 void froth_board_reset_runtime_state(void) {
@@ -53,7 +59,29 @@ void froth_board_reset_runtime_state(void) {
 }
 
 static int posix_gpio_pin_valid(froth_cell_t pin) {
-  return pin >= 0 && pin < POSIX_GPIO_PIN_LIMIT;
+  switch (pin) {
+  case POSIX_PIN_A0:
+  case POSIX_PIN_LED_BUILTIN:
+  case POSIX_PIN_UART_RX:
+  case POSIX_PIN_UART_TX:
+  case POSIX_PIN_SDA:
+  case POSIX_PIN_SCL:
+    return 1;
+  default:
+    return 0;
+  }
+}
+
+static int posix_adc_pin_valid(froth_cell_t pin) { return pin == POSIX_PIN_A0; }
+
+static froth_error_t posix_poll_interruptible_wait(void) {
+  platform_check_interrupt(&froth_vm);
+  if (!froth_vm.interrupted) {
+    return FROTH_OK;
+  }
+
+  froth_vm.interrupted = 0;
+  return FROTH_ERROR_PROGRAM_INTERRUPTED;
 }
 
 static froth_error_t emit_trace_prefix(const char *prefix, froth_cell_t handle) {
@@ -115,7 +143,17 @@ FROTH_FFI_ARITY(prim_gpio_read, "gpio.read", "( pin -- value )", 1, 1,
 
 FROTH_FFI_ARITY(prim_ms, "ms", "( n -- )", 1, 0, "Delay n milliseconds") {
   FROTH_POP(ms);
-  usleep((useconds_t)ms * 1000);
+
+  if (ms <= 0) {
+    return FROTH_OK;
+  }
+  while (ms > 0) {
+    froth_cell_t chunk = ms > 10 ? 10 : ms;
+
+    usleep((useconds_t)chunk * 1000);
+    ms -= chunk;
+    FROTH_TRY(posix_poll_interruptible_wait());
+  }
   return FROTH_OK;
 }
 
@@ -129,7 +167,7 @@ FROTH_FFI_ARITY(prim_adc_read, "adc.read", "( pin -- value )", 1, 1,
                 "Deterministic ADC stub on POSIX") {
   FROTH_POP(pin);
 
-  if (pin < 0) {
+  if (!posix_adc_pin_valid(pin)) {
     return FROTH_ERROR_BOUNDS;
   }
 
