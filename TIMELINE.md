@@ -1,6 +1,6 @@
 # Frothy Timeline
 
-*Last updated: 2026-04-13*
+*Last updated: 2026-04-14*
 
 This file is the movable milestone and queue ledger for Frothy.
 The roadmap current-state block in
@@ -13,7 +13,7 @@ If this file and the roadmap disagree, the roadmap wins.
 
 - Active milestone: `queued follow-on only`
 - Blocked by: none
-- Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer
+- Next artifact: first workshop install/editor/recovery hardening cut across CLI release, VSCode distribution, and reset-safe send
 - Next proof command: `sh tools/frothy/proof_control_surface_docs.sh`
 
 ## Closed v0.1 Ladder
@@ -66,39 +66,47 @@ keep each item's description and references so deferral does not erase context.
   `AGENTS.md`, and one forward-priority note.
   References: Frothy ADR-116 and
   `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`.
+- [ ] Workshop install, editor, and recovery surface
+  Deliverable: make install, device discovery, connect, interrupt, reconnect,
+  and reset-safe send dependable on the maintained Frothy path.
+  References: Frothy ADR-110, Frothy ADR-111, Frothy ADR-113,
+  `tools/package-release.sh`, and `.github/workflows/release.yml`.
+- [ ] Inspection-first teaching surface
+  Deliverable: make `words`, `see`, `core`, `slotInfo`, and `@` clean enough
+  for the workshop exploration and puzzle path.
+  References: `docs/spec/Frothy_Language_Spec_v0_1.md`,
+  Frothy ADR-107, `docs/spec/Frothy_Language_Spec_vNext.md`, and
+  Frothy ADR-114.
+- [ ] Workshop base-image library and board surface
+  Deliverable: define the preflashed workshop base library and the board
+  surface for blink, animation, `millis`, ADC, GPIO, and related helpers.
+  References: Frothy ADR-108,
+  `docs/roadmap/Frothy_M9_Board_FFI_Closeout.md`, and
+  `docs/spec/Frothy_Language_Spec_v0_1.md`, Appendix C.
+- [ ] Readability language tranche: `in prefix`, `cond`, `case`, and ordinary-code `@`
+  Deliverable: land the narrow language additions that most improve workshop
+  code and small-library readability without reopening the slot/image model.
+  References: Frothy ADR-112, `docs/spec/Frothy_Language_Spec_vNext.md`,
+  `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md`, and Frothy ADR-114.
+- [ ] Records for workshop/game objects
+  Deliverable: add fixed-layout records for workshop and game-object use
+  without widening Frothy into dynamic object bags.
+  References: Frothy ADR-112, `docs/spec/Frothy_Language_Spec_vNext.md`, and
+  Frothy ADR-114.
+- [ ] Performance and persistence closeout on workshop programs
+  Deliverable: prove the real workshop loops, input paths, and
+  `save` / `restore` / `wipe` story with measured before/after checks.
+  References: `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md`,
+  `docs/spec/Frothy_Language_Spec_v0_1.md`, and the roadmap follow-on queue.
+- [ ] Workshop content and rehearsal
+  Deliverable: freeze the lesson arc, puzzle path, proofs, and handoff so the
+  maintained Frothy path works without extra spoken repair.
+  References: `README.md`, `PROGRESS.md`, `TIMELINE.md`, and `tools/frothy/`.
 - [ ] Host-only slot-bundle inspection/generation in the CLI project layer
-  Deliverable: the first workspace/image-flow implementation cut only.
+  Deliverable: the first workspace/image-flow implementation cut only, after
+  the workshop-critical tranches above are stable.
   References: Frothy ADR-115 and
   `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`.
-- [ ] FFI boundary quality and porting discipline
-  Deliverable: make the shipped shim and porting rules explicit, narrow, and
-  test-backed before any ABI cleanup.
-  References: Frothy ADR-108 and
-  `docs/roadmap/Frothy_M9_Board_FFI_Closeout.md`.
-- [ ] Small useful core library growth
-  Deliverable: choose and land a minimal library tranche that makes Frothy
-  more useful without sneaking in new runtime semantics.
-  References: `docs/spec/Frothy_Language_Spec_v0_1.md`, Appendix C, and
-  Frothy ADR-112.
-- [ ] Robust string support
-  Deliverable: define the next truthful string-support cut around current
-  byte-string semantics, utilities, and FFI/persistence boundaries.
-  References: `docs/spec/Frothy_Language_Spec_v0_1.md`, sections 3.6 and 9,
-  and `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`.
-- [ ] Measured performance tightening
-  Deliverable: benchmark-backed speed work on the current runtime rather than
-  speculative rewrites.
-  References: `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md` and the
-  roadmap follow-on queue.
-- [ ] Direct-control tooling improvements
-  Deliverable: keep CLI/helper/editor improvements on the single-owner control
-  path and out of daemon or PTY drift.
-  References: Frothy ADR-110, Frothy ADR-111, and Frothy ADR-113.
-- [ ] Workshop readiness for 2026-04-16
-  Deliverable: make the demo path, kept scope, and deferred queue explicit
-  before the workshop.
-  References: `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`
-  and `README.md`.
 - [ ] Later workspace/image-flow apply/load growth
   Deliverable: only after host-only inspection/generation proves useful; still
   no registry, daemon, or loader-first detour.

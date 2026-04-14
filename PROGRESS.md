@@ -1,6 +1,6 @@
 # Frothy Progress
 
-*Last updated: 2026-04-13*
+*Last updated: 2026-04-14*
 
 This file is the thin operational note for Frothy.
 The current-state block in `docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
@@ -13,7 +13,7 @@ file is wrong.
 
 - Active milestone: `queued follow-on only`
 - Blocked by: none
-- Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer
+- Next artifact: first workshop install/editor/recovery hardening cut across CLI release, VSCode distribution, and reset-safe send
 - Next proof command: `sh tools/frothy/proof_control_surface_docs.sh`
 
 ## Landed And Still Relevant
@@ -33,23 +33,23 @@ file is wrong.
 - This control-surface repair tranche is landed: `PROGRESS.md` and
   `TIMELINE.md` are thin again, `AGENTS.md` supports targeted work, and the
   forward queue now lives in one short roadmap note plus Frothy ADR-116.
+- The approved follow-on order is now workshop-first: delivery/editor/recovery,
+  inspection, board library and surface, readability language work, records,
+  then performance/persistence closeout.
 
 ## Near-Term Priority Stack
 
-- 1. Workshop readiness for 2026-04-16: keep the repo surface truthful,
-  readable, and easy to hand off.
-- 2. Host-only slot-bundle inspection/generation in the CLI project layer:
-  first implementation cut only; no apply/load/helper/editor growth.
-- 3. FFI boundary quality and porting discipline: keep ADR-108 narrow while
-  making current conversion and error rules explicit and provable.
-- 4. Small useful core library growth: add capability without widening
-  semantics by drift.
-- 5. Robust string support: keep the byte-string contract explicit and stage
-  missing utilities and boundaries deliberately.
-- 6. Measured performance tightening: use benchmarks and proof paths, not
-  guessed speed work.
-- 7. Direct-control tooling improvements: keep the CLI/helper/editor path
-  smaller than inherited Froth.
+- 1. Workshop install, editor, and recovery surface: make install, connect,
+  interrupt, reconnect, and reset-safe send dependable.
+- 2. Inspection-first teaching surface: make `words`, `see`, `core`,
+  `slotInfo`, and `@` clean enough for the workshop exploration path.
+- 3. Workshop base-image library and board surface: cover blink, animation,
+  `millis`, ADC, GPIO, and other workshop-critical helpers.
+- 4. Readability language tranche: `in prefix`, `cond`, `case`, and
+  ordinary-code `@`.
+- 5. Records for workshop/game objects.
+- 6. Performance and persistence closeout on actual workshop programs.
+- 7. Workshop content and rehearsal.
 - Reference: `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`
 
 ## Workshop Gate

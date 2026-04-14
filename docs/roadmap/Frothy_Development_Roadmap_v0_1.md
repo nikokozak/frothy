@@ -24,22 +24,23 @@ It is a sequencing and control document.
 This block is the live control surface for repo status.
 
 Current milestone: `queued follow-on only`
-Today's goal: keep the control docs thin and aligned, make the post-`v0.1`
-priority stack workshop-ready for 2026-04-16, and keep the next
-implementation cut limited to the first host-only slot-bundle
-inspection/generation artifact in the CLI project layer
-Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer
+Today's goal: keep the control docs thin and aligned, reorder the post-`v0.1`
+priority stack around workshop failure modes for 2026-04-16, and make the
+next implementation cut the first workshop install/editor/recovery hardening
+tranche
+Next artifact: first workshop install/editor/recovery hardening cut across CLI release, VSCode distribution, and reset-safe send
 Blocked by: none
 Next proof command: `sh tools/frothy/proof_control_surface_docs.sh`
 Slip against plan: none; the next-stage language-definition docs, direct
 control-session slice 2, bounded-memory hardening, CLI naming alignment, and
-workspace/image-flow tranche 1 are already landed, but the repo still needed a
-truthful post-`v0.1` queue and a workshop-ready control surface before more
-follow-on work resumed
-Cut candidate if slip persists: keep the control-surface repair doc-only, keep
-the next workspace/image-flow cut host-only and inspection/generation-only,
-and defer apply/load, FFI ABI cleanup, string broadening, larger library
-growth, and tooling UI growth
+workspace/image-flow tranche 1 are already landed; the repo now has a
+workshop-first follow-on queue, but the install/editor/recovery tranche still
+needs to prove that another person can reach a clean maintained Frothy session
+quickly
+Cut candidate if slip persists: keep the first workshop cut limited to install,
+editor, recovery, and inspection exposure; defer broader board-library growth,
+language widening beyond `in prefix` / `cond` / `case` / ordinary-code `@`,
+records, and all later workspace/image-flow work
 
 ## 3. Operating Rules
 
