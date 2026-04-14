@@ -100,7 +100,10 @@ run_flash_apply_smoke() {
   build_cli_binary "$cli_bin"
   "$cli_bin" new --target esp32-devkit-v1 "$project_dir"
   cat >"$project_dir/src/main.froth" <<'EOF'
-note = "flash-proof"
+counter is cells(1)
+set counter[0] to 0
+note is "flash-proof"
+to boot [ set counter[0] to counter[0] + 1; counter[0] ]
 EOF
 
   (
@@ -108,6 +111,20 @@ EOF
     "$cli_bin" build
     "$cli_bin" --port "$PORT" flash
   )
+
+  whole_file_one="$(
+    cd "$project_dir"
+    "$cli_bin" --port "$PORT" send
+  )"
+  printf '%s\n' "$whole_file_one"
+  require_contains "$whole_file_one" '1'
+
+  whole_file_two="$(
+    cd "$project_dir"
+    "$cli_bin" --port "$PORT" send
+  )"
+  printf '%s\n' "$whole_file_two"
+  require_contains "$whole_file_two" '1'
 
   verify_one="$("$cli_bin" --port "$PORT" send note)"
   printf '%s\n' "$verify_one"

@@ -102,6 +102,55 @@ func TestControlSessionServerLocalRuntime(t *testing.T) {
 	consumeDisconnectCycle(t, harness, 13)
 }
 
+func TestManagerReconnectsExitedLocalRuntime(t *testing.T) {
+	runtimePath := findLocalRuntimeBinary(t)
+	if runtimePath == "" {
+		t.Skip("local Frothy runtime not built")
+	}
+
+	manager := NewManager(ManagerConfig{LocalRuntimePath: runtimePath})
+	t.Cleanup(func() {
+		_ = manager.Disconnect()
+	})
+
+	info, err := manager.Connect("")
+	if err != nil {
+		t.Fatalf("first connect: %v", err)
+	}
+	if info == nil || info.Board == "" {
+		t.Fatalf("first connect info = %+v", info)
+	}
+
+	stale := manager.connection()
+	if stale == nil || stale.runtime == nil {
+		t.Fatalf("stale connection = %+v", stale)
+	}
+	if err := stale.runtime.Close(); err != nil {
+		t.Fatalf("close stale local runtime: %v", err)
+	}
+
+	info, err = manager.Connect("")
+	if err != nil {
+		t.Fatalf("reconnect after local runtime exit: %v", err)
+	}
+	if info == nil || info.Board == "" {
+		t.Fatalf("reconnect info = %+v", info)
+	}
+
+	fresh := manager.connection()
+	if fresh == nil || fresh == stale {
+		t.Fatalf("fresh connection = %+v, stale = %+v", fresh, stale)
+	}
+
+	value, err := manager.Eval("1 + 1", nil)
+	if err != nil {
+		t.Fatalf("eval after reconnect: %v", err)
+	}
+	if value != "2" {
+		t.Fatalf("eval after reconnect = %q, want 2", value)
+	}
+}
+
 func consumeValueCycle(t *testing.T, harness *sessionHarness, requestID float64) map[string]any {
 	t.Helper()
 

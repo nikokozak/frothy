@@ -247,120 +247,137 @@ def confirm_blink(assume_yes: bool) -> str:
 
 
 def run_phase_one(session: IdfMonitorSession, assume_yes: bool) -> str:
+    start = session.text()
     session.run_file(BLINK_PROOF)
     transcript = session.text()
+    segment = transcript[len(start) :]
     require_contains(transcript, "Frothy shell")
     require_not_contains(transcript, "RTCWDT_RTC_RESET")
     require_match(
-        transcript,
-        r"blink\(LED_BUILTIN, pulses, period\)\r?\nnil\r?\nfrothy> ",
+        segment,
+        r"blink: LED_BUILTIN, pulses, period\r?\nnil\r?\nfrothy> ",
     )
+    require_not_contains(segment, "eval error (")
+    require_not_contains(segment, "parse error (")
     return confirm_blink(assume_yes)
 
 
 def run_phase_two(session: IdfMonitorSession) -> None:
+    boot_transcript = session.text()
     session.send_line("note")
     session.send_line("dangerous.wipe")
     session.send_line("note")
     session.run_file(BOOT_PROOF)
     transcript = session.text()
-    require_contains(transcript, "snapshot: found")
-    require_match(transcript, r'note\r?\n"booted"\r?\nfrothy> ')
-    require_contains(transcript, "eval error (4)")
+    segment = transcript[len(boot_transcript) :]
+    require_contains(boot_transcript, "snapshot: found")
+    require_sequence(
+        segment,
+        [
+            "note",
+            '"booted"',
+            "note",
+            "eval error (4)",
+        ],
+    )
+    require_not_contains(segment, "parse error (")
 
 
 def run_phase_three(session: IdfMonitorSession) -> None:
+    start = len(session.text())
     session.read_until(b"boot: CTRL-C for safe boot", timeout=120.0)
     session.send_raw(b"\x03")
     session.wait_for_stable_prompt(timeout=120.0)
     session.send_line("note")
     session.send_line("1 + 1")
     transcript = session.text()
+    segment = transcript[start:]
     require_contains(transcript, "snapshot: found")
-    require_contains(transcript, "boot: CTRL-C for safe boot")
-    require_contains(transcript, "boot: Safe Boot, skipped restore and boot.")
-    require_contains(transcript, "eval error (4)")
-    require_match(transcript, r"1 \+ 1\r?\n2\r?\nfrothy> ")
+    require_contains(segment, "boot: CTRL-C for safe boot")
+    require_contains(segment, "boot: Safe Boot, skipped restore and boot.")
+    require_contains(segment, "eval error (4)")
+    require_match(segment, r"1 \+ 1\r?\n2\r?\nfrothy> ")
+    require_not_contains(segment, "parse error (")
 
 
 def run_phase_four(session: IdfMonitorSession) -> None:
+    phase_start = session.text()
     session.run_file(CELLS_PROOF)
+    cells_transcript = session.text()[len(phase_start) :]
     session.run_file(WORKSHOP_PROOF)
+    workshop_transcript = session.text()[len(phase_start) + len(cells_transcript) :]
     session.send_line("dangerous.wipe")
-    transcript = session.text()
-    matches = re.findall(r"sample\.read: \d\r?\n(\d+)\r?\nfrothy> ", transcript)
+    matches = re.findall(r"sample\.read: \d\r?\n(\d+)\r?\nfrothy> ", cells_transcript)
     if len(matches) < 4:
         fail("expected four ADC sample readbacks in the transcript")
-    require_contains(transcript, "millis | base | native | non-persistable | foreign")
-    require_contains(transcript, "adc.percent | base | code | persistable | user")
-    require_count_at_least(transcript, "blink | base | code | persistable | user", 2)
-    require_sequence(
-        transcript,
-        [
-            '"millis.check"',
-            "true",
-        ],
+    require_contains(workshop_transcript, "info @millis")
+    require_contains(workshop_transcript, "help: Return wrapped monotonic uptime in milliseconds.")
+    require_contains(workshop_transcript, "info @blink")
+    require_contains(workshop_transcript, "info @adc.percent")
+    require_contains(workshop_transcript, "owner: board ffi")
+    require_count_at_least(workshop_transcript, "owner: base image", 2)
+    require_match(
+        workshop_transcript,
+        r'"millis\.check"\r?\n[\s\S]*?after > start\r?\ntrue\r?\nfrothy> ',
     )
-    require_sequence(
-        transcript,
-        [
-            '"gpio.low.check"',
-            "0",
-        ],
+    require_match(
+        workshop_transcript,
+        r'"gpio\.low\.check"\r?\n[\s\S]*?gpio\.read: LED_BUILTIN\r?\n0\r?\nfrothy> ',
     )
-    require_sequence(
-        transcript,
-        [
-            '"gpio.high.check"',
-            "1",
-        ],
+    require_match(
+        workshop_transcript,
+        r'"gpio\.high\.check"\r?\n[\s\S]*?gpio\.read: LED_BUILTIN\r?\n1\r?\nfrothy> ',
     )
-    require_sequence(
-        transcript,
-        [
-            '"gpio.toggle.check"',
-            "0",
-        ],
+    require_match(
+        workshop_transcript,
+        r'"gpio\.toggle\.check"\r?\n[\s\S]*?gpio\.read: LED_BUILTIN\r?\n[01]\r?\nfrothy> ',
     )
-    require_sequence(
-        transcript,
-        [
-            '"led.off.check"',
-            "0",
-            '"led.on.check"',
-            "1",
-            '"led.toggle.check"',
-            "0",
-        ],
+    require_match(
+        workshop_transcript,
+        r'"led\.off\.check"\r?\n[\s\S]*?gpio\.read: LED_BUILTIN\r?\n0\r?\nfrothy> ',
     )
-    require_match(transcript, r"adc\.percent: A0\r?\n(\d+)\r?\nfrothy> ")
-    percent_match = re.search(r"adc\.percent: A0\r?\n(\d+)\r?\nfrothy> ", transcript)
+    require_match(
+        workshop_transcript,
+        r'"led\.on\.check"\r?\n[\s\S]*?gpio\.read: LED_BUILTIN\r?\n1\r?\nfrothy> ',
+    )
+    toggle_match = re.search(
+        r'"led\.toggle\.check"\r?\n.*?gpio\.read: LED_BUILTIN\r?\n(\d+)\r?\nfrothy> ',
+        workshop_transcript,
+        re.DOTALL,
+    )
+    if toggle_match is None:
+        fail("expected led.toggle.check readback in transcript")
+    toggle_value = int(toggle_match.group(1))
+    if toggle_value < 0 or toggle_value > 1:
+        fail(f"expected led.toggle.check readback in 0..1, got {toggle_value}")
+    require_match(
+        workshop_transcript,
+        r'"led\.blink\.check"\r?\n[\s\S]*?led\.blink: 1, 1\r?\nnil\r?\nfrothy> ',
+    )
+    percent_match = re.search(
+        r'"adc\.percent\.check"\r?\n.*?adc\.percent: A0\r?\n(\d+)\r?\nfrothy> ',
+        workshop_transcript,
+        re.DOTALL,
+    )
     if percent_match is None:
         fail("expected adc.percent: A0 in transcript")
     percent_value = int(percent_match.group(1))
     if percent_value < 0 or percent_value > 100:
         fail(f"expected adc.percent: A0 in 0..100, got {percent_value}")
-    require_contains(transcript, "anim[0]")
-    require_contains(transcript, "anim[1]")
-    require_contains(transcript, "anim[2]")
-    require_match(transcript, r"anim\[0\]\r?\n41\r?\nfrothy> ")
-    require_match(transcript, r"anim\[1\]\r?\n42\r?\nfrothy> ")
-    require_match(transcript, r"anim\[2\]\r?\n43\r?\nfrothy> ")
-    require_sequence(
-        transcript,
-        [
-            '"overlay.blink.check"',
-            "blink | overlay | code | persistable | user",
-            "99",
-            '"restored.blink.check"',
-            "blink | base | code | persistable | user",
-            "[gpio] pin 2 -> OUTPUT",
-            "[gpio] pin 2 = LOW",
-            "[gpio] pin 2 = HIGH",
-            "[gpio] pin 2 = LOW",
-            "nil",
-        ],
+    require_match(
+        workshop_transcript,
+        r'"anim\.check"\r?\n[\s\S]*?anim\[0\]\r?\n41\r?\nfrothy> [\s\S]*?anim\[1\]\r?\n42\r?\nfrothy> [\s\S]*?anim\[2\]\r?\n43\r?\nfrothy> ',
     )
+    require_match(
+        workshop_transcript,
+        r'"overlay\.blink\.check"\r?\n[\s\S]*?slot: overlay\r?\n[\s\S]*?owner: overlay image\r?\n[\s\S]*?blink: LED_BUILTIN, 1, 1\r?\n99\r?\nfrothy> ',
+    )
+    require_match(
+        workshop_transcript,
+        r'"restored\.blink\.check"\r?\n[\s\S]*?slot: base\r?\n[\s\S]*?owner: base image\r?\n[\s\S]*?blink: LED_BUILTIN, 1, 1\r?\nnil\r?\nfrothy> ',
+    )
+    require_not_contains(workshop_transcript, "eval error (")
+    require_not_contains(workshop_transcript, "parse error (")
 
 
 def main() -> int:

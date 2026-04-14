@@ -100,7 +100,22 @@ func (m *Manager) Connect(portHint string) (*DeviceInfo, error) {
 	targetPort := m.resolveTargetPort(portHint)
 	if conn != nil {
 		if targetPort == "" || conn.port == targetPort {
-			return deviceInfoFromConnection(conn), nil
+			if err := probeManagedConnection(conn); err == nil {
+				return deviceInfoFromConnection(conn), nil
+			}
+
+			stalePort := conn.port
+			m.clearConnection(conn)
+			_ = closeManagedConnection(conn, false)
+
+			nextConn, err := m.reopenStaleConnection(targetPort, stalePort)
+			if err != nil {
+				return nil, err
+			}
+			m.mu.Lock()
+			m.conn = nextConn
+			m.mu.Unlock()
+			return deviceInfoFromConnection(nextConn), nil
 		}
 
 		nextConn, err := m.openConnection(targetPort)
@@ -284,6 +299,14 @@ func (m *Manager) connection() *managedConnection {
 	return m.conn
 }
 
+func (m *Manager) clearConnection(conn *managedConnection) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.conn == conn {
+		m.conn = nil
+	}
+}
+
 func (m *Manager) openConnection(portHint string) (*managedConnection, error) {
 	if m.config.LocalRuntimePath != "" {
 		return m.openLocalRuntime()
@@ -294,6 +317,23 @@ func (m *Manager) openConnection(portHint string) (*managedConnection, error) {
 		return m.openKnownSerialPort(targetPort)
 	}
 	return m.discoverUniqueSerial()
+}
+
+func (m *Manager) reopenStaleConnection(targetPort string,
+	stalePort string) (*managedConnection, error) {
+	reopenHint := targetPort
+	if reopenHint == "" && m.config.LocalRuntimePath == "" {
+		reopenHint = stalePort
+	}
+
+	nextConn, err := m.openConnection(reopenHint)
+	if err == nil {
+		return nextConn, nil
+	}
+	if targetPort == "" && m.config.LocalRuntimePath == "" && stalePort != "" {
+		return m.openConnection("")
+	}
+	return nil, err
 }
 
 func (m *Manager) resolveTargetPort(portHint string) string {
@@ -464,6 +504,14 @@ func deviceInfoFromConnection(conn *managedConnection) *DeviceInfo {
 		HeapUsed:   conn.info.HeapUsed,
 		SlotCount:  conn.info.SlotCount,
 	}
+}
+
+func probeManagedConnection(conn *managedConnection) error {
+	if conn == nil || conn.session == nil {
+		return ErrNotConnected
+	}
+	_, err := conn.session.Eval("nil", controlCommandTimeout, nil)
+	return err
 }
 
 func isFatalSessionError(err error) bool {

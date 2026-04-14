@@ -11,6 +11,8 @@ const {
   resetLogLine,
   resetUnavailableError,
   resetUnavailableLogLine,
+  resetUnavailableProceedAction,
+  resetUnavailableProceedLogLine,
 } = require("../out/send-file-reset");
 
 const manifest = JSON.parse(
@@ -96,8 +98,12 @@ async function main() {
       },
     },
     { appendLine: (line) => staleOutput.push(line) },
-    async (message) => {
+    async (message, ...items) => {
       assert(message === resetUnavailableError, "stale error text");
+      assert(
+        items.includes(resetUnavailableProceedAction),
+        "stale reset should offer Send Anyway",
+      );
       return undefined;
     },
     () => {
@@ -109,6 +115,29 @@ async function main() {
   assert(
     staleOutput.includes(resetUnavailableLogLine),
     "stale reset should log whole-file send abort",
+  );
+
+  const degradeOutput = [];
+  const degradeResult = await prepareSendFileReset(
+    {
+      reset: async () => {
+        throw new ControlSessionClientError({
+          code: "reset_unavailable",
+          message: "connected Frothy kernel does not support control reset",
+        });
+      },
+    },
+    { appendLine: (line) => degradeOutput.push(line) },
+    async () => resetUnavailableProceedAction,
+    () => {
+      throw new Error("degraded reset should not route through generic error handler");
+    },
+  );
+  assert(degradeResult.proceed === true, "Send Anyway should continue whole-file send");
+  assert(degradeResult.degraded === true, "Send Anyway should mark degraded mode");
+  assert(
+    degradeOutput.includes(resetUnavailableProceedLogLine),
+    "degraded reset should log unsafe continuation",
   );
 
   process.stdout.write("passed manifest smoke\n");

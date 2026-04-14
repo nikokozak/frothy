@@ -320,3 +320,35 @@ require_contains "$CALL_TRANSCRIPT" 'frothy> frothy> 9'
 require_contains "$CALL_TRANSCRIPT" 'frothy> 1'
 require_contains "$CALL_TRANSCRIPT" 'frothy> frothy> 7'
 require_not_contains "$CALL_TRANSCRIPT" 'parse error ('
+
+CTRL_C_MULTILINE_TRANSCRIPT="$(
+  (
+    cd "$WORK_DIR"
+    {
+      printf 'to inc with x\n'
+      printf '\003'
+      printf '2\n'
+      printf 'quit\n'
+    } | "$BINARY"
+  )
+)"
+printf '%s\n' "$CTRL_C_MULTILINE_TRANSCRIPT"
+require_contains "$CTRL_C_MULTILINE_TRANSCRIPT" 'frothy> .. frothy> 2'
+require_contains "$CTRL_C_MULTILINE_TRANSCRIPT" 'frothy> 2'
+require_not_contains "$CTRL_C_MULTILINE_TRANSCRIPT" 'parse error ('
+require_not_contains "$CTRL_C_MULTILINE_TRANSCRIPT" 'eval error ('
+
+CTRL_C_IDLE_TRANSCRIPT="$(
+  (
+    cd "$WORK_DIR"
+    {
+      printf '\003'
+      printf '2\n'
+      printf 'quit\n'
+    } | "$BINARY"
+  )
+)"
+printf '%s\n' "$CTRL_C_IDLE_TRANSCRIPT"
+require_contains "$CTRL_C_IDLE_TRANSCRIPT" 'frothy> frothy> 2'
+require_not_contains "$CTRL_C_IDLE_TRANSCRIPT" 'parse error ('
+require_not_contains "$CTRL_C_IDLE_TRANSCRIPT" 'eval error ('

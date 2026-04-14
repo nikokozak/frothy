@@ -57,6 +57,15 @@ require_not_contains_line() {
   fi
 }
 
+run_control_front_door_proof() {
+  if ! command -v go >/dev/null 2>&1; then
+    echo "error: go is required for the .control front-door proof" >&2
+    exit 1
+  fi
+
+  sh "$ROOT_DIR/tools/frothy/proof_f1_control_smoke.sh" --host-only
+}
+
 HELP_TRANSCRIPT="$(
   run_transcript \
     'help' \
@@ -75,6 +84,8 @@ require_contains "$HELP_TRANSCRIPT" 'dangerous.wipe'
 require_contains "$HELP_TRANSCRIPT" '.control'
 require_contains "$HELP_TRANSCRIPT" 'quit'
 require_contains "$HELP_TRANSCRIPT" 'exit'
+
+run_control_front_door_proof
 
 WORDS_TRANSCRIPT="$(
   run_transcript \
