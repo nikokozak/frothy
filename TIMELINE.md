@@ -13,9 +13,9 @@ If this file and the roadmap disagree, the roadmap wins.
 
 - Active milestone: `none`
 - Blocked by: none
-- Next artifact: first workspace/image-loading design artifact for named slot
-  bundles / IR capsules
-- Next proof command: `make test-all && rg -n 'Next artifact: first workspace/image-loading design artifact for named slot' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'bundles / IR capsules' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot-bundle / IR-capsule loading' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'Workspace/image flow' TIMELINE.md`
+- Next artifact: first host-only slot-bundle inspection/generation artifact in
+  the CLI project layer
+- Next proof command: `make test-all && rg -n '^Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n '^- Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' PROGRESS.md TIMELINE.md && rg -n 'host-only slot-bundle inspection/generation' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot bundle as the first useful artifact' docs/adr/115-first-workspace-image-flow-tranche.md docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md && rg -n 'repo-local \`froth-cli\`' README.md`
 
 ## Milestone Ledger
 
@@ -72,6 +72,22 @@ If this file and the roadmap disagree, the roadmap wins.
   `froth-cli`, release-time `froth`, and intended global `frothy` split
   without renaming binaries, tarball contents, Homebrew install targets, or
   editor command ids.
+- `Workspace/image-flow tranche 1`: defined in tree on 2026-04-13 as a
+  doc-only closeout. Frothy ADR-115 and
+  `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md` now freeze a
+  host-local slot bundle as the first workspace/image flow artifact, make the
+  bundle contract payload-first rather than path-first, keep live apply on
+  direct-control `RESET + replay` with `RESET` explicitly separate from
+  persisted-overlay `wipe()`, define bundle-oriented persistent seed/apply as
+  a later `reset-to-base + replay + save()` model while noting that today's
+  checked-in build/flash paths still rely on fresh-start replay plus `save()`,
+  record the current `reset + eval` versus `wipe()` send drift without fixing
+  it here, and explicitly defer IR capsule, registry, daemon, PTY,
+  shared-owner, helper-protocol, manifest, and kernel-loader growth.
+- `Host-only slot-bundle inspection/generation`: now the next queued
+  workspace/image-flow implementation artifact after the doc closeout and CLI
+  naming-alignment landing. Start in the CLI project layer only, and keep
+  apply/load, helper/editor, manifest, and kernel-loader growth deferred.
 - `Urgent transport slice 1`: landed on 2026-04-12. Raw prompt `.control`
   now enters Frothy-owned structured mode with `HELLO`, `EVAL`, `WORDS`,
   `SEE`, `DETACH`, structured `OUTPUT` / `VALUE` / `ERROR` /
@@ -90,10 +106,11 @@ If this file and the roadmap disagree, the roadmap wins.
   structured control gets explicit exclusive framing and event replies. After
   the urgent first slice, this means rounding out the remaining commands rather
   than reopening the transport shape.
-- `Workspace/image flow`: now the next queued design follow-on after the
-  local-helper broadening and CLI naming-alignment closeout. Add named slot
-  bundles or IR capsules only once those surfaces are stable. Do not build a
-  registry, PTY layer, or background service first.
+- `Workspace/image flow` implementation: still deferred after the tranche-1
+  doc closeout. If later approved, start with host-only slot-bundle
+  inspection/generation and keep any later apply path on the existing direct
+  control session rather than building a registry, PTY layer, daemon, or
+  background service first.
 
 ## Slip Notes
 
@@ -110,7 +127,7 @@ If this file and the roadmap disagree, the roadmap wins.
   path for new Frothy tooling with a checked-in direct control session and a
   shared host plus device smoke driver.
 - The 2026-04-12 runtime hardening slice split cleanly from syntax tranche 1:
-  runtime budgeting and benchmarking landed in this worktree, while syntax
+  runtime budgeting and benchmarking landed in the repo, while syntax
   rollout continues in parallel so parser and shell work does not obscure the
   evaluator and runtime proof path.
 - The 2026-04-12 shell-tranche merge closed that split: syntax tranche 1 is
@@ -119,6 +136,11 @@ If this file and the roadmap disagree, the roadmap wins.
   rollout.
 - The next timeline adjustment moved workspace / image-loading back behind a
   narrower tightening pass plus real host tooling.
+- The 2026-04-13 control-surface adjustment took workspace/image flow ahead of
+  CLI naming alignment only as a doc-only closeout. With that closeout and the
+  CLI naming tranche now both landed, the live next-artifact pointer moves to
+  host-only slot-bundle inspection/generation in the CLI project layer while
+  apply/load surfaces remain deferred.
 - The merged VS Code helper/editor path and the immediate control hardening
   plus reset slice are now landed on the same baseline, so the next timeline
   step is helper broadening and shared CLI/session reuse rather than editor

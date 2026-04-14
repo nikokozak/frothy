@@ -24,19 +24,20 @@ It is a sequencing and control document.
 This block is the live control surface for repo status.
 
 Current milestone: `none`
-Today's goal: keep the landed next-stage language-definition closeout, the
-landed control/runtime follow-ons, and the first CLI naming-alignment artifact
-truthful while leaving workspace/image-loading explicitly next
-Next artifact: first workspace/image-loading design artifact for named slot
-bundles / IR capsules
+Today's goal: keep the landed workspace/image-flow tranche and CLI naming
+alignment truthful while queuing the first host-only slot-bundle
+inspection/generation cut in the CLI project layer
+Next artifact: first host-only slot-bundle inspection/generation artifact in
+the CLI project layer
 Blocked by: none
-Next proof command: `make test-all && rg -n 'Next artifact: first workspace/image-loading design artifact for named slot' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'bundles / IR capsules' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot-bundle / IR-capsule loading' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'Workspace/image flow' TIMELINE.md`
-Slip against plan: none; next-stage language-definition docs landed as a
-doc-only closeout, control-session slice 2 and bounded-memory hardening
-landed, CLI naming alignment landed as a docs/tooling-notes tranche, and
-workspace/image-loading design stays next
-Cut candidate if slip persists: keep workspace/image-loading at named slot
-bundle / IR-capsule design scope before touching loader or helper surfaces
+Next proof command: `make test-all && rg -n '^Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n '^- Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' PROGRESS.md TIMELINE.md && rg -n 'host-only slot-bundle inspection/generation' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot bundle as the first useful artifact' docs/adr/115-first-workspace-image-flow-tranche.md docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md && rg -n 'repo-local \`froth-cli\`' README.md`
+Slip against plan: none; next-stage language-definition docs, control-session
+slice 2, bounded-memory hardening, CLI naming alignment, and
+workspace/image-flow tranche 1 are already landed, so the next live cut is
+host-only slot-bundle inspection/generation in the CLI project layer
+Cut candidate if slip persists: keep the next workspace/image-flow step
+host-only and inspection/generation-only, and defer apply, helper/editor,
+manifest, and kernel-loader growth
 
 ## 3. Operating Rules
 
@@ -604,7 +605,7 @@ Operational label:
 Pending priority order:
 
 1. CLI naming alignment
-2. workspace and image-loading primitives
+2. host-only workspace/image-flow tooling, only if later approved
 
 Already landed in this follow-on tranche:
 
@@ -666,6 +667,66 @@ Proof:
 
 - `make test-all && sh tools/frothy/proof_next_stage_docs.sh`
 
+#### Workspace/image-flow tranche 1
+
+Status:
+
+- landed on 2026-04-13 as a doc-only closeout
+
+Why now:
+
+- the helper/editor/control surfaces are finally small enough to define the
+  first artifact without rebuilding the old host stack
+- the current repo already has one source-first apply path through
+  `resolve-source`, `.froth-build/runtime.frothy`, and direct control replay
+- Frothy still needs a small library and workspace/image flow story, but not
+  one that invents a loader, registry, daemon, or IR-first transport
+
+Approach:
+
+- keep the accepted `v0.1` spec and the landed control/helper/editor/runtime
+  slices authoritative for current behavior
+- freeze the first useful artifact as a host-local named slot bundle rather
+  than as an on-device image format or public IR exchange
+- define the slot bundle around explicit owned slot names and owned dotted slot
+  prefixes plus one resolved runtime source payload
+- keep `.froth-build/runtime.frothy` as a derived host path convenience rather
+  than a frozen bundle field
+- keep live apply on the existing direct control `RESET` plus replay path,
+  where `RESET` means live reset to the current base image and not persisted
+  overlay clearing
+- keep `wipe()` as the separate persisted-overlay clearing operation
+- keep persistent seed/apply as the future bundle-oriented
+  `reset-to-base + replay + save()` model for build/flash workflows only,
+  while the checked-in build/flash paths currently start a fresh runtime or
+  freshly flashed firmware before replay plus `save()`
+- record the current `reset + eval` versus `wipe()` whole-file-send drift as
+  implementation debt instead of widening this tranche to fix it
+- do not add helper commands, editor UI, manifest keys, kernel load requests,
+  or any new workspace/image-loading protocol
+
+Closeout:
+
+- Frothy ADR-115 records the slot-bundle-first, docs-only tranche decision
+- `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md` freezes the artifact
+  shape, current constraints, collision zones, and future cut points
+- no parser, evaluator, snapshot, helper, editor, manifest, or control-session
+  semantics widen in this closeout
+
+Proof:
+
+- `make test && rg -n 'slot bundle|IR capsule|no daemon|no PTY|no shared-owner|no registry' docs/adr/115-first-workspace-image-flow-tranche.md && rg -n 'slot bundle|IR capsule|no daemon|no PTY|no shared-owner|no registry' docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md && rg -n 'Workspace/image-flow tranche 1|slot bundle|CLI naming alignment' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'Workspace/image-flow tranche 1|slot bundle|CLI naming alignment' PROGRESS.md && rg -n 'Workspace/image-flow tranche 1|slot bundle|CLI naming alignment' TIMELINE.md`
+
+Did not widen in this slice:
+
+- no daemon
+- no PTY layer
+- no shared-owner session broker
+- no registry or package surface
+- no helper or control-session command growth
+- no manifest schema change
+- no on-device loader or IR capsule transport
+
 #### CLI naming alignment
 
 Status:
@@ -699,7 +760,7 @@ Closeout:
 
 Proof:
 
-- `make test-all && rg -n 'repo-local \`froth-cli\`' README.md && rg -n 'release-time \`froth\`' README.md && rg -n 'intended global \`frothy\`' README.md && rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
+- `make test-all && rg -n 'repo-local \`froth-cli\`' README.md && rg -n 'release-time \`froth\`' README.md && rg -n 'intended global \`frothy\`' README.md && rg -n 'landed on 2026-04-13 as a docs/tooling-notes tranche' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'first CLI naming-alignment artifact is landed' PROGRESS.md && rg -n '\`CLI naming alignment\`: landed on 2026-04-13 as the first truthful' TIMELINE.md`
 
 #### Immediate control hardening + `RESET`
 
@@ -822,7 +883,7 @@ Proof:
 
 Status:
 
-- landed on 2026-04-12 in this worktree with fixed
+- landed on 2026-04-12 with fixed
   `FROTHY_EVAL_VALUE_CAPACITY=256`, fixed `FROTHY_OBJECT_CAPACITY=128`,
   `make bench-frothy`, and checked-in notes at
   `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md`
@@ -894,26 +955,6 @@ Proof:
 - the merged plugin can drive the maintained helper/control surface on host
 - no mixed raw/framed ownership or daemon broker is reintroduced
 
-#### Workspace and image-loading primitives
-
-Why after helper broadening:
-
-- Frothy needs a small library story, but not before the current control path,
-  helper surface, and editor integration are stable
-
-Approach:
-
-- load or apply named slot bundles / IR capsules into the live image
-- make FFI requirements visible before load
-- keep the persisted unit aligned with stable slots and canonical IR
-
-Do not build yet:
-
-- no package registry
-- no background daemon
-- no PTY passthrough layer
-- no type system or generalized module system
-
 ## 7. Suggested Execution Order
 
 The critical path is:
@@ -930,9 +971,11 @@ The critical path is:
 10. M9
 11. M10
 12. follow-on queue: urgent transport slice 1, runtime hardening, syntax
-    tranche 1, VS Code plugin merge/alignment, and immediate control hardening
-    plus `RESET` landed; local helper broadening next, then
-    workspace/image-loading primitives
+    tranche 1, VS Code plugin merge/alignment, immediate control hardening
+    plus `RESET`, local helper broadening, and workspace/image-flow tranche 1
+    are landed; CLI naming alignment is now also landed, so the next queued
+    artifact is host-only slot-bundle inspection/generation in the CLI
+    project layer before any later apply/load growth
 
 Do not swap M7 and M9 unless forced.
 Persistence is too central to Frothy’s identity to leave until the end.
@@ -1050,5 +1093,6 @@ If implementation resumed today, the next steps should be:
   widening runtime semantics again
 - [x] align repo-local `froth-cli`, release-time `froth`, and intended global
   `frothy` naming notes before broader discovery and release cleanup
-- [ ] design slot-bundle / IR-capsule loading only after the helper and editor
-  surfaces are stable
+- [x] define the first workspace/image-flow tranche as a doc-only
+  slot-bundle-first ADR plus roadmap note before any helper, editor, manifest,
+  or kernel surface widens

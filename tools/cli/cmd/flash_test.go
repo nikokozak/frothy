@@ -103,7 +103,7 @@ func TestRunFlashManifestAppliesRuntimeImageAfterESPIDFFlash(t *testing.T) {
 	if appliedRuntime != filepath.Join(root, ".froth-build", "runtime.frothy") {
 		t.Fatalf("runtime path = %q", appliedRuntime)
 	}
-	if !strings.Contains(stdout, "Applying runtime image: "+filepath.Join(root, ".froth-build", "runtime.frothy")) {
+	if !strings.Contains(stdout, "Applying runtime source: "+filepath.Join(root, ".froth-build", "runtime.frothy")) {
 		t.Fatalf("stdout = %q, want runtime apply message", stdout)
 	}
 }

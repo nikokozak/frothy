@@ -14,12 +14,25 @@ file is wrong.
 
 - Active milestone: `none`
 - Blocked by: none
-- Next artifact: first workspace/image-loading design artifact for named slot
-  bundles / IR capsules
-- Next proof: `make test-all && rg -n 'Next artifact: first workspace/image-loading design artifact for named slot' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'bundles / IR capsules' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot-bundle / IR-capsule loading' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'Workspace/image flow' TIMELINE.md`
+- Next artifact: first host-only slot-bundle inspection/generation artifact in
+  the CLI project layer
+- Next proof: `make test-all && rg -n '^Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n '^- Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' PROGRESS.md TIMELINE.md && rg -n 'host-only slot-bundle inspection/generation' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot bundle as the first useful artifact' docs/adr/115-first-workspace-image-flow-tranche.md docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md && rg -n 'repo-local \`froth-cli\`' README.md`
 
 ## Recent Landed Work
 
+- The 2026-04-13 first workspace/image-flow tranche is now defined in tree as
+  a doc-only closeout:
+  `docs/adr/115-first-workspace-image-flow-tranche.md` and
+  `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md` freeze a host-local
+  slot bundle as the first useful artifact, keep the bundle contract
+  payload-first rather than path-first, keep live apply on direct-control
+  `RESET + replay` with `RESET` explicitly separate from persisted-overlay
+  `wipe()`, define bundle-oriented persistent seed/apply as a later
+  `reset-to-base + replay + save()` model while noting that today's checked-in
+  build/flash paths still rely on fresh-start replay plus `save()`, record the
+  current `reset + eval` versus `wipe()` whole-file-send drift without fixing
+  it here, and explicitly defer IR capsule, helper/editor, manifest,
+  registry, daemon, PTY, and kernel-loader growth.
 - The 2026-04-13 runtime persistent-payload hardening tranche is landed:
   live `Text` bytes and runtime `Code` program bodies now live in one
   runtime-owned payload arena, runtime code clones are packed into one payload
@@ -171,8 +184,9 @@ file is wrong.
 - The bounded-memory runtime hardening queue is now landed in tree:
   evaluator scratch, runtime object/free-span metadata, parser/canonical-IR
   growth, shell source accumulation, snapshot codec work buffers, and runtime
-  text/code payload ownership are all explicit. The next queued artifact
-  remains CLI naming alignment, not another runtime memory-surface reopen.
+  text/code payload ownership are all explicit. The next queued artifact is
+  now host-only slot-bundle inspection/generation in the CLI project layer,
+  not another runtime memory-surface reopen.
 - Transport work should simplify ownership and framing. ADR-110 replaces the
   inherited daemon-plus-mux direction with a direct single-owner control
   session.
@@ -197,15 +211,19 @@ file is wrong.
   `README.md` and executable-adjacent tool surfaces now explain the
   repo-local `froth-cli`, release-time `froth`, and intended global
   `frothy` split without widening command or release behavior.
-- Workspace/image-loading primitives are now the next queued design follow-on:
-  design named slot bundles / IR capsules only after the control surface,
-  helper surface, and editor integration story are smaller and clearer.
+- Workspace/image flow tranche 1 is now closed in tree:
+  the first artifact is doc only, source first, and slot-bundle-first while
+  helper, editor, manifest, and kernel surfaces stay unchanged.
+- Host-only slot-bundle inspection/generation is now the next queued
+  workspace/image-flow implementation artifact:
+  start in the CLI project layer only, keep the cut host-only, and defer
+  apply, helper/editor, manifest, and kernel-loader growth.
 
 ## Next Artifact
 
-- First workspace/image-loading design artifact for named slot bundles / IR
-  capsules.
+- First host-only slot-bundle inspection/generation artifact in the CLI
+  project layer.
 
 ## Next Proof
 
-- `make test-all && rg -n 'Next artifact: first workspace/image-loading design artifact for named slot' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'bundles / IR capsules' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot-bundle / IR-capsule loading' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'Workspace/image flow' TIMELINE.md`
+- `make test-all && rg -n '^Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n '^- Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' PROGRESS.md TIMELINE.md && rg -n 'host-only slot-bundle inspection/generation' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot bundle as the first useful artifact' docs/adr/115-first-workspace-image-flow-tranche.md docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md && rg -n 'repo-local \`froth-cli\`' README.md`

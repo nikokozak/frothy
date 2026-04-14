@@ -92,7 +92,7 @@ func runFlashManifest(manifest *project.Manifest, root string) error {
 			return err
 		}
 		runtimePath := filepath.Join(root, ".froth-build", "runtime.frothy")
-		fmt.Printf("Applying runtime image: %s\n", runtimePath)
+		fmt.Printf("Applying runtime source: %s\n", runtimePath)
 		return flashApplyRuntime(port, runtimePath)
 	default:
 		return fmt.Errorf("unknown target: %s", manifest.Target.Platform)
@@ -114,7 +114,7 @@ func applyRuntimeAfterFlash(port string, runtimeSourcePath string) error {
 	defer manager.Disconnect()
 
 	if err := seedFrothyRuntime(manager, string(sourceBytes)); err != nil {
-		return fmt.Errorf("apply runtime image: %w", err)
+		return fmt.Errorf("apply runtime source: %w", err)
 	}
 	return nil
 }
