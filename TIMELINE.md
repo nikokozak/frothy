@@ -43,7 +43,7 @@ If this file and the roadmap disagree, the roadmap wins.
   Deliverable: narrow top-level `cells(n)` storage with tests.
   Reference: roadmap section 7 and Frothy ADR-104.
 - [x] M7 Snapshot format
-  Deliverable: save, restore, and wipe on the overlay image.
+  Deliverable: save, restore, and `dangerous.wipe` on the overlay image.
   Reference: roadmap section 7 and Frothy ADR-106.
 - [x] M8 Interactive profile
   Deliverable: multiline REPL, interrupt, inspection, and `boot`.
@@ -143,10 +143,41 @@ keep each item's description and references so deferral does not erase context.
   `tools/frothy/m10_esp32_proof_transcript.txt`, and `boards/`.
 - [ ] Workshop rehearsal plus measured performance/persistence closeout
   Deliverable: run the real lesson path end to end, verify loop cadence,
-  sensor flow, and `save` / `restore` / `wipe`, and freeze the take-home path.
+  sensor flow, and `save` / `restore` / `dangerous.wipe`, and freeze the take-home path.
   References: `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md`,
   `docs/spec/Frothy_Language_Spec_v0_1.md`, `tools/frothy/`, and the starter
   project above.
+- [ ] Publishability reset tranche 1: immediate cuts
+  Deliverable: after the 2026-04-16 workshop gate is stable, remove tracked
+  repo pollution, archive historical proof artifacts out of active tooling,
+  and delete daemon-era VS Code residue that is already outside the packaged
+  extension path.
+  References: `docs/audit/Frothy_Repo_Audit_2026-04.md`,
+  `tools/vscode/test/package-smoke.js`, and `Makefile`.
+- [ ] Publishability reset tranche 2: naming and packaging normalization
+  Deliverable: freeze one publishable identity matrix for Frothy versus
+  transitional `froth` / `froth-cli`, normalize the Go module/import path, and
+  keep any installed-binary rename separate if it is still too risky.
+  References: `docs/audit/Frothy_Repo_Audit_2026-04.md`, `README.md`,
+  `tools/cli/go.mod`, and `tools/package-release.sh`.
+- [ ] Publishability reset tranche 3: proof and dependency collapse
+  Deliverable: reduce proofs to core local, extended local, hardware-only, and
+  release-only tiers; keep Node extension-only; remove Python from release glue
+  first; and quarantine any remaining hardware-only Python.
+  References: `docs/audit/Frothy_Repo_Audit_2026-04.md`, `Makefile`,
+  `tools/frothy/proof.sh`, and `tools/package-firmware-release.sh`.
+- [ ] Publishability reset tranche 4: runtime boundary tightening
+  Deliverable: make the retained Froth substrate set explicit, quarantine
+  compatibility shims, and remove false placeholder labeling from kept runtime
+  files without starting a speculative rewrite.
+  References: `docs/audit/Frothy_Repo_Audit_2026-04.md`,
+  `docs/reference/Froth_Substrate_References.md`, and `CMakeLists.txt`.
+- [ ] Publishability reset tranche 5: docs front door and archive pass
+  Deliverable: keep one front door, shorten extension docs to extension-owned
+  behavior, and archive historical proof evidence and duplicated release prose
+  out of active tooling.
+  References: `docs/audit/Frothy_Repo_Audit_2026-04.md`, `README.md`,
+  `tools/vscode/README.md`, and `docs/archive/`.
 - [ ] Host-only slot-bundle inspection/generation in the CLI project layer
   Deliverable: the first workspace/image-flow implementation cut only, after
   the workshop-critical tranches above are stable.
@@ -166,3 +197,21 @@ keep each item's description and references so deferral does not erase context.
   reference doc instead of expanding this file into narrative history.
 - The dated v0.1 ladder ends at M10. Do not invent fake dated milestones for
   post-`v0.1` work.
+
+## Worktree Guidance
+
+- Do not reach for a worktree by default for the pre-workshop queue. The
+  attendee install, naming-alignment, preflight, starter, and docs cuts should
+  normally land from the main checkout unless there are parallel owners making
+  conflicting edits.
+- Use a dedicated worktree for multi-day post-workshop publishability-reset
+  tranches that touch many files or many subsystems at once. The clearest
+  candidates are naming/module-path normalization, proof/dependency collapse,
+  runtime-boundary tightening, and the docs/archive pass.
+- Use a worktree when you need the workshop hotfix path to stay clean on the
+  main checkout while a larger cleanup tranche is in flight elsewhere.
+- Do not bother with a worktree for doc-only control-surface edits, one-file
+  fixes, or tightly scoped workshop-critical repairs that should land quickly.
+- Do not start the aggressive post-workshop tranches in a worktree before the
+  2026-04-16 workshop path is stable enough that churn on `main` is no longer
+  the higher risk.

@@ -197,7 +197,7 @@ References:
 Goal:
 
 - run the actual lesson path end to end, verify loop cadence, sensor flow, and
-  `save` / `restore` / `wipe`, and freeze the take-home path
+  `save` / `restore` / `dangerous.wipe`, and freeze the take-home path
 
 Held boundary:
 
@@ -227,6 +227,36 @@ References:
 
 - `docs/adr/115-first-workspace-image-flow-tranche.md`
 - `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`
+
+## After-Workshop Publishability Reset
+
+Once the 2026-04-16 workshop gate is stable, the next disciplined cleanup is
+the publishability-reset stack frozen in
+`docs/audit/Frothy_Repo_Audit_2026-04.md`.
+
+Execute it in this order:
+
+1. immediate cuts for daemon-era editor residue, tracked repo pollution, and
+   proof artifacts that belong in docs/archive space rather than active tooling
+2. naming and packaging normalization, including the Go module/import path and
+   one explicit Frothy-versus-`froth` identity matrix
+3. proof and dependency collapse, removing Python from release glue first and
+   keeping Node extension-only/release-only
+4. runtime boundary tightening, making retained Froth substrate and temporary
+   compatibility shims explicit
+5. docs front door and archive pass
+
+Worktree guidance:
+
+- do not default to a worktree for the pre-workshop queue above unless parallel
+  owners force it
+- do use a dedicated worktree for the multi-day post-workshop cleanup tranches
+  that touch many files or subsystems
+- the best worktree candidates are naming/module-path normalization,
+  proof/dependency collapse, runtime-boundary tightening, and the docs/archive
+  pass
+- avoid a worktree for doc-only control-surface edits or one-file workshop
+  fixes that should land directly and quickly
 
 ## Workshop Gate For 2026-04-16
 

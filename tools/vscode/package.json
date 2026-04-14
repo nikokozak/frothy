@@ -112,7 +112,7 @@
       },
       {
         "command": "frothy.wipe",
-        "title": "Frothy: Wipe Snapshot",
+        "title": "Frothy: Dangerous Wipe Snapshot",
         "icon": "$(trash)"
       },
       {

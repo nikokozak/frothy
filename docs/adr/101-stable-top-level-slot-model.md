@@ -60,13 +60,13 @@ Trade-offs:
 Frothy has one top-level namespace of stable named slots.
 
 - A top-level name always refers to the same slot identity.
-- Top-level `name = expr` creates or rebinds the value stored in that slot.
+- Top-level `name is expr` creates or rebinds the value stored in that slot.
 - `Code` is a value like any other and lives in the same namespace.
 - Lookup proceeds from locals outward to the top-level slot set.
 - `set` mutates an existing place, which may be a local, a top-level name, or
   an indexed cells element.
 - Rebinding a base-image name installs an overlay value on the same stable slot.
-  `wipe()` and failed `restore()` return that slot to the boot-rebuilt base
+  `dangerous.wipe` and failed `restore` return that slot to the boot-rebuilt base
   value.
 
 ## Consequences

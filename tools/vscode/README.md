@@ -40,7 +40,7 @@ path of the installed binary.
 - `Frothy: See Binding`
 - `Frothy: Save Snapshot`
 - `Frothy: Restore Snapshot`
-- `Frothy: Wipe Snapshot`
+- `Frothy: Dangerous Wipe Snapshot`
 - `Frothy: Run Doctor`
 
 ## Send Semantics

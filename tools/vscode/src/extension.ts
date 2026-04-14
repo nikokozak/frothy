@@ -401,7 +401,7 @@ class FrothyController {
   }
 
   async wipeSnapshot(): Promise<void> {
-    await this.runBuiltinCommand("wipe", () => this.client!.wipe());
+    await this.runBuiltinCommand("dangerous.wipe", () => this.client!.wipe());
   }
 
   async runDoctor(): Promise<void> {

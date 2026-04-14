@@ -22,7 +22,7 @@ The accepted `v0.1` contract remains authoritative for:
 - the value model
 - stable top-level slot identity
 - explicit mutation
-- save / restore / wipe
+- save / restore / dangerous.wipe
 - non-capturing `Code`
 - canonical IR persistence
 - boot and inspection behavior
@@ -54,6 +54,7 @@ The baseline top-level forms are:
 
 ```txt
 name is expr
+set place to expr
 to name [ block ]
 to name with a, b [ block ]
 ```
@@ -61,6 +62,7 @@ to name with a, b [ block ]
 Meaning:
 
 - `name is expr` creates or rebinds the stable top-level slot `name`
+- `set place to expr` mutates an existing top-level place
 - `to name [ block ]` binds `name` to zero-arity `Code`
 - `to name with a, b [ block ]` binds `name` to `Code` with parameters
 
@@ -122,13 +124,13 @@ unless condition [ block ]
 
 The accepted callable inspection entry points remain:
 
-- `words()`
-- `see("name")`
-- `core("name")`
-- `slotInfo("name")`
-- `save()`
-- `restore()`
-- `wipe()`
+- `words`
+- `see`
+- `core`
+- `slotInfo`
+- `save`
+- `restore`
+- `dangerous.wipe`
 
 The prompt additionally accepts baseline sugar such as:
 
@@ -139,7 +141,7 @@ core @name
 info @name
 remember
 restore
-wipe
+dangerous.wipe
 name arg1, arg2
 path.name arg1, arg2
 ```

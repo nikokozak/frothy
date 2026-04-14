@@ -30,6 +30,10 @@ file is wrong.
 - The direct-control surface, helper/editor path, and runtime hardening
   tranches are already landed and are no longer the unclear part of the repo
   story.
+- The publishability audit is now landed at
+  `docs/audit/Frothy_Repo_Audit_2026-04.md`; it freezes the aggressive cleanup
+  plan, but the queue still keeps that work behind the 2026-04-16
+  workshop-critical path.
 - Attendee-facing naming alignment is still active: the repo, product, and
   editor are Frothy, while the installed CLI path is still transitional
   `froth`, and the workshop queue now treats that mismatch as explicit work.
@@ -41,7 +45,7 @@ file is wrong.
   then performance/persistence closeout.
 - The first workshop base-image board/library cut is landed: `millis()` and
   `gpio.read()` are now native base slots, the preflashed workshop helper
-  library is seeded as base image and survives `wipe()`, and the M10 proof
+  library is seeded as base image and survives `dangerous.wipe`, and the M10 proof
   ladder now covers `blink`, `animate`, GPIO helpers, and `adc.percent`.
   Reference: `docs/adr/117-workshop-base-image-board-library-surface.md`.
 - The workshop implementation tranche is now closed on `main`: the delivery,
@@ -69,11 +73,25 @@ file is wrong.
   cables, reflash path, spare hardware, and CLI fallback.
 - 9. Workshop rehearsal plus measured performance/persistence closeout on the
   actual lesson path.
-- 10. Host-only slot-bundle inspection/generation after the workshop path is
-  solid again.
+- 10. Post-workshop publishability reset tranche 1: immediate cuts for
+  daemon-era editor residue, tracked repo pollution, and archived proof
+  artifacts.
+- 11. Post-workshop publishability reset tranche 2: naming and packaging
+  normalization.
+- 12. Post-workshop publishability reset tranche 3: proof and dependency
+  collapse.
+- 13. Post-workshop publishability reset tranche 4: runtime boundary
+  tightening.
+- 14. Post-workshop publishability reset tranche 5: docs front door and
+  archive pass.
+- 15. Host-only slot-bundle inspection/generation after the workshop path and
+  publishability reset are solid again.
 - Reference: `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`
 
 ## Workshop Gate
 
 - Before 2026-04-16, the control docs, queue order, and deferrals must be
   explicit enough that paused discussions do not lose context.
+- Worktree guidance is now explicit in `TIMELINE.md`: avoid worktrees for
+  small pre-workshop fixes, and reserve them for the larger multi-day
+  post-workshop cleanup tranches.
