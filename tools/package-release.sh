@@ -6,6 +6,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 if [ "$#" -eq 0 ]; then
   VERSION=$(normalize_version "$(cat "$ROOT_DIR/VERSION")")
+  # Default to the repo-local `froth-cli` checkout build when packaging locally.
   BINARY="$ROOT_DIR/tools/cli/froth-cli"
   DIST_DIR="$ROOT_DIR/dist"
   GOOS=$(detect_goos)
@@ -36,7 +37,8 @@ mkdir -p "$DIST_DIR"
 STAGING_DIR=$(mktemp -d "${TMPDIR:-/tmp}/frothy-release.XXXXXX")
 trap 'rm -rf "$STAGING_DIR"' EXIT INT TERM
 
-# Keep the shipped command name transitional during the repo bootstrap.
+# Keep the shipped `froth` command name transitional inside Frothy-branded
+# release assets.
 cp "$BINARY" "$STAGING_DIR/froth"
 ARCHIVE="$DIST_DIR/$(cli_asset_name "$VERSION" "$GOOS" "$GOARCH")"
 LC_ALL=C tar -C "$STAGING_DIR" -czf "$ARCHIVE" froth

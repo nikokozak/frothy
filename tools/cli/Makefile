@@ -1,5 +1,6 @@
 REPO_ROOT := ../..
 SDK_PAYLOAD_DIR := internal/sdk/generated
+# Repo-local checkout builds keep the transitional froth-cli output name.
 OUTPUT ?= froth-cli
 export FROTH_LINK_MAX_PAYLOAD ?= 256
 
@@ -11,7 +12,7 @@ sdk-payload:
 	@go run ./internal/sdk/cmd/generate -repo $(REPO_ROOT) -out $(SDK_PAYLOAD_DIR)
 
 build: sdk-payload
-	@echo "  Compiling $(OUTPUT)..."
+	@echo "  Compiling repo-local $(OUTPUT)..."
 	@if [ -n "$(GOCACHE)" ]; then \
 		GOCACHE="$(GOCACHE)" go build -o $(OUTPUT) .; \
 	else \

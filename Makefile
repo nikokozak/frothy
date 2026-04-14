@@ -17,7 +17,7 @@ help:
 
 ##@ Build
 build: build-kernel build-cli ## Build everything (kernel + CLI)
-	@echo "==> Done. Frothy: build/Frothy, CLI: tools/cli/froth-cli"
+	@echo "==> Done. Frothy: build/Frothy, repo-local froth-cli: tools/cli/froth-cli"
 
 build-kernel: check-cmake check-make ## Build the Frothy host runtime
 	@echo "==> Building Frothy host runtime (POSIX, 32-bit)..."
@@ -27,9 +27,9 @@ build-kernel: check-cmake check-make ## Build the Frothy host runtime
 
 build-cli: check-go ## Build CLI tool
 	@mkdir -p "$(GO_CACHE_DIR)"
-	@echo "==> Building CLI..."
+	@echo "==> Building repo-local froth-cli..."
 	@$(MAKE) --no-print-directory -C tools/cli build GOCACHE="$(GO_CACHE_DIR)"
-	@echo "==> CLI ready: tools/cli/froth-cli"
+	@echo "==> Repo-local froth-cli ready: tools/cli/froth-cli"
 
 release: version-check build-cli ## Build release tarball (current platform)
 	@tools/package-release.sh
@@ -43,7 +43,7 @@ clean: clean-kernel clean-cli ## Remove all build artifacts
 clean-kernel: ## Remove kernel build directory
 	@rm -rf build
 
-clean-cli: ## Remove CLI binary (not SDK mirror)
+clean-cli: ## Remove repo-local froth-cli binary (not SDK mirror)
 	@rm -f tools/cli/froth-cli
 
 ##@ Test

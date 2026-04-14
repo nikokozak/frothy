@@ -14,9 +14,9 @@ file is wrong.
 
 - Active milestone: `none`
 - Blocked by: none
-- Next artifact: first CLI naming-alignment artifact across `README.md` and
-  executable-adjacent tool surfaces
-- Next proof: `make test-all && rg -n 'repo-local \`froth-cli\`' README.md && rg -n 'release-time \`froth\`' README.md && rg -n 'intended global \`frothy\`' README.md && rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
+- Next artifact: first workspace/image-loading design artifact for named slot
+  bundles / IR capsules
+- Next proof: `make test-all && rg -n 'Next artifact: first workspace/image-loading design artifact for named slot' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'bundles / IR capsules' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot-bundle / IR-capsule loading' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'Workspace/image flow' TIMELINE.md`
 
 ## Recent Landed Work
 
@@ -27,6 +27,12 @@ file is wrong.
   directly into arena-backed storage instead of heap decode plus re-clone, and
   the focused `parser`/`eval`/`snapshot`/`ffi` gate plus
   `frothy_runtime_bench` now pin payload used/high-water behavior.
+- The 2026-04-13 first CLI naming-alignment artifact is landed:
+  `README.md`, local build labels, release tooling notes, and VS Code CLI
+  discovery/config wording now make the repo-local `froth-cli`,
+  release-time `froth`, and intended global `frothy` split explicit without
+  renaming binaries, release assets, Homebrew install targets, CLI help,
+  discovery order, or editor command ids.
 - Next-stage language definition is closed on 2026-04-13:
   `docs/spec/Frothy_Language_Spec_vNext.md`,
   `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md`, and Frothy ADR-114 now
@@ -187,19 +193,19 @@ file is wrong.
   modules, `cond`/`case`, Frothy-native `try/catch`, and binding/place
   designators remain explicit draft-only design work until a later runtime
   tranche takes them on.
-- CLI naming alignment remains the next queued follow-on artifact:
-  align repo-local `froth-cli`, release-time `froth`, and transitional
-  Frothy docs/tooling notes around one explicit Frothy-first tool-identity
-  story, but only in a branch that owns `README.md` and executable-adjacent
-  tool surfaces.
-- Workspace/image-loading primitives stay deferred until the control surface,
+- CLI naming alignment is now landed as the first truthful artifact:
+  `README.md` and executable-adjacent tool surfaces now explain the
+  repo-local `froth-cli`, release-time `froth`, and intended global
+  `frothy` split without widening command or release behavior.
+- Workspace/image-loading primitives are now the next queued design follow-on:
+  design named slot bundles / IR capsules only after the control surface,
   helper surface, and editor integration story are smaller and clearer.
 
 ## Next Artifact
 
-- First CLI naming-alignment artifact across `README.md` and
-  executable-adjacent tool surfaces.
+- First workspace/image-loading design artifact for named slot bundles / IR
+  capsules.
 
 ## Next Proof
 
-- `make test-all && rg -n 'repo-local \`froth-cli\`' README.md && rg -n 'release-time \`froth\`' README.md && rg -n 'intended global \`frothy\`' README.md && rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
+- `make test-all && rg -n 'Next artifact: first workspace/image-loading design artifact for named slot' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'bundles / IR capsules' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot-bundle / IR-capsule loading' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'Workspace/image flow' TIMELINE.md`

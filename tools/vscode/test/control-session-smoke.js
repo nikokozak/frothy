@@ -128,8 +128,12 @@ async function main() {
     const candidates = cliCandidates(cwd);
     assert(candidates.includes("froth"), "froth candidate");
     assert(
+      candidates.some((candidate) => candidate.endsWith(path.join("tools", "cli", "froth-cli"))),
+      "repo-local froth-cli candidate",
+    );
+    assert(
       candidates.some((candidate) => candidate.endsWith(path.join("tools", "cli", "froth"))),
-      "repo-local candidate",
+      "repo-local froth candidate",
     );
   });
 

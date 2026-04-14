@@ -31,7 +31,14 @@ The maintained test contract is:
 - `make test-all`: exhaustive local gate
 - `make test-list`: list maintained suites and profiles
 
-The CLI surface remains Frothy-first:
+The current CLI naming split is explicit:
+
+- repo-local `froth-cli`: checkout builds produce `tools/cli/froth-cli`
+- release-time `froth`: packaged and installed CLI command name today
+- intended global `frothy`: product, repo, and editor identity that later
+  cleanup may converge toward
+
+Run the currently shipped CLI as `froth`:
 
 ```sh
 froth --version
@@ -42,9 +49,10 @@ froth connect
 froth send src/main.froth
 ```
 
-Those names stay in place for now. Frothy repo policy and release identity are
-separated from inherited Froth, but the external CLI and implementation-symbol
-transition is deliberately narrower than the language/runtime cleanup.
+That command surface stays transitional for now. Frothy repo policy and release
+identity are separated from inherited Froth, but the command and
+implementation-symbol transition is deliberately narrower than the
+language/runtime cleanup.
 
 ## Active Docs
 

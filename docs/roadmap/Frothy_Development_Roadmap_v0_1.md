@@ -24,12 +24,19 @@ It is a sequencing and control document.
 This block is the live control surface for repo status.
 
 Current milestone: `none`
-Today's goal: keep the next-stage language-definition closeout and the landed control/runtime follow-ons truthful while leaving CLI naming alignment explicitly next
-Next artifact: first CLI naming-alignment artifact across `README.md` and executable-adjacent tool surfaces
+Today's goal: keep the landed next-stage language-definition closeout, the
+landed control/runtime follow-ons, and the first CLI naming-alignment artifact
+truthful while leaving workspace/image-loading explicitly next
+Next artifact: first workspace/image-loading design artifact for named slot
+bundles / IR capsules
 Blocked by: none
-Next proof command: `make test-all && rg -n 'repo-local \`froth-cli\`' README.md && rg -n 'release-time \`froth\`' README.md && rg -n 'intended global \`frothy\`' README.md && rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
-Slip against plan: none; next-stage language-definition docs landed as a doc-only closeout, control-session slice 2 and bounded-memory hardening landed, and CLI naming alignment stays next
-Cut candidate if slip persists: keep transitional `froth-cli` / release-time `froth` naming explicit in docs and tooling notes before touching binaries or release surfaces
+Next proof command: `make test-all && rg -n 'Next artifact: first workspace/image-loading design artifact for named slot' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'bundles / IR capsules' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot-bundle / IR-capsule loading' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'Workspace/image flow' TIMELINE.md`
+Slip against plan: none; next-stage language-definition docs landed as a
+doc-only closeout, control-session slice 2 and bounded-memory hardening
+landed, CLI naming alignment landed as a docs/tooling-notes tranche, and
+workspace/image-loading design stays next
+Cut candidate if slip persists: keep workspace/image-loading at named slot
+bundle / IR-capsule design scope before touching loader or helper surfaces
 
 ## 3. Operating Rules
 
@@ -663,7 +670,7 @@ Proof:
 
 Status:
 
-- queued after the 2026-04-13 next-stage language-definition closeout
+- landed on 2026-04-13 as a docs/tooling-notes tranche
 
 Why now:
 
@@ -682,11 +689,13 @@ Approach:
 - preserve current binaries and proof paths where names remain transitional
 - avoid implicit renames without the matching control-doc update
 
-Next artifact:
+Closeout:
 
-- repo-control docs and executable-adjacent notes that explain the current
-  `froth-cli` / release-time `froth` / intended global `frothy` split in one
-  place
+- `README.md`, local build labels, release tooling notes, and VS Code CLI
+  discovery/config wording now explain the current `froth-cli` /
+  release-time `froth` / intended global `frothy` split in one place
+- no binaries, tarball contents, formula install targets, CLI help text,
+  discovery order, or editor command ids changed
 
 Proof:
 
@@ -1039,7 +1048,7 @@ If implementation resumed today, the next steps should be:
   grouping, `cond`/`case`, Frothy-native `try/catch`, restricted
   binding/place designators, and the explicit recovery-boundary story before
   widening runtime semantics again
-- [ ] align repo-local `froth-cli`, release-time `froth`, and intended global
+- [x] align repo-local `froth-cli`, release-time `froth`, and intended global
   `frothy` naming notes before broader discovery and release cleanup
 - [ ] design slot-bundle / IR-capsule loading only after the helper and editor
   surfaces are stable

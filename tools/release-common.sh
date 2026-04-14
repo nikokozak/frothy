@@ -1,5 +1,7 @@
 #!/bin/sh
 
+# Release assets and tap metadata stay Frothy-branded during the transition.
+# The release-time `froth` executable name stays separate from those asset names.
 RELEASE_REPO_SLUG=${RELEASE_REPO_SLUG:-nikokozak/frothy}
 HOMEBREW_TAP_REPO_SLUG=${HOMEBREW_TAP_REPO_SLUG:-nikokozak/homebrew-frothy}
 DEFAULT_FIRMWARE_BOARD=${DEFAULT_FIRMWARE_BOARD:-esp32-devkit-v1}

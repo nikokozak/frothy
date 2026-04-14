@@ -23,6 +23,8 @@ mkdir -p "$(dirname "$OUTPUT")"
 TMP_FILE=$(mktemp "${TMPDIR:-/tmp}/frothy-formula.XXXXXX")
 trap 'rm -f "$TMP_FILE"' EXIT INT TERM
 
+# Generate a Frothy-branded formula that still installs the transitional
+# `froth` executable.
 cat >"$TMP_FILE" <<EOF
 class Frothy < Formula
   desc "A live lexical language for programmable devices"
@@ -52,6 +54,7 @@ class Frothy < Formula
   depends_on "make" => :recommended
 
   def install
+    # Keep the installed command transitional until a later CLI rename slice.
     bin.install "froth"
   end
 

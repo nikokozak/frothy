@@ -60,18 +60,22 @@ reject_phrase() {
   fi
 }
 
-require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 35 \
+require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 40 \
   'Current milestone: `none`'
-require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 35 \
-  'next-stage language-definition docs landed as a doc-only closeout, control-session slice 2 and bounded-memory hardening landed, and CLI naming alignment stays next'
-require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 35 \
-  'CLI naming-alignment artifact'
-require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 35 \
+require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 40 \
+  'CLI naming alignment landed as a docs/tooling-notes tranche, and'
+require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 40 \
+  'workspace/image-loading design artifact'
+require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 40 \
+  'bundles / IR capsules'
+require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 40 \
   'Blocked by: none'
-require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 35 \
-  "rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md"
-require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 35 \
-  'keep transitional `froth-cli` / release-time `froth` naming explicit in docs and tooling notes before touching binaries or release surfaces'
+require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 40 \
+  "rg -n 'Next artifact: first workspace/image-loading design artifact for named slot' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md"
+require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 40 \
+  'keep workspace/image-loading at named slot'
+require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 40 \
+  'bundle / IR-capsule design scope before touching loader or helper surfaces'
 require_phrase_after_anchor "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" \
   '#### Next-stage language definition' 55 \
   'landed on 2026-04-13 as a doc-only closeout'
@@ -83,7 +87,10 @@ require_phrase_after_anchor "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" \
   'Frothy ADR-114 records the chosen remaining draft shape'
 require_phrase_after_anchor "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" \
   '#### CLI naming alignment' 20 \
-  'queued after the 2026-04-13 next-stage language-definition closeout'
+  'landed on 2026-04-13 as a docs/tooling-notes tranche'
+require_phrase_after_anchor "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" \
+  '#### CLI naming alignment' 40 \
+  'no binaries, tarball contents, formula install targets, CLI help text,'
 require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 620 \
   'Operational label:'
 require_phrase_within "docs/roadmap/Frothy_Development_Roadmap_v0_1.md" 620 \
@@ -102,21 +109,25 @@ require_phrase_within "PROGRESS.md" 25 \
 require_phrase_within "PROGRESS.md" 25 \
   'Blocked by: none'
 require_phrase_within "PROGRESS.md" 25 \
-  'CLI naming-alignment artifact'
+  'workspace/image-loading design artifact'
 require_phrase_within "PROGRESS.md" 25 \
-  "rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md"
+  'bundles / IR capsules'
+require_phrase_within "PROGRESS.md" 25 \
+  "rg -n 'Next artifact: first workspace/image-loading design artifact for named slot' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md"
 require_phrase_within "PROGRESS.md" 25 \
   'Next proof:'
 require_phrase_within "PROGRESS.md" 25 \
-  'executable-adjacent tool surfaces'
+  'workspace/image-loading design artifact'
+require_phrase_within "PROGRESS.md" 35 \
+  'first CLI naming-alignment artifact is landed'
 require_phrase_within "PROGRESS.md" 35 \
   'Next-stage language definition is closed on 2026-04-13'
 require_phrase_after_anchor "PROGRESS.md" \
   '## Next Proof' 3 \
-  "rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md"
+  "rg -n 'Next artifact: first workspace/image-loading design artifact for named slot' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md"
 require_phrase_after_anchor "PROGRESS.md" \
   '## Next Artifact' 3 \
-  'CLI naming-alignment artifact'
+  'workspace/image-loading design artifact'
 reject_phrase "PROGRESS.md" \
   'this branch does not own `README.md`'
 
@@ -125,15 +136,19 @@ require_phrase_within "TIMELINE.md" 25 \
 require_phrase_within "TIMELINE.md" 25 \
   'Blocked by: none'
 require_phrase_within "TIMELINE.md" 25 \
-  'CLI naming-alignment artifact'
+  'workspace/image-loading design artifact'
+require_phrase_within "TIMELINE.md" 25 \
+  'bundles / IR capsules'
 require_phrase_within "TIMELINE.md" 25 \
   'Next proof command:'
 require_phrase_within "TIMELINE.md" 25 \
-  "rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md"
+  "rg -n 'Next artifact: first workspace/image-loading design artifact for named slot' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md"
 require_phrase_within "TIMELINE.md" 25 \
-  'executable-adjacent tool surfaces'
+  'workspace/image-loading design artifact'
 require_phrase_within "TIMELINE.md" 80 \
   'Next-stage language definition`: landed on 2026-04-13 as a doc-only'
+require_phrase_within "TIMELINE.md" 90 \
+  '`CLI naming alignment`: landed on 2026-04-13 as the first truthful'
 require_phrase_within "TIMELINE.md" 45 \
   'Operational label: `queued follow-on only`'
 reject_phrase "TIMELINE.md" \

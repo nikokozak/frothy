@@ -13,9 +13,9 @@ If this file and the roadmap disagree, the roadmap wins.
 
 - Active milestone: `none`
 - Blocked by: none
-- Next artifact: first CLI naming-alignment artifact across `README.md` and
-  executable-adjacent tool surfaces
-- Next proof command: `make test-all && rg -n 'repo-local \`froth-cli\`' README.md && rg -n 'release-time \`froth\`' README.md && rg -n 'intended global \`frothy\`' README.md && rg -n 'CLI naming alignment' PROGRESS.md TIMELINE.md docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
+- Next artifact: first workspace/image-loading design artifact for named slot
+  bundles / IR capsules
+- Next proof command: `make test-all && rg -n 'Next artifact: first workspace/image-loading design artifact for named slot' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'bundles / IR capsules' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot-bundle / IR-capsule loading' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'Workspace/image flow' TIMELINE.md`
 
 ## Milestone Ledger
 
@@ -66,12 +66,12 @@ If this file and the roadmap disagree, the roadmap wins.
   modules, `cond`/`case`, Frothy-native `try/catch`, and restricted
   binding/place designators as explicit draft-only work before runtime
   semantics widen again.
-- `CLI naming alignment`: queued after the 2026-04-13
-  next-stage-language-definition closeout. Align the repo-local `froth-cli`
-  binary, release-time `froth` binary, and transitional docs/tooling surfaces
-  with the intended global `frothy` name so build, release, and
-  executable-adjacent repo discovery agree on one tool identity once a branch
-  that owns those surfaces takes it on.
+- `CLI naming alignment`: landed on 2026-04-13 as the first truthful
+  docs/tooling-note artifact. `README.md`, repo-local build labels, release
+  notes, and VS Code CLI discovery/config wording now explain the repo-local
+  `froth-cli`, release-time `froth`, and intended global `frothy` split
+  without renaming binaries, tarball contents, Homebrew install targets, or
+  editor command ids.
 - `Urgent transport slice 1`: landed on 2026-04-12. Raw prompt `.control`
   now enters Frothy-owned structured mode with `HELLO`, `EVAL`, `WORDS`,
   `SEE`, `DETACH`, structured `OUTPUT` / `VALUE` / `ERROR` /
@@ -90,9 +90,10 @@ If this file and the roadmap disagree, the roadmap wins.
   structured control gets explicit exclusive framing and event replies. After
   the urgent first slice, this means rounding out the remaining commands rather
   than reopening the transport shape.
-- `Workspace/image flow`: deferred until after the local-helper broadening
-  slice. Add named slot bundles or IR capsules only once those surfaces are
-  stable. Do not build a registry, PTY layer, or background service first.
+- `Workspace/image flow`: now the next queued design follow-on after the
+  local-helper broadening and CLI naming-alignment closeout. Add named slot
+  bundles or IR capsules only once those surfaces are stable. Do not build a
+  registry, PTY layer, or background service first.
 
 ## Slip Notes
 
