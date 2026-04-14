@@ -9,6 +9,7 @@
 #include "frothy_parser.h"
 #include "frothy_snapshot.h"
 #include "frothy_value.h"
+#include "platform.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -209,6 +210,7 @@ froth_error_t frothy_base_image_reset(void) {
   froth_cell_u_t slot_count = froth_slot_count();
   froth_cell_u_t slot_index;
 
+  platform_reset_runtime_state();
   FROTH_TRY(frothy_runtime_clear_overlay_state(frothy_base_runtime()));
 
   for (slot_index = 0; slot_index < slot_count; slot_index++) {

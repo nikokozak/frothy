@@ -584,6 +584,9 @@ static int uart_rx_pins[UART_MAX_PORTS];
 
 void froth_board_reset_runtime_state(void) {
   for (int pin = 0; pin < GPIO_NUM_MAX; pin++) {
+    if (esp32_gpio_output_shadow_valid[pin]) {
+      (void)gpio_set_level((gpio_num_t)pin, 0);
+    }
     esp32_gpio_output_shadow_valid[pin] = 0;
     esp32_gpio_output_shadow_levels[pin] = 0;
   }

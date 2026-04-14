@@ -1223,9 +1223,15 @@ static int test_workshop_base_library_wipe_restore(void) {
   ok &= expect_ok("adc.percent(A0)", &value);
   ok &= expect_int_value(value, 99, "overlay adc.percent(A0)");
   release_value(&value);
+  ok &= expect_ok("led.on()", &value);
+  ok &= expect_nil_value(value, "led.on() before wipe");
+  release_value(&value);
 
   ok &= expect_ok("wipe()", &value);
   ok &= expect_nil_value(value, "wipe()");
+  release_value(&value);
+  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
+  ok &= expect_int_value(value, 0, "gpio.read after wipe reset");
   release_value(&value);
   ok &= expect_binding_view("blink", false, FROTHY_VALUE_CLASS_CODE,
                             "restored blink view");

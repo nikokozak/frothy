@@ -337,15 +337,6 @@ class FrothyController {
     }
 
     this.output.show(true);
-    const infoResult = await this.runRequest(
-      "slotInfo",
-      () => this.client!.slotInfo(name),
-      false,
-    );
-    if (!infoResult) {
-      return;
-    }
-
     const result = await this.runRequest(
       "see",
       () => this.client!.see(name),

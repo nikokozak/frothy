@@ -202,24 +202,11 @@ WORKSHOP_TRANSCRIPT="$(
 )"
 printf '%s\n' "$WORKSHOP_TRANSCRIPT"
 require_sequence "$WORKSHOP_TRANSCRIPT" \
-  'millis' \
-  '  slot: base' \
-  '  kind: native' \
-  '  owner: board ffi' \
-  '  persistence: not saved'
+  $'millis\n  slot: base\n  kind: native\n  call: 0 -> 1\n  owner: board ffi\n  persistence: not saved\n  effect: ( -- n )\n  help: Return wrapped monotonic uptime in milliseconds.'
 require_sequence "$WORKSHOP_TRANSCRIPT" \
-  'blink' \
-  '  slot: base' \
-  '  kind: code' \
-  '  owner: base image' \
-  '  persistence: not saved'
+  $'blink\n  slot: base\n  kind: code\n  call: 3 -> 1\n  owner: base image\n  persistence: not saved'
 require_sequence "$WORKSHOP_TRANSCRIPT" \
-  'adc.percent' \
-  '  slot: base' \
-  '  kind: code' \
-  '  owner: base image' \
-  '  persistence: not saved'
-require_contains "$WORKSHOP_TRANSCRIPT" '  help: Return wrapped monotonic uptime in milliseconds.'
+  $'adc.percent\n  slot: base\n  kind: code\n  call: 1 -> 1\n  owner: base image\n  persistence: not saved'
 require_sequence "$WORKSHOP_TRANSCRIPT" \
   '"millis.check"' \
   'frothy> true'
@@ -260,19 +247,11 @@ require_sequence "$WORKSHOP_TRANSCRIPT" \
   'frothy> 43'
 require_sequence "$WORKSHOP_TRANSCRIPT" \
   '"overlay.blink.check"' \
-  'blink' \
-  '  slot: overlay' \
-  '  kind: code' \
-  '  owner: overlay image' \
-  '  persistence: saved in snapshot' \
+  $'blink\n  slot: overlay\n  kind: code\n  call: 3 -> 1\n  owner: overlay image\n  persistence: saved in snapshot' \
   'frothy> 99'
 require_sequence "$WORKSHOP_TRANSCRIPT" \
   '"restored.blink.check"' \
-  'blink' \
-  '  slot: base' \
-  '  kind: code' \
-  '  owner: base image' \
-  '  persistence: not saved' \
+  $'blink\n  slot: base\n  kind: code\n  call: 3 -> 1\n  owner: base image\n  persistence: not saved' \
   '[gpio] pin 2 -> OUTPUT' \
   '[gpio] pin 2 = LOW' \
   '[gpio] pin 2 = HIGH' \

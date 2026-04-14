@@ -3,6 +3,7 @@
 #include "frothy_ffi.h"
 #include "platform.h"
 #include <stdint.h>
+#include <string.h>
 #include <unistd.h>
 
 /* POSIX board package: stub GPIO + real ms delay.
@@ -42,6 +43,14 @@ static posix_uart_t posix_uarts[POSIX_UART_MAX_PORTS];
 static uint8_t posix_gpio_known[POSIX_GPIO_PIN_LIMIT];
 static froth_cell_t posix_gpio_levels[POSIX_GPIO_PIN_LIMIT];
 static const uint8_t posix_uart_readback[] = {'f', 'r', 'o', 't', 'h'};
+
+void froth_board_reset_runtime_state(void) {
+  memset(posix_i2c_buses, 0, sizeof(posix_i2c_buses));
+  memset(posix_i2c_devices, 0, sizeof(posix_i2c_devices));
+  memset(posix_uarts, 0, sizeof(posix_uarts));
+  memset(posix_gpio_known, 0, sizeof(posix_gpio_known));
+  memset(posix_gpio_levels, 0, sizeof(posix_gpio_levels));
+}
 
 static int posix_gpio_pin_valid(froth_cell_t pin) {
   return pin >= 0 && pin < POSIX_GPIO_PIN_LIMIT;
