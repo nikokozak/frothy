@@ -247,6 +247,113 @@ done:
   return ok;
 }
 
+static char *build_binding_capacity_source(size_t binding_count) {
+  size_t capacity = 32 + (binding_count * 24);
+  char *source = (char *)malloc(capacity);
+  size_t cursor = 0;
+  size_t i;
+
+  if (source == NULL) {
+    return NULL;
+  }
+
+  cursor += (size_t)snprintf(source + cursor, capacity - cursor,
+                             "outer = fn() { ");
+  for (i = 0; i < binding_count; i++) {
+    cursor += (size_t)snprintf(source + cursor, capacity - cursor,
+                               "local%zu = seed; ", i);
+  }
+  (void)snprintf(source + cursor, capacity - cursor, "seed }");
+  return source;
+}
+
+static char *build_literal_capacity_source(size_t literal_count) {
+  size_t capacity = 32 + (literal_count * 8);
+  char *source = (char *)malloc(capacity);
+  size_t cursor = 0;
+  size_t i;
+
+  if (source == NULL) {
+    return NULL;
+  }
+
+  cursor += (size_t)snprintf(source + cursor, capacity - cursor,
+                             "outer = fn() { ");
+  for (i = 0; i < literal_count; i++) {
+    cursor +=
+        (size_t)snprintf(source + cursor, capacity - cursor, "%zu; ", i);
+  }
+  (void)snprintf(source + cursor, capacity - cursor, "0 }");
+  return source;
+}
+
+static char *build_node_capacity_source(size_t item_count) {
+  size_t capacity = 32 + (item_count * 8);
+  char *source = (char *)malloc(capacity);
+  size_t cursor = 0;
+  size_t i;
+
+  if (source == NULL) {
+    return NULL;
+  }
+
+  cursor += (size_t)snprintf(source + cursor, capacity - cursor,
+                             "outer = fn() { ");
+  for (i = 0; i < item_count; i++) {
+    cursor += (size_t)snprintf(source + cursor, capacity - cursor, "seed; ");
+  }
+  (void)snprintf(source + cursor, capacity - cursor, "seed }");
+  return source;
+}
+
+static int run_capacity_case(const char *name, char *source,
+                             froth_error_t expected_error) {
+  frothy_ir_program_t program;
+  froth_error_t err;
+  int ok = 1;
+
+  if (source == NULL) {
+    fprintf(stderr, "capacity case %s failed to build source\n", name);
+    return 0;
+  }
+
+  frothy_ir_program_init(&program);
+  err = frothy_parse_top_level(source, &program);
+  frothy_ir_program_free(&program);
+  if (err != expected_error) {
+    fprintf(stderr, "capacity case %s expected %d, got %d\n", name,
+            (int)expected_error, (int)err);
+    ok = 0;
+  }
+
+  frothy_ir_program_init(&program);
+  err = frothy_parse_top_level("unit = 1", &program);
+  if (err != FROTH_OK) {
+    fprintf(stderr, "capacity case %s did not recover: %d\n", name, (int)err);
+    ok = 0;
+  }
+  frothy_ir_program_free(&program);
+  free(source);
+  return ok;
+}
+
+static int test_capacity_failures_recover(void) {
+  int ok = 1;
+
+  ok &= run_capacity_case("binding_cap",
+                          build_binding_capacity_source(
+                              FROTHY_PARSER_BINDING_CAPACITY + 1),
+                          FROTH_ERROR_HEAP_OUT_OF_MEMORY);
+  ok &= run_capacity_case("literal_cap",
+                          build_literal_capacity_source(
+                              FROTHY_IR_LITERAL_CAPACITY + 1),
+                          FROTH_ERROR_HEAP_OUT_OF_MEMORY);
+  ok &= run_capacity_case("node_link_cap",
+                          build_node_capacity_source(FROTHY_IR_NODE_CAPACITY),
+                          FROTH_ERROR_HEAP_OUT_OF_MEMORY);
+  return ok;
+}
+
 int main(void) {
   static const char *const fixture_cases[] = {
       "assign_int",
@@ -345,6 +452,7 @@ int main(void) {
   ok &= run_render_surface_case(
       "spoken_local_surface", "localDemo is fn [ n is 6; n ]",
       render_surface_local_expected);
+  ok &= test_capacity_failures_recover();
 
   return ok ? 0 : 1;
 }

@@ -2,7 +2,9 @@
 
 #include "froth_heap.h"
 #include "froth_types.h"
+
 #include <stdbool.h>
+#include <stddef.h>
 
 #ifndef FROTH_SLOT_TABLE_SIZE
 #error                                                                         \
@@ -26,10 +28,18 @@ typedef struct {
 froth_error_t froth_slot_find_name_or_create(froth_heap_t *froth_heap,
                                              const char *name,
                                              froth_cell_u_t *slot_index);
+froth_error_t froth_slot_find_name_or_create_n(froth_heap_t *froth_heap,
+                                               const char *name, size_t length,
+                                               froth_cell_u_t *slot_index);
 froth_error_t froth_slot_find_name(const char *name,
                                    froth_cell_u_t *found_slot_index);
+froth_error_t froth_slot_find_name_n(const char *name, size_t length,
+                                     froth_cell_u_t *found_slot_index);
 froth_error_t froth_slot_create(const char *name, froth_heap_t *froth_heap,
                                 froth_cell_u_t *created_slot_index);
+froth_error_t froth_slot_create_n(const char *name, size_t length,
+                                  froth_heap_t *froth_heap,
+                                  froth_cell_u_t *created_slot_index);
 froth_error_t froth_slot_get_impl(froth_cell_u_t slot_index,
                                   froth_cell_t *impl);
 froth_error_t froth_slot_get_prim(froth_cell_u_t slot_index,

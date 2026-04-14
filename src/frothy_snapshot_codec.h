@@ -6,8 +6,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+uint8_t *frothy_snapshot_codec_payload_buffer(size_t *capacity_out);
 froth_error_t frothy_snapshot_codec_write_payload(
-    const frothy_runtime_t *runtime, uint8_t **payload_out,
+    const frothy_runtime_t *runtime, const uint8_t **payload_out,
     uint32_t *payload_length_out);
 froth_error_t frothy_snapshot_codec_validate_payload(const uint8_t *payload,
                                                      size_t payload_length);

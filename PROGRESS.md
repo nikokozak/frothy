@@ -21,6 +21,15 @@ file is wrong.
 
 ## Recent Landed Work
 
+- The 2026-04-13 transient work-buffer hardening tranche is landed:
+  shell multiline accumulation now stays inside one fixed
+  `FROTHY_SHELL_SOURCE_CAPACITY` buffer, parser and canonical-IR build
+  vectors now stop at explicit compile-time caps instead of growing with
+  `realloc`, and snapshot save/restore now borrow one codec-owned payload and
+  metadata workspace instead of allocating transient payload, symbol, and
+  object-anchor buffers per call. The focused parser, shell, eval, snapshot,
+  and FFI gate is green, and `frothy_runtime_bench` now also pins a
+  representative parse case.
 - Spoken-ledger syntax tranche 1 is landed on 2026-04-13:
   the parser now accepts `name is expr`, `here name is expr`,
   `set place to expr`, bracket blocks with `;`, `to` / `fn with`,
@@ -136,9 +145,9 @@ file is wrong.
 - Syntax tranche 1 is now closed on top of the landed runtime baseline, and
   the immediate control hardening plus reset slice is closed on top of that.
 - Runtime hardening is now landed. The next bounded-memory follow-on is the
-  remaining dynamic payload and work-buffer surface: text bytes, cloned IR
-  program bodies, parser growth, snapshot codec payload buffers, and shell
-  source accumulation.
+  remaining persistent payload surface: text bytes and cloned IR program
+  bodies. Parser growth, snapshot codec work buffers, and shell source
+  accumulation are now bounded in tree.
 - Transport work should simplify ownership and framing. ADR-110 replaces the
   inherited daemon-plus-mux direction with a direct single-owner control
   session.

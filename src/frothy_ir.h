@@ -7,6 +7,18 @@
 typedef size_t frothy_ir_node_id_t;
 typedef size_t frothy_ir_literal_id_t;
 
+#ifndef FROTHY_IR_LITERAL_CAPACITY
+#define FROTHY_IR_LITERAL_CAPACITY 128
+#endif
+
+#ifndef FROTHY_IR_NODE_CAPACITY
+#define FROTHY_IR_NODE_CAPACITY 512
+#endif
+
+#ifndef FROTHY_IR_LINK_CAPACITY
+#define FROTHY_IR_LINK_CAPACITY 512
+#endif
+
 #define FROTHY_IR_NODE_INVALID ((frothy_ir_node_id_t)SIZE_MAX)
 
 typedef enum {

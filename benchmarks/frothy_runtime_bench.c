@@ -262,6 +262,28 @@ static void cleanup_program_case(bench_case_t *bench_case) {
   frothy_ir_program_free(&bench_case->program);
 }
 
+static froth_error_t prepare_parse_case(bench_case_t *bench_case) {
+  (void)bench_case;
+  return reset_frothy_state(false);
+}
+
+static froth_error_t run_parse_case(bench_case_t *bench_case) {
+  frothy_ir_program_t program;
+  froth_error_t err;
+
+  err = compile_source(bench_case->run_source, &program);
+  if (err != FROTH_OK) {
+    return err;
+  }
+
+  frothy_ir_program_free(&program);
+  return FROTH_OK;
+}
+
+static void cleanup_parse_case(bench_case_t *bench_case) {
+  (void)bench_case;
+}
+
 static froth_error_t prepare_snapshot_case(bench_case_t *bench_case) {
   FROTH_TRY(enter_workspace(&bench_case->workspace));
   FROTH_TRY(reset_snapshot_state());
@@ -438,6 +460,14 @@ int main(void) {
        .cleanup = cleanup_program_case,
        .setup_source = "counter = 0",
        .run_source = "counter = counter + 1"},
+      {.name = "parse_named_fn",
+       .prepare = prepare_parse_case,
+       .run = run_parse_case,
+       .cleanup = cleanup_parse_case,
+       .run_source =
+           "pulse(pin, duration) { label = \"tick\"; total = 0; i = 0; "
+           "while i < duration { set total = total + i; set i = i + 1 }; "
+           "total }"},
       {.name = "snapshot_save",
        .prepare = prepare_snapshot_case,
        .run = run_snapshot_save_case,

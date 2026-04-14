@@ -9,10 +9,20 @@ static char index_has_slot_assigned(froth_cell_u_t index) {
   return slot_table[index].name != NULL;
 }
 
+static bool froth_slot_name_matches(const char *slot_name, const char *name,
+                                    size_t length) {
+  return strlen(slot_name) == length && memcmp(slot_name, name, length) == 0;
+}
+
 froth_error_t froth_slot_find_name(const char *name,
                                    froth_cell_u_t *found_slot_index) {
+  return froth_slot_find_name_n(name, strlen(name), found_slot_index);
+}
+
+froth_error_t froth_slot_find_name_n(const char *name, size_t length,
+                                     froth_cell_u_t *found_slot_index) {
   for (froth_cell_u_t ip = 0; ip < slot_pointer; ip++) {
-    if (strcmp(slot_table[ip].name, name) == 0) {
+    if (froth_slot_name_matches(slot_table[ip].name, name, length)) {
       *found_slot_index = ip;
       return FROTH_OK;
     }
@@ -22,19 +32,26 @@ froth_error_t froth_slot_find_name(const char *name,
 
 froth_error_t froth_slot_create(const char *name, froth_heap_t *heap,
                                 froth_cell_u_t *created_slot_index) {
+  return froth_slot_create_n(name, strlen(name), heap, created_slot_index);
+}
+
+froth_error_t froth_slot_create_n(const char *name, size_t length,
+                                  froth_heap_t *heap,
+                                  froth_cell_u_t *created_slot_index) {
   if (slot_pointer >= FROTH_SLOT_TABLE_SIZE) {
     return FROTH_ERROR_SLOT_TABLE_FULL;
   }
 
   froth_cell_u_t name_heap_location;
 
-  if (froth_heap_allocate_bytes(strlen(name) + 1, heap, &name_heap_location) ==
+  if (froth_heap_allocate_bytes(length + 1, heap, &name_heap_location) ==
       FROTH_ERROR_HEAP_OUT_OF_MEMORY) {
     return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
 
   char *name_in_heap = (char *)(heap->data + name_heap_location);
-  strcpy(name_in_heap, name);
+  memcpy(name_in_heap, name, length);
+  name_in_heap[length] = '\0';
 
   *created_slot_index = slot_pointer;
   slot_table[slot_pointer++] = (froth_slot_t){.name = name_in_heap,
@@ -51,9 +68,16 @@ froth_error_t froth_slot_create(const char *name, froth_heap_t *heap,
 froth_error_t froth_slot_find_name_or_create(froth_heap_t *froth_heap,
                                              const char *name,
                                              froth_cell_u_t *slot_index) {
+  return froth_slot_find_name_or_create_n(froth_heap, name, strlen(name),
+                                          slot_index);
+}
 
-  if (froth_slot_find_name(name, slot_index) == FROTH_ERROR_UNDEFINED_WORD) {
-    FROTH_TRY(froth_slot_create(name, froth_heap, slot_index));
+froth_error_t froth_slot_find_name_or_create_n(froth_heap_t *froth_heap,
+                                               const char *name, size_t length,
+                                               froth_cell_u_t *slot_index) {
+  if (froth_slot_find_name_n(name, length, slot_index) ==
+      FROTH_ERROR_UNDEFINED_WORD) {
+    FROTH_TRY(froth_slot_create_n(name, length, froth_heap, slot_index));
     return FROTH_OK;
   } else {
     return FROTH_OK;

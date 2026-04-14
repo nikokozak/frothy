@@ -306,6 +306,107 @@ static int write_simple_text_snapshot(void) {
   return ok;
 }
 
+static int build_overlay_text_name(size_t index, char *buffer, size_t capacity) {
+  return snprintf(buffer, capacity, "t%03zu", index) < (int)capacity;
+}
+
+static int build_overlay_text_value(size_t index, char *buffer, size_t capacity) {
+  return snprintf(buffer, capacity, "v%03zu", index) < (int)capacity;
+}
+
+static int bind_overlay_text_direct(const char *name, const char *text) {
+  frothy_value_t value = frothy_value_make_nil();
+  froth_cell_u_t slot_index = 0;
+
+  if (frothy_runtime_alloc_text(runtime(), text, strlen(text), &value) !=
+      FROTH_OK) {
+    fprintf(stderr, "failed to allocate text for `%s`\n", name);
+    return 0;
+  }
+  if (froth_slot_find_name_or_create(&froth_vm.heap, name, &slot_index) !=
+          FROTH_OK ||
+      froth_slot_set_overlay(slot_index, 1) != FROTH_OK ||
+      froth_slot_set_impl(slot_index, frothy_value_to_cell(value)) !=
+          FROTH_OK ||
+      froth_slot_clear_arity(slot_index) != FROTH_OK) {
+    fprintf(stderr, "failed to bind text slot `%s`\n", name);
+    release_value(&value);
+    return 0;
+  }
+
+  return 1;
+}
+
+static size_t near_capacity_overlay_count(void) {
+  size_t slot_headroom = 0;
+  size_t object_headroom = 0;
+  size_t payload_headroom = 0;
+  size_t count;
+  const size_t bytes_per_binding = 24;
+  const size_t payload_prefix_bytes = 20;
+
+  if (froth_slot_count() < FROTH_SLOT_TABLE_SIZE) {
+    slot_headroom = FROTH_SLOT_TABLE_SIZE - (size_t)froth_slot_count();
+  }
+  if (frothy_runtime_live_object_count(runtime()) < FROTHY_OBJECT_CAPACITY) {
+    object_headroom =
+        FROTHY_OBJECT_CAPACITY - frothy_runtime_live_object_count(runtime());
+  }
+  if (FROTH_SNAPSHOT_MAX_PAYLOAD_BYTES > payload_prefix_bytes) {
+    payload_headroom =
+        (FROTH_SNAPSHOT_MAX_PAYLOAD_BYTES - payload_prefix_bytes) /
+        bytes_per_binding;
+  }
+  count = slot_headroom < object_headroom ? slot_headroom : object_headroom;
+  if (payload_headroom < count) {
+    count = payload_headroom;
+  }
+  if (count > 8) {
+    count -= 8;
+  } else if (count > 0) {
+    count = 1;
+  }
+
+  return count;
+}
+
+static int populate_near_capacity_text_overlay(size_t count) {
+  size_t i;
+
+  for (i = 0; i < count; i++) {
+    char name[32];
+    char text[48];
+
+    if (!build_overlay_text_name(i, name, sizeof(name)) ||
+        !build_overlay_text_value(i, text, sizeof(text)) ||
+        !bind_overlay_text_direct(name, text)) {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+static int expect_overlay_text_slot(size_t index, const char *label) {
+  char name[32];
+  char expected[48];
+  frothy_value_t value = frothy_value_make_nil();
+  int ok;
+
+  if (!build_overlay_text_name(index, name, sizeof(name)) ||
+      !build_overlay_text_value(index, expected, sizeof(expected))) {
+    fprintf(stderr, "failed to build overlay text expectation for %zu\n", index);
+    return 0;
+  }
+
+  ok = expect_ok(name, &value);
+  if (ok) {
+    ok = expect_text_value(value, expected, label);
+    release_value(&value);
+  }
+  return ok;
+}
+
 static int prepare_startup_state(void) {
   if (frothy_base_image_reset() != FROTH_OK) {
     fprintf(stderr, "frothy_base_image_reset failed\n");
@@ -471,6 +572,7 @@ static int test_restore_without_snapshot_resets_to_base(void) {
 
 static int test_corrupt_snapshot_failures_reset_to_base(void) {
   static const size_t payload_version_offset = 4;
+  static const size_t symbol_name_offset = 14;
   static const size_t binding_count_offset = 25;
   static const size_t binding_object_index_offset = 34;
   static const size_t text_payload_offset = 24;
@@ -480,6 +582,7 @@ static int test_corrupt_snapshot_failures_reset_to_base(void) {
   uint16_t bad_version = frothy_snapshot_version + 1;
   uint32_t bad_binding_count = 2;
   uint32_t bad_object_index = 99;
+  uint8_t bad_name_byte = '\0';
   uint8_t bad_crc_byte = 'b';
   int ok = 1;
 
@@ -518,6 +621,15 @@ static int test_corrupt_snapshot_failures_reset_to_base(void) {
 
   ok &= frothy_snapshot_wipe() == FROTH_OK;
   ok &= write_simple_text_snapshot();
+  ok &= patch_active_snapshot_payload(symbol_name_offset, &bad_name_byte,
+                                      sizeof(bad_name_byte), true);
+  ok &= expect_ok("junk = 1", &value);
+  release_value(&value);
+  ok &= expect_error("restore()", FROTH_ERROR_SNAPSHOT_BAD_NAME);
+  ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
+
+  ok &= frothy_snapshot_wipe() == FROTH_OK;
+  ok &= write_simple_text_snapshot();
   ok &= patch_active_snapshot_payload(text_payload_offset, &bad_crc_byte,
                                       sizeof(bad_crc_byte), false);
   ok &= expect_ok("junk = 1", &value);
@@ -527,6 +639,75 @@ static int test_corrupt_snapshot_failures_reset_to_base(void) {
   ok &= expect_ok("save()", &value);
   ok &= expect_nil_value(value, "save() after bad crc");
   release_value(&value);
+
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
+static int test_repeated_near_capacity_save_restore(void) {
+  temp_workspace_t workspace = {{0}};
+  frothy_value_t value = frothy_value_make_nil();
+  size_t overlay_count = 0;
+  size_t middle_index = 0;
+  size_t last_index = 0;
+  char mutate_command[96];
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+  overlay_count = near_capacity_overlay_count();
+  if (overlay_count == 0) {
+    fprintf(stderr, "expected near-capacity overlay headroom\n");
+    leave_temp_workspace(&workspace);
+    return 0;
+  }
+  middle_index = overlay_count / 2;
+  last_index = overlay_count - 1;
+  if (!populate_near_capacity_text_overlay(overlay_count)) {
+    leave_temp_workspace(&workspace);
+    return 0;
+  }
+
+  ok &= expect_live_objects(14 + overlay_count, "near-cap overlay before save");
+  ok &= expect_ok("save()", &value);
+  ok &= expect_nil_value(value, "save() with near-cap overlay");
+  release_value(&value);
+
+  ok &= expect_ok("t000 = \"m\"", &value);
+  release_value(&value);
+  ok &= expect_ok("restore()", &value);
+  ok &= expect_nil_value(value, "restore() with near-cap overlay");
+  release_value(&value);
+
+  ok &= expect_live_objects(14 + overlay_count,
+                            "near-cap overlay after first restore");
+  ok &= expect_overlay_text_slot(0, "first near-cap binding after restore");
+  ok &= expect_overlay_text_slot(middle_index,
+                                 "middle near-cap binding after restore");
+  ok &= expect_overlay_text_slot(last_index,
+                                 "last near-cap binding after restore");
+
+  ok &= expect_ok("save()", &value);
+  ok &= expect_nil_value(value, "second save() with near-cap overlay");
+  release_value(&value);
+
+  if (snprintf(mutate_command, sizeof(mutate_command), "t%03zu = \"m\"",
+               last_index) >= (int)sizeof(mutate_command)) {
+    fprintf(stderr, "failed to build near-cap mutation command\n");
+    ok = 0;
+  } else {
+    ok &= expect_ok(mutate_command, &value);
+    release_value(&value);
+    ok &= expect_ok("restore()", &value);
+    ok &= expect_nil_value(value, "second restore() with near-cap overlay");
+    release_value(&value);
+  }
+
+  ok &= expect_live_objects(14 + overlay_count,
+                            "near-cap overlay after second restore");
+  ok &= expect_overlay_text_slot(last_index,
+                                 "last near-cap binding after second restore");
 
   leave_temp_workspace(&workspace);
   return ok;
@@ -553,11 +734,17 @@ static int test_decode_failure_after_reset_re_resets_to_base(void) {
   ok &= expect_live_objects(14, "base native objects after decode failure");
   ok &= expect_snapshot_present(true, "snapshot preserved after decode failure");
   ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
-  ok &= expect_ok("save()", &value);
-  ok &= expect_nil_value(value, "save() after decode failure");
-  release_value(&value);
   ok &= expect_ok("1", &value);
   ok &= expect_int_value(value, 1, "prompt usable after decode failure");
+  release_value(&value);
+  ok &= expect_ok("restore()", &value);
+  ok &= expect_nil_value(value, "restore() after decode failure reuse");
+  release_value(&value);
+  ok &= expect_ok("x", &value);
+  ok &= expect_text_value(value, "a", "snapshot restored after decode failure");
+  release_value(&value);
+  ok &= expect_ok("save()", &value);
+  ok &= expect_nil_value(value, "save() after decode failure reuse");
   release_value(&value);
 
   leave_temp_workspace(&workspace);
@@ -590,6 +777,33 @@ static int test_slot_info_errors(void) {
   ok &= expect_error("slotInfo()", FROTH_ERROR_SIGNATURE);
   ok &= expect_error("slotInfo(\"\")", FROTH_ERROR_BOUNDS);
   ok &= expect_error("slotInfo(\"missing\")", FROTH_ERROR_UNDEFINED_WORD);
+
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
+static int test_length_aware_slot_lookup(void) {
+  temp_workspace_t workspace = {{0}};
+  froth_cell_u_t short_slot = 0;
+  froth_cell_u_t long_slot = 0;
+  froth_cell_u_t found_slot = 0;
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+
+  ok &= froth_slot_find_name_or_create_n(&froth_vm.heap, "zz__slot_short", 14,
+                                         &short_slot) == FROTH_OK;
+  ok &= froth_slot_find_name_or_create_n(&froth_vm.heap,
+                                         "zz__slot_short_long", 19,
+                                         &long_slot) == FROTH_OK;
+  ok &= short_slot != long_slot;
+  ok &= froth_slot_find_name_n("zz__slot_short", 14, &found_slot) == FROTH_OK;
+  ok &= found_slot == short_slot;
+  ok &= froth_slot_find_name_n("zz__slot_short_long", 19, &found_slot) ==
+        FROTH_OK;
+  ok &= found_slot == long_slot;
 
   leave_temp_workspace(&workspace);
   return ok;
@@ -962,10 +1176,12 @@ int main(void) {
   ok &= test_overlay_reset_semantics();
   ok &= test_restore_without_snapshot_resets_to_base();
   ok &= test_corrupt_snapshot_failures_reset_to_base();
+  ok &= test_repeated_near_capacity_save_restore();
   ok &= test_decode_failure_after_reset_re_resets_to_base();
   ok &= test_wipe_inside_nested_call_unwinds_cleanly();
   ok &= test_non_persistable_rejection();
   ok &= test_slot_info_errors();
+  ok &= test_length_aware_slot_lookup();
   ok &= test_startup_without_snapshot();
   ok &= test_startup_snapshot_discovery_failure();
   ok &= test_startup_restore_without_boot();

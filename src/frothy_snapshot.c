@@ -8,7 +8,6 @@
 #include "platform.h"
 
 #include <stdint.h>
-#include <stdlib.h>
 
 static frothy_runtime_t *frothy_runtime(void) {
   return &froth_vm.frothy_runtime;
@@ -30,7 +29,7 @@ froth_error_t frothy_snapshot_save(void) {
 #ifndef FROTH_HAS_SNAPSHOTS
   return FROTH_ERROR_IO;
 #else
-  uint8_t *payload = NULL;
+  const uint8_t *payload = NULL;
   uint8_t header[FROTH_SNAPSHOT_HEADER_SIZE];
   uint8_t slot = 0;
   uint32_t generation = 0;
@@ -54,7 +53,6 @@ froth_error_t frothy_snapshot_save(void) {
     err = platform_snapshot_write(slot, 0, header, sizeof(header));
   }
 
-  free(payload);
   return err;
 #endif
 }
@@ -68,6 +66,7 @@ froth_error_t frothy_snapshot_restore(void) {
   uint8_t header[FROTH_SNAPSHOT_HEADER_SIZE];
   froth_snapshot_header_info_t info;
   uint8_t *payload = NULL;
+  size_t payload_capacity = 0;
   froth_error_t err;
 
   err = froth_snapshot_pick_active(&slot, &generation);
@@ -88,9 +87,9 @@ froth_error_t frothy_snapshot_restore(void) {
     return frothy_snapshot_reset_with_error(FROTH_ERROR_SNAPSHOT_OVERFLOW);
   }
 
-  payload = (uint8_t *)malloc(info.payload_len);
-  if (info.payload_len > 0 && payload == NULL) {
-    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+  payload = frothy_snapshot_codec_payload_buffer(&payload_capacity);
+  if ((size_t)info.payload_len > payload_capacity) {
+    return frothy_snapshot_reset_with_error(FROTH_ERROR_SNAPSHOT_OVERFLOW);
   }
 
   err = platform_snapshot_read(slot, FROTH_SNAPSHOT_HEADER_SIZE, payload,
@@ -104,18 +103,15 @@ froth_error_t frothy_snapshot_restore(void) {
     err = frothy_snapshot_codec_validate_payload(payload, info.payload_len);
   }
   if (err != FROTH_OK) {
-    free(payload);
     return frothy_snapshot_reset_with_error(err);
   }
 
   err = frothy_base_image_reset();
   if (err != FROTH_OK) {
-    free(payload);
     return err;
   }
 
   err = frothy_snapshot_codec_restore_payload(payload, info.payload_len);
-  free(payload);
   if (err != FROTH_OK) {
     return frothy_snapshot_reset_with_error(err);
   }

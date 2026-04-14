@@ -158,6 +158,31 @@ static char *frothy_strdup_range(const char *start, size_t length) {
   return copy;
 }
 
+static bool frothy_capped_capacity(size_t current, size_t needed,
+                                   size_t initial, size_t limit,
+                                   size_t *capacity_out) {
+  size_t capacity = current == 0 ? initial : current;
+
+  if (needed > limit) {
+    return false;
+  }
+  if (capacity > limit) {
+    capacity = limit;
+  }
+  while (capacity < needed) {
+    size_t next = capacity * 2;
+
+    if (next < capacity || next > limit) {
+      capacity = limit;
+    } else {
+      capacity = next;
+    }
+  }
+
+  *capacity_out = capacity;
+  return true;
+}
+
 static bool frothy_token_matches_name(const frothy_token_t *token,
                                       const char *text) {
   size_t length = strlen(text);
@@ -169,14 +194,18 @@ static bool frothy_token_matches_name(const frothy_token_t *token,
 static froth_error_t frothy_parser_reserve_bindings(frothy_parser_t *parser,
                                                     size_t extra) {
   size_t needed = parser->binding_count + extra;
-  size_t capacity = parser->binding_capacity == 0 ? 8 : parser->binding_capacity;
+  size_t capacity = 0;
   frothy_binding_t *resized;
 
-  while (capacity < needed) {
-    capacity *= 2;
+  if (parser->binding_capacity > FROTHY_PARSER_BINDING_CAPACITY) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
-  if (capacity == parser->binding_capacity) {
+  if (needed <= parser->binding_capacity) {
     return FROTH_OK;
+  }
+  if (!frothy_capped_capacity(parser->binding_capacity, needed, 8,
+                              FROTHY_PARSER_BINDING_CAPACITY, &capacity)) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
 
   resized = (frothy_binding_t *)realloc(parser->bindings,
@@ -193,14 +222,18 @@ static froth_error_t frothy_parser_reserve_bindings(frothy_parser_t *parser,
 static froth_error_t frothy_parser_reserve_scopes(frothy_parser_t *parser,
                                                   size_t extra) {
   size_t needed = parser->scope_count + extra;
-  size_t capacity = parser->scope_capacity == 0 ? 4 : parser->scope_capacity;
+  size_t capacity = 0;
   frothy_scope_t *resized;
 
-  while (capacity < needed) {
-    capacity *= 2;
+  if (parser->scope_capacity > FROTHY_PARSER_SCOPE_CAPACITY) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
-  if (capacity == parser->scope_capacity) {
+  if (needed <= parser->scope_capacity) {
     return FROTH_OK;
+  }
+  if (!frothy_capped_capacity(parser->scope_capacity, needed, 4,
+                              FROTHY_PARSER_SCOPE_CAPACITY, &capacity)) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
 
   resized = (frothy_scope_t *)realloc(parser->scopes,
@@ -217,14 +250,18 @@ static froth_error_t frothy_parser_reserve_scopes(frothy_parser_t *parser,
 static froth_error_t frothy_parser_reserve_frames(frothy_parser_t *parser,
                                                   size_t extra) {
   size_t needed = parser->frame_count + extra;
-  size_t capacity = parser->frame_capacity == 0 ? 4 : parser->frame_capacity;
+  size_t capacity = 0;
   frothy_frame_t *resized;
 
-  while (capacity < needed) {
-    capacity *= 2;
+  if (parser->frame_capacity > FROTHY_PARSER_FRAME_CAPACITY) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
-  if (capacity == parser->frame_capacity) {
+  if (needed <= parser->frame_capacity) {
     return FROTH_OK;
+  }
+  if (!frothy_capped_capacity(parser->frame_capacity, needed, 4,
+                              FROTHY_PARSER_FRAME_CAPACITY, &capacity)) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
 
   resized = (frothy_frame_t *)realloc(parser->frames,
@@ -241,14 +278,18 @@ static froth_error_t frothy_parser_reserve_frames(frothy_parser_t *parser,
 static froth_error_t frothy_program_reserve_literals(frothy_ir_program_t *program,
                                                      size_t extra) {
   size_t needed = program->literal_count + extra;
-  size_t capacity = program->literal_capacity == 0 ? 8 : program->literal_capacity;
+  size_t capacity = 0;
   frothy_ir_literal_t *resized;
 
-  while (capacity < needed) {
-    capacity *= 2;
+  if (program->literal_capacity > FROTHY_IR_LITERAL_CAPACITY) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
-  if (capacity == program->literal_capacity) {
+  if (needed <= program->literal_capacity) {
     return FROTH_OK;
+  }
+  if (!frothy_capped_capacity(program->literal_capacity, needed, 8,
+                              FROTHY_IR_LITERAL_CAPACITY, &capacity)) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
 
   resized = (frothy_ir_literal_t *)realloc(program->literals,
@@ -265,14 +306,18 @@ static froth_error_t frothy_program_reserve_literals(frothy_ir_program_t *progra
 static froth_error_t frothy_program_reserve_nodes(frothy_ir_program_t *program,
                                                   size_t extra) {
   size_t needed = program->node_count + extra;
-  size_t capacity = program->node_capacity == 0 ? 16 : program->node_capacity;
+  size_t capacity = 0;
   frothy_ir_node_t *resized;
 
-  while (capacity < needed) {
-    capacity *= 2;
+  if (program->node_capacity > FROTHY_IR_NODE_CAPACITY) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
-  if (capacity == program->node_capacity) {
+  if (needed <= program->node_capacity) {
     return FROTH_OK;
+  }
+  if (!frothy_capped_capacity(program->node_capacity, needed, 16,
+                              FROTHY_IR_NODE_CAPACITY, &capacity)) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
 
   resized = (frothy_ir_node_t *)realloc(program->nodes,
@@ -289,14 +334,18 @@ static froth_error_t frothy_program_reserve_nodes(frothy_ir_program_t *program,
 static froth_error_t frothy_program_reserve_links(frothy_ir_program_t *program,
                                                   size_t extra) {
   size_t needed = program->link_count + extra;
-  size_t capacity = program->link_capacity == 0 ? 16 : program->link_capacity;
+  size_t capacity = 0;
   frothy_ir_node_id_t *resized;
 
-  while (capacity < needed) {
-    capacity *= 2;
+  if (program->link_capacity > FROTHY_IR_LINK_CAPACITY) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
-  if (capacity == program->link_capacity) {
+  if (needed <= program->link_capacity) {
     return FROTH_OK;
+  }
+  if (!frothy_capped_capacity(program->link_capacity, needed, 16,
+                              FROTHY_IR_LINK_CAPACITY, &capacity)) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
 
   resized = (frothy_ir_node_id_t *)realloc(program->links,
@@ -344,13 +393,17 @@ static void frothy_node_list_free(frothy_node_list_t *list) {
 static froth_error_t frothy_node_list_push(frothy_node_list_t *list,
                                            frothy_ir_node_id_t node_id) {
   size_t needed = list->count + 1;
-  size_t capacity = list->capacity == 0 ? 4 : list->capacity;
+  size_t capacity = 0;
   frothy_ir_node_id_t *resized;
 
-  while (capacity < needed) {
-    capacity *= 2;
+  if (list->capacity > FROTHY_IR_LINK_CAPACITY) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
   }
-  if (capacity != list->capacity) {
+  if (needed > list->capacity) {
+    if (!frothy_capped_capacity(list->capacity, needed, 4,
+                                FROTHY_IR_LINK_CAPACITY, &capacity)) {
+      return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+    }
     resized = (frothy_ir_node_id_t *)realloc(list->items,
                                              capacity * sizeof(*list->items));
     if (resized == NULL) {

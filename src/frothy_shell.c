@@ -59,6 +59,7 @@ static const char *prompt_cont = ".. ";
  * Froth REPL approach and avoids avoidable stack pressure during parse/eval. */
 static char shell_line[FROTH_LINE_BUFFER_SIZE];
 static char shell_command_buffer[FROTH_LINE_BUFFER_SIZE];
+static char shell_pending_source[FROTHY_SHELL_SOURCE_CAPACITY];
 static bool shell_at_primary_prompt = false;
 
 static froth_error_t frothy_emit_text(const char *text) {
@@ -397,6 +398,9 @@ static char *frothy_trim_command(char *buffer) {
 
 static void frothy_input_state_init(frothy_input_state_t *state) {
   memset(state, 0, sizeof(*state));
+  state->source = shell_pending_source;
+  state->capacity = sizeof(shell_pending_source);
+  state->source[0] = '\0';
 }
 
 static void frothy_input_state_reset(frothy_input_state_t *state) {
@@ -416,7 +420,7 @@ static void frothy_input_state_reset(frothy_input_state_t *state) {
 }
 
 static void frothy_input_state_free(frothy_input_state_t *state) {
-  free(state->source);
+  frothy_input_state_reset(state);
   memset(state, 0, sizeof(*state));
 }
 
@@ -440,6 +444,9 @@ frothy_input_state_incomplete_error(const frothy_input_state_t *state) {
   return FROTH_ERROR_SIGNATURE;
 }
 
+static froth_error_t frothy_input_state_append_line(frothy_input_state_t *state,
+                                                    const char *line);
+
 static froth_error_t frothy_emit_error(const char *label, froth_error_t err) {
   char buffer[48];
 
@@ -461,25 +468,11 @@ void frothy_shell_eval_result_free(frothy_shell_eval_result_t *result) {
 static froth_error_t frothy_input_state_reserve(frothy_input_state_t *state,
                                                 size_t extra) {
   size_t needed = state->length + extra + 1;
-  size_t capacity = state->capacity == 0 ? 64 : state->capacity;
-  char *resized;
 
   if (needed <= state->capacity) {
     return FROTH_OK;
   }
-
-  while (capacity < needed) {
-    capacity *= 2;
-  }
-
-  resized = (char *)realloc(state->source, capacity);
-  if (resized == NULL) {
-    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
-  }
-
-  state->source = resized;
-  state->capacity = capacity;
-  return FROTH_OK;
+  return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
 }
 
 static void frothy_scan_chunk(frothy_input_state_t *state, const char *chunk,
@@ -664,6 +657,42 @@ static froth_error_t frothy_emit_prompt(bool continued) {
 }
 
 bool frothy_shell_is_idle(void) { return shell_at_primary_prompt; }
+
+#ifdef FROTHY_SHELL_TESTING
+static frothy_input_state_t *frothy_shell_test_input_state(void) {
+  static frothy_input_state_t state;
+
+  if (state.source == NULL) {
+    frothy_input_state_init(&state);
+  }
+  return &state;
+}
+
+void frothy_shell_test_reset_pending_source(void) {
+  frothy_input_state_reset(frothy_shell_test_input_state());
+}
+
+froth_error_t frothy_shell_test_append_pending_line(const char *line) {
+  return frothy_input_state_append_line(frothy_shell_test_input_state(), line);
+}
+
+const char *frothy_shell_test_pending_source(void) {
+  return frothy_shell_test_input_state()->source;
+}
+
+size_t frothy_shell_test_pending_length(void) {
+  return frothy_shell_test_input_state()->length;
+}
+
+bool frothy_shell_test_pending_is_complete(void) {
+  return frothy_input_state_is_complete(frothy_shell_test_input_state());
+}
+
+bool frothy_shell_test_rewrite_simple_call(const char *command, char *buffer,
+                                           size_t capacity) {
+  return frothy_shell_rewrite_simple_call(command, buffer, capacity);
+}
+#endif
 
 static froth_error_t frothy_emit_backspace(void) {
   FROTH_TRY(platform_emit('\b'));

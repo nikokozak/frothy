@@ -17,6 +17,13 @@ endif()
 option(FROTHY_BUILD_HOST "Build the Frothy host runtime." ${FROTHY_BUILD_HOST_DEFAULT})
 set(FROTHY_EVAL_VALUE_CAPACITY 256 CACHE STRING "Frothy evaluator scratch capacity in number of values.")
 set(FROTHY_OBJECT_CAPACITY 128 CACHE STRING "Frothy runtime object and free-span capacity.")
+set(FROTHY_SHELL_SOURCE_CAPACITY 2048 CACHE STRING "Frothy multiline shell source capacity in bytes.")
+set(FROTHY_PARSER_BINDING_CAPACITY 128 CACHE STRING "Frothy parser binding capacity.")
+set(FROTHY_PARSER_SCOPE_CAPACITY 32 CACHE STRING "Frothy parser scope capacity.")
+set(FROTHY_PARSER_FRAME_CAPACITY 16 CACHE STRING "Frothy parser frame capacity.")
+set(FROTHY_IR_LITERAL_CAPACITY 128 CACHE STRING "Frothy IR literal capacity.")
+set(FROTHY_IR_NODE_CAPACITY 512 CACHE STRING "Frothy IR node capacity.")
+set(FROTHY_IR_LINK_CAPACITY 512 CACHE STRING "Frothy IR link capacity.")
 
 set(FROTH_CELL_SIZE_BITS 32 CACHE STRING "Cell width in bits: 8, 16, 32 or 64")
 set(FROTH_DS_CAPACITY 256 CACHE STRING "Data Stack (DS) Capacity in number of cells.")
@@ -89,6 +96,13 @@ function(frothy_configure_target target)
   target_compile_definitions(${target} PRIVATE
     FROTHY_EVAL_VALUE_CAPACITY=${FROTHY_EVAL_VALUE_CAPACITY}
     FROTHY_OBJECT_CAPACITY=${FROTHY_OBJECT_CAPACITY}
+    FROTHY_SHELL_SOURCE_CAPACITY=${FROTHY_SHELL_SOURCE_CAPACITY}
+    FROTHY_PARSER_BINDING_CAPACITY=${FROTHY_PARSER_BINDING_CAPACITY}
+    FROTHY_PARSER_SCOPE_CAPACITY=${FROTHY_PARSER_SCOPE_CAPACITY}
+    FROTHY_PARSER_FRAME_CAPACITY=${FROTHY_PARSER_FRAME_CAPACITY}
+    FROTHY_IR_LITERAL_CAPACITY=${FROTHY_IR_LITERAL_CAPACITY}
+    FROTHY_IR_NODE_CAPACITY=${FROTHY_IR_NODE_CAPACITY}
+    FROTHY_IR_LINK_CAPACITY=${FROTHY_IR_LINK_CAPACITY}
   )
 endfunction()
 
@@ -198,6 +212,37 @@ if(FROTHY_BUILD_HOST)
     frothy_generate_board_pin_seed(frothy_snapshot_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
     add_test(NAME frothy_snapshot COMMAND frothy_snapshot_tests)
     set_tests_properties(frothy_snapshot PROPERTIES LABELS "frothy" TIMEOUT 30)
+  endif()
+
+  if(EXISTS "${CMAKE_SOURCE_DIR}/tests/frothy_shell_test.c")
+    add_executable(frothy_shell_tests
+      tests/frothy_shell_test.c
+      src/frothy_base_image.c
+      src/frothy_control.c
+      src/frothy_shell.c
+      src/frothy_inspect.c
+      src/frothy_ir.c
+      src/frothy_parser.c
+      src/frothy_snapshot.c
+      src/frothy_snapshot_codec.c
+      src/frothy_value.c
+      src/frothy_eval.c
+      src/froth_vm.c
+      src/froth_heap.c
+      src/froth_cellspace.c
+      src/froth_slot_table.c
+      src/froth_transport.c
+      src/froth_crc32.c
+      src/frothy_link_stub.c
+      ${FROTH_RUNTIME_SUPPORT_SRCS}
+      src/froth_snapshot.c
+      platforms/${FROTH_PLATFORM}/platform.c
+    )
+    frothy_configure_target(frothy_shell_tests)
+    target_compile_definitions(frothy_shell_tests PRIVATE FROTHY_SHELL_TESTING)
+    frothy_generate_board_pin_seed(frothy_shell_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+    add_test(NAME frothy_shell COMMAND frothy_shell_tests)
+    set_tests_properties(frothy_shell PROPERTIES LABELS "frothy" TIMEOUT 30)
   endif()
 
   if(EXISTS "${CMAKE_SOURCE_DIR}/tests/frothy_ffi_test.c")
