@@ -4,9 +4,29 @@
   "description": "Live board control for Frothy devices",
   "version": "0.1.0",
   "publisher": "frothy",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nikokozak/frothy.git"
+  },
+  "homepage": "https://github.com/nikokozak/frothy",
+  "bugs": {
+    "url": "https://github.com/nikokozak/frothy/issues"
+  },
+  "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
+  "files": [
+    "out/cli-discovery.js",
+    "out/control-session-client.js",
+    "out/extension.js",
+    "out/send-file.js",
+    "out/send-file-reset.js",
+    "syntaxes/**",
+    "language-configuration.json",
+    "README.md",
+    "LICENSE"
+  ],
   "categories": [
     "Programming Languages",
     "Other"
@@ -217,12 +237,15 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
+    "package:vsix": "npm run compile && vsce package --no-yarn",
+    "test:package": "npm run compile && node test/package-smoke.js",
     "watch": "tsc -watch -p ./",
     "test": "npm run compile && node test/control-session-smoke.js && node test/extension-smoke.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
     "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.7.1",
     "typescript": "^5.3.0"
   }
 }

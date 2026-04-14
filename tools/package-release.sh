@@ -41,7 +41,7 @@ trap 'rm -rf "$STAGING_DIR"' EXIT INT TERM
 # release assets.
 cp "$BINARY" "$STAGING_DIR/froth"
 ARCHIVE="$DIST_DIR/$(cli_asset_name "$VERSION" "$GOOS" "$GOARCH")"
-LC_ALL=C tar -C "$STAGING_DIR" -czf "$ARCHIVE" froth
+LC_ALL=C COPYFILE_DISABLE=1 tar -C "$STAGING_DIR" -czf "$ARCHIVE" froth
 
 printf '%s\n' "$ARCHIVE"
-LC_ALL=C tar -tzf "$ARCHIVE"
+LC_ALL=C COPYFILE_DISABLE=1 tar -tzf "$ARCHIVE"
