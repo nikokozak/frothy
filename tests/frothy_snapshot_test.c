@@ -26,7 +26,7 @@ typedef struct {
 
 static bool snapshot_runtime_bootstrapped = false;
 static bool snapshot_platform_initialized = false;
-static const uint16_t frothy_snapshot_version = 1;
+static const uint16_t frothy_snapshot_version = 2;
 
 extern void frothy_snapshot_test_set_error_after_objects(froth_error_t err);
 extern void frothy_boot_test_set_pick_active_error(froth_error_t err);
@@ -285,6 +285,39 @@ static int expect_binding_view(const char *name, bool expected_overlay,
   return ok;
 }
 
+static int expect_binding_render_view(const char *name,
+                               frothy_value_class_t expected_class,
+                               const char *expected_class_name,
+                               const char *expected_render,
+                               const char *label) {
+  frothy_inspect_binding_view_t view = {0};
+  int ok = 1;
+
+  if (frothy_inspect_render_binding_view(runtime(), name, &view) != FROTH_OK) {
+    fprintf(stderr, "%s failed to render binding view for `%s`\n", label, name);
+    return 0;
+  }
+  if (view.value_class != expected_class) {
+    fprintf(stderr, "%s expected class %d for `%s`, got %d\n", label,
+            (int)expected_class, name, (int)view.value_class);
+    ok = 0;
+  }
+  if (strcmp(frothy_inspect_class_name(view.value_class), expected_class_name) !=
+      0) {
+    fprintf(stderr, "%s expected class name `%s` for `%s`, got `%s`\n", label,
+            expected_class_name, name,
+            frothy_inspect_class_name(view.value_class));
+    ok = 0;
+  }
+  if (strcmp(view.rendered, expected_render) != 0) {
+    fprintf(stderr, "%s expected render `%s`, got `%s`\n", label,
+            expected_render, view.rendered);
+    ok = 0;
+  }
+  frothy_inspect_binding_view_free(&view);
+  return ok;
+}
+
 static int expect_snapshot_present(bool expected, const char *label) {
   uint8_t slot = 0;
   uint32_t generation = 0;
@@ -377,6 +410,241 @@ done:
   return ok;
 }
 
+typedef struct {
+  size_t record_def_name_offset;
+  size_t record_field_count_offset;
+  bool found_record_def_name;
+  bool found_record_field_count;
+} record_snapshot_offsets_t;
+
+static int load_active_snapshot_payload(uint8_t **payload_out,
+                                        uint32_t *payload_length_out) {
+  uint8_t slot = 0;
+  uint32_t generation = 0;
+  const char *path;
+  FILE *file = NULL;
+  uint8_t header[FROTH_SNAPSHOT_HEADER_SIZE];
+  froth_snapshot_header_info_t info;
+  uint8_t *payload = NULL;
+  int ok = 0;
+
+  *payload_out = NULL;
+  *payload_length_out = 0;
+  if (froth_snapshot_pick_active(&slot, &generation) != FROTH_OK) {
+    fprintf(stderr, "no active snapshot to load\n");
+    return 0;
+  }
+
+  path = slot == 0 ? FROTH_SNAPSHOT_PATH_A : FROTH_SNAPSHOT_PATH_B;
+  file = fopen(path, "rb");
+  if (file == NULL) {
+    perror("fopen");
+    return 0;
+  }
+  if (fread(header, 1, sizeof(header), file) != sizeof(header)) {
+    perror("fread");
+    goto done;
+  }
+  if (froth_snapshot_parse_header(header, &info) != FROTH_OK) {
+    fprintf(stderr, "failed to parse snapshot header for load\n");
+    goto done;
+  }
+
+  payload = (uint8_t *)malloc(info.payload_len);
+  if (payload == NULL) {
+    fprintf(stderr, "failed to allocate payload load buffer\n");
+    goto done;
+  }
+  if (fread(payload, 1, info.payload_len, file) != info.payload_len) {
+    perror("fread");
+    goto done;
+  }
+
+  *payload_out = payload;
+  *payload_length_out = info.payload_len;
+  payload = NULL;
+  ok = 1;
+
+done:
+  free(payload);
+  fclose(file);
+  return ok;
+}
+
+static int payload_read_u8(const uint8_t *payload, size_t payload_length,
+                           size_t *offset_io, uint8_t *out) {
+  if (*offset_io + 1 > payload_length) {
+    return 0;
+  }
+  *out = payload[*offset_io];
+  *offset_io += 1;
+  return 1;
+}
+
+static int payload_read_u16(const uint8_t *payload, size_t payload_length,
+                            size_t *offset_io, uint16_t *out) {
+  if (*offset_io + 2 > payload_length) {
+    return 0;
+  }
+  *out = (uint16_t)payload[*offset_io] |
+         ((uint16_t)payload[*offset_io + 1] << 8);
+  *offset_io += 2;
+  return 1;
+}
+
+static int payload_read_u32(const uint8_t *payload, size_t payload_length,
+                            size_t *offset_io, uint32_t *out) {
+  if (*offset_io + 4 > payload_length) {
+    return 0;
+  }
+  *out = (uint32_t)payload[*offset_io] |
+         ((uint32_t)payload[*offset_io + 1] << 8) |
+         ((uint32_t)payload[*offset_io + 2] << 16) |
+         ((uint32_t)payload[*offset_io + 3] << 24);
+  *offset_io += 4;
+  return 1;
+}
+
+static int payload_skip_bytes(size_t payload_length, size_t *offset_io,
+                              size_t length) {
+  if (*offset_io + length > payload_length) {
+    return 0;
+  }
+  *offset_io += length;
+  return 1;
+}
+
+static int payload_skip_snapshot_value(const uint8_t *payload,
+                                       size_t payload_length,
+                                       size_t *offset_io) {
+  uint8_t tag = 0;
+  uint32_t ignored = 0;
+
+  if (!payload_read_u8(payload, payload_length, offset_io, &tag)) {
+    return 0;
+  }
+  switch (tag) {
+  case 0:
+  case 1:
+  case 2:
+    return 1;
+  case 3:
+  case 4:
+    return payload_read_u32(payload, payload_length, offset_io, &ignored);
+  default:
+    return 0;
+  }
+}
+
+static int locate_record_snapshot_offsets(record_snapshot_offsets_t *out) {
+  uint8_t *payload = NULL;
+  uint32_t payload_length = 0;
+  size_t offset = 0;
+  uint32_t symbol_count = 0;
+  uint32_t object_count = 0;
+  uint32_t count = 0;
+  uint32_t i;
+  int ok = 0;
+
+  memset(out, 0, sizeof(*out));
+  if (!load_active_snapshot_payload(&payload, &payload_length)) {
+    return 0;
+  }
+
+  if (!payload_skip_bytes(payload_length, &offset, 8) ||
+      !payload_read_u32(payload, payload_length, &offset, &symbol_count)) {
+    goto done;
+  }
+  for (i = 0; i < symbol_count; i++) {
+    uint16_t length = 0;
+
+    if (!payload_read_u16(payload, payload_length, &offset, &length) ||
+        !payload_skip_bytes(payload_length, &offset, length)) {
+      goto done;
+    }
+  }
+
+  if (!payload_read_u32(payload, payload_length, &offset, &object_count)) {
+    goto done;
+  }
+  for (i = 0; i < object_count; i++) {
+    uint8_t kind = 0;
+
+    if (!payload_read_u8(payload, payload_length, &offset, &kind)) {
+      goto done;
+    }
+    switch ((frothy_object_kind_t)kind) {
+    case FROTHY_OBJECT_TEXT:
+      if (!payload_read_u32(payload, payload_length, &offset, &count) ||
+          !payload_skip_bytes(payload_length, &offset, count)) {
+        goto done;
+      }
+      break;
+    case FROTHY_OBJECT_CELLS:
+      if (!payload_read_u32(payload, payload_length, &offset, &count)) {
+        goto done;
+      }
+      while (count-- > 0) {
+        if (!payload_skip_snapshot_value(payload, payload_length, &offset)) {
+          goto done;
+        }
+      }
+      break;
+    case FROTHY_OBJECT_RECORD_DEF: {
+      uint16_t length = 0;
+
+      if (!payload_read_u32(payload, payload_length, &offset, &count) ||
+          !payload_read_u16(payload, payload_length, &offset, &length)) {
+        goto done;
+      }
+      out->record_def_name_offset = offset;
+      out->found_record_def_name = true;
+      if (!payload_skip_bytes(payload_length, &offset, length)) {
+        goto done;
+      }
+      while (count-- > 0) {
+        if (!payload_read_u16(payload, payload_length, &offset, &length) ||
+            !payload_skip_bytes(payload_length, &offset, length)) {
+          goto done;
+        }
+      }
+      break;
+    }
+    case FROTHY_OBJECT_RECORD:
+      if (!payload_skip_bytes(payload_length, &offset, 4)) {
+        goto done;
+      }
+      out->record_field_count_offset = offset;
+      out->found_record_field_count = true;
+      if (!payload_read_u32(payload, payload_length, &offset, &count)) {
+        goto done;
+      }
+      while (count-- > 0) {
+        if (!payload_skip_snapshot_value(payload, payload_length, &offset)) {
+          goto done;
+        }
+      }
+      break;
+    case FROTHY_OBJECT_CODE:
+    case FROTHY_OBJECT_NATIVE:
+    case FROTHY_OBJECT_FREE:
+    default:
+      fprintf(stderr, "unexpected object kind %u in record snapshot helper\n",
+              (unsigned)kind);
+      goto done;
+    }
+  }
+
+  ok = out->found_record_def_name && out->found_record_field_count;
+
+done:
+  if (!ok) {
+    fprintf(stderr, "failed to locate record snapshot offsets\n");
+  }
+  free(payload);
+  return ok;
+}
+
 static int write_simple_text_snapshot(void) {
   frothy_value_t value = frothy_value_make_nil();
   int ok = 1;
@@ -385,6 +653,20 @@ static int write_simple_text_snapshot(void) {
   release_value(&value);
   ok &= expect_ok("save()", &value);
   ok &= expect_nil_value(value, "save()");
+  release_value(&value);
+  return ok;
+}
+
+static int write_simple_record_snapshot(void) {
+  frothy_value_t value = frothy_value_make_nil();
+  int ok = 1;
+
+  ok &= expect_ok("record Point [ x, y ]", &value);
+  release_value(&value);
+  ok &= expect_ok("point = Point: 10, 20", &value);
+  release_value(&value);
+  ok &= expect_ok("save()", &value);
+  ok &= expect_nil_value(value, "save() record snapshot");
   release_value(&value);
   return ok;
 }
@@ -767,6 +1049,8 @@ static int test_corrupt_snapshot_failures_reset_to_base(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
   uint16_t bad_version = frothy_snapshot_version + 1;
+  uint32_t bad_versions =
+      ((uint32_t)bad_version << 16) | (uint32_t)bad_version;
   uint32_t bad_binding_count = 2;
   uint32_t bad_object_index = 99;
   uint8_t bad_name_byte = '\0';
@@ -778,8 +1062,8 @@ static int test_corrupt_snapshot_failures_reset_to_base(void) {
   }
 
   ok &= write_simple_text_snapshot();
-  ok &= patch_active_snapshot_payload(payload_version_offset, &bad_version,
-                                      sizeof(bad_version), true);
+  ok &= patch_active_snapshot_payload(payload_version_offset, &bad_versions,
+                                      sizeof(bad_versions), true);
   ok &= expect_ok("junk = 1", &value);
   release_value(&value);
   ok &= expect_error("restore()", FROTH_ERROR_SNAPSHOT_INCOMPAT);
@@ -1620,6 +1904,145 @@ static int test_wipe_inside_nested_call_unwinds_cleanly(void) {
   return ok;
 }
 
+static int test_record_roundtrip_and_truthful_inspection(void) {
+  temp_workspace_t workspace = {{0}};
+  frothy_value_t value = frothy_value_make_nil();
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+
+  ok &= expect_ok("record Point [ x, y ]", &value);
+  release_value(&value);
+  ok &= expect_ok("point = Point: 10, 20", &value);
+  release_value(&value);
+  ok &= expect_ok("frame = cells(1)", &value);
+  release_value(&value);
+  ok &= expect_ok("set frame[0] = point", &value);
+  release_value(&value);
+  ok &= expect_binding_render_view("Point", FROTHY_VALUE_CLASS_RECORD_DEF,
+                            "record-def",
+                            "record Point [ x, y ]", "record def before save");
+  ok &= expect_binding_render_view("point", FROTHY_VALUE_CLASS_RECORD, "record",
+                            "Point: 10, 20", "record before save");
+
+  ok &= expect_ok("save()", &value);
+  ok &= expect_nil_value(value, "save() record roundtrip");
+  release_value(&value);
+
+  ok &= expect_ok("record Point [ z ]", &value);
+  release_value(&value);
+  ok &= expect_ok("point = Point: 99", &value);
+  release_value(&value);
+  ok &= expect_ok("restore()", &value);
+  ok &= expect_nil_value(value, "restore() record roundtrip");
+  release_value(&value);
+
+  ok &= expect_binding_render_view("Point", FROTHY_VALUE_CLASS_RECORD_DEF,
+                            "record-def",
+                            "record Point [ x, y ]",
+                            "record def after restore");
+  ok &= expect_binding_render_view("point", FROTHY_VALUE_CLASS_RECORD, "record",
+                            "Point: 10, 20", "record after restore");
+  ok &= expect_ok("point->x", &value);
+  ok &= expect_int_value(value, 10, "point->x after restore");
+  release_value(&value);
+  ok &= expect_ok("frame[0]->y", &value);
+  ok &= expect_int_value(value, 20, "frame[0]->y after restore");
+  release_value(&value);
+  ok &= expect_ok("restoredPoint = Point: 1, 2", &value);
+  release_value(&value);
+  ok &= expect_binding_render_view("restoredPoint", FROTHY_VALUE_CLASS_RECORD, "record",
+                            "Point: 1, 2",
+                            "restored constructor after restore");
+  ok &= expect_error("Point: 1", FROTH_ERROR_SIGNATURE);
+
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
+static int test_record_cycle_save_rejection(void) {
+  temp_workspace_t workspace = {{0}};
+  frothy_value_t value = frothy_value_make_nil();
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+
+  ok &= expect_ok("record Node [ next ]", &value);
+  release_value(&value);
+  ok &= expect_ok("node = Node: nil", &value);
+  release_value(&value);
+  ok &= expect_ok("set node->next to node", &value);
+  release_value(&value);
+  ok &= expect_binding_render_view("node", FROTHY_VALUE_CLASS_RECORD, "record",
+                            "Node: <cycle>", "cyclic record render");
+  ok &= expect_error("save()", FROTH_ERROR_NOT_PERSISTABLE);
+  ok &= expect_snapshot_present(false, "no snapshot after cyclic record save");
+  ok &= expect_ok("node->next", &value);
+  release_value(&value);
+  ok &= expect_ok("1", &value);
+  ok &= expect_int_value(value, 1, "prompt usable after cyclic save failure");
+  release_value(&value);
+
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
+static int test_record_snapshot_rejects_mismatched_record_def_name(void) {
+  temp_workspace_t workspace = {{0}};
+  frothy_value_t value = frothy_value_make_nil();
+  record_snapshot_offsets_t offsets;
+  uint8_t bad_name_byte = 'Q';
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+
+  ok &= write_simple_record_snapshot();
+  ok &= locate_record_snapshot_offsets(&offsets);
+  ok &= patch_active_snapshot_payload(offsets.record_def_name_offset,
+                                      &bad_name_byte, sizeof(bad_name_byte),
+                                      true);
+  ok &= expect_ok("junk = 1", &value);
+  release_value(&value);
+  ok &= expect_error("restore()", FROTH_ERROR_SNAPSHOT_BAD_NAME);
+  ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
+  ok &= expect_error("Point", FROTH_ERROR_UNDEFINED_WORD);
+
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
+static int test_record_snapshot_rejects_record_arity_mismatch(void) {
+  temp_workspace_t workspace = {{0}};
+  frothy_value_t value = frothy_value_make_nil();
+  record_snapshot_offsets_t offsets;
+  uint32_t bad_field_count = 1;
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+
+  ok &= write_simple_record_snapshot();
+  ok &= locate_record_snapshot_offsets(&offsets);
+  ok &= patch_active_snapshot_payload(offsets.record_field_count_offset,
+                                      &bad_field_count,
+                                      sizeof(bad_field_count), true);
+  ok &= expect_ok("junk = 1", &value);
+  release_value(&value);
+  ok &= expect_error("restore()", FROTH_ERROR_SNAPSHOT_FORMAT);
+  ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
+  ok &= expect_error("Point", FROTH_ERROR_UNDEFINED_WORD);
+
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
 static int test_non_persistable_rejection(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t native_value = frothy_value_make_nil();
@@ -1669,6 +2092,10 @@ int main(void) {
   ok &= test_repeated_near_capacity_save_restore();
   ok &= test_decode_failure_after_reset_re_resets_to_base();
   ok &= test_wipe_inside_nested_call_unwinds_cleanly();
+  ok &= test_record_roundtrip_and_truthful_inspection();
+  ok &= test_record_cycle_save_rejection();
+  ok &= test_record_snapshot_rejects_mismatched_record_def_name();
+  ok &= test_record_snapshot_rejects_record_arity_mismatch();
   ok &= test_non_persistable_rejection();
   ok &= test_slot_info_errors();
   ok &= test_inspect_report_formatting();

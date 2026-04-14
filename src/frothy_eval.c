@@ -193,6 +193,7 @@ static froth_error_t frothy_slot_read_owned(const char *slot_name,
 
 static froth_error_t frothy_slot_update_arity(froth_cell_u_t slot_index,
                                               frothy_value_t value) {
+  const char *record_name = NULL;
   size_t arity = 0;
 
   if (frothy_runtime_get_code(frothy_runtime(), value, NULL, NULL, &arity,
@@ -202,6 +203,11 @@ static froth_error_t frothy_slot_update_arity(froth_cell_u_t slot_index,
   }
   if (frothy_runtime_get_native(frothy_runtime(), value, NULL, NULL, NULL,
                                 &arity) == FROTH_OK &&
+      arity < FROTH_SLOT_ARITY_UNKNOWN) {
+    return froth_slot_set_arity(slot_index, (uint8_t)arity, 1);
+  }
+  if (frothy_runtime_get_record_def(frothy_runtime(), value, &record_name,
+                                    &arity) == FROTH_OK &&
       arity < FROTH_SLOT_ARITY_UNKNOWN) {
     return froth_slot_set_arity(slot_index, (uint8_t)arity, 1);
   }
@@ -306,10 +312,12 @@ static froth_error_t frothy_cells_value_allowed(frothy_value_t value) {
   case FROTHY_VALUE_CLASS_BOOL:
   case FROTHY_VALUE_CLASS_NIL:
   case FROTHY_VALUE_CLASS_TEXT:
+  case FROTHY_VALUE_CLASS_RECORD:
     return FROTH_OK;
   case FROTHY_VALUE_CLASS_CELLS:
   case FROTHY_VALUE_CLASS_CODE:
   case FROTHY_VALUE_CLASS_NATIVE:
+  case FROTHY_VALUE_CLASS_RECORD_DEF:
     return FROTH_ERROR_TYPE_MISMATCH;
   }
 
@@ -347,6 +355,35 @@ static froth_error_t frothy_write_index_owned(frothy_value_t base_value,
   FROTH_TRY(frothy_value_release(runtime, old_value));
   runtime->cellspace->data[base + offset] = frothy_value_to_cell(stored_value);
   return FROTH_OK;
+}
+
+static froth_error_t frothy_record_field_ir_name(
+    const frothy_ir_program_t *program, size_t first_field, size_t field_index,
+    const char **field_name_out) {
+  frothy_ir_literal_id_t literal_id;
+
+  literal_id = (frothy_ir_literal_id_t)program->links[first_field + field_index];
+  if (literal_id >= program->literal_count ||
+      program->literals[literal_id].kind != FROTHY_IR_LITERAL_TEXT) {
+    return FROTH_ERROR_SIGNATURE;
+  }
+
+  *field_name_out = program->literals[literal_id].as.text_value;
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_read_field_owned(frothy_value_t base_value,
+                                             const char *field_name,
+                                             frothy_value_t *out) {
+  return frothy_runtime_record_read_field(frothy_runtime(), base_value,
+                                          field_name, out);
+}
+
+static froth_error_t frothy_write_field_owned(frothy_value_t base_value,
+                                              const char *field_name,
+                                              frothy_value_t stored_value) {
+  return frothy_runtime_record_write_field(frothy_runtime(), base_value,
+                                           field_name, stored_value);
 }
 
 static froth_error_t frothy_eval_builtin(frothy_ir_builtin_kind_t builtin,
@@ -496,11 +533,13 @@ static froth_error_t frothy_eval_call(const frothy_ir_program_t *program,
     const frothy_ir_program_t *callee_program = NULL;
     frothy_native_fn_t native_fn = NULL;
     const void *native_context = NULL;
+    const char *record_name = NULL;
     frothy_ir_node_id_t body = FROTHY_IR_NODE_INVALID;
     size_t arity = 0;
     size_t callee_local_count = 0;
     frothy_frame_t frame;
     uint32_t reset_epoch = frothy_runtime()->reset_epoch;
+    bool is_record_def = false;
 
     memset(&frame, 0, sizeof(frame));
     err = frothy_runtime_get_code(frothy_runtime(), callee, &callee_program, &body,
@@ -509,6 +548,13 @@ static froth_error_t frothy_eval_call(const frothy_ir_program_t *program,
       err = frothy_runtime_get_native(frothy_runtime(), callee, &native_fn,
                                       &native_context,
                                       NULL, &arity);
+      if (err == FROTH_ERROR_TYPE_MISMATCH) {
+        err = frothy_runtime_get_record_def(frothy_runtime(), callee,
+                                            &record_name, &arity);
+        if (err == FROTH_OK) {
+          is_record_def = true;
+        }
+      }
     }
     if (err != FROTH_OK) {
       frothy_release_ignored(frothy_runtime(), callee);
@@ -542,6 +588,40 @@ static froth_error_t frothy_eval_call(const frothy_ir_program_t *program,
 
       err = native_fn(frothy_runtime(), native_context, args.values,
                       node->as.call.arg_count, out);
+      if (frothy_reset_epoch_matches(reset_epoch)) {
+        frothy_release_ignored(frothy_runtime(), callee);
+      }
+      frothy_eval_buffer_free(frothy_runtime(), &args);
+      if (!frothy_reset_epoch_matches(reset_epoch) && err == FROTH_OK) {
+        return frothy_eval_reset_sentinel(out);
+      }
+      return err;
+    }
+
+    if (is_record_def) {
+      err = frothy_eval_buffer_init(&args, node->as.call.arg_count);
+      if (err != FROTH_OK) {
+        frothy_release_ignored(frothy_runtime(), callee);
+        return err;
+      }
+      err = frothy_eval_children(program, locals, local_count,
+                                 node->as.call.first_arg,
+                                 node->as.call.arg_count, args.values);
+      if (err != FROTH_OK) {
+        frothy_eval_buffer_free(frothy_runtime(), &args);
+        if (frothy_reset_epoch_matches(reset_epoch)) {
+          frothy_release_ignored(frothy_runtime(), callee);
+        }
+        return err;
+      }
+      if (!frothy_reset_epoch_matches(reset_epoch)) {
+        frothy_eval_buffer_free(frothy_runtime(), &args);
+        return frothy_eval_reset_sentinel(out);
+      }
+
+      (void)record_name;
+      err = frothy_runtime_alloc_record(frothy_runtime(), callee, args.values,
+                                        node->as.call.arg_count, out);
       if (frothy_reset_epoch_matches(reset_epoch)) {
         frothy_release_ignored(frothy_runtime(), callee);
       }
@@ -761,6 +841,27 @@ static froth_error_t frothy_eval_node(const frothy_ir_program_t *program,
   case FROTHY_IR_NODE_SLOT_DESIGNATOR:
     return frothy_value_make_slot_designator(node->as.slot_designator.slot_name,
                                              out);
+  case FROTHY_IR_NODE_RECORD_DEF: {
+    const char *field_names[FROTHY_IR_LINK_CAPACITY];
+    size_t i;
+
+    if (node->as.record_def.field_count == 0 ||
+        node->as.record_def.field_count > FROTHY_IR_LINK_CAPACITY ||
+        node->as.record_def.first_field > program->link_count ||
+        node->as.record_def.field_count >
+            program->link_count - node->as.record_def.first_field) {
+      return FROTH_ERROR_SIGNATURE;
+    }
+    for (i = 0; i < node->as.record_def.field_count; i++) {
+      FROTH_TRY(frothy_record_field_ir_name(program,
+                                            node->as.record_def.first_field, i,
+                                            &field_names[i]));
+    }
+    return frothy_runtime_alloc_record_def(frothy_runtime(),
+                                           node->as.record_def.record_name,
+                                           field_names,
+                                           node->as.record_def.field_count, out);
+  }
   case FROTHY_IR_NODE_READ_INDEX: {
     frothy_value_t base_value;
     frothy_value_t index_value;
@@ -802,6 +903,39 @@ static froth_error_t frothy_eval_node(const frothy_ir_program_t *program,
 
     err = frothy_write_index_owned(base_value, index_value, stored_value);
     frothy_release_ignored(frothy_runtime(), index_value);
+    frothy_release_ignored(frothy_runtime(), base_value);
+    if (err != FROTH_OK) {
+      frothy_release_ignored(frothy_runtime(), stored_value);
+      return err;
+    }
+    *out = frothy_value_make_nil();
+    return FROTH_OK;
+  }
+  case FROTHY_IR_NODE_READ_FIELD: {
+    frothy_value_t base_value;
+
+    FROTH_TRY(frothy_eval_node(program, locals, local_count,
+                               node->as.read_field.base, &base_value));
+    err = frothy_read_field_owned(base_value, node->as.read_field.field_name,
+                                  out);
+    frothy_release_ignored(frothy_runtime(), base_value);
+    return err;
+  }
+  case FROTHY_IR_NODE_WRITE_FIELD: {
+    frothy_value_t base_value;
+    frothy_value_t stored_value;
+
+    FROTH_TRY(frothy_eval_node(program, locals, local_count,
+                               node->as.write_field.base, &base_value));
+    err = frothy_eval_node(program, locals, local_count,
+                           node->as.write_field.value, &stored_value);
+    if (err != FROTH_OK) {
+      frothy_release_ignored(frothy_runtime(), base_value);
+      return err;
+    }
+
+    err = frothy_write_field_owned(base_value, node->as.write_field.field_name,
+                                   stored_value);
     frothy_release_ignored(frothy_runtime(), base_value);
     if (err != FROTH_OK) {
       frothy_release_ignored(frothy_runtime(), stored_value);

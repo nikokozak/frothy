@@ -72,12 +72,10 @@ func TestIntegrationToolingControlSessionLocalRuntime(t *testing.T) {
 		"command": "core",
 		"name":    "save",
 	})
-	if event := session.next(t); event["event"] != "output" {
-		t.Fatalf("core output event = %v", event)
-	} else if !bytes.Contains(decodeOutput(t, event), []byte("<native save/0>")) {
-		t.Fatalf("core output = %q, want native save rendering", decodeOutput(t, event))
+	coreResponse, coreOutput := session.expectValueCycleWithOutput(t, 5)
+	if !bytes.Contains(coreOutput, []byte("<native save/0>")) {
+		t.Fatalf("core output = %q, want native save rendering", coreOutput)
 	}
-	coreResponse := session.expectValueCycle(t, 5)
 	if got := textResult(t, coreResponse); got != "nil" {
 		t.Fatalf("core result = %q, want nil", got)
 	}
@@ -185,6 +183,42 @@ func (s *controlSessionCLI) next(t *testing.T) map[string]any {
 }
 
 func (s *controlSessionCLI) expectValueCycle(t *testing.T, requestID float64) map[string]any {
+	t.Helper()
+
+	response, _ := s.expectValueCycleWithOutput(t, requestID)
+	return response
+}
+
+func (s *controlSessionCLI) expectValueCycleWithOutput(t *testing.T, requestID float64) (map[string]any, []byte) {
+	t.Helper()
+
+	var output bytes.Buffer
+
+	for {
+		event := s.next(t)
+		if event["event"] == "output" {
+			output.Write(decodeOutput(t, event))
+			continue
+		}
+		if event["event"] != "value" {
+			t.Fatalf("value event = %v", event)
+		}
+		break
+	}
+	if event := s.next(t); event["event"] != "idle" {
+		t.Fatalf("idle event = %v", event)
+	}
+	response := s.next(t)
+	if response["ok"] != true {
+		t.Fatalf("response = %v", response)
+	}
+	if response["id"] != requestID {
+		t.Fatalf("response id = %v, want %v", response["id"], requestID)
+	}
+	return response, output.Bytes()
+}
+
+func (s *controlSessionCLI) expectValueCycleNoOutput(t *testing.T, requestID float64) map[string]any {
 	t.Helper()
 
 	if event := s.next(t); event["event"] != "value" {

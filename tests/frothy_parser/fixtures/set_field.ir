@@ -1,0 +1,1 @@
+(write-field (read-slot "point") "x" (lit 11))

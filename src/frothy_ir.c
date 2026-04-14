@@ -178,6 +178,18 @@ static froth_error_t frothy_ir_program_string_bytes(
       FROTH_TRY(frothy_ir_add_size(
           string_bytes, strlen(node->as.slot_designator.slot_name) + 1,
           &string_bytes));
+    } else if (node->kind == FROTHY_IR_NODE_RECORD_DEF) {
+      FROTH_TRY(frothy_ir_add_size(
+          string_bytes, strlen(node->as.record_def.record_name) + 1,
+          &string_bytes));
+    } else if (node->kind == FROTHY_IR_NODE_READ_FIELD) {
+      FROTH_TRY(frothy_ir_add_size(
+          string_bytes, strlen(node->as.read_field.field_name) + 1,
+          &string_bytes));
+    } else if (node->kind == FROTHY_IR_NODE_WRITE_FIELD) {
+      FROTH_TRY(frothy_ir_add_size(
+          string_bytes, strlen(node->as.write_field.field_name) + 1,
+          &string_bytes));
     }
   }
 
@@ -240,6 +252,17 @@ frothy_ir_render_literal(const frothy_ir_program_t *program,
     break;
   }
   return frothy_sb_append_char(builder, ')');
+}
+
+static const char *frothy_ir_text_literal_value(const frothy_ir_program_t *program,
+                                                frothy_ir_literal_id_t literal_id) {
+  if (literal_id >= program->literal_count) {
+    return NULL;
+  }
+  if (program->literals[literal_id].kind != FROTHY_IR_LITERAL_TEXT) {
+    return NULL;
+  }
+  return program->literals[literal_id].as.text_value;
 }
 
 static froth_error_t frothy_ir_render_node_list(const frothy_ir_program_t *program,
@@ -314,6 +337,26 @@ static froth_error_t frothy_ir_render_node(const frothy_ir_program_t *program,
     FROTH_TRY(
         frothy_ir_render_quoted(node->as.slot_designator.slot_name, builder));
     return frothy_sb_append_char(builder, ')');
+  case FROTHY_IR_NODE_RECORD_DEF: {
+    size_t i;
+
+    FROTH_TRY(frothy_sb_append_text(builder, "(record-def "));
+    FROTH_TRY(
+        frothy_ir_render_quoted(node->as.record_def.record_name, builder));
+    for (i = 0; i < node->as.record_def.field_count; i++) {
+      const char *field_name = frothy_ir_text_literal_value(
+          program,
+          (frothy_ir_literal_id_t)program->links[node->as.record_def.first_field +
+                                                 i]);
+
+      if (field_name == NULL) {
+        return FROTH_ERROR_SIGNATURE;
+      }
+      FROTH_TRY(frothy_sb_append_char(builder, ' '));
+      FROTH_TRY(frothy_ir_render_quoted(field_name, builder));
+    }
+    return frothy_sb_append_char(builder, ')');
+  }
   case FROTHY_IR_NODE_READ_INDEX:
     FROTH_TRY(frothy_sb_append_text(builder, "(read-index "));
     FROTH_TRY(frothy_ir_render_node(program, node->as.read_index.base, builder));
@@ -331,6 +374,21 @@ static froth_error_t frothy_ir_render_node(const frothy_ir_program_t *program,
     FROTH_TRY(frothy_sb_append_char(builder, ' '));
     FROTH_TRY(
         frothy_ir_render_node(program, node->as.write_index.value, builder));
+    return frothy_sb_append_char(builder, ')');
+  case FROTHY_IR_NODE_READ_FIELD:
+    FROTH_TRY(frothy_sb_append_text(builder, "(read-field "));
+    FROTH_TRY(frothy_ir_render_node(program, node->as.read_field.base, builder));
+    FROTH_TRY(frothy_sb_append_char(builder, ' '));
+    FROTH_TRY(frothy_ir_render_quoted(node->as.read_field.field_name, builder));
+    return frothy_sb_append_char(builder, ')');
+  case FROTHY_IR_NODE_WRITE_FIELD:
+    FROTH_TRY(frothy_sb_append_text(builder, "(write-field "));
+    FROTH_TRY(frothy_ir_render_node(program, node->as.write_field.base, builder));
+    FROTH_TRY(frothy_sb_append_char(builder, ' '));
+    FROTH_TRY(frothy_ir_render_quoted(node->as.write_field.field_name, builder));
+    FROTH_TRY(frothy_sb_append_char(builder, ' '));
+    FROTH_TRY(
+        frothy_ir_render_node(program, node->as.write_field.value, builder));
     return frothy_sb_append_char(builder, ')');
   case FROTHY_IR_NODE_FN:
     FROTH_TRY(frothy_sb_appendf(builder, "(fn arity=%zu locals=%zu ",
@@ -1074,6 +1132,29 @@ frothy_ir_render_surface_expr(const frothy_surface_render_t *render,
   case FROTHY_IR_NODE_SLOT_DESIGNATOR:
     FROTH_TRY(frothy_sb_append_char(builder, '@'));
     return frothy_sb_append_text(builder, node->as.slot_designator.slot_name);
+  case FROTHY_IR_NODE_RECORD_DEF: {
+    size_t i;
+
+    FROTH_TRY(frothy_sb_append_text(builder, "record "));
+    FROTH_TRY(
+        frothy_sb_append_text(builder, node->as.record_def.record_name));
+    FROTH_TRY(frothy_sb_append_text(builder, " [ "));
+    for (i = 0; i < node->as.record_def.field_count; i++) {
+      const char *field_name = frothy_ir_text_literal_value(
+          render->program,
+          (frothy_ir_literal_id_t)render->program
+              ->links[node->as.record_def.first_field + i]);
+
+      if (field_name == NULL) {
+        return FROTH_ERROR_SIGNATURE;
+      }
+      if (i != 0) {
+        FROTH_TRY(frothy_sb_append_text(builder, ", "));
+      }
+      FROTH_TRY(frothy_sb_append_text(builder, field_name));
+    }
+    return frothy_sb_append_text(builder, " ]");
+  }
   case FROTHY_IR_NODE_READ_INDEX:
     FROTH_TRY(
         frothy_ir_render_surface_expr(render, node->as.read_index.base, builder));
@@ -1090,6 +1171,20 @@ frothy_ir_render_surface_expr(const frothy_surface_render_t *render,
                                             builder));
     FROTH_TRY(frothy_sb_append_text(builder, "] to "));
     return frothy_ir_render_surface_expr(render, node->as.write_index.value,
+                                         builder);
+  case FROTHY_IR_NODE_READ_FIELD:
+    FROTH_TRY(
+        frothy_ir_render_surface_expr(render, node->as.read_field.base, builder));
+    FROTH_TRY(frothy_sb_append_text(builder, "->"));
+    return frothy_sb_append_text(builder, node->as.read_field.field_name);
+  case FROTHY_IR_NODE_WRITE_FIELD:
+    FROTH_TRY(frothy_sb_append_text(builder, "set "));
+    FROTH_TRY(
+        frothy_ir_render_surface_expr(render, node->as.write_field.base, builder));
+    FROTH_TRY(frothy_sb_append_text(builder, "->"));
+    FROTH_TRY(frothy_sb_append_text(builder, node->as.write_field.field_name));
+    FROTH_TRY(frothy_sb_append_text(builder, " to "));
+    return frothy_ir_render_surface_expr(render, node->as.write_field.value,
                                          builder);
   case FROTHY_IR_NODE_FN: {
     frothy_surface_render_t child = {
@@ -1262,6 +1357,12 @@ void frothy_ir_program_free(frothy_ir_program_t *program) {
       free(program->nodes[i].as.write_slot_fallback.fallback_slot_name);
     } else if (program->nodes[i].kind == FROTHY_IR_NODE_SLOT_DESIGNATOR) {
       free(program->nodes[i].as.slot_designator.slot_name);
+    } else if (program->nodes[i].kind == FROTHY_IR_NODE_RECORD_DEF) {
+      free(program->nodes[i].as.record_def.record_name);
+    } else if (program->nodes[i].kind == FROTHY_IR_NODE_READ_FIELD) {
+      free(program->nodes[i].as.read_field.field_name);
+    } else if (program->nodes[i].kind == FROTHY_IR_NODE_WRITE_FIELD) {
+      free(program->nodes[i].as.write_field.field_name);
     }
   }
 
@@ -1457,6 +1558,27 @@ froth_error_t frothy_ir_program_clone(const frothy_ir_program_t *source,
           frothy_ir_program_free(dest);
           return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
         }
+      } else if (source->nodes[i].kind == FROTHY_IR_NODE_RECORD_DEF) {
+        dest->nodes[i].as.record_def.record_name =
+            strdup(source->nodes[i].as.record_def.record_name);
+        if (dest->nodes[i].as.record_def.record_name == NULL) {
+          frothy_ir_program_free(dest);
+          return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+        }
+      } else if (source->nodes[i].kind == FROTHY_IR_NODE_READ_FIELD) {
+        dest->nodes[i].as.read_field.field_name =
+            strdup(source->nodes[i].as.read_field.field_name);
+        if (dest->nodes[i].as.read_field.field_name == NULL) {
+          frothy_ir_program_free(dest);
+          return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+        }
+      } else if (source->nodes[i].kind == FROTHY_IR_NODE_WRITE_FIELD) {
+        dest->nodes[i].as.write_field.field_name =
+            strdup(source->nodes[i].as.write_field.field_name);
+        if (dest->nodes[i].as.write_field.field_name == NULL) {
+          frothy_ir_program_free(dest);
+          return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+        }
       }
     }
   }
@@ -1548,6 +1670,18 @@ froth_error_t frothy_ir_program_clone_packed(const frothy_ir_program_t *source,
       FROTH_TRY(frothy_ir_copy_packed_string(
           source->nodes[i].as.slot_designator.slot_name, &string_cursor,
           storage_end, &dest->nodes[i].as.slot_designator.slot_name));
+    } else if (source->nodes[i].kind == FROTHY_IR_NODE_RECORD_DEF) {
+      FROTH_TRY(frothy_ir_copy_packed_string(
+          source->nodes[i].as.record_def.record_name, &string_cursor,
+          storage_end, &dest->nodes[i].as.record_def.record_name));
+    } else if (source->nodes[i].kind == FROTHY_IR_NODE_READ_FIELD) {
+      FROTH_TRY(frothy_ir_copy_packed_string(
+          source->nodes[i].as.read_field.field_name, &string_cursor,
+          storage_end, &dest->nodes[i].as.read_field.field_name));
+    } else if (source->nodes[i].kind == FROTHY_IR_NODE_WRITE_FIELD) {
+      FROTH_TRY(frothy_ir_copy_packed_string(
+          source->nodes[i].as.write_field.field_name, &string_cursor,
+          storage_end, &dest->nodes[i].as.write_field.field_name));
     }
   }
 

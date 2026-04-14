@@ -70,8 +70,11 @@ typedef enum {
   FROTHY_IR_NODE_READ_SLOT_FALLBACK,
   FROTHY_IR_NODE_WRITE_SLOT_FALLBACK,
   FROTHY_IR_NODE_SLOT_DESIGNATOR,
+  FROTHY_IR_NODE_RECORD_DEF,
   FROTHY_IR_NODE_READ_INDEX,
   FROTHY_IR_NODE_WRITE_INDEX,
+  FROTHY_IR_NODE_READ_FIELD,
+  FROTHY_IR_NODE_WRITE_FIELD,
   FROTHY_IR_NODE_FN,
   FROTHY_IR_NODE_CALL,
   FROTHY_IR_NODE_IF,
@@ -114,6 +117,11 @@ typedef struct {
       char *slot_name;
     } slot_designator;
     struct {
+      char *record_name;
+      size_t first_field;
+      size_t field_count;
+    } record_def;
+    struct {
       frothy_ir_node_id_t base;
       frothy_ir_node_id_t index;
     } read_index;
@@ -122,6 +130,15 @@ typedef struct {
       frothy_ir_node_id_t index;
       frothy_ir_node_id_t value;
     } write_index;
+    struct {
+      frothy_ir_node_id_t base;
+      char *field_name;
+    } read_field;
+    struct {
+      frothy_ir_node_id_t base;
+      char *field_name;
+      frothy_ir_node_id_t value;
+    } write_field;
     struct {
       size_t arity;
       size_t local_count;

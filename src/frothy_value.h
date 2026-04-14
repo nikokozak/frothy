@@ -41,6 +41,8 @@ typedef enum {
   FROTHY_VALUE_CLASS_CELLS,
   FROTHY_VALUE_CLASS_CODE,
   FROTHY_VALUE_CLASS_NATIVE,
+  FROTHY_VALUE_CLASS_RECORD_DEF,
+  FROTHY_VALUE_CLASS_RECORD,
 } frothy_value_class_t;
 
 typedef enum {
@@ -49,6 +51,8 @@ typedef enum {
   FROTHY_OBJECT_CELLS = 2,
   FROTHY_OBJECT_CODE = 3,
   FROTHY_OBJECT_NATIVE = 4,
+  FROTHY_OBJECT_RECORD_DEF = 5,
+  FROTHY_OBJECT_RECORD = 6,
 } frothy_object_kind_t;
 
 typedef struct {
@@ -86,6 +90,15 @@ typedef struct {
       const char *name;
       size_t arity;
     } native;
+    struct {
+      frothy_payload_span_t payload;
+      size_t field_count;
+    } record_def;
+    struct {
+      frothy_payload_span_t payload;
+      frothy_value_t definition;
+      size_t field_count;
+    } record;
   } as;
 } frothy_object_t;
 
@@ -226,3 +239,38 @@ froth_error_t frothy_runtime_get_native(const frothy_runtime_t *runtime,
                                         const void **context_out,
                                         const char **name_out,
                                         size_t *arity_out);
+
+froth_error_t frothy_runtime_alloc_record_def(frothy_runtime_t *runtime,
+                                              const char *name,
+                                              const char *const *field_names,
+                                              size_t field_count,
+                                              frothy_value_t *out);
+froth_error_t frothy_runtime_get_record_def(const frothy_runtime_t *runtime,
+                                            frothy_value_t value,
+                                            const char **name_out,
+                                            size_t *field_count_out);
+froth_error_t frothy_runtime_record_def_field_name(
+    const frothy_runtime_t *runtime, frothy_value_t value, size_t field_index,
+    const char **field_name_out);
+froth_error_t frothy_runtime_record_def_field_index(
+    const frothy_runtime_t *runtime, frothy_value_t value, const char *field_name,
+    size_t *field_index_out);
+
+froth_error_t frothy_runtime_alloc_record(frothy_runtime_t *runtime,
+                                          frothy_value_t definition,
+                                          const frothy_value_t *fields,
+                                          size_t field_count,
+                                          frothy_value_t *out);
+froth_error_t frothy_runtime_get_record(const frothy_runtime_t *runtime,
+                                        frothy_value_t value,
+                                        frothy_value_t *definition_out,
+                                        size_t *field_count_out,
+                                        const frothy_value_t **fields_out);
+froth_error_t frothy_runtime_record_read_field(const frothy_runtime_t *runtime,
+                                               frothy_value_t value,
+                                               const char *field_name,
+                                               frothy_value_t *out);
+froth_error_t frothy_runtime_record_write_field(frothy_runtime_t *runtime,
+                                                frothy_value_t value,
+                                                const char *field_name,
+                                                frothy_value_t stored_value);
