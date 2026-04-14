@@ -23,6 +23,18 @@
 #define FROTHY_PAYLOAD_CAPACITY 16384
 #endif
 
+#ifndef FROTHY_FFI_ERROR_KIND_CAPACITY
+#define FROTHY_FFI_ERROR_KIND_CAPACITY 32
+#endif
+
+#ifndef FROTHY_FFI_ERROR_ORIGIN_CAPACITY
+#define FROTHY_FFI_ERROR_ORIGIN_CAPACITY 64
+#endif
+
+#ifndef FROTHY_FFI_ERROR_DETAIL_CAPACITY
+#define FROTHY_FFI_ERROR_DETAIL_CAPACITY 160
+#endif
+
 typedef uint32_t frothy_value_t;
 
 typedef struct frothy_runtime_t frothy_runtime_t;
@@ -128,6 +140,14 @@ struct frothy_runtime_t {
   size_t eval_value_high_water;
 
   froth_cellspace_t *cellspace;
+
+  froth_error_t last_ffi_error_code;
+  const char *last_ffi_error_kind;
+  const char *last_ffi_error_origin;
+  const char *last_ffi_error_detail;
+  char last_ffi_error_kind_storage[FROTHY_FFI_ERROR_KIND_CAPACITY];
+  char last_ffi_error_origin_storage[FROTHY_FFI_ERROR_ORIGIN_CAPACITY];
+  char last_ffi_error_detail_storage[FROTHY_FFI_ERROR_DETAIL_CAPACITY];
 
   size_t test_object_limit;
   bool test_fail_next_append;
@@ -245,6 +265,10 @@ froth_error_t frothy_runtime_alloc_record_def(frothy_runtime_t *runtime,
                                               const char *const *field_names,
                                               size_t field_count,
                                               frothy_value_t *out);
+froth_error_t frothy_runtime_alloc_record_def_from_ir(
+    frothy_runtime_t *runtime, const char *name,
+    const frothy_ir_program_t *program, size_t first_field, size_t field_count,
+    frothy_value_t *out);
 froth_error_t frothy_runtime_get_record_def(const frothy_runtime_t *runtime,
                                             frothy_value_t value,
                                             const char **name_out,

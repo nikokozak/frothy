@@ -11,10 +11,10 @@ If this file and the roadmap disagree, the roadmap wins.
 
 ## Current Control Snapshot
 
-- Active milestone: `queued follow-on only`
+- Active milestone: `evaluator execution-stack hardening`
 - Blocked by: none
-- Next artifact: attendee install, naming-alignment, and preflight hardening cut across CLI/VSCode release artifacts, serial readiness, and workshop starter materials
-- Next proof command: `sh tools/frothy/proof_control_surface_docs.sh`
+- Next artifact: Frothy ADR-118 plus the first evaluator-trampoline tranche for `CALL`, `IF`, `WHILE`, and `SEQ` over an explicit frame stack
+- Next proof command: `cmake -S . -B build && cmake --build build && ./build/frothy_eval_tests && sh tools/frothy/proof_eval_stack_budget.sh`
 
 ## Closed v0.1 Ladder
 
@@ -61,6 +61,24 @@ If this file and the roadmap disagree, the roadmap wins.
 The queue below is intentionally movable. Reorder it as priorities change, but
 keep each item's description and references so deferral does not erase context.
 
+- [~] Evaluator execution-stack hardening
+  Deliverable: accept the execution-stack ADR and land the first explicit
+  evaluator-frame tranche so `CALL`, `IF`, `WHILE`, `SEQ`, and nested
+  expression evaluation no longer depend on hidden C stack depth.
+  References: Frothy ADR-118, Frothy ADR-105,
+  `docs/archive/adr/040-cs-trampoline-executor.md`, `src/frothy_eval.c`, and
+  `src/froth_vm.h`.
+- [ ] Priority repair: live-shell records must match the landed record surface
+  Deliverable: make the prompt-facing shell accept the maintained `record ...`
+  forms and keep record definition, construction, field access, inspection,
+  and save/restore behavior aligned with the landed parser, evaluator, and
+  snapshot record surface.
+  Note: current smoke found `record Point [ x, y ]` still failing at the prompt
+  with `parse error (108)` despite checked-in parser/eval/snapshot record
+  coverage.
+  References: Frothy ADR-112, `src/frothy_shell.c`,
+  `tests/frothy_parser_test.c`, `tests/frothy_snapshot_test.c`, and
+  `docs/spec/Frothy_Language_Spec_vNext.md`.
 - [x] Control-surface repair and workshop-prep note
   Deliverable: thin `PROGRESS.md`, movable `TIMELINE.md`, targeted
   `AGENTS.md`, and one forward-priority note.
@@ -172,6 +190,10 @@ keep each item's description and references so deferral does not erase context.
   files without starting a speculative rewrite.
   References: `docs/audit/Frothy_Repo_Audit_2026-04.md`,
   `docs/reference/Froth_Substrate_References.md`, and `CMakeLists.txt`.
+  Include: migrate the remaining board/project FFI seams off the legacy
+  `froth_ffi_entry_t` / `froth_project_bindings` compatibility path, then
+  delete the legacy dispatch/install surface once the maintained
+  `frothy_ffi_entry_t` path is the only live ABI.
 - [ ] Publishability reset tranche 5: docs front door and archive pass
   Deliverable: keep one front door, shorten extension docs to extension-owned
   behavior, and archive historical proof evidence and duplicated release prose

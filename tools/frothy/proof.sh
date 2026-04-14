@@ -27,6 +27,7 @@ usage: proof.sh <proof> [args...]
 
 proofs:
   host
+  stack-budget
   control [--host-only|<PORT>]
   editor [--host-only|<PORT>]
   repl
@@ -46,6 +47,9 @@ run_one() {
   case "$proof_name" in
     repl)
       exec "$SCRIPT_DIR/proof_m8_repl_smoke.sh" "$@"
+      ;;
+    stack-budget)
+      exec sh "$SCRIPT_DIR/proof_eval_stack_budget.sh" "$@"
       ;;
     ctrl-c)
       run_test_runner proof-ctrlc "$@"
@@ -90,7 +94,7 @@ case "$1" in
       usage >&2
       exit 1
     }
-    for proof_name in repl ctrl-c control editor inspect boot ffi safe-boot; do
+    for proof_name in stack-budget repl ctrl-c control editor inspect boot ffi safe-boot; do
       printf '==> %s\n' "$proof_name"
       if [ "$proof_name" = control ] || [ "$proof_name" = editor ]; then
         sh "$0" "$proof_name" --host-only

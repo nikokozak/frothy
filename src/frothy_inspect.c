@@ -1,8 +1,8 @@
 #include "frothy_inspect.h"
 
 #include "frothy_base_image.h"
-#include "froth_ffi.h"
 #include "froth_slot_table.h"
+#include "frothy_ffi.h"
 #include "frothy_ir.h"
 #include "platform.h"
 
@@ -34,6 +34,7 @@ typedef struct {
   frothy_ir_node_id_t body;
   size_t arity;
   size_t local_count;
+  frothy_native_fn_t native_fn;
   const void *native_context;
   const char *native_name;
 } frothy_inspect_binding_t;
@@ -176,23 +177,27 @@ frothy_inspect_lookup_builtin_doc(const char *name) {
   return NULL;
 }
 
-static const froth_ffi_entry_t *
-frothy_inspect_binding_ffi_entry(const frothy_inspect_binding_t *binding) {
-  if (binding->value_class != FROTHY_VALUE_CLASS_NATIVE ||
-      binding->native_context == NULL) {
-    return NULL;
-  }
-
-  return (const froth_ffi_entry_t *)binding->native_context;
+static bool
+frothy_inspect_binding_is_foreign(const frothy_inspect_binding_t *binding) {
+  return binding->value_class == FROTHY_VALUE_CLASS_NATIVE &&
+         frothy_ffi_native_is_foreign(binding->native_fn,
+                                      binding->native_context);
 }
 
 static const char *
 frothy_inspect_binding_owner(const frothy_inspect_binding_t *binding) {
   if (binding->value_class == FROTHY_VALUE_CLASS_NATIVE) {
-    if (frothy_inspect_binding_ffi_entry(binding) != NULL) {
-      return "board ffi";
+    if (frothy_inspect_binding_is_foreign(binding)) {
+      const char *owner =
+          frothy_ffi_native_owner(binding->native_fn, binding->native_context);
+
+      if (owner != NULL) {
+        return owner;
+      }
+      return "foreign binding";
     }
-    if (frothy_inspect_lookup_builtin_doc(binding->native_name) != NULL) {
+    if (!binding->is_overlay &&
+        frothy_inspect_lookup_builtin_doc(binding->native_name) != NULL) {
       return "runtime builtin";
     }
     return binding->is_overlay ? "overlay image" : "base image";
@@ -216,28 +221,28 @@ frothy_inspect_binding_persistence(const frothy_inspect_binding_t *binding) {
 
 static const char *
 frothy_inspect_binding_effect(const frothy_inspect_binding_t *binding) {
-  const froth_ffi_entry_t *entry =
-      frothy_inspect_binding_ffi_entry(binding);
-
-  if (entry == NULL || entry->stack_effect == NULL ||
-      entry->stack_effect[0] == '\0') {
+  if (binding->value_class != FROTHY_VALUE_CLASS_NATIVE) {
     return NULL;
   }
 
-  return entry->stack_effect;
+  return frothy_ffi_native_effect(binding->native_fn, binding->native_context);
 }
 
 static const char *
 frothy_inspect_binding_help(const frothy_inspect_binding_t *binding) {
-  const froth_ffi_entry_t *entry =
-      frothy_inspect_binding_ffi_entry(binding);
   const frothy_inspect_builtin_doc_t *builtin_doc = NULL;
+  const char *ffi_help = NULL;
 
-  if (entry != NULL && entry->help != NULL && entry->help[0] != '\0') {
-    return entry->help;
+  if (binding->value_class != FROTHY_VALUE_CLASS_NATIVE) {
+    return NULL;
   }
-  if (binding->value_class != FROTHY_VALUE_CLASS_NATIVE ||
-      binding->native_context != NULL) {
+
+  ffi_help =
+      frothy_ffi_native_help(binding->native_fn, binding->native_context);
+  if (ffi_help != NULL && ffi_help[0] != '\0') {
+    return ffi_help;
+  }
+  if (binding->native_context != NULL) {
     return NULL;
   }
 
@@ -470,7 +475,8 @@ static froth_error_t frothy_inspect_resolve_binding(
       binding_out->out_arity = 1;
     }
   } else if (binding_out->value_class == FROTHY_VALUE_CLASS_NATIVE) {
-    FROTH_TRY(frothy_runtime_get_native(runtime, binding_out->value, NULL,
+    FROTH_TRY(frothy_runtime_get_native(runtime, binding_out->value,
+                                        &binding_out->native_fn,
                                         &binding_out->native_context,
                                         &binding_out->native_name,
                                         &native_arity));

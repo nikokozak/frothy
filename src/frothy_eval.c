@@ -357,19 +357,12 @@ static froth_error_t frothy_write_index_owned(frothy_value_t base_value,
   return FROTH_OK;
 }
 
-static froth_error_t frothy_record_field_ir_name(
-    const frothy_ir_program_t *program, size_t first_field, size_t field_index,
-    const char **field_name_out) {
-  frothy_ir_literal_id_t literal_id;
-
-  literal_id = (frothy_ir_literal_id_t)program->links[first_field + field_index];
-  if (literal_id >= program->literal_count ||
-      program->literals[literal_id].kind != FROTHY_IR_LITERAL_TEXT) {
-    return FROTH_ERROR_SIGNATURE;
-  }
-
-  *field_name_out = program->literals[literal_id].as.text_value;
-  return FROTH_OK;
+static froth_error_t frothy_eval_record_def_node(
+    const frothy_ir_program_t *program, const frothy_ir_node_t *node,
+    frothy_value_t *out) {
+  return frothy_runtime_alloc_record_def_from_ir(
+      frothy_runtime(), node->as.record_def.record_name, program,
+      node->as.record_def.first_field, node->as.record_def.field_count, out);
 }
 
 static froth_error_t frothy_read_field_owned(frothy_value_t base_value,
@@ -841,27 +834,8 @@ static froth_error_t frothy_eval_node(const frothy_ir_program_t *program,
   case FROTHY_IR_NODE_SLOT_DESIGNATOR:
     return frothy_value_make_slot_designator(node->as.slot_designator.slot_name,
                                              out);
-  case FROTHY_IR_NODE_RECORD_DEF: {
-    const char *field_names[FROTHY_IR_LINK_CAPACITY];
-    size_t i;
-
-    if (node->as.record_def.field_count == 0 ||
-        node->as.record_def.field_count > FROTHY_IR_LINK_CAPACITY ||
-        node->as.record_def.first_field > program->link_count ||
-        node->as.record_def.field_count >
-            program->link_count - node->as.record_def.first_field) {
-      return FROTH_ERROR_SIGNATURE;
-    }
-    for (i = 0; i < node->as.record_def.field_count; i++) {
-      FROTH_TRY(frothy_record_field_ir_name(program,
-                                            node->as.record_def.first_field, i,
-                                            &field_names[i]));
-    }
-    return frothy_runtime_alloc_record_def(frothy_runtime(),
-                                           node->as.record_def.record_name,
-                                           field_names,
-                                           node->as.record_def.field_count, out);
-  }
+  case FROTHY_IR_NODE_RECORD_DEF:
+    return frothy_eval_record_def_node(program, node, out);
   case FROTHY_IR_NODE_READ_INDEX: {
     frothy_value_t base_value;
     frothy_value_t index_value;

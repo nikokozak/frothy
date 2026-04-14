@@ -108,6 +108,54 @@ function(frothy_configure_target target)
   )
 endfunction()
 
+function(frothy_apply_project_ffi_config target config_path)
+  if(NOT config_path)
+    return()
+  endif()
+
+  include("${config_path}")
+  foreach(project_ffi_source IN LISTS FROTH_PROJECT_FFI_SOURCES)
+    target_sources(${target} PRIVATE "${project_ffi_source}")
+  endforeach()
+  if(FROTH_PROJECT_FFI_INCLUDES)
+    foreach(project_ffi_include IN LISTS FROTH_PROJECT_FFI_INCLUDES)
+      target_include_directories(${target} PRIVATE "${project_ffi_include}")
+    endforeach()
+  endif()
+  if(FROTH_PROJECT_FFI_DEFINES)
+    foreach(project_ffi_define IN LISTS FROTH_PROJECT_FFI_DEFINES)
+      target_compile_definitions(${target} PRIVATE "${project_ffi_define}")
+    endforeach()
+  endif()
+  target_compile_definitions(${target} PRIVATE FROTH_HAS_PROJECT_FFI)
+endfunction()
+
+function(frothy_add_project_ffi_test target_name test_name config_path)
+  add_executable(${target_name}
+    tests/frothy_project_ffi_test.c
+    src/frothy_inspect.c
+    src/frothy_ir.c
+    src/frothy_parser.c
+    src/frothy_value.c
+    src/frothy_eval.c
+    src/froth_vm.c
+    src/froth_heap.c
+    src/froth_cellspace.c
+    src/froth_slot_table.c
+    ${FROTH_RUNTIME_SUPPORT_SRCS}
+    platforms/${FROTH_PLATFORM}/platform.c
+  )
+  frothy_apply_project_ffi_config(${target_name} "${config_path}")
+  if(ARGN)
+    target_compile_definitions(${target_name} PRIVATE ${ARGN})
+  endif()
+  frothy_configure_target(${target_name})
+  frothy_generate_board_pin_seed(${target_name} ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+  frothy_generate_board_workshop_lib(${target_name} ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+  add_test(NAME ${test_name} COMMAND ${target_name})
+  set_tests_properties(${test_name} PROPERTIES LABELS "frothy" TIMEOUT 30)
+endfunction()
+
 if(FROTHY_BUILD_HOST)
   add_executable(Frothy)
   target_sources(Frothy
@@ -137,17 +185,7 @@ if(FROTHY_BUILD_HOST)
   if(FROTH_HAS_SNAPSHOTS)
     target_sources(Frothy PRIVATE src/froth_snapshot.c)
   endif()
-  if(FROTH_PROJECT_FFI_CONFIG)
-    include(${FROTH_PROJECT_FFI_CONFIG})
-    target_sources(Frothy PRIVATE ${FROTH_PROJECT_FFI_SOURCES})
-    if(FROTH_PROJECT_FFI_INCLUDES)
-      target_include_directories(Frothy PRIVATE ${FROTH_PROJECT_FFI_INCLUDES})
-    endif()
-    if(FROTH_PROJECT_FFI_DEFINES)
-      target_compile_definitions(Frothy PRIVATE ${FROTH_PROJECT_FFI_DEFINES})
-    endif()
-    target_compile_definitions(Frothy PRIVATE FROTH_HAS_PROJECT_FFI)
-  endif()
+  frothy_apply_project_ffi_config(Frothy "${FROTH_PROJECT_FFI_CONFIG}")
   frothy_configure_target(Frothy)
   frothy_generate_board_pin_seed(Frothy ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
   frothy_generate_board_workshop_lib(Frothy ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
@@ -270,6 +308,69 @@ if(FROTHY_BUILD_HOST)
     frothy_generate_board_workshop_lib(frothy_ffi_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
     add_test(NAME frothy_ffi COMMAND frothy_ffi_tests)
     set_tests_properties(frothy_ffi PROPERTIES LABELS "frothy" TIMEOUT 30)
+  endif()
+
+  if(EXISTS "${CMAKE_SOURCE_DIR}/tests/frothy_project_ffi_test.c")
+    set(FROTHY_TEST_MAINTAINED_PROJECT_FFI_CONFIG
+        "${CMAKE_SOURCE_DIR}/tests/project_ffi/maintained_project_ffi.cmake")
+    if(EXISTS "${FROTHY_TEST_MAINTAINED_PROJECT_FFI_CONFIG}")
+      frothy_add_project_ffi_test(
+        frothy_project_ffi_maintained_tests
+        frothy_project_ffi_maintained
+        "${FROTHY_TEST_MAINTAINED_PROJECT_FFI_CONFIG}"
+      )
+      frothy_add_project_ffi_test(
+        frothy_project_ffi_maintained_no_weak_tests
+        frothy_project_ffi_maintained_no_weak
+        "${FROTHY_TEST_MAINTAINED_PROJECT_FFI_CONFIG}"
+        FROTHY_FORCE_NO_WEAK_SYMBOLS
+      )
+    endif()
+
+    set(FROTHY_TEST_LEGACY_PROJECT_FFI_CONFIG
+        "${CMAKE_SOURCE_DIR}/tests/project_ffi/legacy_project_ffi.cmake")
+    if(EXISTS "${FROTHY_TEST_LEGACY_PROJECT_FFI_CONFIG}")
+      frothy_add_project_ffi_test(
+        frothy_project_ffi_legacy_tests
+        frothy_project_ffi_legacy
+        "${FROTHY_TEST_LEGACY_PROJECT_FFI_CONFIG}"
+        FROTHY_PROJECT_FFI_USE_LEGACY_EXPORT
+      )
+      frothy_add_project_ffi_test(
+        frothy_project_ffi_legacy_no_weak_tests
+        frothy_project_ffi_legacy_no_weak
+        "${FROTHY_TEST_LEGACY_PROJECT_FFI_CONFIG}"
+        FROTHY_FORCE_NO_WEAK_SYMBOLS
+        FROTHY_PROJECT_FFI_USE_LEGACY_EXPORT
+      )
+    endif()
+
+    set(FROTHY_PROJECT_FFI_CONFIG_SMOKE
+        "${CMAKE_SOURCE_DIR}/tests/project_ffi/project_ffi_config_smoke.sh")
+    if(EXISTS "${FROTHY_PROJECT_FFI_CONFIG_SMOKE}" AND
+       EXISTS "${FROTHY_TEST_MAINTAINED_PROJECT_FFI_CONFIG}")
+      add_test(NAME frothy_project_ffi_config_maintained_smoke
+        COMMAND /bin/sh "${FROTHY_PROJECT_FFI_CONFIG_SMOKE}"
+                "${CMAKE_COMMAND}"
+                "${CMAKE_SOURCE_DIR}"
+                "${FROTH_BOARD}"
+                "${FROTH_PLATFORM}"
+                "${FROTHY_TEST_MAINTAINED_PROJECT_FFI_CONFIG}")
+      set_tests_properties(frothy_project_ffi_config_maintained_smoke
+        PROPERTIES LABELS "frothy" TIMEOUT 60)
+    endif()
+    if(EXISTS "${FROTHY_PROJECT_FFI_CONFIG_SMOKE}" AND
+       EXISTS "${FROTHY_TEST_LEGACY_PROJECT_FFI_CONFIG}")
+      add_test(NAME frothy_project_ffi_config_legacy_smoke
+        COMMAND /bin/sh "${FROTHY_PROJECT_FFI_CONFIG_SMOKE}"
+                "${CMAKE_COMMAND}"
+                "${CMAKE_SOURCE_DIR}"
+                "${FROTH_BOARD}"
+                "${FROTH_PLATFORM}"
+                "${FROTHY_TEST_LEGACY_PROJECT_FFI_CONFIG}")
+      set_tests_properties(frothy_project_ffi_config_legacy_smoke
+        PROPERTIES LABELS "frothy" TIMEOUT 60)
+    endif()
   endif()
 
   if(EXISTS "${CMAKE_SOURCE_DIR}/benchmarks/frothy_runtime_bench.c")

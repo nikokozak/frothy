@@ -68,8 +68,12 @@ platform = "%s"
 # You can also edit these values later.
 
 # Project FFI: compile your own C bindings alongside the kernel.
-# Your C code must export a null-terminated froth_ffi_entry_t[] table
-# named froth_project_bindings.
+# Preferred: export a null-terminated frothy_ffi_entry_t[] table
+# named frothy_project_bindings.
+# For arity > 0 entries, set `.param_count = FROTHY_FFI_PARAM_COUNT(params)`.
+# Compatibility: legacy froth_ffi_entry_t[] froth_project_bindings also works.
+# Optional: set .stack_effect on each frothy_ffi_entry_t if you want
+# slotInfo to show an explicit effect line for maintained bindings.
 #
 # [ffi]
 # sources = ["src/ffi/bindings.c"]

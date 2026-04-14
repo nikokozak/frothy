@@ -1448,7 +1448,7 @@ static int test_inspect_report_formatting(void) {
         "  slot: overlay\n"
         "  kind: native\n"
         "  call: 0 -> 1\n"
-        "  owner: runtime builtin\n"
+        "  owner: overlay image\n"
         "  persistence: not saved\n"
         "  help: Save the current overlay snapshot.",
         "formatted builtin alias slotInfo report");

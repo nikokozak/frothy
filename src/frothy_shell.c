@@ -59,6 +59,7 @@ static const char *prompt_cont = ".. ";
  * Froth REPL approach and avoids avoidable stack pressure during parse/eval. */
 static char shell_line[FROTH_LINE_BUFFER_SIZE];
 static char shell_command_buffer[FROTH_LINE_BUFFER_SIZE];
+static char shell_rewritten_command_buffer[FROTH_LINE_BUFFER_SIZE];
 static char shell_pending_source[FROTHY_SHELL_SOURCE_CAPACITY];
 static bool shell_at_primary_prompt = false;
 
@@ -1287,7 +1288,6 @@ froth_error_t frothy_shell_run(void) {
   while (1) {
     char *command = NULL;
     const char *line_for_input = shell_line;
-    char rewritten_command[FROTH_LINE_BUFFER_SIZE];
     bool saw_eof;
     bool saw_interrupt;
     froth_error_t err;
@@ -1376,10 +1376,10 @@ froth_error_t frothy_shell_run(void) {
         continue;
       }
 
-      if (frothy_shell_rewrite_simple_call(command, rewritten_command,
-                                           sizeof(rewritten_command))) {
-        command = rewritten_command;
-        line_for_input = rewritten_command;
+      if (frothy_shell_rewrite_simple_call(command, shell_rewritten_command_buffer,
+                                           sizeof(shell_rewritten_command_buffer))) {
+        command = shell_rewritten_command_buffer;
+        line_for_input = shell_rewritten_command_buffer;
       }
     }
 

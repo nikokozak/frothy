@@ -15,7 +15,7 @@ The `vNext` docs remain the draft direction for later language work.
 ## Current Read
 
 Frothy does not currently need another broad rewrite.
-It needs a truthful workshop-first queue and small next cuts.
+It needs a truthful immediate queue and small next cuts.
 
 What is already settled:
 
@@ -28,10 +28,12 @@ What is already settled:
   hardening slices are landed
 
 What still needs explicit surfacing is the order of the next follow-on work.
-The workshop implementation tranche is now landed on `main`, so the workshop
-path no longer starts with language or board feature growth. It starts with
-operational hardening for another person's laptop, cable, serial permissions,
-starter folder, recovery path, and naming surface.
+The workshop implementation tranche is now landed on `main`, but the immediate
+queue head changed after an ESP32 `boot` loop exposed that ordinary embedded
+looping still depended on hidden C stack depth through the recursive
+evaluator. The live control surface now puts evaluator execution-stack
+hardening first. The workshop-operational list below is the resumed order after
+that runtime tranche lands.
 
 ## Priority Stack
 
