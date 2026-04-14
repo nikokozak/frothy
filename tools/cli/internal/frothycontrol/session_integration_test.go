@@ -390,7 +390,7 @@ func TestLocalRuntimeSessionDirectBuiltinRequests(t *testing.T) {
 		t.Fatalf("SlotInfo value = %q", value)
 	}
 	if !strings.Contains(slotInfoOutput.String(),
-		"save | base | native | non-persistable | foreign") {
+		"  owner: runtime builtin") {
 		t.Fatalf("SlotInfo output = %q", slotInfoOutput.String())
 	}
 

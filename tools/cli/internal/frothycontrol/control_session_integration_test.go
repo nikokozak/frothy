@@ -129,10 +129,32 @@ func consumeValueCycle(t *testing.T, harness *sessionHarness, requestID float64)
 func consumeOutputValueCycle(t *testing.T, harness *sessionHarness, requestID float64) map[string]any {
 	t.Helper()
 
-	if event := harness.next(t); event["event"] != "output" {
-		t.Fatalf("output event = %v", event)
+	sawOutput := false
+	for {
+		event := harness.next(t)
+		if event["event"] == "output" {
+			sawOutput = true
+			continue
+		}
+		if event["event"] != "value" {
+			t.Fatalf("value event = %v", event)
+		}
+		if !sawOutput {
+			t.Fatalf("value event arrived without output: %v", event)
+		}
+		break
 	}
-	return consumeValueCycle(t, harness, requestID)
+	if event := harness.next(t); event["event"] != "idle" {
+		t.Fatalf("idle event = %v", event)
+	}
+	response := harness.next(t)
+	if response["ok"] != true {
+		t.Fatalf("response = %v", response)
+	}
+	if response["id"] != requestID {
+		t.Fatalf("response id = %v, want %v", response["id"], requestID)
+	}
+	return response
 }
 
 func consumeErrorCycle(t *testing.T, harness *sessionHarness, requestID float64) map[string]any {

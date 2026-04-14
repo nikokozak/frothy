@@ -71,6 +71,16 @@
         "icon": "$(symbol-field)"
       },
       {
+        "command": "frothy.core",
+        "title": "Frothy: Show Core Binding",
+        "icon": "$(symbol-structure)"
+      },
+      {
+        "command": "frothy.slotInfo",
+        "title": "Frothy: Show Slot Info",
+        "icon": "$(info)"
+      },
+      {
         "command": "frothy.save",
         "title": "Frothy: Save Snapshot",
         "icon": "$(save)"
@@ -177,6 +187,16 @@
         },
         {
           "command": "frothy.see",
+          "when": "view == frothyDeviceView",
+          "group": "2_actions"
+        },
+        {
+          "command": "frothy.core",
+          "when": "view == frothyDeviceView",
+          "group": "2_actions"
+        },
+        {
+          "command": "frothy.slotInfo",
           "when": "view == frothyDeviceView",
           "group": "2_actions"
         },

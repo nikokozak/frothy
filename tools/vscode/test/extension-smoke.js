@@ -38,6 +38,8 @@ async function main() {
     "frothy.interrupt",
     "frothy.words",
     "frothy.see",
+    "frothy.core",
+    "frothy.slotInfo",
     "frothy.save",
     "frothy.restore",
     "frothy.wipe",

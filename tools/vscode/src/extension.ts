@@ -58,6 +58,8 @@ export function activate(context: vscode.ExtensionContext): void {
     ["frothy.interrupt", () => controller.interrupt()],
     ["frothy.words", () => controller.showWords()],
     ["frothy.see", () => controller.showSee()],
+    ["frothy.core", () => controller.showCore()],
+    ["frothy.slotInfo", () => controller.showSlotInfo()],
     ["frothy.save", () => controller.saveSnapshot()],
     ["frothy.restore", () => controller.restoreSnapshot()],
     ["frothy.wipe", () => controller.wipeSnapshot()],
@@ -335,6 +337,16 @@ class FrothyController {
       return;
     }
 
+    this.output.show(true);
+    const infoResult = await this.runRequest(
+      "slotInfo",
+      () => this.client!.slotInfo(name),
+      false,
+    );
+    if (!infoResult) {
+      return;
+    }
+
     const result = await this.runRequest(
       "see",
       () => this.client!.see(name),
@@ -345,11 +357,49 @@ class FrothyController {
     }
 
     const view = result as SeeValue;
+    this.appendInspectRendered("see", view.rendered);
+  }
+
+  async showCore(): Promise<void> {
+    if (!(await this.ensureConnected())) {
+      return;
+    }
+    if (!this.requireIdle()) {
+      return;
+    }
+
+    const name = await this.resolveBindingName();
+    if (!name) {
+      return;
+    }
+
     this.output.show(true);
-    this.output.appendLine(
-      `${view.name} | ${view.is_overlay ? "overlay" : "base"} | ${valueClassName(view.value_class)}`,
+    await this.runRequest(
+      "core",
+      () => this.client!.core(name),
+      false,
     );
-    this.output.appendLine(view.rendered);
+  }
+
+  async showSlotInfo(): Promise<void> {
+    if (!(await this.ensureConnected())) {
+      return;
+    }
+    if (!this.requireIdle()) {
+      return;
+    }
+
+    const name = await this.resolveBindingName();
+    if (!name) {
+      return;
+    }
+
+    this.output.show(true);
+    await this.runRequest(
+      "slotInfo",
+      () => this.client!.slotInfo(name),
+      false,
+    );
   }
 
   async saveSnapshot(): Promise<void> {
@@ -449,6 +499,20 @@ class FrothyController {
       if (this.state === "running") {
         this.setState(this.device ? "connected" : "disconnected");
       }
+    }
+  }
+
+  private appendInspectRendered(label: string, text: string): void {
+    const lines = text.split(/\r?\n/);
+
+    if (lines.length === 0 || (lines.length === 1 && lines[0].length === 0)) {
+      this.output.appendLine(`  ${label}:`);
+      return;
+    }
+
+    this.output.appendLine(`  ${label}: ${lines[0]}`);
+    for (const line of lines.slice(1)) {
+      this.output.appendLine(`    ${line}`);
     }
   }
 
@@ -937,25 +1001,4 @@ function previewText(source: string): string {
     return compact;
   }
   return compact.slice(0, 77) + "...";
-}
-
-function valueClassName(valueClass: number): string {
-  switch (valueClass) {
-    case 0:
-      return "int";
-    case 1:
-      return "bool";
-    case 2:
-      return "nil";
-    case 3:
-      return "text";
-    case 4:
-      return "cells";
-    case 5:
-      return "code";
-    case 6:
-      return "native";
-    default:
-      return "value";
-  }
 }

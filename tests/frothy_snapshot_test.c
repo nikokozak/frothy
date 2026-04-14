@@ -250,6 +250,19 @@ static int capture_code_renders(const char *name, char **see_out,
   return 1;
 }
 
+static int capture_report_text(const char *name,
+                               frothy_inspect_report_mode_t mode,
+                               char **report_out) {
+  *report_out = NULL;
+  if (frothy_inspect_render_binding_report(runtime(), name, mode, report_out) !=
+      FROTH_OK) {
+    fprintf(stderr, "failed to render inspect report for `%s`\n", name);
+    return 0;
+  }
+
+  return 1;
+}
+
 static int expect_snapshot_present(bool expected, const char *label) {
   uint8_t slot = 0;
   uint32_t generation = 0;
@@ -882,6 +895,191 @@ static int test_slot_info_errors(void) {
   return ok;
 }
 
+static int test_inspect_report_formatting(void) {
+  temp_workspace_t workspace = {{0}};
+  frothy_value_t value = frothy_value_make_nil();
+  frothy_value_t native_value = frothy_value_make_nil();
+  frothy_value_t builtin_alias_value = frothy_value_make_nil();
+  char *see_text = NULL;
+  char *core_text = NULL;
+  char *slot_info_text = NULL;
+  char *ffi_info_text = NULL;
+  char *base_info_text = NULL;
+  char *builtin_see_text = NULL;
+  char *native_slot_info_text = NULL;
+  char *builtin_alias_info_text = NULL;
+  char *cells_info_text = NULL;
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+
+  ok &= expect_ok("to inc with x [ x + 1 ]", &value);
+  release_value(&value);
+  ok &= expect_ok("alias = inc", &value);
+  release_value(&value);
+
+  ok &= capture_report_text("alias", FROTHY_INSPECT_REPORT_SEE, &see_text);
+  ok &= capture_report_text("alias", FROTHY_INSPECT_REPORT_CORE, &core_text);
+  ok &= capture_report_text("alias", FROTHY_INSPECT_REPORT_SLOT_INFO,
+                            &slot_info_text);
+  ok &= capture_report_text("gpio.mode", FROTHY_INSPECT_REPORT_SLOT_INFO,
+                            &ffi_info_text);
+  ok &= capture_report_text("A0", FROTHY_INSPECT_REPORT_SLOT_INFO,
+                            &base_info_text);
+  ok &= capture_report_text("save", FROTHY_INSPECT_REPORT_SEE,
+                            &builtin_see_text);
+  ok &= expect_ok("frame = cells(1)", &value);
+  release_value(&value);
+  ok &= capture_report_text("frame", FROTHY_INSPECT_REPORT_SLOT_INFO,
+                            &cells_info_text);
+
+  if (ok &&
+      frothy_runtime_alloc_native(runtime(), test_native_noop, "test.native", 0,
+                                  NULL, &native_value) == FROTH_OK) {
+    froth_cell_u_t slot_index = 0;
+
+    ok &= froth_slot_find_name_or_create(&froth_vm.heap, "nativeSlot",
+                                         &slot_index) == FROTH_OK;
+    ok &= froth_slot_set_overlay(slot_index, 1) == FROTH_OK;
+    ok &= froth_slot_set_impl(slot_index, frothy_value_to_cell(native_value)) ==
+          FROTH_OK;
+    ok &= froth_slot_set_arity(slot_index, 0, 1) == FROTH_OK;
+    ok &= capture_report_text("nativeSlot", FROTHY_INSPECT_REPORT_SLOT_INFO,
+                              &native_slot_info_text);
+  } else if (ok) {
+    fprintf(stderr, "failed to allocate native test value\n");
+    ok = 0;
+  }
+
+  if (ok && frothy_runtime_alloc_native(runtime(), frothy_builtin_save, "save",
+                                        0, NULL, &builtin_alias_value) ==
+                FROTH_OK) {
+    froth_cell_u_t slot_index = 0;
+
+    ok &= froth_slot_find_name_or_create(&froth_vm.heap, "saveAlias",
+                                         &slot_index) == FROTH_OK;
+    ok &= froth_slot_set_overlay(slot_index, 1) == FROTH_OK;
+    ok &= froth_slot_set_impl(slot_index,
+                              frothy_value_to_cell(builtin_alias_value)) ==
+          FROTH_OK;
+    ok &= froth_slot_set_arity(slot_index, 0, 1) == FROTH_OK;
+    ok &= capture_report_text("saveAlias", FROTHY_INSPECT_REPORT_SLOT_INFO,
+                              &builtin_alias_info_text);
+  } else if (ok) {
+    fprintf(stderr, "failed to allocate builtin alias test value\n");
+    ok = 0;
+  }
+
+  if (ok) {
+    ok &= expect_text_equal(
+        see_text,
+        "alias\n"
+        "  slot: overlay\n"
+        "  kind: code\n"
+        "  call: 1 -> 1\n"
+        "  owner: overlay image\n"
+        "  persistence: saved in snapshot\n"
+        "  see: to alias with arg0 [ arg0 + 1 ]",
+        "formatted see report");
+    ok &= expect_text_equal(
+        core_text,
+        "alias\n"
+        "  slot: overlay\n"
+        "  kind: code\n"
+        "  call: 1 -> 1\n"
+        "  owner: overlay image\n"
+        "  persistence: saved in snapshot\n"
+        "  core: (fn arity=1 locals=1 (seq (call (builtin \"+\") (read-local 0) (lit 1))))",
+        "formatted core report");
+    ok &= expect_text_equal(
+        slot_info_text,
+        "alias\n"
+        "  slot: overlay\n"
+        "  kind: code\n"
+        "  call: 1 -> 1\n"
+        "  owner: overlay image\n"
+        "  persistence: saved in snapshot",
+        "formatted slotInfo report");
+    ok &= expect_text_equal(
+        ffi_info_text,
+        "gpio.mode\n"
+        "  slot: base\n"
+        "  kind: native\n"
+        "  call: 2 -> 1\n"
+        "  owner: board ffi\n"
+        "  persistence: not saved\n"
+        "  effect: ( pin mode -- )\n"
+        "  help: Set pin mode (1=output)",
+        "formatted FFI slotInfo report");
+    ok &= expect_text_equal(
+        base_info_text,
+        "A0\n"
+        "  slot: base\n"
+        "  kind: int\n"
+        "  call: not callable\n"
+        "  owner: base image\n"
+        "  persistence: not saved",
+        "formatted base value slotInfo report");
+    ok &= expect_text_equal(
+        cells_info_text,
+        "frame\n"
+        "  slot: overlay\n"
+        "  kind: cells\n"
+        "  call: not callable\n"
+        "  owner: overlay image\n"
+        "  persistence: saved if contents are persistable",
+        "formatted cells slotInfo report");
+    ok &= expect_text_equal(
+        builtin_see_text,
+        "save\n"
+        "  slot: base\n"
+        "  kind: native\n"
+        "  call: 0 -> 1\n"
+        "  owner: runtime builtin\n"
+        "  persistence: not saved\n"
+        "  help: Save the current overlay snapshot.\n"
+        "  see: <native save/0>",
+        "formatted builtin see report");
+    ok &= expect_text_equal(
+        native_slot_info_text,
+        "nativeSlot\n"
+        "  slot: overlay\n"
+        "  kind: native\n"
+        "  call: 0 -> 1\n"
+        "  owner: overlay image\n"
+        "  persistence: not saved",
+        "formatted custom native slotInfo report");
+    ok &= expect_text_equal(
+        builtin_alias_info_text,
+        "saveAlias\n"
+        "  slot: overlay\n"
+        "  kind: native\n"
+        "  call: 0 -> 1\n"
+        "  owner: runtime builtin\n"
+        "  persistence: not saved\n"
+        "  help: Save the current overlay snapshot.",
+        "formatted builtin alias slotInfo report");
+  }
+
+  free(see_text);
+  free(core_text);
+  free(slot_info_text);
+  free(ffi_info_text);
+  free(base_info_text);
+  free(builtin_see_text);
+  free(native_slot_info_text);
+  free(builtin_alias_info_text);
+  free(cells_info_text);
+  if (frothy_snapshot_wipe() != FROTH_OK) {
+    fprintf(stderr, "failed to wipe inspect report workspace\n");
+    ok = 0;
+  }
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
 static int test_length_aware_slot_lookup(void) {
   temp_workspace_t workspace = {{0}};
   froth_cell_u_t short_slot = 0;
@@ -1281,6 +1479,7 @@ int main(void) {
   ok &= test_wipe_inside_nested_call_unwinds_cleanly();
   ok &= test_non_persistable_rejection();
   ok &= test_slot_info_errors();
+  ok &= test_inspect_report_formatting();
   ok &= test_length_aware_slot_lookup();
   ok &= test_startup_without_snapshot();
   ok &= test_startup_snapshot_discovery_failure();

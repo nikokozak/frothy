@@ -136,7 +136,7 @@ func RunSmoke(cfg SmokeConfig) error {
 		return fmt.Errorf("unexpected slot info value %q", value)
 	}
 	if !strings.Contains(output.String(),
-		"save | base | native | non-persistable | foreign") {
+		"  owner: runtime builtin") {
 		return fmt.Errorf("missing slot info output: %q", output.String())
 	}
 
