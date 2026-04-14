@@ -148,7 +148,7 @@ func localConnectPaths() (string, string, error) {
 		return "", "", err
 	}
 
-	buildDir := filepath.Join(home, "local-build")
+	buildDir := filepath.Join(home, "frothy-local-build")
 	return buildDir, filepath.Join(buildDir, "Frothy"), nil
 }
 

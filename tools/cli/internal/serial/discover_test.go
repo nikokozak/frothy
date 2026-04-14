@@ -1,59 +1,14 @@
 package serial
 
 import (
-	"errors"
 	"fmt"
 	"testing"
-	"time"
-
-	"github.com/nikokozak/froth/tools/cli/internal/protocol"
 )
 
-func TestOpenAndProbeRetriesFreshOpen(t *testing.T) {
-	oldSleep := discoverSleep
-	oldOpenAndProbePath := openAndProbePath
-	oldOpenAndProbeOnce := openAndProbeOnce
-	defer func() {
-		discoverSleep = oldSleep
-		openAndProbePath = oldOpenAndProbePath
-		openAndProbeOnce = oldOpenAndProbeOnce
-	}()
-
-	discoverSleep = func(time.Duration) {}
-	attempts := 0
-	openAndProbeOnce = func(path string) (*Port, *protocol.HelloResponse, error) {
-		attempts++
-		if attempts == 1 {
-			return nil, nil, fmt.Errorf("handshake failed")
-		}
-		return &Port{path: path}, &protocol.HelloResponse{
-			Version:  "0.1.0-test",
-			Board:    "mock-board",
-			CellBits: 32,
-		}, nil
-	}
-
-	port, hello, err := OpenAndProbe("/dev/cu.usbserial-0001")
-	if err != nil {
-		t.Fatalf("OpenAndProbe failed: %v", err)
-	}
-	if attempts != 2 {
-		t.Fatalf("expected 2 attempts, got %d", attempts)
-	}
-	if port.Path() != "/dev/cu.usbserial-0001" {
-		t.Fatalf("unexpected port path: %s", port.Path())
-	}
-	if hello.Board != "mock-board" {
-		t.Fatalf("unexpected board: %s", hello.Board)
-	}
-}
-
-func TestDiscoverUsesOpenAndProbePath(t *testing.T) {
+func TestDiscoverPathReturnsOnlyCandidate(t *testing.T) {
 	oldDiscoverPorts := discoverPorts
-	oldOpenAndProbePath := openAndProbePath
 	defer func() {
 		discoverPorts = oldDiscoverPorts
-		openAndProbePath = oldOpenAndProbePath
 	}()
 
 	discoverPorts = func() ([]string, error) {
@@ -63,59 +18,53 @@ func TestDiscoverUsesOpenAndProbePath(t *testing.T) {
 		}, nil
 	}
 
-	openAndProbePath = func(path string) (*Port, *protocol.HelloResponse, error) {
-		return &Port{path: path}, &protocol.HelloResponse{
-			Version:  "0.1.0-test",
-			Board:    "mock-board",
-			CellBits: 32,
-		}, nil
-	}
-
-	port, hello, err := Discover()
+	path, err := DiscoverPath()
 	if err != nil {
-		t.Fatalf("Discover failed: %v", err)
+		t.Fatalf("DiscoverPath failed: %v", err)
 	}
-	if port.Path() != "/dev/cu.usbserial-0001" {
-		t.Fatalf("unexpected port path: %s", port.Path())
-	}
-	if hello.Version != "0.1.0-test" {
-		t.Fatalf("unexpected version: %s", hello.Version)
+	if path != "/dev/cu.usbserial-0001" {
+		t.Fatalf("unexpected port path: %s", path)
 	}
 }
 
-func TestDiscoverReturnsLastProbeDiagnostic(t *testing.T) {
+func TestDiscoverPathRejectsMultipleCandidates(t *testing.T) {
 	oldDiscoverPorts := discoverPorts
-	oldOpenAndProbePath := openAndProbePath
 	defer func() {
 		discoverPorts = oldDiscoverPorts
-		openAndProbePath = oldOpenAndProbePath
 	}()
 
 	discoverPorts = func() ([]string, error) {
-		return []string{"/dev/cu.usbserial-0001"}, nil
+		return []string{
+			"/dev/cu.usbserial-0001",
+			"/dev/cu.usbmodem-0001",
+		}, nil
 	}
 
-	root := fmt.Errorf("no HELLO_RES after 3 attempts")
-	openAndProbePath = func(path string) (*Port, *protocol.HelloResponse, error) {
-		return nil, nil, root
-	}
-
-	_, _, err := Discover()
+	_, err := DiscoverPath()
 	if err == nil {
-		t.Fatal("expected discover error")
+		t.Fatal("expected DiscoverPath error")
+	}
+	if err.Error() != "multiple candidate ports found; use --port <path>" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDiscoverPathWrapsEnumerationErrors(t *testing.T) {
+	oldDiscoverPorts := discoverPorts
+	defer func() {
+		discoverPorts = oldDiscoverPorts
+	}()
+
+	root := fmt.Errorf("enumerator broke")
+	discoverPorts = func() ([]string, error) {
+		return nil, root
 	}
 
-	var discoverErr *DiscoverError
-	if !errors.As(err, &discoverErr) {
-		t.Fatalf("expected DiscoverError, got %T", err)
+	_, err := DiscoverPath()
+	if err == nil {
+		t.Fatal("expected DiscoverPath error")
 	}
-	if discoverErr.Path != "/dev/cu.usbserial-0001" {
-		t.Fatalf("unexpected path: %s", discoverErr.Path)
-	}
-	if !errors.Is(err, root) {
-		t.Fatalf("expected wrapped root error, got %v", err)
-	}
-	if err.Error() != "no Froth device found" {
-		t.Fatalf("unexpected public error text: %q", err.Error())
+	if err.Error() != "enumerate serial ports: enumerator broke" {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

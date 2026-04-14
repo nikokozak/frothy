@@ -126,7 +126,7 @@ func TestIntegrationConnectLocalBuildsAndLaunchesBinary(t *testing.T) {
 	assertContains(t, output, "frothy>")
 
 	home := integrationHomeFromEnv(t, env)
-	localBinary := filepath.Join(home, "local-build", "Frothy")
+	localBinary := filepath.Join(home, "frothy-local-build", "Frothy")
 	if _, err := os.Stat(localBinary); err != nil {
 		t.Fatalf("local binary missing after connect --local: %v", err)
 	}

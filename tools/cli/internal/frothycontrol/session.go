@@ -46,11 +46,11 @@ func NewSession(transport serial.Transport) *Session {
 
 func OpenSerial(portPath string) (serial.Transport, error) {
 	if portPath == "" {
-		port, _, err := serial.Discover()
+		path, err := serial.DiscoverPath()
 		if err != nil {
 			return nil, err
 		}
-		return port, nil
+		return serial.Open(path)
 	}
 	return serial.Open(portPath)
 }
@@ -110,8 +110,15 @@ func (s *Session) EnterControl(timeout time.Duration) error {
 	if err := s.writeBytes([]byte(".control\n")); err != nil {
 		return fmt.Errorf("enter control: %w", err)
 	}
-	_, err := s.waitForRaw([]byte("control: ready"), timeout)
-	return err
+	if _, err := s.waitForRaw([]byte("control: ready"), timeout); err != nil {
+		return err
+	}
+
+	// The shell prints "control: ready" immediately before it hands control to
+	// the framed session loop. Give the device a beat to finish that transition
+	// so the first HELLO frame is not sent into the handoff gap.
+	time.Sleep(150 * time.Millisecond)
+	return nil
 }
 
 func (s *Session) Interrupt() error {

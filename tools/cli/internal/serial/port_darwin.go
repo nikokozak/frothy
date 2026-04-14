@@ -1,15 +1,15 @@
-//go:build !darwin
-
 package serial
 
 import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"os"
 	"time"
 
 	"github.com/nikokozak/froth/tools/cli/internal/protocol"
-	"go.bug.st/serial"
+	"golang.org/x/sys/unix"
 )
 
 var ErrTimeout = errors.New("serial read timeout")
@@ -29,45 +29,75 @@ type Transport interface {
 	Drain(duration time.Duration)
 }
 
-// Port wraps a serial connection with byte-level and frame-level I/O.
+// Port wraps a Darwin serial connection with byte-level and frame-level I/O.
 type Port struct {
-	port serial.Port
-	path string
+	file        *os.File
+	path        string
+	readTimeout time.Duration
 }
 
 // Open opens a serial port at the given path with Froth defaults (115200 8N1).
 func Open(path string) (*Port, error) {
-	conn, err := serial.Open(path, &serial.Mode{
-		BaudRate: 115200,
-		DataBits: 8,
-		StopBits: serial.OneStopBit,
-		Parity:   serial.NoParity,
-		// Keep ESP32 auto-program lines deasserted after open. Leaving DTR/RTS
-		// asserted is enough to strand boards in reset or ROM boot mode.
-		InitialStatusBits: &serial.ModemOutputBits{
-			DTR: false,
-			RTS: false,
-		},
-	})
+	fd, err := unix.Open(path, unix.O_RDWR|unix.O_NOCTTY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, fmt.Errorf("open serial port: %w", err)
 	}
-	return &Port{port: conn, path: path}, nil
+
+	if err := configurePort(fd); err != nil {
+		_ = unix.Close(fd)
+		return nil, fmt.Errorf("configure serial port: %w", err)
+	}
+
+	return &Port{
+		file:        os.NewFile(uintptr(fd), path),
+		path:        path,
+		readTimeout: 0,
+	}, nil
+}
+
+func configurePort(fd int) error {
+	settings, err := unix.IoctlGetTermios(fd, unix.TIOCGETA)
+	if err != nil {
+		return err
+	}
+
+	// Match the raw termios path that successfully reacquires the prompt and
+	// enters control mode on the ESP32 board.
+	settings.Iflag = 0
+	settings.Oflag = 0
+	settings.Cflag = unix.CS8 | unix.CREAD | unix.CLOCAL
+	settings.Lflag = 0
+	settings.Ispeed = unix.B115200
+	settings.Ospeed = unix.B115200
+	settings.Cc[unix.VMIN] = 0
+	settings.Cc[unix.VTIME] = 0
+
+	return unix.IoctlSetTermios(fd, unix.TIOCSETA, settings)
 }
 
 // Close closes the serial port.
 func (p *Port) Close() error {
-	return p.port.Close()
+	if p.file == nil {
+		return nil
+	}
+	return p.file.Close()
 }
 
 // Write sends raw bytes to the serial port.
 func (p *Port) Write(data []byte) error {
-	n, err := p.port.Write(data)
-	if err != nil {
-		return fmt.Errorf("serial write: %w", err)
-	}
-	if n != len(data) {
-		return fmt.Errorf("short write: wrote %d of %d bytes", n, len(data))
+	fd := int(p.file.Fd())
+	for written := 0; written < len(data); {
+		n, err := unix.Write(fd, data[written:])
+		if err == unix.EINTR {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("serial write: %w", err)
+		}
+		if n <= 0 {
+			return fmt.Errorf("short write: wrote %d of %d bytes", written, len(data))
+		}
+		written += n
 	}
 	return nil
 }
@@ -121,7 +151,6 @@ func ReadFrameTransport(conn Transport, timeout time.Duration, passthrough io.Wr
 			if inFrame && len(frame) > 0 {
 				return frame, nil
 			}
-			// Start (or restart) a new frame.
 			frame = frame[:0]
 			inFrame = true
 			continue
@@ -142,12 +171,60 @@ func ReadFrameTransport(conn Transport, timeout time.Duration, passthrough io.Wr
 
 // Read reads raw bytes from the serial port.
 func (p *Port) Read(buf []byte) (int, error) {
-	return p.port.Read(buf)
+	fd := int(p.file.Fd())
+
+	for {
+		timeoutMs := durationToPollTimeout(p.readTimeout)
+		fds := []unix.PollFd{{
+			Fd:     int32(fd),
+			Events: unix.POLLIN,
+		}}
+
+		n, err := unix.Poll(fds, timeoutMs)
+		if err == unix.EINTR {
+			continue
+		}
+		if err != nil {
+			return 0, err
+		}
+		if n == 0 {
+			return 0, nil
+		}
+
+		if fds[0].Revents&(unix.POLLERR|unix.POLLHUP|unix.POLLNVAL) != 0 {
+			return 0, io.EOF
+		}
+
+		read, err := unix.Read(fd, buf)
+		if err == unix.EINTR {
+			continue
+		}
+		if err == unix.EAGAIN || err == unix.EWOULDBLOCK {
+			continue
+		}
+		return read, err
+	}
+}
+
+func durationToPollTimeout(timeout time.Duration) int {
+	if timeout < 0 {
+		return -1
+	}
+	if timeout == 0 {
+		return 0
+	}
+
+	ms := int(math.Ceil(float64(timeout) / float64(time.Millisecond)))
+	if ms <= 0 {
+		return 1
+	}
+	return ms
 }
 
 // SetReadTimeout sets the read timeout on the serial port.
 func (p *Port) SetReadTimeout(d time.Duration) error {
-	return p.port.SetReadTimeout(d)
+	p.readTimeout = d
+	return nil
 }
 
 // Path returns the serial port's device path.
@@ -157,17 +234,16 @@ func (p *Port) Path() string {
 
 // ResetInputBuffer flushes the OS-level serial input buffer.
 func (p *Port) ResetInputBuffer() {
-	p.port.ResetInputBuffer()
+	_ = unix.IoctlSetPointerInt(int(p.file.Fd()), unix.TIOCFLUSH, unix.TCIFLUSH)
 }
 
 // Drain reads and discards all bytes for the given duration.
-// Clears boot messages before sending the first frame.
 func (p *Port) Drain(duration time.Duration) {
 	deadline := time.Now().Add(duration)
 	buf := make([]byte, 256)
 	for time.Now().Before(deadline) {
 		remaining := time.Until(deadline)
-		p.port.SetReadTimeout(remaining)
-		p.port.Read(buf)
+		_ = p.SetReadTimeout(remaining)
+		_, _ = p.Read(buf)
 	}
 }

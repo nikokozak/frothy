@@ -12,6 +12,10 @@ This file is stable repo guidance for agents working in Frothy.
 
 Frothy is a small live lexical language for programmable devices.
 
+Frothy is embedded-device-first.
+Host/local/POSIX paths exist to support development speed and tooling, but they
+are secondary niceties, not the product center.
+
 It keeps Froth's strongest substrate traits:
 
 - stable top-level identity
@@ -48,8 +52,10 @@ The original Froth repo at `/Users/niko/Developer/Froth` is reference material.
 - Froth source and docs are authoritative only where Frothy explicitly reuses
   substrate behavior or workflow constraints.
 - Do not continue the old Froth milestone plan.
-- Build Frothy beside inherited code first. Do not rip out the old runtime
-  before the replacement path exists and proves itself.
+- Build Frothy beside inherited code first when a replacement path does not
+  exist yet.
+- Once the Frothy-owned replacement path exists and proves itself, delete the
+  legacy path promptly instead of carrying both.
 
 ## Working Set
 
@@ -105,6 +111,14 @@ editing the control docs.
 
 The codebase should read like a strong small open-source systems library.
 
+Design priority order:
+
+1. real embedded-device behavior
+2. language/runtime integrity on the maintained hardware path
+3. host/local convenience
+
+If those priorities conflict, favor the embedded-device path.
+
 Quality references:
 
 - SQLite
@@ -128,7 +142,9 @@ Required habits:
 - keep the public C surface small
 - separate platform code from runtime/language code cleanly
 - avoid hidden allocation in hot execution paths
-- prefer additive migration beside inherited Froth substrate before deletion
+- keep inherited Froth substrate only while it is the sole live implementation
+  or an accepted temporary shim; once the Frothy-owned path is real and
+  proved, prune the legacy surface aggressively
 
 Bias toward:
 
@@ -184,6 +200,21 @@ Default validation paths:
 - `cmake -S . -B build && cmake --build build`
 - `make test`
 
+Real-device validation policy:
+
+- Before sign-off on any task in this repo, run at least one proof on a real
+  connected ESP32-class target.
+- For device-facing work, that proof must exercise the changed surface
+  directly.
+- For host-only, docs, control-surface, or refactor work, a real-device sanity
+  proof is still mandatory before sign-off so the maintained hardware path is
+  never left unexercised.
+- Local POSIX or `connect --local` runs are supplementary only. They do not
+  count as final validation and must not be presented as if they prove
+  real-device behavior.
+- If a real-device proof could not be run, say so explicitly and do not imply
+  the work is fully validated.
+
 For docs and control-surface changes, default to focused grep or checked-in
 sanity scripts that prove the intended authority split and live queue are
 actually true. Do not default to heavier build or test runs unless the change
@@ -199,6 +230,15 @@ genuinely needs them.
   expected; if context would be lost, add or update a referenced doc rather
   than expanding the timeline into narrative sprawl.
 - Keep README and repo-control docs aligned with actual repo policy.
+- At every reasonable opportunity, prune legacy Froth code, naming, syntax,
+  compatibility shims, docs, and architecture from the maintained repo
+  surface. Do not keep stale parallel paths once the Frothy-owned replacement
+  is working and proved.
+- Treat real-device proof as higher priority than local convenience. Do not
+  stop at POSIX-only validation for any task in this repo.
+- Keep the repo and its docs honest about product priority: Frothy is for
+  embedded devices first, and local/POSIX support is a secondary development
+  aid.
 - At the end of a tranche, run agent reviews repeatedly until they stop
   surfacing major issues and you are comfortable with the work. Do not treat a
   first green test pass or a single review round as tranche closeout.
@@ -212,5 +252,7 @@ genuinely needs them.
 - Do not treat old Froth ADR-054 / ADR-055 / ADR-056 sequencing as the Frothy
   plan.
 - Do not hide hot-path allocation behind helper layers.
-- Do not start deleting inherited substrate before the parallel Frothy path
-  exists.
+- Do not keep inherited substrate, naming, or compatibility layers around once
+  the Frothy-owned replacement path exists and is proved.
+- Do not treat local/POSIX behavior as equal evidence for real-device
+  behavior, and do not let host niceties outrank the embedded-device path.

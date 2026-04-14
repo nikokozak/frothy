@@ -64,6 +64,11 @@ file is wrong.
   `frothy_shell_run()`'s task stack, widening the stack-budget proof to cover
   parser/shell entry paths, and restoring the maintained ESP-IDF main-task
   stack setting to 8192 bytes in `targets/esp-idf/sdkconfig`.
+- The host serial control path is now pruned of the legacy raw-`HELLO`
+  discovery probe, the maintained macOS CLI transport uses the direct raw
+  termios path that actually survives ESP32 prompt/control handoff, and the
+  Frothy local connect build cache no longer collides with inherited Froth's
+  stale `local-build` directory.
 
 ## Near-Term Priority Stack
 

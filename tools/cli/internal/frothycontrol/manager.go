@@ -10,7 +10,6 @@ import (
 )
 
 var openSerialTransport = serial.Open
-var openSerialTransportAndProbe = serial.OpenAndProbe
 
 var ErrNotConnected = errors.New("not connected")
 var ErrResetUnavailable = errors.New(
@@ -344,20 +343,6 @@ func (m *Manager) openKnownSerialPort(path string) (*managedConnection, error) {
 	return conn, nil
 }
 
-func (m *Manager) openProbedSerialPort(path string) (*managedConnection, error) {
-	transport, _, err := openSerialTransportAndProbe(path)
-	if err != nil {
-		return nil, err
-	}
-
-	conn, err := m.bindControlSession(transport, path, nil)
-	if err != nil {
-		_ = transport.Close()
-		return nil, err
-	}
-	return conn, nil
-}
-
 func (m *Manager) discoverUniqueSerial() (*managedConnection, error) {
 	candidates, err := serial.ListCandidates()
 	if err != nil {
@@ -366,13 +351,16 @@ func (m *Manager) discoverUniqueSerial() (*managedConnection, error) {
 	if len(candidates) == 0 {
 		return nil, &ConnectSelectionError{Code: "no_devices"}
 	}
+	if len(candidates) == 1 {
+		return m.openKnownSerialPort(candidates[0])
+	}
 
 	var matches []*managedConnection
 	var summaries []ConnectCandidate
 	var lastErr error
 
 	for _, path := range candidates {
-		conn, err := m.openProbedSerialPort(path)
+		conn, err := m.openKnownSerialPort(path)
 		if err != nil {
 			lastErr = err
 			continue
