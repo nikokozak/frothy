@@ -51,8 +51,13 @@ BOOT_TRANSCRIPT="$(
 )"
 printf '%s\n' "$BOOT_TRANSCRIPT"
 require_contains "$BOOT_TRANSCRIPT" 'snapshot: found'
-require_contains "$BOOT_TRANSCRIPT" 'save | base | native'
-require_contains "$BOOT_TRANSCRIPT" '<native save/0>'
+require_contains "$BOOT_TRANSCRIPT" 'save'
+require_contains "$BOOT_TRANSCRIPT" '  slot: base'
+require_contains "$BOOT_TRANSCRIPT" '  kind: native'
+require_contains "$BOOT_TRANSCRIPT" '  owner: runtime builtin'
+require_contains "$BOOT_TRANSCRIPT" '  persistence: not saved'
+require_contains "$BOOT_TRANSCRIPT" '  help: Save the current overlay snapshot.'
+require_contains "$BOOT_TRANSCRIPT" '  see: <native save/0>'
 require_contains "$BOOT_TRANSCRIPT" '"booted"'
 require_not_contains() {
   transcript=$1
@@ -64,7 +69,7 @@ require_not_contains() {
 }
 require_not_contains "$BOOT_TRANSCRIPT" 'eval error ('
 
-SAVE_LINE="$(printf '%s\n' "$BOOT_TRANSCRIPT" | grep -n -F 'save | base | native' | head -n1 | cut -d: -f1)"
+SAVE_LINE="$(printf '%s\n' "$BOOT_TRANSCRIPT" | grep -n -F '  see: <native save/0>' | head -n1 | cut -d: -f1)"
 FIRST_BOOTED_LINE="$(printf '%s\n' "$BOOT_TRANSCRIPT" | grep -n -F 'frothy> "booted"' | head -n1 | cut -d: -f1)"
 FIRST_NIL_LINE="$(printf '%s\n' "$BOOT_TRANSCRIPT" | grep -n -F 'frothy> nil' | head -n1 | cut -d: -f1)"
 if [ -z "$SAVE_LINE" ] || [ -z "$FIRST_BOOTED_LINE" ] || [ "$SAVE_LINE" -ge "$FIRST_BOOTED_LINE" ]; then
@@ -76,7 +81,7 @@ if [ -z "$FIRST_NIL_LINE" ] || [ "$FIRST_BOOTED_LINE" -ge "$FIRST_NIL_LINE" ]; t
   exit 1
 fi
 
-RESTORE_COUNT="$(printf '%s\n' "$BOOT_TRANSCRIPT" | grep -c -F 'save | base | native')"
+RESTORE_COUNT="$(printf '%s\n' "$BOOT_TRANSCRIPT" | grep -c -F '  see: <native save/0>')"
 if [ "$RESTORE_COUNT" -ne 1 ]; then
   echo "error: expected boot hook to run exactly once at startup, got $RESTORE_COUNT" >&2
   exit 1

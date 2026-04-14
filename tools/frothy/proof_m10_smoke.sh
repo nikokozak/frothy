@@ -84,6 +84,7 @@ for proof_file in \
   "$ROOT_DIR/tools/frothy/proof_m10_blink.frothy" \
   "$ROOT_DIR/tools/frothy/proof_m10_boot_persist.frothy" \
   "$ROOT_DIR/tools/frothy/proof_m10_cells_adc.frothy" \
+  "$ROOT_DIR/tools/frothy/proof_m10_workshop_surface.frothy" \
   "$ROOT_DIR/tools/frothy/proof_m10_esp32_smoke.py"
 do
   if [ ! -f "$proof_file" ]; then
@@ -138,6 +139,24 @@ require_count_at_least() {
   fi
 }
 
+require_sequence() {
+  transcript=$1
+  shift
+  TRANSCRIPT=$transcript python3 - "$@" <<'PY'
+import os
+import sys
+
+text = os.environ["TRANSCRIPT"].replace("\r\n", "\n")
+index = 0
+for needle in sys.argv[1:]:
+    next_index = text.find(needle, index)
+    if next_index < 0:
+        sys.stderr.write(f"error: expected transcript sequence element: {needle}\n")
+        raise SystemExit(1)
+    index = next_index + len(needle)
+PY
+}
+
 BLINK_TRANSCRIPT="$(run_file "$ROOT_DIR/tools/frothy/proof_m10_blink.frothy")"
 printf '%s\n' "$BLINK_TRANSCRIPT"
 require_contains "$BLINK_TRANSCRIPT" 'Frothy shell'
@@ -177,6 +196,66 @@ require_contains "$CELLS_TRANSCRIPT" 'Frothy shell'
 require_count_at_least "$CELLS_TRANSCRIPT" '2048' 4
 require_not_contains "$CELLS_TRANSCRIPT" 'eval error ('
 require_not_contains "$CELLS_TRANSCRIPT" 'parse error ('
+
+WORKSHOP_TRANSCRIPT="$(
+  run_file "$ROOT_DIR/tools/frothy/proof_m10_workshop_surface.frothy"
+)"
+printf '%s\n' "$WORKSHOP_TRANSCRIPT"
+require_contains "$WORKSHOP_TRANSCRIPT" 'millis | base | native | non-persistable | foreign'
+require_count_at_least "$WORKSHOP_TRANSCRIPT" 'blink | base | code | persistable | user' 2
+require_contains "$WORKSHOP_TRANSCRIPT" 'adc.percent | base | code | persistable | user'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  '"millis.check"' \
+  'frothy> true'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  '"gpio.low.check"' \
+  '[gpio] pin 2 = LOW' \
+  'frothy> 0'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  '"gpio.high.check"' \
+  '[gpio] pin 2 = HIGH' \
+  'frothy> 1'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  '"gpio.toggle.check"' \
+  '[gpio] pin 2 = LOW' \
+  'frothy> 0'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  '"led.off.check"' \
+  '[gpio] pin 2 -> OUTPUT' \
+  '[gpio] pin 2 = LOW' \
+  'frothy> 0'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  '"led.on.check"' \
+  '[gpio] pin 2 -> OUTPUT' \
+  '[gpio] pin 2 = HIGH' \
+  'frothy> 1'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  '"led.toggle.check"' \
+  '[gpio] pin 2 -> OUTPUT' \
+  '[gpio] pin 2 = LOW' \
+  'frothy> 0'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  '"adc.percent.check"' \
+  'frothy> 50'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  '"anim.check"' \
+  'frothy> 41' \
+  'frothy> 42' \
+  'frothy> 43'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  '"overlay.blink.check"' \
+  'blink | overlay | code | persistable | user' \
+  'frothy> 99'
+require_sequence "$WORKSHOP_TRANSCRIPT" \
+  '"restored.blink.check"' \
+  'blink | base | code | persistable | user' \
+  '[gpio] pin 2 -> OUTPUT' \
+  '[gpio] pin 2 = LOW' \
+  '[gpio] pin 2 = HIGH' \
+  '[gpio] pin 2 = LOW' \
+  'nil'
+require_not_contains "$WORKSHOP_TRANSCRIPT" 'eval error ('
+require_not_contains "$WORKSHOP_TRANSCRIPT" 'parse error ('
 
 if [ -e "$WORK_DIR/froth_a.snap" ] || [ -e "$WORK_DIR/froth_b.snap" ]; then
   echo "error: host preflight left snapshot files behind" >&2

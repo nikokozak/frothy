@@ -263,6 +263,28 @@ static int capture_report_text(const char *name,
   return 1;
 }
 
+static int expect_binding_view(const char *name, bool expected_overlay,
+                               frothy_value_class_t expected_class,
+                               const char *label) {
+  frothy_inspect_binding_view_t view = {0};
+  int ok = 1;
+
+  if (frothy_inspect_render_binding_view(runtime(), name, &view) != FROTH_OK) {
+    fprintf(stderr, "%s failed to inspect `%s`\n", label, name);
+    return 0;
+  }
+  if (view.is_overlay != expected_overlay || view.value_class != expected_class) {
+    fprintf(stderr, "%s expected `%s` overlay=%d class=%s, got overlay=%d class=%s\n",
+            label, name, expected_overlay ? 1 : 0,
+            frothy_inspect_class_name(expected_class),
+            view.is_overlay ? 1 : 0,
+            frothy_inspect_class_name(view.value_class));
+    ok = 0;
+  }
+  frothy_inspect_binding_view_free(&view);
+  return ok;
+}
+
 static int expect_snapshot_present(bool expected, const char *label) {
   uint8_t slot = 0;
   uint32_t generation = 0;
@@ -595,13 +617,17 @@ static int test_native_dispatch_and_roundtrip(void) {
 static int test_overlay_reset_semantics(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
+  size_t base_live_objects = 0;
+  size_t base_payload = 0;
   int ok = 1;
 
   if (!enter_temp_workspace(&workspace)) {
     return 0;
   }
 
-  ok &= expect_live_objects(14, "base native objects");
+  base_live_objects = frothy_runtime_live_object_count(runtime());
+  base_payload = frothy_runtime_payload_used(runtime());
+  ok &= expect_live_objects(base_live_objects, "base live objects");
   ok &= expect_ok("save = 1", &value);
   release_value(&value);
   ok &= expect_ok("note = \"hello\"", &value);
@@ -612,15 +638,15 @@ static int test_overlay_reset_semantics(void) {
   release_value(&value);
   ok &= expect_ok("touchFrame()", &value);
   release_value(&value);
-  ok &= expect_live_objects(17, "overlay objects before reset");
+  ok &= expect_live_objects(base_live_objects + 3, "overlay objects before reset");
 
   if (frothy_base_image_reset() != FROTH_OK) {
     fprintf(stderr, "frothy_base_image_reset failed\n");
     ok = 0;
   }
 
-  ok &= expect_live_objects(14, "base native objects after reset");
-  ok &= expect_payload_used(0, "base payload after reset");
+  ok &= expect_live_objects(base_live_objects, "base live objects after reset");
+  ok &= expect_payload_used(base_payload, "base payload after reset");
   ok &= expect_error("note", FROTH_ERROR_UNDEFINED_WORD);
   ok &= expect_error("frame", FROTH_ERROR_UNDEFINED_WORD);
   ok &= expect_ok("save()", &value);
@@ -735,6 +761,7 @@ static int test_corrupt_snapshot_failures_reset_to_base(void) {
 static int test_repeated_near_capacity_save_restore(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
+  size_t base_live_objects = 0;
   size_t overlay_count = 0;
   size_t text_count = 0;
   size_t middle_index = 0;
@@ -745,6 +772,7 @@ static int test_repeated_near_capacity_save_restore(void) {
   if (!enter_temp_workspace(&workspace)) {
     return 0;
   }
+  base_live_objects = frothy_runtime_live_object_count(runtime());
   overlay_count = near_capacity_overlay_count();
   if (overlay_count == 0) {
     fprintf(stderr, "expected near-capacity overlay headroom\n");
@@ -761,7 +789,8 @@ static int test_repeated_near_capacity_save_restore(void) {
     return 0;
   }
 
-  ok &= expect_live_objects(14 + overlay_count, "near-cap overlay before save");
+  ok &= expect_live_objects(base_live_objects + overlay_count,
+                            "near-cap overlay before save");
   ok &= expect_ok("save()", &value);
   ok &= expect_nil_value(value, "save() with near-cap overlay");
   release_value(&value);
@@ -776,7 +805,7 @@ static int test_repeated_near_capacity_save_restore(void) {
   ok &= expect_nil_value(value, "restore() with near-cap overlay");
   release_value(&value);
 
-  ok &= expect_live_objects(14 + overlay_count,
+  ok &= expect_live_objects(base_live_objects + overlay_count,
                             "near-cap overlay after first restore");
   if (text_count > 0) {
     ok &= expect_overlay_text_slot(0, "first near-cap binding after restore");
@@ -811,7 +840,7 @@ static int test_repeated_near_capacity_save_restore(void) {
     release_value(&value);
   }
 
-  ok &= expect_live_objects(14 + overlay_count,
+  ok &= expect_live_objects(base_live_objects + overlay_count,
                             "near-cap overlay after second restore");
   if (text_count > 0) {
     ok &= expect_overlay_text_slot(last_index,
@@ -828,11 +857,15 @@ static int test_repeated_near_capacity_save_restore(void) {
 static int test_decode_failure_after_reset_re_resets_to_base(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
+  size_t base_live_objects = 0;
+  size_t base_payload = 0;
   int ok = 1;
 
   if (!enter_temp_workspace(&workspace)) {
     return 0;
   }
+  base_live_objects = frothy_runtime_live_object_count(runtime());
+  base_payload = frothy_runtime_payload_used(runtime());
 
   ok &= write_simple_text_snapshot();
   ok &= expect_ok("junk = 1", &value);
@@ -843,8 +876,9 @@ static int test_decode_failure_after_reset_re_resets_to_base(void) {
     fprintf(stderr, "direct restore expected heap out of memory\n");
     ok = 0;
   }
-  ok &= expect_live_objects(14, "base native objects after decode failure");
-  ok &= expect_payload_used(0, "base payload after decode failure");
+  ok &= expect_live_objects(base_live_objects,
+                            "base live objects after decode failure");
+  ok &= expect_payload_used(base_payload, "base payload after decode failure");
   ok &= expect_snapshot_present(true, "snapshot preserved after decode failure");
   ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
   ok &= expect_ok("1", &value);
@@ -1132,6 +1166,84 @@ static int test_startup_without_snapshot(void) {
   ok &= expect_int_value(value, 1, "prompt usable after no-snapshot startup");
   release_value(&value);
 
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
+static int test_workshop_base_library_wipe_restore(void) {
+  temp_workspace_t workspace = {{0}};
+  frothy_value_t value = frothy_value_make_nil();
+  char *see_before = NULL;
+  char *core_before = NULL;
+  char *see_after = NULL;
+  char *core_after = NULL;
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+
+  ok &= expect_binding_view("millis", false, FROTHY_VALUE_CLASS_NATIVE,
+                            "base millis view");
+  ok &= expect_binding_view("blink", false, FROTHY_VALUE_CLASS_CODE,
+                            "base blink view");
+  ok &= expect_binding_view("adc.percent", false, FROTHY_VALUE_CLASS_CODE,
+                            "base adc.percent view");
+  ok &= capture_code_renders("blink", &see_before, &core_before);
+  ok &= expect_ok("adc.percent(A0)", &value);
+  ok &= expect_int_value(value, 50, "base adc.percent(A0)");
+  release_value(&value);
+  ok &= expect_ok("led.off()", &value);
+  ok &= expect_nil_value(value, "led.off()");
+  release_value(&value);
+  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
+  ok &= expect_int_value(value, 0, "gpio.read after led.off()");
+  release_value(&value);
+  ok &= expect_ok("led.on()", &value);
+  ok &= expect_nil_value(value, "led.on()");
+  release_value(&value);
+  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
+  ok &= expect_int_value(value, 1, "gpio.read after led.on()");
+  release_value(&value);
+  ok &= expect_ok("led.toggle()", &value);
+  ok &= expect_nil_value(value, "led.toggle()");
+  release_value(&value);
+  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
+  ok &= expect_int_value(value, 0, "gpio.read after led.toggle()");
+  release_value(&value);
+
+  ok &= expect_ok("blink = fn(pin, count, wait) { 99 }", &value);
+  release_value(&value);
+  ok &= expect_ok("adc.percent = fn(pin) { 99 }", &value);
+  release_value(&value);
+  ok &= expect_binding_view("blink", true, FROTHY_VALUE_CLASS_CODE,
+                            "overlay blink view");
+  ok &= expect_binding_view("adc.percent", true, FROTHY_VALUE_CLASS_CODE,
+                            "overlay adc.percent view");
+  ok &= expect_ok("adc.percent(A0)", &value);
+  ok &= expect_int_value(value, 99, "overlay adc.percent(A0)");
+  release_value(&value);
+
+  ok &= expect_ok("wipe()", &value);
+  ok &= expect_nil_value(value, "wipe()");
+  release_value(&value);
+  ok &= expect_binding_view("blink", false, FROTHY_VALUE_CLASS_CODE,
+                            "restored blink view");
+  ok &= expect_binding_view("adc.percent", false, FROTHY_VALUE_CLASS_CODE,
+                            "restored adc.percent view");
+  ok &= capture_code_renders("blink", &see_after, &core_after);
+  if (ok) {
+    ok &= expect_text_equal(see_after, see_before, "blink see after wipe");
+    ok &= expect_text_equal(core_after, core_before, "blink core after wipe");
+  }
+  ok &= expect_ok("adc.percent(A0)", &value);
+  ok &= expect_int_value(value, 50, "restored adc.percent(A0)");
+  release_value(&value);
+
+  free(see_before);
+  free(core_before);
+  free(see_after);
+  free(core_after);
   leave_temp_workspace(&workspace);
   return ok;
 }
@@ -1482,6 +1594,7 @@ int main(void) {
   ok &= test_inspect_report_formatting();
   ok &= test_length_aware_slot_lookup();
   ok &= test_startup_without_snapshot();
+  ok &= test_workshop_base_library_wipe_restore();
   ok &= test_startup_snapshot_discovery_failure();
   ok &= test_startup_restore_without_boot();
   ok &= test_startup_with_non_code_boot();

@@ -16,9 +16,10 @@
 #endif
 
 static const char *const frothy_board_binding_names[] = {
-    "gpio.mode", "gpio.write", "ms",
-    "adc.read",  "uart.init",  "uart.write",
-    "uart.read", NULL,
+    "gpio.mode", "gpio.write", "gpio.read",
+    "ms",        "millis",     "adc.read",
+    "uart.init", "uart.write", "uart.read",
+    NULL,
 };
 
 static const char *const frothy_board_pin_names[] = {
@@ -28,6 +29,10 @@ static const char *const frothy_board_pin_names[] = {
     "A0",
     NULL,
 };
+
+froth_cell_t frothy_ffi_wrap_uptime_ms(uint32_t uptime_ms) {
+  return froth_wrap_payload((froth_cell_u_t)uptime_ms);
+}
 
 static bool frothy_name_in_list(const char *name, const char *const *names) {
   size_t i;
