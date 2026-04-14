@@ -140,8 +140,17 @@ Default validation paths:
 - `cmake -S . -B build && cmake --build build`
 - `make test`
 
-For docs and control-surface changes, also run focused grep or syntax checks
-that prove the intended authority split and release hygiene are actually true.
+Validation must stay proportional to the change.
+
+- Add tests and proofs only when they protect basic user-visible behavior,
+  likely regressions, or clear data-loss boundaries.
+- Prefer one good check at one layer over multiple overlapping checks for the
+  same behavior.
+- Keep docs and control-surface proofs lightweight and direct. Prove the live
+  snapshot is truthful; do not build wording-police harnesses unless wording is
+  itself the contract.
+- If a test or proof failure would not correspond to a meaningful product
+  failure, the check is probably too heavy for the current repo stage.
 
 ## Workflow Expectations
 
@@ -149,9 +158,11 @@ that prove the intended authority split and release hygiene are actually true.
 - Update `PROGRESS.md` after meaningful work lands.
 - Update `TIMELINE.md` when milestone status, target dates, or slips change.
 - Keep README and repo-control docs aligned with actual repo policy.
-- At the end of a tranche, run agent reviews repeatedly until they stop
-  surfacing major issues and you are comfortable with the work. Do not treat a
-  first green test pass or a single review round as tranche closeout.
+- At the end of a tranche, run enough review and validation to catch major
+  issues in the changed surface. Stop when core behavior is covered and the
+  remaining risk is normal, not theoretical.
+- Do not pile on overlapping review loops, test matrices, or proof scripts once
+  the tranche is already well covered.
 - Keep commit messages terse.
 - Do not add `Co-Authored-By` lines.
 
@@ -164,3 +175,7 @@ that prove the intended authority split and release hygiene are actually true.
 - Do not hide hot-path allocation behind helper layers.
 - Do not start deleting inherited substrate before the parallel Frothy path
   exists.
+- Do not build multiple assurance layers for the same behavior without a clear
+  product need.
+- Do not turn low-probability or compatibility-only edges into large permanent
+  maintenance surfaces unless the user explicitly wants that tradeoff.

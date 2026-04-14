@@ -14,9 +14,8 @@ file is wrong.
 
 - Active milestone: `none`
 - Blocked by: none
-- Next artifact: first host-only slot-bundle inspection/generation artifact in
-  the CLI project layer
-- Next proof: `make test-all && rg -n '^Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n '^- Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' PROGRESS.md TIMELINE.md && rg -n 'host-only slot-bundle inspection/generation' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot bundle as the first useful artifact' docs/adr/115-first-workspace-image-flow-tranche.md docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md && rg -n 'repo-local \`froth-cli\`' README.md`
+- Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer
+- Next proof: `make test-all && sh tools/frothy/proof_next_stage_docs.sh`
 
 ## Recent Landed Work
 
@@ -221,9 +220,8 @@ file is wrong.
 
 ## Next Artifact
 
-- First host-only slot-bundle inspection/generation artifact in the CLI
-  project layer.
+- First host-only slot-bundle inspection/generation artifact in the CLI project layer.
 
 ## Next Proof
 
-- `make test-all && rg -n '^Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n '^- Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' PROGRESS.md TIMELINE.md && rg -n 'host-only slot-bundle inspection/generation' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot bundle as the first useful artifact' docs/adr/115-first-workspace-image-flow-tranche.md docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md && rg -n 'repo-local \`froth-cli\`' README.md`
+- `make test-all && sh tools/frothy/proof_next_stage_docs.sh`

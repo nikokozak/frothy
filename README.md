@@ -2,9 +2,11 @@
 
 Frothy is a small live lexical language for programmable devices.
 
-Frothy `v0.1` is functionally closed. The active work is `F1 Core hardening`:
-syntax rollout, measured runtime cleanup, and a smaller control transport
-without changing the accepted semantics, snapshot contract, or FFI boundary.
+Frothy `v0.1` is functionally closed. The live control surface is in
+`docs/roadmap/Frothy_Development_Roadmap_v0_1.md`; the next queued artifact is
+host-only slot-bundle inspection/generation in the CLI project layer, while
+accepted language, snapshot, and FFI semantics remain on the closed `v0.1`
+baseline.
 
 The repo reuses inherited Froth substrate where that is the simplest working
 path, but Froth's old roadmap, stack-centric user model, and language

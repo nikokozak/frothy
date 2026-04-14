@@ -44,7 +44,7 @@ func TestRunSetupESPIDFDownloadsTaggedRawScriptOutsideRepo(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "setup.log")
 	version := frothVersion(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		wantPath := fmt.Sprintf("/nikokozak/froth/v%s/tools/setup-esp-idf.sh", version)
+		wantPath := fmt.Sprintf("/nikokozak/frothy/v%s/tools/setup-esp-idf.sh", version)
 		if r.URL.Path != wantPath {
 			http.NotFound(w, r)
 			return
@@ -87,7 +87,17 @@ func TestRunSetupESPIDFRejectsUnknownArgs(t *testing.T) {
 
 func TestRawTaggedURLUsesSingleRepoPrefix(t *testing.T) {
 	url := rawTaggedURL("1.2.3", "tools/setup-esp-idf.sh")
-	want := "https://raw.githubusercontent.com/nikokozak/froth/v1.2.3/tools/setup-esp-idf.sh"
+	want := "https://raw.githubusercontent.com/nikokozak/frothy/v1.2.3/tools/setup-esp-idf.sh"
+	if url != want {
+		t.Fatalf("rawTaggedURL = %q, want %q", url, want)
+	}
+}
+
+func TestRawTaggedURLUsesReleaseRepoSlugOverride(t *testing.T) {
+	t.Setenv("RELEASE_REPO_SLUG", "example/frothy-nightly")
+
+	url := rawTaggedURL("1.2.3", "tools/setup-esp-idf.sh")
+	want := "https://raw.githubusercontent.com/example/frothy-nightly/v1.2.3/tools/setup-esp-idf.sh"
 	if url != want {
 		t.Fatalf("rawTaggedURL = %q, want %q", url, want)
 	}

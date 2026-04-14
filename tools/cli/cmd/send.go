@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,7 +9,17 @@ import (
 
 	"github.com/nikokozak/froth/tools/cli/internal/frothycontrol"
 	"github.com/nikokozak/froth/tools/cli/internal/project"
+	baseproto "github.com/nikokozak/froth/tools/cli/internal/protocol"
 )
+
+type sendRuntime interface {
+	controlEvalManager
+	Reset() (*baseproto.ResetResponse, error)
+	Words() ([]string, error)
+}
+
+var sendControlSource = runControlSource
+var sendControlEval = runControlEval
 
 type sendPayload struct {
 	source          string
@@ -29,13 +40,20 @@ func runSend(fileArg string) error {
 	}
 	defer manager.Disconnect()
 
+	return sendResolvedPayload(manager, payload)
+}
+
+func sendResolvedPayload(manager sendRuntime, payload *sendPayload) error {
 	if payload.resetBeforeEval {
-		if _, err := runControlEval(manager, "wipe()"); err != nil && !isInterrupted(err) {
-			return fmt.Errorf("wipe(): %w", err)
+		if _, err := manager.Reset(); err != nil {
+			if errors.Is(err, frothycontrol.ErrResetUnavailable) {
+				return fmt.Errorf("whole-file send requires reset + eval; connected firmware is too old for safe whole-file send: %w", err)
+			}
+			return fmt.Errorf("reset(): %w", err)
 		}
 	}
 
-	value, err := runControlSource(manager, payload.source)
+	value, err := sendControlSource(manager, payload.source)
 	if err != nil {
 		return fmt.Errorf("eval: %w", err)
 	}
@@ -52,9 +70,9 @@ func runSend(fileArg string) error {
 
 	switch {
 	case contains(words, "boot"):
-		value, err = runControlEval(manager, "boot()")
+		value, err = sendControlEval(manager, "boot()")
 	case contains(words, "autorun"):
-		value, err = runControlEval(manager, "autorun()")
+		value, err = sendControlEval(manager, "autorun()")
 	default:
 		return nil
 	}

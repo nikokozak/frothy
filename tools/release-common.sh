@@ -1,10 +1,14 @@
 #!/bin/sh
 
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/cli/cmd/release-defaults.env"
+
 # Release assets and tap metadata stay Frothy-branded during the transition.
 # The release-time `froth` executable name stays separate from those asset names.
-RELEASE_REPO_SLUG=${RELEASE_REPO_SLUG:-nikokozak/frothy}
-HOMEBREW_TAP_REPO_SLUG=${HOMEBREW_TAP_REPO_SLUG:-nikokozak/homebrew-frothy}
-DEFAULT_FIRMWARE_BOARD=${DEFAULT_FIRMWARE_BOARD:-esp32-devkit-v1}
+RELEASE_REPO_SLUG=${RELEASE_REPO_SLUG:-$FROTHY_DEFAULT_RELEASE_REPO_SLUG}
+HOMEBREW_TAP_REPO_SLUG=${HOMEBREW_TAP_REPO_SLUG:-$FROTHY_DEFAULT_HOMEBREW_TAP_REPO_SLUG}
+DEFAULT_FIRMWARE_BOARD=${DEFAULT_FIRMWARE_BOARD:-$FROTHY_DEFAULT_FIRMWARE_BOARD}
 
 normalize_version() {
   case "$1" in

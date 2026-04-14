@@ -10,7 +10,12 @@ import (
 	"github.com/nikokozak/froth/tools/cli/internal/project"
 )
 
-func runControlEval(manager *frothycontrol.Manager, source string) (string, error) {
+type controlEvalManager interface {
+	Eval(source string, onOutput func([]byte)) (string, error)
+	Interrupt() error
+}
+
+func runControlEval(manager controlEvalManager, source string) (string, error) {
 	sigintCh := make(chan os.Signal, 1)
 	signal.Notify(sigintCh, os.Interrupt)
 	defer signal.Stop(sigintCh)
@@ -41,7 +46,7 @@ func runControlEval(manager *frothycontrol.Manager, source string) (string, erro
 	}
 }
 
-func runControlSource(manager *frothycontrol.Manager, source string) (string, error) {
+func runControlSource(manager controlEvalManager, source string) (string, error) {
 	forms, err := project.SplitTopLevelForms(source)
 	if err != nil {
 		return "", err

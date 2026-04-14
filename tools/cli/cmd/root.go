@@ -92,7 +92,7 @@ func printUsage() {
 	fmt.Println("  flash           Flash device")
 	fmt.Println("  setup           Install optional toolchains")
 	fmt.Println("  connect         Connect to Frothy")
-	fmt.Println("  send [file]     Send source to a Frothy runtime (resolves includes)")
+	fmt.Println("  send [file]     Send source to a Frothy runtime (raw text is additive; file/project send uses reset + eval)")
 	fmt.Println("  info            Show device info")
 	fmt.Println("  reset           Wipe the saved and live overlay image")
 	fmt.Println()

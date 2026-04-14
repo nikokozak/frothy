@@ -27,10 +27,9 @@ Current milestone: `none`
 Today's goal: keep the landed workspace/image-flow tranche and CLI naming
 alignment truthful while queuing the first host-only slot-bundle
 inspection/generation cut in the CLI project layer
-Next artifact: first host-only slot-bundle inspection/generation artifact in
-the CLI project layer
+Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer
 Blocked by: none
-Next proof command: `make test-all && rg -n '^Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n '^- Next artifact: first host-only slot-bundle inspection/generation artifact in the CLI project layer$' PROGRESS.md TIMELINE.md && rg -n 'host-only slot-bundle inspection/generation' docs/roadmap/Frothy_Development_Roadmap_v0_1.md PROGRESS.md TIMELINE.md && rg -n 'slot bundle as the first useful artifact' docs/adr/115-first-workspace-image-flow-tranche.md docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md && rg -n 'repo-local \`froth-cli\`' README.md`
+Next proof command: `make test-all && sh tools/frothy/proof_next_stage_docs.sh`
 Slip against plan: none; next-stage language-definition docs, control-session
 slice 2, bounded-memory hardening, CLI naming alignment, and
 workspace/image-flow tranche 1 are already landed, so the next live cut is

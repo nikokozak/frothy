@@ -12,10 +12,9 @@ import (
 )
 
 var (
-	setupHTTPClient     = &http.Client{Timeout: 30 * time.Second}
-	releaseRepoSlug     = "nikokozak/froth"
-	releaseDownloadBase = "https://github.com/" + releaseRepoSlug + "/releases/download"
-	rawContentBase      = "https://raw.githubusercontent.com"
+	setupHTTPClient          = &http.Client{Timeout: 30 * time.Second}
+	rawContentBase           = "https://raw.githubusercontent.com"
+	releaseDownloadBaseURLFn = releaseDownloadBaseURL
 )
 
 func runSetup(args []string) error {
@@ -118,12 +117,24 @@ func downloadFile(url string, destPath string) error {
 }
 
 func releaseAssetURL(version string, asset string) string {
-	base := strings.TrimRight(releaseDownloadBase, "/")
-	return fmt.Sprintf("%s/v%s/%s", base, version, asset)
+	base := strings.TrimRight(releaseDownloadBaseURLFn(version), "/")
+	return fmt.Sprintf("%s/%s", base, asset)
 }
 
 func rawTaggedURL(version string, path string) string {
 	base := strings.TrimRight(rawContentBase, "/")
 	cleanPath := strings.TrimLeft(path, "/")
-	return fmt.Sprintf("%s/%s/v%s/%s", base, releaseRepoSlug, version, cleanPath)
+	return fmt.Sprintf("%s/%s/v%s/%s", base, releaseRepoSlug(), version, cleanPath)
+}
+
+func releaseRepoSlug() string {
+	if slug := strings.TrimSpace(os.Getenv("RELEASE_REPO_SLUG")); slug != "" {
+		return slug
+	}
+	return releaseDefault("FROTHY_DEFAULT_RELEASE_REPO_SLUG")
+}
+
+func releaseDownloadBaseURL(version string) string {
+	return "https://github.com/" + releaseRepoSlug() + "/releases/download/v" +
+		version
 }

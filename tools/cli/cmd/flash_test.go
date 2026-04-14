@@ -183,9 +183,11 @@ func TestRunFlashPrebuiltReDownloadsWhenCacheIsInvalid(t *testing.T) {
 	server := releaseServer(t, version, archiveBytes, checksums)
 	defer server.Close()
 
-	oldReleaseBase := releaseDownloadBase
-	releaseDownloadBase = server.URL + "/download"
-	t.Cleanup(func() { releaseDownloadBase = oldReleaseBase })
+	oldReleaseBaseURLFn := releaseDownloadBaseURLFn
+	releaseDownloadBaseURLFn = func(version string) string {
+		return server.URL + "/download/v" + version
+	}
+	t.Cleanup(func() { releaseDownloadBaseURLFn = oldReleaseBaseURLFn })
 
 	logPath := filepath.Join(t.TempDir(), "esptool.log")
 	esptoolPath := filepath.Join(t.TempDir(), "esptool.py")
@@ -223,9 +225,11 @@ func TestRunFlashPrebuiltRejectsChecksumMismatch(t *testing.T) {
 	server := releaseServer(t, version, archiveBytes, checksums)
 	defer server.Close()
 
-	oldReleaseBase := releaseDownloadBase
-	releaseDownloadBase = server.URL + "/download"
-	t.Cleanup(func() { releaseDownloadBase = oldReleaseBase })
+	oldReleaseBaseURLFn := releaseDownloadBaseURLFn
+	releaseDownloadBaseURLFn = func(version string) string {
+		return server.URL + "/download/v" + version
+	}
+	t.Cleanup(func() { releaseDownloadBaseURLFn = oldReleaseBaseURLFn })
 
 	err := runFlash()
 	if err == nil {
