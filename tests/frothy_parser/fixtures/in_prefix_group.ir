@@ -1,0 +1,1 @@
+(seq (write-slot "led.pin" (lit 13)) (write-slot "led.on" (fn arity=0 locals=0 (seq (read-slot-fallback "led.pin" "pin")))))

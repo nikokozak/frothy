@@ -19,6 +19,7 @@ typedef enum {
   FROTHY_TOKEN_COMMA,
   FROTHY_TOKEN_SEMICOLON,
   FROTHY_TOKEN_COLON,
+  FROTHY_TOKEN_AT,
   FROTHY_TOKEN_EQUAL,
   FROTHY_TOKEN_PLUS,
   FROTHY_TOKEN_MINUS,
@@ -42,6 +43,9 @@ typedef enum {
   FROTHY_TOKEN_KW_ELSE,
   FROTHY_TOKEN_KW_WHILE,
   FROTHY_TOKEN_KW_REPEAT,
+  FROTHY_TOKEN_KW_IN,
+  FROTHY_TOKEN_KW_COND,
+  FROTHY_TOKEN_KW_CASE,
   FROTHY_TOKEN_KW_WHEN,
   FROTHY_TOKEN_KW_UNLESS,
   FROTHY_TOKEN_KW_TRUE,
@@ -98,11 +102,13 @@ typedef struct {
   frothy_frame_t *frames;
   size_t frame_count;
   size_t frame_capacity;
+  char *active_prefix;
 } frothy_parser_t;
 
 typedef enum {
   FROTHY_PLACE_LOCAL = 0,
   FROTHY_PLACE_SLOT,
+  FROTHY_PLACE_SLOT_FALLBACK,
   FROTHY_PLACE_INDEX,
 } frothy_place_kind_t;
 
@@ -111,6 +117,10 @@ typedef struct {
   union {
     size_t local_index;
     char *slot_name;
+    struct {
+      char *primary_slot_name;
+      char *fallback_slot_name;
+    } slot_fallback;
     struct {
       frothy_ir_node_id_t base;
       frothy_ir_node_id_t index;
@@ -189,6 +199,35 @@ static bool frothy_token_matches_name(const frothy_token_t *token,
 
   return token->kind == FROTHY_TOKEN_NAME && token->length == length &&
          strncmp(token->start, text, length) == 0;
+}
+
+static bool frothy_name_has_dot(const char *start, size_t length) {
+  return memchr(start, '.', length) != NULL;
+}
+
+static froth_error_t frothy_join_prefix_name(const char *prefix,
+                                             const char *name_start,
+                                             size_t name_length, char **out) {
+  size_t prefix_length;
+  char *joined;
+
+  if (prefix == NULL || *prefix == '\0') {
+    *out = frothy_strdup_range(name_start, name_length);
+    return *out == NULL ? FROTH_ERROR_HEAP_OUT_OF_MEMORY : FROTH_OK;
+  }
+
+  prefix_length = strlen(prefix);
+  joined = (char *)malloc(prefix_length + 1 + name_length + 1);
+  if (joined == NULL) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+  }
+
+  memcpy(joined, prefix, prefix_length);
+  joined[prefix_length] = '.';
+  memcpy(joined + prefix_length + 1, name_start, name_length);
+  joined[prefix_length + 1 + name_length] = '\0';
+  *out = joined;
+  return FROTH_OK;
 }
 
 static froth_error_t frothy_parser_reserve_bindings(frothy_parser_t *parser,
@@ -497,6 +536,18 @@ static froth_error_t frothy_make_read_slot_node(frothy_parser_t *parser,
   return frothy_program_add_node(parser->program, &node, node_id_out);
 }
 
+static froth_error_t frothy_make_read_slot_fallback_node(
+    frothy_parser_t *parser, char *primary_slot_name, char *fallback_slot_name,
+    frothy_ir_node_id_t *node_id_out) {
+  frothy_ir_node_t node;
+
+  memset(&node, 0, sizeof(node));
+  node.kind = FROTHY_IR_NODE_READ_SLOT_FALLBACK;
+  node.as.read_slot_fallback.primary_slot_name = primary_slot_name;
+  node.as.read_slot_fallback.fallback_slot_name = fallback_slot_name;
+  return frothy_program_add_node(parser->program, &node, node_id_out);
+}
+
 static froth_error_t frothy_make_write_slot_node(
     frothy_parser_t *parser, char *slot_name, frothy_ir_node_id_t value,
     bool require_existing, frothy_ir_node_id_t *node_id_out) {
@@ -507,6 +558,31 @@ static froth_error_t frothy_make_write_slot_node(
   node.as.write_slot.slot_name = slot_name;
   node.as.write_slot.value = value;
   node.as.write_slot.require_existing = require_existing;
+  return frothy_program_add_node(parser->program, &node, node_id_out);
+}
+
+static froth_error_t frothy_make_write_slot_fallback_node(
+    frothy_parser_t *parser, char *primary_slot_name, char *fallback_slot_name,
+    frothy_ir_node_id_t value, bool require_existing,
+    frothy_ir_node_id_t *node_id_out) {
+  frothy_ir_node_t node;
+
+  memset(&node, 0, sizeof(node));
+  node.kind = FROTHY_IR_NODE_WRITE_SLOT_FALLBACK;
+  node.as.write_slot_fallback.primary_slot_name = primary_slot_name;
+  node.as.write_slot_fallback.fallback_slot_name = fallback_slot_name;
+  node.as.write_slot_fallback.value = value;
+  node.as.write_slot_fallback.require_existing = require_existing;
+  return frothy_program_add_node(parser->program, &node, node_id_out);
+}
+
+static froth_error_t frothy_make_slot_designator_node(
+    frothy_parser_t *parser, char *slot_name, frothy_ir_node_id_t *node_id_out) {
+  frothy_ir_node_t node;
+
+  memset(&node, 0, sizeof(node));
+  node.kind = FROTHY_IR_NODE_SLOT_DESIGNATOR;
+  node.as.slot_designator.slot_name = slot_name;
   return frothy_program_add_node(parser->program, &node, node_id_out);
 }
 
@@ -616,11 +692,11 @@ static froth_error_t frothy_make_single_item_seq_node(
 static froth_error_t frothy_make_top_level_write_slot_range(
     frothy_parser_t *parser, const char *name_start, size_t name_length,
     frothy_ir_node_id_t value, frothy_ir_node_id_t *node_id_out) {
-  char *slot_name = frothy_strdup_range(name_start, name_length);
+  char *slot_name = NULL;
 
-  if (slot_name == NULL) {
-    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
-  }
+  FROTH_TRY(
+      frothy_join_prefix_name(parser->active_prefix, name_start, name_length,
+                              &slot_name));
   return frothy_make_write_slot_node(parser, slot_name, value, false,
                                      node_id_out);
 }
@@ -767,6 +843,12 @@ static froth_error_t frothy_lex_name(frothy_parser_t *parser,
     token->kind = FROTHY_TOKEN_KW_WHILE;
   } else if (length == 6 && strncmp(start, "repeat", 6) == 0) {
     token->kind = FROTHY_TOKEN_KW_REPEAT;
+  } else if (length == 2 && strncmp(start, "in", 2) == 0) {
+    token->kind = FROTHY_TOKEN_KW_IN;
+  } else if (length == 4 && strncmp(start, "cond", 4) == 0) {
+    token->kind = FROTHY_TOKEN_KW_COND;
+  } else if (length == 4 && strncmp(start, "case", 4) == 0) {
+    token->kind = FROTHY_TOKEN_KW_CASE;
   } else if (length == 4 && strncmp(start, "when", 4) == 0) {
     token->kind = FROTHY_TOKEN_KW_WHEN;
   } else if (length == 6 && strncmp(start, "unless", 6) == 0) {
@@ -840,6 +922,9 @@ static froth_error_t frothy_lex_next(frothy_parser_t *parser,
     return FROTH_OK;
   case ':':
     token->kind = FROTHY_TOKEN_COLON;
+    return FROTH_OK;
+  case '@':
+    token->kind = FROTHY_TOKEN_AT;
     return FROTH_OK;
   case '+':
     token->kind = FROTHY_TOKEN_PLUS;
@@ -1068,6 +1153,17 @@ static froth_error_t frothy_resolve_name(frothy_parser_t *parser,
 static froth_error_t
 frothy_parse_expr(frothy_parser_t *parser, bool allow_top_level_cells,
                   frothy_ir_node_id_t *node_id_out);
+static froth_error_t frothy_parse_cond(frothy_parser_t *parser,
+                                       frothy_ir_node_id_t *node_id_out);
+static froth_error_t frothy_parse_case(frothy_parser_t *parser,
+                                       frothy_ir_node_id_t *node_id_out);
+static froth_error_t frothy_parse_cells(frothy_parser_t *parser,
+                                        bool allow_top_level_cells,
+                                        frothy_ir_node_id_t *node_id_out);
+static froth_error_t frothy_parse_in_item(frothy_parser_t *parser,
+                                          frothy_ir_node_id_t *node_id_out);
+static froth_error_t frothy_parse_in(frothy_parser_t *parser,
+                                     frothy_ir_node_id_t *node_id_out);
 
 static froth_error_t
 frothy_parse_expr_before_block(frothy_parser_t *parser,
@@ -1375,6 +1471,121 @@ static froth_error_t frothy_parse_top_level_to(
                                                 node_id_out);
 }
 
+static froth_error_t frothy_parse_in_item(frothy_parser_t *parser,
+                                          frothy_ir_node_id_t *node_id_out) {
+  frothy_top_level_named_fn_kind_t named_fn_kind =
+      frothy_match_top_level_named_fn(parser);
+
+  if (parser->current.kind == FROTHY_TOKEN_NAME &&
+      frothy_token_is_binding_operator(parser->next.kind)) {
+    frothy_token_t name_token = parser->current;
+    frothy_ir_node_id_t value;
+
+    memset(&parser->current, 0, sizeof(parser->current));
+    FROTH_TRY(frothy_parser_advance(parser));
+    FROTH_TRY(frothy_parser_expect_binding_operator(parser));
+    if (parser->current.kind == FROTHY_TOKEN_KW_CELLS) {
+      FROTH_TRY(frothy_parse_cells(parser, true, &value));
+    } else {
+      FROTH_TRY(frothy_parse_expr(parser, false, &value));
+    }
+    return frothy_make_top_level_write_slot_token(parser, &name_token, value,
+                                                  node_id_out);
+  }
+  if (parser->current.kind == FROTHY_TOKEN_KW_TO) {
+    return frothy_parse_top_level_to(parser, node_id_out);
+  }
+  if (named_fn_kind != FROTHY_TOP_LEVEL_NAMED_FN_NONE) {
+    frothy_token_t name_token = parser->current;
+
+    memset(&parser->current, 0, sizeof(parser->current));
+    FROTH_TRY(frothy_parser_advance(parser));
+    if (named_fn_kind == FROTHY_TOP_LEVEL_NAMED_FN_EXPR) {
+      return frothy_parse_top_level_named_fn(parser, &name_token,
+                                             FROTHY_FN_BODY_EXPR, node_id_out);
+    }
+    return frothy_parse_top_level_named_fn(parser, &name_token,
+                                           FROTHY_FN_BODY_BLOCK, node_id_out);
+  }
+  if (parser->current.kind == FROTHY_TOKEN_KW_IN) {
+    return frothy_parse_in(parser, node_id_out);
+  }
+
+  return FROTH_ERROR_SIGNATURE;
+}
+
+static froth_error_t frothy_parse_in(frothy_parser_t *parser,
+                                     frothy_ir_node_id_t *node_id_out) {
+  frothy_token_t prefix_token;
+  frothy_token_kind_t close_kind;
+  frothy_node_list_t items;
+  char *outer_prefix = parser->active_prefix;
+  char *new_prefix = NULL;
+  size_t first_item = 0;
+  froth_error_t err = FROTH_OK;
+
+  memset(&items, 0, sizeof(items));
+
+  FROTH_TRY(frothy_parser_expect(parser, FROTHY_TOKEN_KW_IN));
+  if (parser->current.kind != FROTHY_TOKEN_NAME) {
+    return FROTH_ERROR_SIGNATURE;
+  }
+
+  prefix_token = parser->current;
+  FROTH_TRY(frothy_join_prefix_name(outer_prefix, prefix_token.start,
+                                    prefix_token.length, &new_prefix));
+  FROTH_TRY(frothy_parser_advance(parser));
+  FROTH_TRY(frothy_parser_expect_block_start(parser, &close_kind));
+
+  parser->active_prefix = new_prefix;
+  while (!frothy_parser_match(parser, close_kind)) {
+    frothy_ir_node_id_t item_node;
+
+    if (frothy_parser_match(parser, FROTHY_TOKEN_EOF)) {
+      err = FROTH_ERROR_SIGNATURE;
+      goto cleanup;
+    }
+    if (frothy_parser_match(parser, FROTHY_TOKEN_SEMICOLON)) {
+      err = frothy_parser_advance(parser);
+      if (err != FROTH_OK) {
+        goto cleanup;
+      }
+      continue;
+    }
+
+    err = frothy_parse_in_item(parser, &item_node);
+    if (err != FROTH_OK) {
+      goto cleanup;
+    }
+    err = frothy_node_list_push(&items, item_node);
+    if (err != FROTH_OK) {
+      goto cleanup;
+    }
+    while (frothy_parser_match(parser, FROTHY_TOKEN_SEMICOLON)) {
+      err = frothy_parser_advance(parser);
+      if (err != FROTH_OK) {
+        goto cleanup;
+      }
+    }
+  }
+
+  err = frothy_parser_expect(parser, close_kind);
+  if (err != FROTH_OK) {
+    goto cleanup;
+  }
+  err = frothy_node_list_flush(parser, &items, &first_item);
+  if (err != FROTH_OK) {
+    goto cleanup;
+  }
+  err = frothy_make_seq_node(parser, first_item, items.count, node_id_out);
+
+cleanup:
+  parser->active_prefix = outer_prefix;
+  free(new_prefix);
+  frothy_node_list_free(&items);
+  return err;
+}
+
 static bool frothy_token_is_binary_operator(frothy_token_kind_t kind) {
   switch (kind) {
   case FROTHY_TOKEN_PLUS:
@@ -1400,10 +1611,13 @@ static bool frothy_token_can_start_expr(frothy_token_kind_t kind) {
   case FROTHY_TOKEN_INT:
   case FROTHY_TOKEN_TEXT:
   case FROTHY_TOKEN_LPAREN:
+  case FROTHY_TOKEN_AT:
   case FROTHY_TOKEN_MINUS:
   case FROTHY_TOKEN_KW_FN:
   case FROTHY_TOKEN_KW_IF:
   case FROTHY_TOKEN_KW_WHILE:
+  case FROTHY_TOKEN_KW_COND:
+  case FROTHY_TOKEN_KW_CASE:
   case FROTHY_TOKEN_KW_WHEN:
   case FROTHY_TOKEN_KW_UNLESS:
   case FROTHY_TOKEN_KW_REPEAT:
@@ -1538,6 +1752,258 @@ static froth_error_t frothy_parse_unless(frothy_parser_t *parser,
   FROTH_TRY(frothy_parse_block(parser, &body));
   return frothy_make_if_node(parser, negated, body, false,
                              FROTHY_IR_NODE_INVALID, node_id_out);
+}
+
+static froth_error_t frothy_make_nil_literal_node(
+    frothy_parser_t *parser, frothy_ir_node_id_t *node_id_out) {
+  frothy_ir_literal_t literal;
+
+  memset(&literal, 0, sizeof(literal));
+  literal.kind = FROTHY_IR_LITERAL_NIL;
+  return frothy_make_literal_node(parser, &literal, node_id_out);
+}
+
+static froth_error_t frothy_parse_cond(frothy_parser_t *parser,
+                                       frothy_ir_node_id_t *node_id_out) {
+  frothy_token_kind_t close_kind;
+  frothy_node_list_t conditions;
+  frothy_node_list_t bodies;
+  frothy_ir_node_id_t else_body = FROTHY_IR_NODE_INVALID;
+  frothy_ir_node_id_t chain = FROTHY_IR_NODE_INVALID;
+  bool has_else = false;
+  froth_error_t err = FROTH_OK;
+
+  memset(&conditions, 0, sizeof(conditions));
+  memset(&bodies, 0, sizeof(bodies));
+
+  FROTH_TRY(frothy_parser_expect(parser, FROTHY_TOKEN_KW_COND));
+  FROTH_TRY(frothy_parser_expect_block_start(parser, &close_kind));
+
+  while (!frothy_parser_match(parser, close_kind)) {
+    frothy_ir_node_id_t condition;
+    frothy_ir_node_id_t body;
+
+    if (frothy_parser_match(parser, FROTHY_TOKEN_EOF)) {
+      err = FROTH_ERROR_SIGNATURE;
+      goto cleanup;
+    }
+    if (frothy_parser_match(parser, FROTHY_TOKEN_SEMICOLON)) {
+      FROTH_TRY(frothy_parser_advance(parser));
+      continue;
+    }
+    if (frothy_parser_match(parser, FROTHY_TOKEN_KW_ELSE)) {
+      if (conditions.count == 0) {
+        err = FROTH_ERROR_SIGNATURE;
+        goto cleanup;
+      }
+      if (has_else) {
+        err = FROTH_ERROR_SIGNATURE;
+        goto cleanup;
+      }
+      FROTH_TRY(frothy_parser_advance(parser));
+      FROTH_TRY(frothy_parse_block(parser, &else_body));
+      has_else = true;
+      while (frothy_parser_match(parser, FROTHY_TOKEN_SEMICOLON)) {
+        FROTH_TRY(frothy_parser_advance(parser));
+      }
+      if (!frothy_parser_match(parser, close_kind)) {
+        err = FROTH_ERROR_SIGNATURE;
+        goto cleanup;
+      }
+      break;
+    }
+    if (!frothy_parser_match(parser, FROTHY_TOKEN_KW_WHEN)) {
+      err = FROTH_ERROR_SIGNATURE;
+      goto cleanup;
+    }
+
+    FROTH_TRY(frothy_parser_advance(parser));
+    FROTH_TRY(frothy_parse_expr_before_block(parser, false, &condition));
+    FROTH_TRY(frothy_parse_block(parser, &body));
+    FROTH_TRY(frothy_node_list_push(&conditions, condition));
+    FROTH_TRY(frothy_node_list_push(&bodies, body));
+    while (frothy_parser_match(parser, FROTHY_TOKEN_SEMICOLON)) {
+      FROTH_TRY(frothy_parser_advance(parser));
+    }
+  }
+
+  FROTH_TRY(frothy_parser_expect(parser, close_kind));
+  if (has_else) {
+    chain = else_body;
+  } else {
+    FROTH_TRY(frothy_make_nil_literal_node(parser, &chain));
+  }
+
+  while (conditions.count > 0) {
+    conditions.count--;
+    bodies.count--;
+    FROTH_TRY(frothy_make_if_node(parser, conditions.items[conditions.count],
+                                  bodies.items[bodies.count], true, chain,
+                                  &chain));
+  }
+
+  *node_id_out = chain;
+
+cleanup:
+  frothy_node_list_free(&conditions);
+  frothy_node_list_free(&bodies);
+  return err;
+}
+
+static froth_error_t frothy_parse_case_literal(
+    frothy_parser_t *parser, frothy_ir_node_id_t *node_id_out) {
+  frothy_ir_literal_t literal;
+  froth_error_t err;
+
+  memset(&literal, 0, sizeof(literal));
+  switch (parser->current.kind) {
+  case FROTHY_TOKEN_MINUS:
+    FROTH_TRY(frothy_parser_advance(parser));
+    if (parser->current.kind != FROTHY_TOKEN_INT) {
+      return FROTH_ERROR_SIGNATURE;
+    }
+    literal.kind = FROTHY_IR_LITERAL_INT;
+    literal.as.int_value = -parser->current.int_value;
+    FROTH_TRY(frothy_make_literal_node(parser, &literal, node_id_out));
+    return frothy_parser_advance(parser);
+  case FROTHY_TOKEN_INT:
+    literal.kind = FROTHY_IR_LITERAL_INT;
+    literal.as.int_value = parser->current.int_value;
+    FROTH_TRY(frothy_make_literal_node(parser, &literal, node_id_out));
+    return frothy_parser_advance(parser);
+  case FROTHY_TOKEN_TEXT:
+    literal.kind = FROTHY_IR_LITERAL_TEXT;
+    literal.as.text_value = frothy_strdup_range(parser->current.owned_text,
+                                                strlen(parser->current.owned_text));
+    if (literal.as.text_value == NULL) {
+      return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+    }
+    FROTH_TRY(frothy_make_literal_node(parser, &literal, node_id_out));
+    return frothy_parser_advance(parser);
+  case FROTHY_TOKEN_KW_TRUE:
+    literal.kind = FROTHY_IR_LITERAL_BOOL;
+    literal.as.bool_value = true;
+    FROTH_TRY(frothy_make_literal_node(parser, &literal, node_id_out));
+    return frothy_parser_advance(parser);
+  case FROTHY_TOKEN_KW_FALSE:
+    literal.kind = FROTHY_IR_LITERAL_BOOL;
+    literal.as.bool_value = false;
+    FROTH_TRY(frothy_make_literal_node(parser, &literal, node_id_out));
+    return frothy_parser_advance(parser);
+  case FROTHY_TOKEN_KW_NIL:
+    err = frothy_make_nil_literal_node(parser, node_id_out);
+    if (err != FROTH_OK) {
+      return err;
+    }
+    return frothy_parser_advance(parser);
+  default:
+    return FROTH_ERROR_SIGNATURE;
+  }
+}
+
+static froth_error_t frothy_parse_case(frothy_parser_t *parser,
+                                       frothy_ir_node_id_t *node_id_out) {
+  frothy_ir_node_id_t scrutinee;
+  frothy_token_kind_t close_kind;
+  frothy_node_list_t matches;
+  frothy_node_list_t bodies;
+  frothy_node_list_t root_items;
+  frothy_ir_node_id_t else_body = FROTHY_IR_NODE_INVALID;
+  frothy_ir_node_id_t chain = FROTHY_IR_NODE_INVALID;
+  frothy_ir_node_id_t scrutinee_init;
+  size_t hidden_local = 0;
+  size_t first_root = 0;
+  bool has_else = false;
+  froth_error_t err = FROTH_OK;
+
+  memset(&matches, 0, sizeof(matches));
+  memset(&bodies, 0, sizeof(bodies));
+  memset(&root_items, 0, sizeof(root_items));
+
+  FROTH_TRY(frothy_parser_expect(parser, FROTHY_TOKEN_KW_CASE));
+  FROTH_TRY(frothy_parse_expr_before_block(parser, false, &scrutinee));
+  FROTH_TRY(frothy_parser_expect_block_start(parser, &close_kind));
+
+  while (!frothy_parser_match(parser, close_kind)) {
+    frothy_ir_node_id_t match_value;
+    frothy_ir_node_id_t body;
+
+    if (frothy_parser_match(parser, FROTHY_TOKEN_EOF)) {
+      err = FROTH_ERROR_SIGNATURE;
+      goto cleanup;
+    }
+    if (frothy_parser_match(parser, FROTHY_TOKEN_SEMICOLON)) {
+      FROTH_TRY(frothy_parser_advance(parser));
+      continue;
+    }
+    if (frothy_parser_match(parser, FROTHY_TOKEN_KW_ELSE)) {
+      if (matches.count == 0) {
+        err = FROTH_ERROR_SIGNATURE;
+        goto cleanup;
+      }
+      if (has_else) {
+        err = FROTH_ERROR_SIGNATURE;
+        goto cleanup;
+      }
+      FROTH_TRY(frothy_parser_advance(parser));
+      FROTH_TRY(frothy_parse_block(parser, &else_body));
+      has_else = true;
+      while (frothy_parser_match(parser, FROTHY_TOKEN_SEMICOLON)) {
+        FROTH_TRY(frothy_parser_advance(parser));
+      }
+      if (!frothy_parser_match(parser, close_kind)) {
+        err = FROTH_ERROR_SIGNATURE;
+        goto cleanup;
+      }
+      break;
+    }
+
+    FROTH_TRY(frothy_parse_case_literal(parser, &match_value));
+    FROTH_TRY(frothy_parse_block(parser, &body));
+    FROTH_TRY(frothy_node_list_push(&matches, match_value));
+    FROTH_TRY(frothy_node_list_push(&bodies, body));
+    while (frothy_parser_match(parser, FROTHY_TOKEN_SEMICOLON)) {
+      FROTH_TRY(frothy_parser_advance(parser));
+    }
+  }
+
+  FROTH_TRY(frothy_parser_expect(parser, close_kind));
+  FROTH_TRY(frothy_reserve_hidden_local(parser, &hidden_local));
+  FROTH_TRY(frothy_make_write_local_node(parser, hidden_local, scrutinee,
+                                         &scrutinee_init));
+  if (has_else) {
+    chain = else_body;
+  } else {
+    FROTH_TRY(frothy_make_nil_literal_node(parser, &chain));
+  }
+
+  while (matches.count > 0) {
+    frothy_ir_node_id_t scrutinee_read;
+    frothy_ir_node_id_t eq_args[2];
+    frothy_ir_node_id_t condition;
+
+    matches.count--;
+    bodies.count--;
+    FROTH_TRY(
+        frothy_make_read_local_node(parser, hidden_local, &scrutinee_read));
+    eq_args[0] = scrutinee_read;
+    eq_args[1] = matches.items[matches.count];
+    FROTH_TRY(frothy_make_builtin_call(parser, FROTHY_IR_BUILTIN_EQ, eq_args, 2,
+                                       &condition));
+    FROTH_TRY(frothy_make_if_node(parser, condition, bodies.items[bodies.count],
+                                  true, chain, &chain));
+  }
+
+  FROTH_TRY(frothy_node_list_push(&root_items, scrutinee_init));
+  FROTH_TRY(frothy_node_list_push(&root_items, chain));
+  FROTH_TRY(frothy_node_list_flush(parser, &root_items, &first_root));
+  err = frothy_make_seq_node(parser, first_root, root_items.count, node_id_out);
+
+cleanup:
+  frothy_node_list_free(&matches);
+  frothy_node_list_free(&bodies);
+  frothy_node_list_free(&root_items);
+  return err;
 }
 
 static froth_error_t
@@ -1802,11 +2268,33 @@ static froth_error_t frothy_parse_primary(frothy_parser_t *parser,
     FROTH_TRY(frothy_parser_advance(parser));
     FROTH_TRY(frothy_resolve_name(parser, &name_token, &is_local, &local_index,
                                   &slot_name));
-    frothy_token_clear(&name_token);
     if (is_local) {
+      frothy_token_clear(&name_token);
       return frothy_make_read_local_node(parser, local_index, node_id_out);
     }
+    if (parser->active_prefix != NULL &&
+        !frothy_name_has_dot(name_token.start, name_token.length)) {
+      char *primary_slot_name = NULL;
+
+      FROTH_TRY(frothy_join_prefix_name(parser->active_prefix, slot_name,
+                                        strlen(slot_name), &primary_slot_name));
+      frothy_token_clear(&name_token);
+      return frothy_make_read_slot_fallback_node(
+          parser, primary_slot_name, slot_name, node_id_out);
+    }
+    frothy_token_clear(&name_token);
     return frothy_make_read_slot_node(parser, slot_name, node_id_out);
+  case FROTHY_TOKEN_AT:
+    FROTH_TRY(frothy_parser_advance(parser));
+    if (parser->current.kind != FROTHY_TOKEN_NAME) {
+      return FROTH_ERROR_SIGNATURE;
+    }
+    slot_name = frothy_strdup_range(parser->current.start, parser->current.length);
+    if (slot_name == NULL) {
+      return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+    }
+    FROTH_TRY(frothy_parser_advance(parser));
+    return frothy_make_slot_designator_node(parser, slot_name, node_id_out);
   case FROTHY_TOKEN_LPAREN:
     FROTH_TRY(frothy_parser_advance(parser));
     FROTH_TRY(frothy_parse_expr(parser, false, node_id_out));
@@ -1817,6 +2305,10 @@ static froth_error_t frothy_parse_primary(frothy_parser_t *parser,
     return frothy_parse_if(parser, node_id_out);
   case FROTHY_TOKEN_KW_WHILE:
     return frothy_parse_while(parser, node_id_out);
+  case FROTHY_TOKEN_KW_COND:
+    return frothy_parse_cond(parser, node_id_out);
+  case FROTHY_TOKEN_KW_CASE:
+    return frothy_parse_case(parser, node_id_out);
   case FROTHY_TOKEN_KW_WHEN:
     return frothy_parse_when(parser, node_id_out);
   case FROTHY_TOKEN_KW_UNLESS:
@@ -1842,10 +2334,15 @@ static froth_error_t frothy_parse_postfix(frothy_parser_t *parser,
   while (parser->current.kind == FROTHY_TOKEN_LPAREN ||
          parser->current.kind == FROTHY_TOKEN_LBRACKET ||
          parser->current.kind == FROTHY_TOKEN_COLON) {
+    const frothy_ir_node_t *node = &parser->program->nodes[node_id];
+
     if (parser->current.kind == FROTHY_TOKEN_LPAREN) {
       frothy_node_list_t args;
       size_t first_arg;
 
+      if (node->kind == FROTHY_IR_NODE_SLOT_DESIGNATOR) {
+        return FROTH_ERROR_SIGNATURE;
+      }
       memset(&args, 0, sizeof(args));
 
       FROTH_TRY(frothy_parser_advance(parser));
@@ -1871,6 +2368,9 @@ static froth_error_t frothy_parse_postfix(frothy_parser_t *parser,
       frothy_node_list_t args;
       size_t first_arg = parser->program->link_count;
 
+      if (node->kind == FROTHY_IR_NODE_SLOT_DESIGNATOR) {
+        return FROTH_ERROR_SIGNATURE;
+      }
       memset(&args, 0, sizeof(args));
       FROTH_TRY(frothy_parser_advance(parser));
       if (frothy_token_can_start_expr(parser->current.kind)) {
@@ -1901,6 +2401,9 @@ static froth_error_t frothy_parse_postfix(frothy_parser_t *parser,
     {
       frothy_ir_node_id_t index_node;
 
+      if (node->kind == FROTHY_IR_NODE_SLOT_DESIGNATOR) {
+        return FROTH_ERROR_SIGNATURE;
+      }
       FROTH_TRY(frothy_parser_advance(parser));
       FROTH_TRY(frothy_parse_expr(parser, false, &index_node));
       FROTH_TRY(frothy_parser_expect(parser, FROTHY_TOKEN_RBRACKET));
@@ -2018,6 +2521,42 @@ static froth_error_t frothy_parse_place(frothy_parser_t *parser,
     }
     return FROTH_OK;
   }
+  if (node->kind == FROTHY_IR_NODE_READ_SLOT_FALLBACK) {
+    place_out->kind = FROTHY_PLACE_SLOT_FALLBACK;
+    place_out->as.slot_fallback.primary_slot_name = frothy_strdup_range(
+        node->as.read_slot_fallback.primary_slot_name,
+        strlen(node->as.read_slot_fallback.primary_slot_name));
+    if (place_out->as.slot_fallback.primary_slot_name == NULL) {
+      return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+    }
+    place_out->as.slot_fallback.fallback_slot_name = frothy_strdup_range(
+        node->as.read_slot_fallback.fallback_slot_name,
+        strlen(node->as.read_slot_fallback.fallback_slot_name));
+    if (place_out->as.slot_fallback.fallback_slot_name == NULL) {
+      free(place_out->as.slot_fallback.primary_slot_name);
+      place_out->as.slot_fallback.primary_slot_name = NULL;
+      return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+    }
+    return FROTH_OK;
+  }
+  if (node->kind == FROTHY_IR_NODE_SLOT_DESIGNATOR) {
+    place_out->kind = FROTHY_PLACE_SLOT_FALLBACK;
+    place_out->as.slot_fallback.primary_slot_name = frothy_strdup_range(
+        node->as.slot_designator.slot_name,
+        strlen(node->as.slot_designator.slot_name));
+    if (place_out->as.slot_fallback.primary_slot_name == NULL) {
+      return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+    }
+    place_out->as.slot_fallback.fallback_slot_name = frothy_strdup_range(
+        node->as.slot_designator.slot_name,
+        strlen(node->as.slot_designator.slot_name));
+    if (place_out->as.slot_fallback.fallback_slot_name == NULL) {
+      free(place_out->as.slot_fallback.primary_slot_name);
+      place_out->as.slot_fallback.primary_slot_name = NULL;
+      return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+    }
+    return FROTH_OK;
+  }
   if (node->kind == FROTHY_IR_NODE_READ_INDEX) {
     place_out->kind = FROTHY_PLACE_INDEX;
     place_out->as.index.base = node->as.read_index.base;
@@ -2031,6 +2570,9 @@ static froth_error_t frothy_parse_place(frothy_parser_t *parser,
 static void frothy_place_clear(frothy_place_t *place) {
   if (place->kind == FROTHY_PLACE_SLOT) {
     free(place->as.slot_name);
+  } else if (place->kind == FROTHY_PLACE_SLOT_FALLBACK) {
+    free(place->as.slot_fallback.primary_slot_name);
+    free(place->as.slot_fallback.fallback_slot_name);
   }
   memset(place, 0, sizeof(*place));
 }
@@ -2057,6 +2599,13 @@ static froth_error_t frothy_parse_set_item(frothy_parser_t *parser,
         frothy_make_write_slot_node(parser, place.as.slot_name, value, true,
                                     node_id_out));
     place.as.slot_name = NULL;
+    break;
+  case FROTHY_PLACE_SLOT_FALLBACK:
+    FROTH_TRY(frothy_make_write_slot_fallback_node(
+        parser, place.as.slot_fallback.primary_slot_name,
+        place.as.slot_fallback.fallback_slot_name, value, true, node_id_out));
+    place.as.slot_fallback.primary_slot_name = NULL;
+    place.as.slot_fallback.fallback_slot_name = NULL;
     break;
   case FROTHY_PLACE_INDEX:
     FROTH_TRY(frothy_make_write_index_node(parser, place.as.index.base,
@@ -2171,6 +2720,7 @@ static void frothy_parser_cleanup(frothy_parser_t *parser) {
   free(parser->bindings);
   free(parser->scopes);
   free(parser->frames);
+  free(parser->active_prefix);
   frothy_token_clear(&parser->current);
   frothy_token_clear(&parser->next);
   memset(parser, 0, sizeof(*parser));
@@ -2273,6 +2823,8 @@ froth_error_t frothy_parse_top_level(const char *source,
                                             FROTHY_FN_BODY_BLOCK, &root);
     }
     frothy_token_clear(&name_token);
+  } else if (parser.current.kind == FROTHY_TOKEN_KW_IN) {
+    err = frothy_parse_in(&parser, &root);
   } else if (parser.current.kind == FROTHY_TOKEN_KW_SET) {
     err = frothy_parse_set_item(&parser, &root);
   } else {

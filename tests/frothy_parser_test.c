@@ -379,6 +379,9 @@ int main(void) {
       "spoken_repeat_expr",
       "spoken_and_expr",
       "spoken_or_expr",
+      "slot_designator",
+      "in_prefix_group",
+      "case_expr",
   };
   static const negative_case_t negative_cases[] = {
       {"cells_expr", "cells(2)", FROTH_ERROR_TOPLEVEL_ONLY},
@@ -395,6 +398,22 @@ int main(void) {
       {"repeat_missing_name", "repeat 3 as [ nil ]", FROTH_ERROR_SIGNATURE},
       {"to_missing_block", "to helper with x", FROTH_ERROR_SIGNATURE},
       {"call_missing_args", "call helper with", FROTH_ERROR_SIGNATURE},
+      {"cond_nonfinal_else", "probe is fn [ cond [ else [ 1 ]; when true [ 2 ] ] ]",
+       FROTH_ERROR_SIGNATURE},
+      {"cond_else_only", "probe is fn [ cond [ else [ 1 ] ] ]",
+       FROTH_ERROR_SIGNATURE},
+      {"case_nonliteral_head", "probe is fn with mode [ case mode [ mode [ 1 ] ] ]",
+       FROTH_ERROR_SIGNATURE},
+      {"case_nonfinal_else",
+       "probe is fn with mode [ case mode [ else [ 1 ]; \"on\" [ 2 ] ] ]",
+       FROTH_ERROR_SIGNATURE},
+      {"case_else_only", "probe is fn with mode [ case mode [ else [ 1 ] ] ]",
+       FROTH_ERROR_SIGNATURE},
+      {"in_in_block", "outer is fn [ in led [ pin is 13 ] ]",
+       FROTH_ERROR_SIGNATURE},
+      {"in_effect_item", "in led [ set pin to 13 ]", FROTH_ERROR_SIGNATURE},
+      {"designator_call", "probe is fn [ @count: ]", FROTH_ERROR_SIGNATURE},
+      {"designator_index", "probe is fn [ @count[0] ]", FROTH_ERROR_SIGNATURE},
   };
   static const char *const render_code_expected =
       "(fn arity=1 locals=1 (seq (call (builtin \"+\") (read-local 0) (lit 1))))";
@@ -414,6 +433,12 @@ int main(void) {
       "to scoped [ here local0 is 1; local0 ]";
   static const char *const render_surface_local_expected =
       "to localDemo [ here local0 is 6; local0 ]";
+  static const char *const render_surface_cond_expected =
+      "to condDemo with arg0 [ cond [ when arg0 [ 1 ]; else [ 2 ] ] ]";
+  static const char *const render_surface_case_expected =
+      "to caseDemo with arg0 [ case arg0 [ \"off\" [ 0 ]; \"on\" [ 1 ]; else [ 2 ] ] ]";
+  static const char *const render_surface_designator_expected =
+      "to designatorDemo [ set @count to 1; @count ]";
   size_t i;
   int ok = 1;
 
@@ -452,6 +477,18 @@ int main(void) {
   ok &= run_render_surface_case(
       "spoken_local_surface", "localDemo is fn [ n is 6; n ]",
       render_surface_local_expected);
+  ok &= run_render_surface_case(
+      "spoken_cond_surface",
+      "condDemo is fn with flag [ cond [ when flag [ 1 ]; else [ 2 ] ] ]",
+      render_surface_cond_expected);
+  ok &= run_render_surface_case(
+      "spoken_case_surface",
+      "caseDemo is fn with mode [ case mode [ \"off\" [ 0 ]; \"on\" [ 1 ]; else [ 2 ] ] ]",
+      render_surface_case_expected);
+  ok &= run_render_surface_case(
+      "spoken_designator_surface",
+      "designatorDemo is fn [ set @count to 1; @count ]",
+      render_surface_designator_expected);
   ok &= test_capacity_failures_recover();
 
   return ok ? 0 : 1;

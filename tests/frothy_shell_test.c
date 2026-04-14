@@ -103,11 +103,50 @@ static int test_simple_call_rewrite_stays_bounded(void) {
   return ok;
 }
 
+static int test_readability_multiline_headers(void) {
+  int ok = 1;
+
+  frothy_shell_test_reset_pending_source();
+  ok &= frothy_shell_test_append_pending_line("cond") == FROTH_OK;
+  ok &= !frothy_shell_test_pending_is_complete();
+  ok &= frothy_shell_test_append_pending_line("[ when true [ 1 ] ]") == FROTH_OK;
+  ok &= frothy_shell_test_pending_is_complete();
+
+  frothy_shell_test_reset_pending_source();
+  ok &= frothy_shell_test_append_pending_line("case mode") == FROTH_OK;
+  ok &= !frothy_shell_test_pending_is_complete();
+  ok &= frothy_shell_test_append_pending_line("[ \"on\" [ 1 ] ]") == FROTH_OK;
+  ok &= frothy_shell_test_pending_is_complete();
+
+  frothy_shell_test_reset_pending_source();
+  ok &= frothy_shell_test_append_pending_line("in led") == FROTH_OK;
+  ok &= !frothy_shell_test_pending_is_complete();
+  ok &= frothy_shell_test_append_pending_line("[ pin is 13 ]") == FROTH_OK;
+  ok &= frothy_shell_test_pending_is_complete();
+
+  return ok;
+}
+
+static int test_readability_heads_do_not_rewrite(void) {
+  char rewritten[64];
+  int ok = 1;
+
+  ok &= !frothy_shell_test_rewrite_simple_call("cond ready", rewritten,
+                                               sizeof(rewritten));
+  ok &= !frothy_shell_test_rewrite_simple_call("case mode", rewritten,
+                                               sizeof(rewritten));
+  ok &= !frothy_shell_test_rewrite_simple_call("in led", rewritten,
+                                               sizeof(rewritten));
+  return ok;
+}
+
 int main(void) {
   int ok = 1;
 
   ok &= test_multiline_pending_source();
   ok &= test_pending_source_capacity();
   ok &= test_simple_call_rewrite_stays_bounded();
+  ok &= test_readability_multiline_headers();
+  ok &= test_readability_heads_do_not_rewrite();
   return ok ? 0 : 1;
 }

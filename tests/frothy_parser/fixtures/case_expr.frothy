@@ -1,0 +1,1 @@
+route is fn with mode [ case mode [ "off" [ 0 ]; "on" [ 1 ]; else [ 2 ] ] ]

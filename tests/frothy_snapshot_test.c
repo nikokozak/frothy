@@ -579,6 +579,79 @@ static int test_native_dispatch_and_roundtrip(void) {
   return ok;
 }
 
+static int test_readability_snapshot_roundtrip(void) {
+  temp_workspace_t workspace = {{0}};
+  frothy_value_t value = frothy_value_make_nil();
+  char *see_before = NULL;
+  char *core_before = NULL;
+  char *see_after = NULL;
+  char *core_after = NULL;
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+
+  ok &= expect_ok("count is 0", &value);
+  release_value(&value);
+  ok &= expect_ok("mode is \"on\"", &value);
+  release_value(&value);
+  ok &= expect_ok("board is 5", &value);
+  release_value(&value);
+  ok &= expect_ok(
+      "in led [ pin is 13; to route [ set @count to count + 1; cond [ when pin == 13 [ case mode [ \"on\" [ board ]; else [ nil ] ] ]; else [ nil ] ] ] ]",
+      &value);
+  ok &= expect_nil_value(value, "define readability snapshot code");
+  release_value(&value);
+
+  ok &= capture_code_renders("led.route", &see_before, &core_before);
+  ok &= expect_ok("save()", &value);
+  ok &= expect_nil_value(value, "save() readability roundtrip");
+  release_value(&value);
+
+  ok &= expect_ok("mode is \"off\"", &value);
+  release_value(&value);
+  ok &= expect_ok("board is 0", &value);
+  release_value(&value);
+  ok &= expect_ok("count is 9", &value);
+  release_value(&value);
+
+  ok &= expect_ok("restore()", &value);
+  ok &= expect_nil_value(value, "restore() readability roundtrip");
+  release_value(&value);
+
+  ok &= expect_ok("led.route:", &value);
+  ok &= expect_int_value(value, 5, "led.route after restore");
+  release_value(&value);
+  ok &= expect_ok("count", &value);
+  ok &= expect_int_value(value, 1, "count after restored @count write");
+  release_value(&value);
+
+  ok &= capture_code_renders("led.route", &see_after, &core_after);
+  if (ok) {
+    ok &= expect_text_equal(see_after, see_before,
+                            "readability see render after restore");
+    ok &= expect_text_equal(core_after, core_before,
+                            "readability core render after restore");
+  }
+  ok &= expect_ok("see(@count)", &value);
+  ok &= expect_nil_value(value, "see(@count) after restore");
+  release_value(&value);
+  ok &= expect_ok("core(@count)", &value);
+  ok &= expect_nil_value(value, "core(@count) after restore");
+  release_value(&value);
+  ok &= expect_ok("slotInfo(@count)", &value);
+  ok &= expect_nil_value(value, "slotInfo(@count) after restore");
+  release_value(&value);
+
+  free(see_before);
+  free(core_before);
+  free(see_after);
+  free(core_after);
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
 static int test_overlay_reset_semantics(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
@@ -1273,6 +1346,7 @@ int main(void) {
   int ok = 1;
 
   ok &= test_native_dispatch_and_roundtrip();
+  ok &= test_readability_snapshot_roundtrip();
   ok &= test_overlay_reset_semantics();
   ok &= test_restore_without_snapshot_resets_to_base();
   ok &= test_corrupt_snapshot_failures_reset_to_base();

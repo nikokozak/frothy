@@ -82,12 +82,25 @@ static froth_error_t frothy_inspect_require_name_arg(frothy_runtime_t *runtime,
                                                      size_t arg_count,
                                                      const char **name_out) {
   size_t length = 0;
+  froth_error_t err;
 
   if (arg_count != 1) {
     return FROTH_ERROR_SIGNATURE;
   }
 
-  FROTH_TRY(frothy_runtime_get_text(runtime, args[0], name_out, &length));
+  err = frothy_runtime_get_text(runtime, args[0], name_out, &length);
+  if (err == FROTH_OK) {
+    if (length == 0) {
+      return FROTH_ERROR_BOUNDS;
+    }
+    return FROTH_OK;
+  }
+  if (err != FROTH_ERROR_TYPE_MISMATCH) {
+    return err;
+  }
+
+  FROTH_TRY(frothy_value_get_slot_designator_name(args[0], name_out));
+  length = strlen(*name_out);
   if (length == 0) {
     return FROTH_ERROR_BOUNDS;
   }

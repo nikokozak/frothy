@@ -1,0 +1,1 @@
+(write-slot "bump" (fn arity=0 locals=0 (seq (write-slot-fallback! "count" "count" (lit 1)) (slot-designator "count"))))

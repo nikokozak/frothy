@@ -14,7 +14,7 @@
 
 #define FROTHY_SNAPSHOT_MAGIC "FRTY"
 #define FROTHY_SNAPSHOT_VERSION 1u
-#define FROTHY_SNAPSHOT_IR_VERSION 1u
+#define FROTHY_SNAPSHOT_IR_VERSION 2u
 #define FROTHY_SNAPSHOT_INVALID_INDEX UINT32_MAX
 
 typedef enum {
@@ -369,9 +369,25 @@ static froth_error_t frothy_snapshot_collect_program_symbols(
       FROTH_TRY(frothy_snapshot_symbols_find_or_add(
           symbols, node->as.read_slot.slot_name, &ignored));
       break;
+    case FROTHY_IR_NODE_READ_SLOT_FALLBACK:
+      FROTH_TRY(frothy_snapshot_symbols_find_or_add(
+          symbols, node->as.read_slot_fallback.primary_slot_name, &ignored));
+      FROTH_TRY(frothy_snapshot_symbols_find_or_add(
+          symbols, node->as.read_slot_fallback.fallback_slot_name, &ignored));
+      break;
     case FROTHY_IR_NODE_WRITE_SLOT:
       FROTH_TRY(frothy_snapshot_symbols_find_or_add(
           symbols, node->as.write_slot.slot_name, &ignored));
+      break;
+    case FROTHY_IR_NODE_WRITE_SLOT_FALLBACK:
+      FROTH_TRY(frothy_snapshot_symbols_find_or_add(
+          symbols, node->as.write_slot_fallback.primary_slot_name, &ignored));
+      FROTH_TRY(frothy_snapshot_symbols_find_or_add(
+          symbols, node->as.write_slot_fallback.fallback_slot_name, &ignored));
+      break;
+    case FROTHY_IR_NODE_SLOT_DESIGNATOR:
+      FROTH_TRY(frothy_snapshot_symbols_find_or_add(
+          symbols, node->as.slot_designator.slot_name, &ignored));
       break;
     default:
       break;
@@ -625,6 +641,17 @@ static froth_error_t frothy_snapshot_write_node(
     FROTH_TRY(frothy_snapshot_symbol_index(symbols, node->as.read_slot.slot_name,
                                            &symbol_index));
     return frothy_snapshot_writer_write_u32(writer, symbol_index);
+  case FROTHY_IR_NODE_READ_SLOT_FALLBACK: {
+    uint32_t fallback_symbol_index = 0;
+
+    FROTH_TRY(frothy_snapshot_symbol_index(
+        symbols, node->as.read_slot_fallback.primary_slot_name, &symbol_index));
+    FROTH_TRY(frothy_snapshot_symbol_index(
+        symbols, node->as.read_slot_fallback.fallback_slot_name,
+        &fallback_symbol_index));
+    FROTH_TRY(frothy_snapshot_writer_write_u32(writer, symbol_index));
+    return frothy_snapshot_writer_write_u32(writer, fallback_symbol_index);
+  }
   case FROTHY_IR_NODE_WRITE_SLOT:
     FROTH_TRY(frothy_snapshot_symbol_index(symbols, node->as.write_slot.slot_name,
                                            &symbol_index));
@@ -633,6 +660,26 @@ static froth_error_t frothy_snapshot_write_node(
         writer, (uint32_t)node->as.write_slot.value));
     return frothy_snapshot_writer_write_u8(
         writer, node->as.write_slot.require_existing ? 1u : 0u);
+  case FROTHY_IR_NODE_WRITE_SLOT_FALLBACK: {
+    uint32_t fallback_symbol_index = 0;
+
+    FROTH_TRY(frothy_snapshot_symbol_index(
+        symbols, node->as.write_slot_fallback.primary_slot_name, &symbol_index));
+    FROTH_TRY(frothy_snapshot_symbol_index(
+        symbols, node->as.write_slot_fallback.fallback_slot_name,
+        &fallback_symbol_index));
+    FROTH_TRY(frothy_snapshot_writer_write_u32(writer, symbol_index));
+    FROTH_TRY(frothy_snapshot_writer_write_u32(writer, fallback_symbol_index));
+    FROTH_TRY(frothy_snapshot_writer_write_u32(
+        writer, (uint32_t)node->as.write_slot_fallback.value));
+    return frothy_snapshot_writer_write_u8(
+        writer, node->as.write_slot_fallback.require_existing ? 1u : 0u);
+  }
+  case FROTHY_IR_NODE_SLOT_DESIGNATOR:
+    FROTH_TRY(frothy_snapshot_symbol_index(symbols,
+                                           node->as.slot_designator.slot_name,
+                                           &symbol_index));
+    return frothy_snapshot_writer_write_u32(writer, symbol_index);
   case FROTHY_IR_NODE_READ_INDEX:
     FROTH_TRY(frothy_snapshot_writer_write_u32(
         writer, (uint32_t)node->as.read_index.base));
@@ -970,6 +1017,13 @@ static froth_error_t frothy_snapshot_validate_code_object(
         return FROTH_ERROR_SNAPSHOT_FORMAT;
       }
       break;
+    case FROTHY_IR_NODE_READ_SLOT_FALLBACK:
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &a));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &b));
+      if (a >= symbol_count || b >= symbol_count) {
+        return FROTH_ERROR_SNAPSHOT_FORMAT;
+      }
+      break;
     case FROTHY_IR_NODE_WRITE_SLOT:
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &a));
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &b));
@@ -979,6 +1033,23 @@ static froth_error_t frothy_snapshot_validate_code_object(
       }
       FROTH_TRY(frothy_snapshot_validate_node_id(b, node_count, false));
       (void)flag;
+      break;
+    case FROTHY_IR_NODE_WRITE_SLOT_FALLBACK:
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &a));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &b));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &c));
+      FROTH_TRY(frothy_snapshot_reader_read_u8(reader, &flag));
+      if (a >= symbol_count || b >= symbol_count) {
+        return FROTH_ERROR_SNAPSHOT_FORMAT;
+      }
+      FROTH_TRY(frothy_snapshot_validate_node_id(c, node_count, false));
+      (void)flag;
+      break;
+    case FROTHY_IR_NODE_SLOT_DESIGNATOR:
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &a));
+      if (a >= symbol_count) {
+        return FROTH_ERROR_SNAPSHOT_FORMAT;
+      }
       break;
     case FROTHY_IR_NODE_READ_INDEX:
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &a));
@@ -1386,6 +1457,26 @@ static froth_error_t frothy_snapshot_measure_code_object(
                                          &string_bytes));
       break;
     }
+    case FROTHY_IR_NODE_READ_SLOT_FALLBACK: {
+      uint32_t primary_symbol_index = 0;
+      uint32_t fallback_symbol_index = 0;
+
+      FROTH_TRY(
+          frothy_snapshot_reader_read_u32(reader, &primary_symbol_index));
+      FROTH_TRY(
+          frothy_snapshot_reader_read_u32(reader, &fallback_symbol_index));
+      if (primary_symbol_index >= symbol_count ||
+          fallback_symbol_index >= symbol_count) {
+        return FROTH_ERROR_SNAPSHOT_FORMAT;
+      }
+      FROTH_TRY(frothy_snapshot_add_size(
+          string_bytes, symbols[primary_symbol_index].length + 1,
+          &string_bytes));
+      FROTH_TRY(frothy_snapshot_add_size(
+          string_bytes, symbols[fallback_symbol_index].length + 1,
+          &string_bytes));
+      break;
+    }
     case FROTHY_IR_NODE_WRITE_SLOT: {
       uint32_t symbol_index = 0;
       uint32_t ignored = 0;
@@ -1395,6 +1486,43 @@ static froth_error_t frothy_snapshot_measure_code_object(
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
       FROTH_TRY(frothy_snapshot_reader_read_u8(reader, &require_existing));
       (void)require_existing;
+      if (symbol_index >= symbol_count) {
+        return FROTH_ERROR_SNAPSHOT_FORMAT;
+      }
+      FROTH_TRY(frothy_snapshot_add_size(string_bytes,
+                                         symbols[symbol_index].length + 1,
+                                         &string_bytes));
+      break;
+    }
+    case FROTHY_IR_NODE_WRITE_SLOT_FALLBACK: {
+      uint32_t primary_symbol_index = 0;
+      uint32_t fallback_symbol_index = 0;
+      uint32_t ignored = 0;
+      uint8_t require_existing = 0;
+
+      FROTH_TRY(
+          frothy_snapshot_reader_read_u32(reader, &primary_symbol_index));
+      FROTH_TRY(
+          frothy_snapshot_reader_read_u32(reader, &fallback_symbol_index));
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &ignored));
+      FROTH_TRY(frothy_snapshot_reader_read_u8(reader, &require_existing));
+      (void)require_existing;
+      if (primary_symbol_index >= symbol_count ||
+          fallback_symbol_index >= symbol_count) {
+        return FROTH_ERROR_SNAPSHOT_FORMAT;
+      }
+      FROTH_TRY(frothy_snapshot_add_size(
+          string_bytes, symbols[primary_symbol_index].length + 1,
+          &string_bytes));
+      FROTH_TRY(frothy_snapshot_add_size(
+          string_bytes, symbols[fallback_symbol_index].length + 1,
+          &string_bytes));
+      break;
+    }
+    case FROTHY_IR_NODE_SLOT_DESIGNATOR: {
+      uint32_t symbol_index = 0;
+
+      FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &symbol_index));
       if (symbol_index >= symbol_count) {
         return FROTH_ERROR_SNAPSHOT_FORMAT;
       }
@@ -1655,6 +1783,34 @@ static froth_error_t frothy_snapshot_decode_code_object(
           &node->as.read_slot.slot_name);
       break;
     }
+    case FROTHY_IR_NODE_READ_SLOT_FALLBACK: {
+      uint32_t primary_symbol_index = 0;
+      uint32_t fallback_symbol_index = 0;
+
+      err = frothy_snapshot_reader_read_u32(reader, &primary_symbol_index);
+      if (err != FROTH_OK) {
+        break;
+      }
+      err = frothy_snapshot_reader_read_u32(reader, &fallback_symbol_index);
+      if (err != FROTH_OK) {
+        break;
+      }
+      if (primary_symbol_index >= symbol_count ||
+          fallback_symbol_index >= symbol_count) {
+        err = FROTH_ERROR_SNAPSHOT_FORMAT;
+        break;
+      }
+      err = frothy_snapshot_copy_symbol_string(
+          &symbols[primary_symbol_index], &string_cursor, storage_end,
+          &node->as.read_slot_fallback.primary_slot_name);
+      if (err != FROTH_OK) {
+        break;
+      }
+      err = frothy_snapshot_copy_symbol_string(
+          &symbols[fallback_symbol_index], &string_cursor, storage_end,
+          &node->as.read_slot_fallback.fallback_slot_name);
+      break;
+    }
     case FROTHY_IR_NODE_WRITE_SLOT: {
       uint32_t symbol_index = 0;
       uint8_t require_existing = 0;
@@ -1682,6 +1838,63 @@ static froth_error_t frothy_snapshot_decode_code_object(
       if (err == FROTH_OK) {
         node->as.write_slot.require_existing = require_existing != 0;
       }
+      break;
+    }
+    case FROTHY_IR_NODE_WRITE_SLOT_FALLBACK: {
+      uint32_t primary_symbol_index = 0;
+      uint32_t fallback_symbol_index = 0;
+      uint8_t require_existing = 0;
+
+      err = frothy_snapshot_reader_read_u32(reader, &primary_symbol_index);
+      if (err != FROTH_OK) {
+        break;
+      }
+      err = frothy_snapshot_reader_read_u32(reader, &fallback_symbol_index);
+      if (err != FROTH_OK) {
+        break;
+      }
+      err = frothy_snapshot_reader_read_u32(
+          reader, (uint32_t *)&node->as.write_slot_fallback.value);
+      if (err != FROTH_OK) {
+        break;
+      }
+      err = frothy_snapshot_reader_read_u8(reader, &require_existing);
+      if (err != FROTH_OK) {
+        break;
+      }
+      if (primary_symbol_index >= symbol_count ||
+          fallback_symbol_index >= symbol_count) {
+        err = FROTH_ERROR_SNAPSHOT_FORMAT;
+        break;
+      }
+      err = frothy_snapshot_copy_symbol_string(
+          &symbols[primary_symbol_index], &string_cursor, storage_end,
+          &node->as.write_slot_fallback.primary_slot_name);
+      if (err != FROTH_OK) {
+        break;
+      }
+      err = frothy_snapshot_copy_symbol_string(
+          &symbols[fallback_symbol_index], &string_cursor, storage_end,
+          &node->as.write_slot_fallback.fallback_slot_name);
+      if (err == FROTH_OK) {
+        node->as.write_slot_fallback.require_existing = require_existing != 0;
+      }
+      break;
+    }
+    case FROTHY_IR_NODE_SLOT_DESIGNATOR: {
+      uint32_t symbol_index = 0;
+
+      err = frothy_snapshot_reader_read_u32(reader, &symbol_index);
+      if (err != FROTH_OK) {
+        break;
+      }
+      if (symbol_index >= symbol_count) {
+        err = FROTH_ERROR_SNAPSHOT_FORMAT;
+        break;
+      }
+      err = frothy_snapshot_copy_symbol_string(
+          &symbols[symbol_index], &string_cursor, storage_end,
+          &node->as.slot_designator.slot_name);
       break;
     }
     case FROTHY_IR_NODE_READ_INDEX:

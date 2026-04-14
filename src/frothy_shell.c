@@ -193,6 +193,9 @@ static bool frothy_source_ends_with_block_header(const char *text,
   }
   word_length = (size_t)(cursor - word_start);
   if (!frothy_word_equals(word_start, word_length, "fn") &&
+      !frothy_word_equals(word_start, word_length, "cond") &&
+      !frothy_word_equals(word_start, word_length, "case") &&
+      !frothy_word_equals(word_start, word_length, "in") &&
       !frothy_word_equals(word_start, word_length, "if") &&
       !frothy_word_equals(word_start, word_length, "when") &&
       !frothy_word_equals(word_start, word_length, "unless") &&
@@ -301,9 +304,10 @@ static bool frothy_shell_parse_leading_name(const char *text,
 
 static bool frothy_shell_is_reserved_leader(const char *start, size_t length) {
   static const char *const reserved[] = {
-      "and",      "as",       "boot",  "call",   "core", "else", "exit",
-      "false",    "fn",       "help",  "here",   "if",   "info", "is",
-      "nil",      "not",      "or",    "quit",   "remember",
+      "and",      "as",       "boot",  "call",   "case", "cond", "core",
+      "else",     "exit",     "false", "fn",     "help", "here", "if",
+      "in",       "info",     "is",    "nil",    "not",  "or",   "quit",
+      "remember",
       "repeat",   "restore",  "save",  "see",    "set",  "show",
       "to",       "true",     "unless","when",   "while","wipe",
       "with",     "words",
@@ -315,9 +319,9 @@ static bool frothy_shell_is_reserved_leader(const char *start, size_t length) {
 
 static bool frothy_shell_rest_starts_syntax_word(const char *text) {
   static const char *const reserved[] = {
-      "and",    "as",   "boot", "call", "else", "fn",     "here",
-      "if",     "is",   "or",   "repeat", "set", "to",    "unless",
-      "when",   "while","with",
+      "and",   "as",   "boot", "call", "case", "cond", "else", "fn",
+      "here",  "if",   "in",   "is",   "or",   "repeat", "set", "to",
+      "unless","when", "while","with",
   };
   const char *start = frothy_shell_skip_spaces(text);
   const char *cursor = start;
