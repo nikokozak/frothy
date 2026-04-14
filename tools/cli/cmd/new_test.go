@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nikokozak/froth/tools/cli/internal/project"
 )
 
 func TestRunNewCreatesProjectSkeletonWithDefaultPosixTarget(t *testing.T) {
@@ -64,16 +66,72 @@ func TestRunNewSetsESP32PlatformFromTargetFlag(t *testing.T) {
 	targetFlag = "esp32-devkit-v1"
 
 	projectDir := filepath.Join(t.TempDir(), "blink")
-	if err := runNew([]string{projectDir}); err != nil {
-		t.Fatalf("runNew: %v", err)
+	stdout, stderr := captureOutput(t, func() {
+		if err := runNew([]string{projectDir}); err != nil {
+			t.Fatalf("runNew: %v", err)
+		}
+	})
+	if stderr != "" {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if !strings.Contains(stdout, "froth doctor") || !strings.Contains(stdout, "froth flash") {
+		t.Fatalf("stdout = %q, want ESP32 setup next steps", stdout)
 	}
 
-	manifest := mustReadFile(t, filepath.Join(projectDir, "froth.toml"))
-	if !strings.Contains(manifest, `board = "esp32-devkit-v1"`) {
-		t.Fatalf("manifest = %q, want esp32 board", manifest)
+	manifest, root, err := project.Load(projectDir)
+	if err != nil {
+		t.Fatalf("project.Load: %v", err)
 	}
-	if !strings.Contains(manifest, `platform = "esp-idf"`) {
-		t.Fatalf("manifest = %q, want esp-idf platform", manifest)
+	resolved, err := project.Resolve(manifest, root)
+	if err != nil {
+		t.Fatalf("project.Resolve: %v", err)
+	}
+	if len(resolved.Warnings) != 0 {
+		t.Fatalf("project.Resolve warnings = %v, want none", resolved.Warnings)
+	}
+
+	lessonSource := mustReadFile(t, filepath.Join(projectDir, "src", "workshop", "lesson.froth"))
+	if !strings.Contains(lessonSource, `\ #allow-toplevel`) {
+		t.Fatalf("lesson scaffold = %q, want allow-toplevel pragma", lessonSource)
+	}
+	if !strings.Contains(lessonSource, "to lesson.ready [") {
+		t.Fatalf("lesson scaffold = %q, want lesson-ready helper", lessonSource)
+	}
+	if !strings.Contains(lessonSource, "to lesson.animate with step [") {
+		t.Fatalf("lesson scaffold = %q, want lesson animate helper", lessonSource)
+	}
+
+	gameSource := mustReadFile(t, filepath.Join(projectDir, "src", "workshop", "game.froth"))
+	if !strings.Contains(gameSource, `\ #allow-toplevel`) {
+		t.Fatalf("game scaffold = %q, want allow-toplevel pragma", gameSource)
+	}
+	if !strings.Contains(gameSource, "player is cells(2)") {
+		t.Fatalf("game scaffold = %q, want player cell state", gameSource)
+	}
+	if !strings.Contains(gameSource, "to game.capture [") {
+		t.Fatalf("game scaffold = %q, want game capture helper", gameSource)
+	}
+
+	mainSource := mustReadFile(t, filepath.Join(projectDir, "src", "main.froth"))
+	if !strings.Contains(mainSource, `\ #use "./workshop/lesson.froth"`) {
+		t.Fatalf("main scaffold = %q, want workshop lesson include", mainSource)
+	}
+	if !strings.Contains(mainSource, `\ #use "./workshop/game.froth"`) {
+		t.Fatalf("main scaffold = %q, want workshop game include", mainSource)
+	}
+	if !strings.Contains(mainSource, `lesson.ready:;`) {
+		t.Fatalf("main scaffold = %q, want lesson-ready boot step separator", mainSource)
+	}
+	if !strings.Contains(mainSource, `game.reset:`) {
+		t.Fatalf("main scaffold = %q, want game-reset boot step", mainSource)
+	}
+
+	manifestText := mustReadFile(t, filepath.Join(projectDir, "froth.toml"))
+	if !strings.Contains(manifestText, `board = "esp32-devkit-v1"`) {
+		t.Fatalf("manifest = %q, want esp32 board", manifestText)
+	}
+	if !strings.Contains(manifestText, `platform = "esp-idf"`) {
+		t.Fatalf("manifest = %q, want esp-idf platform", manifestText)
 	}
 }
 

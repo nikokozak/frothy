@@ -167,18 +167,28 @@ func prepareVSCodeBoard(paths pathSet, env map[string]string) error {
 	); err != nil {
 		return err
 	}
-
-	nodeModulesPath := filepath.Join(paths.Root, "tools", "vscode", "node_modules")
-	info, err := os.Stat(nodeModulesPath)
-	if err != nil || !info.IsDir() {
-		return fmt.Errorf("missing VS Code dependencies: %s (run: cd tools/vscode && npm ci)", nodeModulesPath)
+	vscodeDir := filepath.Join(paths.Root, "tools", "vscode")
+	if _, err := os.Stat(filepath.Join(vscodeDir, "node_modules")); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		if err := runCommand(
+			paths,
+			"vscode:npm-ci",
+			env,
+			vscodeDir,
+			"npm",
+			"ci",
+		); err != nil {
+			return err
+		}
 	}
 
 	return runCommand(
 		paths,
 		"vscode:compile",
 		env,
-		filepath.Join(paths.Root, "tools", "vscode"),
+		vscodeDir,
 		"npm",
 		"run",
 		"compile",

@@ -68,7 +68,10 @@ async function main() {
   const language = manifest.contributes.languages[0];
   assert(language.id === "frothy", "language id should be frothy");
   assert(language.extensions.includes(".frothy"), "missing .frothy extension");
-  assert(language.extensions.includes(".froth"), "missing .froth compatibility extension");
+  assert(
+    language.extensions.includes(".froth"),
+    "missing .froth compatibility extension",
+  );
 
   const welcome = manifest.contributes.viewsWelcome[0].contents;
   assert(/Connect Device/.test(welcome), "welcome content should offer connect");

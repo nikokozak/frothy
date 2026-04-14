@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/nikokozak/froth/tools/cli/internal/project"
 )
 
 func runNew(args []string) error {
@@ -30,17 +32,6 @@ func runNew(args []string) error {
 
 	if _, err := os.Stat(dir); err == nil {
 		return fmt.Errorf("directory %s already exists", dir)
-	}
-
-	dirs := []string{
-		dir,
-		filepath.Join(dir, "src"),
-		filepath.Join(dir, "lib"),
-	}
-	for _, d := range dirs {
-		if err := os.MkdirAll(d, 0755); err != nil {
-			return fmt.Errorf("create %s: %w", d, err)
-		}
 	}
 
 	manifest := fmt.Sprintf(`[project]
@@ -81,23 +72,29 @@ platform = "%s"
 # defines = { MY_CONSTANT = "42" }
 `, name, board, platform)
 
-	mainFroth := `note = nil
-
-boot {
-  set note = "Hello from Frothy!"
-}
-`
-
-	gitignore := `.froth-build/
+	files := map[string]string{
+		filepath.Join(dir, "froth.toml"):      manifest,
+		filepath.Join(dir, "lib", ".gitkeep"): "",
+		filepath.Join(dir, ".gitignore"): `.froth-build/
 froth_a.snap
 froth_b.snap
-`
+`,
+	}
+	for relPath, content := range project.StarterSourceFiles(board) {
+		files[filepath.Join(dir, relPath)] = content
+	}
 
-	files := map[string]string{
-		filepath.Join(dir, "froth.toml"):        manifest,
-		filepath.Join(dir, "src", "main.froth"): mainFroth,
-		filepath.Join(dir, "lib", ".gitkeep"):   "",
-		filepath.Join(dir, ".gitignore"):        gitignore,
+	dirs := map[string]struct{}{
+		dir:                       {},
+		filepath.Join(dir, "lib"): {},
+	}
+	for path := range files {
+		dirs[filepath.Dir(path)] = struct{}{}
+	}
+	for d := range dirs {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			return fmt.Errorf("create %s: %w", d, err)
+		}
 	}
 
 	for path, content := range files {
@@ -112,8 +109,15 @@ froth_b.snap
 	fmt.Println()
 	fmt.Printf("Next steps:\n")
 	fmt.Printf("  cd %s\n", dir)
-	fmt.Printf("  froth send        # send to device\n")
-	fmt.Printf("  froth build       # build firmware\n")
+	if platform == "esp-idf" {
+		fmt.Printf("  froth doctor      # verify CLI, ESP-IDF, and serial path\n")
+		fmt.Printf("  froth send        # send to a preflashed board\n")
+		fmt.Printf("  froth build       # build firmware\n")
+		fmt.Printf("  froth flash       # flash firmware and apply runtime\n")
+	} else {
+		fmt.Printf("  froth send        # send to device\n")
+		fmt.Printf("  froth build       # build firmware\n")
+	}
 
 	return nil
 }

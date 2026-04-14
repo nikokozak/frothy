@@ -27,18 +27,16 @@ ensure_node_deps() {
   }
 
   if [ ! -d "$VSCODE_DIR/node_modules" ]; then
-    echo "error: missing VS Code dependencies at $VSCODE_DIR/node_modules" >&2
-    echo "run: (cd \"$VSCODE_DIR\" && npm ci)" >&2
-    exit 1
+    echo "==> Installing VS Code smoke dependencies"
+    (cd "$VSCODE_DIR" && npm ci --no-fund --no-audit)
   fi
 
   (
     cd "$VSCODE_DIR" &&
       node -e 'require.resolve("@vscode/test-electron/package.json")'
   ) >/dev/null 2>&1 || {
-    echo "error: missing VS Code smoke dependency @vscode/test-electron" >&2
-    echo "run: (cd \"$VSCODE_DIR\" && npm ci)" >&2
-    exit 1
+    echo "==> Refreshing VS Code smoke dependencies"
+    (cd "$VSCODE_DIR" && npm ci --no-fund --no-audit)
   }
 }
 

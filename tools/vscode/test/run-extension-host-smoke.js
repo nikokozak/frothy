@@ -86,7 +86,11 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  process.stderr.write(String(err.stack || err) + "\n");
-  process.exit(1);
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    process.stderr.write(String(err.stack || err) + "\n");
+    process.exit(1);
+  });

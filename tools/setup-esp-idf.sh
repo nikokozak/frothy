@@ -8,7 +8,7 @@
 #   ./tools/setup-esp-idf.sh           # install (skip if already present)
 #   ./tools/setup-esp-idf.sh --force   # reinstall from scratch
 
-set -e
+set -eu
 
 ESP_IDF_VERSION="v5.5"
 FROTH_HOME_DIR="${FROTH_HOME:-$HOME/.froth}"
@@ -16,9 +16,35 @@ FROTH_SDK_DIR="$FROTH_HOME_DIR/sdk"
 IDF_INSTALL_DIR="$FROTH_SDK_DIR/esp-idf"
 IDF_READY_MARKER=".froth-install-complete"
 
+usage() {
+  cat <<'EOF'
+usage:
+  ./tools/setup-esp-idf.sh
+  ./tools/setup-esp-idf.sh --force
+EOF
+}
+
 FORCE=0
-if [ "$1" = "--force" ]; then
-  FORCE=1
+case "${1-}" in
+  "")
+    ;;
+  --force)
+    FORCE=1
+    shift
+    ;;
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  *)
+    usage >&2
+    exit 1
+    ;;
+esac
+
+if [ "$#" -ne 0 ]; then
+  usage >&2
+  exit 1
 fi
 
 if ! command -v git &> /dev/null; then
@@ -95,7 +121,11 @@ echo "Done. To activate ESP-IDF in your current shell, run:"
 echo ""
 echo "  source $IDF_INSTALL_DIR/export.sh"
 echo ""
-echo "Then build Froth for ESP32:"
+echo "Then verify the toolchain:"
+echo ""
+echo "  froth doctor"
+echo ""
+echo "Then build Frothy for ESP32:"
 echo ""
 echo "  cd targets/esp-idf"
 echo "  idf.py set-target esp32"

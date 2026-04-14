@@ -3,6 +3,7 @@ set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 BINARY="${FROTHY_BINARY:-$ROOT_DIR/build/Frothy}"
+CLI_BIN="${FROTHY_CLI_BINARY:-$ROOT_DIR/tools/cli/froth-cli}"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/frothy-m10.XXXXXX")"
 HOST_ONLY=0
 ASSUME_BLINK=0
@@ -80,11 +81,17 @@ if [ ! -x "$BINARY" ]; then
   exit 1
 fi
 
+if [ ! -x "$CLI_BIN" ]; then
+  echo "error: $CLI_BIN is missing; run make build" >&2
+  exit 1
+fi
+
 for proof_file in \
   "$ROOT_DIR/tools/frothy/proof_m10_blink.frothy" \
   "$ROOT_DIR/tools/frothy/proof_m10_boot_persist.frothy" \
   "$ROOT_DIR/tools/frothy/proof_m10_cells_adc.frothy" \
   "$ROOT_DIR/tools/frothy/proof_m10_workshop_surface.frothy" \
+  "$ROOT_DIR/tools/frothy/proof_m10_workshop_starter_checks.frothy" \
   "$ROOT_DIR/tools/frothy/proof_m10_esp32_smoke.py"
 do
   if [ ! -f "$proof_file" ]; then
@@ -139,6 +146,15 @@ require_count_at_least() {
   fi
 }
 
+require_file_contains() {
+  path=$1
+  needle=$2
+  if ! grep -F "$needle" "$path" >/dev/null; then
+    echo "error: expected $path to contain: $needle" >&2
+    exit 1
+  fi
+}
+
 require_sequence() {
   transcript=$1
   shift
@@ -156,6 +172,45 @@ for needle in sys.argv[1:]:
     index = next_index + len(needle)
 PY
 }
+
+STARTER_DIR="$WORK_DIR/workshop-starter"
+STARTER_OUTPUT="$("$CLI_BIN" new --target esp32-devkit-v1 "$STARTER_DIR")"
+printf '%s\n' "$STARTER_OUTPUT"
+require_contains "$STARTER_OUTPUT" 'Created project workshop-starter'
+require_contains "$STARTER_OUTPUT" 'target: esp32-devkit-v1 (esp-idf)'
+require_contains "$STARTER_OUTPUT" 'froth doctor'
+require_contains "$STARTER_OUTPUT" 'froth flash'
+for starter_file in \
+  "$STARTER_DIR/src/main.froth" \
+  "$STARTER_DIR/src/workshop/lesson.froth" \
+  "$STARTER_DIR/src/workshop/game.froth"
+do
+  if [ ! -f "$starter_file" ]; then
+    echo "error: missing workshop starter file: $starter_file" >&2
+    exit 1
+  fi
+done
+require_file_contains "$STARTER_DIR/src/main.froth" '\ #use "./workshop/lesson.froth"'
+require_file_contains "$STARTER_DIR/src/main.froth" '\ #use "./workshop/game.froth"'
+require_file_contains "$STARTER_DIR/src/main.froth" 'to boot ['
+require_file_contains "$STARTER_DIR/src/workshop/lesson.froth" '\ #allow-toplevel'
+require_file_contains "$STARTER_DIR/src/workshop/lesson.froth" 'to lesson.ready ['
+require_file_contains "$STARTER_DIR/src/workshop/lesson.froth" 'to lesson.animate with step ['
+require_file_contains "$STARTER_DIR/src/workshop/game.froth" '\ #allow-toplevel'
+require_file_contains "$STARTER_DIR/src/workshop/game.froth" 'player is cells(2)'
+require_file_contains "$STARTER_DIR/src/workshop/game.froth" 'to game.capture ['
+STARTER_PROOF="$WORK_DIR/workshop-starter-proof.frothy"
+STARTER_PROOF_WARNINGS="$WORK_DIR/workshop-starter-proof.stderr"
+"$CLI_BIN" tooling resolve-source "$STARTER_DIR/src/main.froth" \
+  > "$STARTER_PROOF" \
+  2> "$STARTER_PROOF_WARNINGS"
+if grep -F 'warning:' "$STARTER_PROOF_WARNINGS" >/dev/null; then
+  echo "error: workshop starter resolve emitted warnings" >&2
+  cat "$STARTER_PROOF_WARNINGS" >&2
+  exit 1
+fi
+printf '\n' >> "$STARTER_PROOF"
+cat "$ROOT_DIR/tools/frothy/proof_m10_workshop_starter_checks.frothy" >> "$STARTER_PROOF"
 
 BLINK_TRANSCRIPT="$(run_file "$ROOT_DIR/tools/frothy/proof_m10_blink.frothy")"
 printf '%s\n' "$BLINK_TRANSCRIPT"
@@ -257,6 +312,44 @@ require_sequence "$WORKSHOP_TRANSCRIPT" \
   '[gpio] pin 2 = LOW'
 require_not_contains "$WORKSHOP_TRANSCRIPT" 'eval error ('
 require_not_contains "$WORKSHOP_TRANSCRIPT" 'parse error ('
+STARTER_TRANSCRIPT="$(
+  run_file "$STARTER_PROOF"
+)"
+printf '%s\n' "$STARTER_TRANSCRIPT"
+require_sequence "$STARTER_TRANSCRIPT" \
+  '"boot.check"' \
+  'frothy> "Workshop starter ready"' \
+  'frothy> 0' \
+  'frothy> 0' \
+  'frothy> 0'
+require_sequence "$STARTER_TRANSCRIPT" \
+  '"lesson.ready.check"' \
+  '[gpio] pin 2 -> OUTPUT' \
+  '[gpio] pin 2 = LOW' \
+  'frothy> "Workshop starter ready"'
+require_sequence "$STARTER_TRANSCRIPT" \
+  '"lesson.blink.check"' \
+  '[gpio] pin 2 -> OUTPUT' \
+  '[gpio] pin 2 = LOW' \
+  '[gpio] pin 2 = HIGH' \
+  '[gpio] pin 2 = LOW'
+require_sequence "$STARTER_TRANSCRIPT" \
+  '"lesson.animate.check"' \
+  'frothy> 7' \
+  'frothy> 8' \
+  'frothy> 9'
+require_sequence "$STARTER_TRANSCRIPT" \
+  '"game.capture.check"' \
+  'frothy> 1' \
+  'frothy> 1' \
+  'frothy> 50'
+require_sequence "$STARTER_TRANSCRIPT" \
+  '"game.restore.check"' \
+  'frothy> 1' \
+  'frothy> 1' \
+  'frothy> 50'
+require_not_contains "$STARTER_TRANSCRIPT" 'eval error ('
+require_not_contains "$STARTER_TRANSCRIPT" 'parse error ('
 
 if [ -e "$WORK_DIR/froth_a.snap" ] || [ -e "$WORK_DIR/froth_b.snap" ]; then
   echo "error: host preflight left snapshot files behind" >&2
