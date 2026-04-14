@@ -1,14 +1,48 @@
-led.pin = LED_BUILTIN
-adc.max = 4095
-gpio.input = fn(pin) { gpio.mode(pin, 0) }
-gpio.output = fn(pin) { gpio.mode(pin, 1) }
-gpio.high = fn(pin) { gpio.write(pin, 1) }
-gpio.low = fn(pin) { gpio.write(pin, 0) }
-gpio.toggle = fn(pin) { gpio.write(pin, 1 - gpio.read(pin)) }
-animate = fn(count, wait, step) { i = 0 while i < count { step(i) ms(wait) set i = i + 1 } }
-blink = fn(pin, count, wait) { i = 0 gpio.output(pin) gpio.low(pin) while i < count { gpio.high(pin) ms(wait) gpio.low(pin) ms(wait) set i = i + 1 } }
-led.on = fn() { gpio.output(led.pin) gpio.high(led.pin) }
-led.off = fn() { gpio.output(led.pin) gpio.low(led.pin) }
-led.toggle = fn() { gpio.output(led.pin) gpio.toggle(led.pin) }
-led.blink = fn(count, wait) { blink(led.pin, count, wait) }
-adc.percent = fn(pin) { adc.read(pin) * 100 / adc.max }
+led.pin is LED_BUILTIN
+adc.max is 4095
+
+to gpio.input with pin [ gpio.mode: pin, 0 ]
+to gpio.output with pin [ gpio.mode: pin, 1 ]
+to gpio.high with pin [ gpio.write: pin, 1 ]
+to gpio.low with pin [ gpio.write: pin, 0 ]
+to gpio.toggle with pin [
+  here state is gpio.read: pin;
+  gpio.write: pin, 1 - state
+]
+
+to animate with count, wait, step [
+  repeat count as i [ step: i; ms: wait ]
+]
+
+to blink with pin, count, wait [
+  gpio.output: pin;
+  gpio.low: pin;
+  repeat count [
+    gpio.high: pin;
+    ms: wait;
+    gpio.low: pin;
+    ms: wait
+  ]
+]
+
+to led.on [
+  gpio.output: led.pin;
+  gpio.high: led.pin
+]
+
+to led.off [
+  gpio.output: led.pin;
+  gpio.low: led.pin
+]
+
+to led.toggle [
+  gpio.output: led.pin;
+  gpio.toggle: led.pin
+]
+
+to led.blink with count, wait [ blink: led.pin, count, wait ]
+
+to adc.percent with pin [
+  here raw is adc.read: pin;
+  raw * 100 / adc.max
+]

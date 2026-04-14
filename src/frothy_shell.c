@@ -97,6 +97,16 @@ static const char *frothy_shell_skip_spaces(const char *text) {
   return text;
 }
 
+static size_t frothy_segment_start(const char *text, size_t end) {
+  while (end > 0) {
+    if (text[end - 1] == ';') {
+      return end;
+    }
+    end--;
+  }
+  return 0;
+}
+
 static bool frothy_find_prev_word(const char *text, size_t *cursor_io,
                                   const char **start_out,
                                   size_t *length_out) {
@@ -115,6 +125,159 @@ static bool frothy_find_prev_word(const char *text, size_t *cursor_io,
   *start_out = text + cursor;
   *length_out = end - cursor;
   return true;
+}
+
+static const char *frothy_find_last_word(const char *start, const char *end,
+                                         const char *word) {
+  const char *last = NULL;
+  const char *cursor = start;
+
+  while (cursor < end) {
+    const char *word_start = cursor;
+    size_t word_length = 0;
+
+    if (!frothy_is_name_start((unsigned char)*cursor)) {
+      cursor++;
+      continue;
+    }
+
+    cursor++;
+    while (cursor < end && frothy_is_name_continue((unsigned char)*cursor)) {
+      cursor++;
+    }
+    word_length = (size_t)(cursor - word_start);
+    if (frothy_word_equals(word_start, word_length, word)) {
+      last = word_start;
+    }
+  }
+
+  return last;
+}
+
+static bool frothy_contains_leading_word(const char *start, const char *end,
+                                         const char *word) {
+  const char *cursor = frothy_shell_skip_spaces(start);
+  const char *word_start = cursor;
+  size_t word_length = 0;
+
+  if (cursor >= end || !frothy_is_name_start((unsigned char)*cursor)) {
+    return false;
+  }
+  cursor++;
+  while (cursor < end && frothy_is_name_continue((unsigned char)*cursor)) {
+    cursor++;
+  }
+  word_length = (size_t)(cursor - word_start);
+  return frothy_word_equals(word_start, word_length, word);
+}
+
+static bool frothy_contains_call_separator(const char *start,
+                                           const char *end) {
+  const char *cursor = start;
+  const char *prev_word_start = NULL;
+  size_t prev_word_length = 0;
+
+  while (cursor < end) {
+    const char *word_start = cursor;
+    size_t word_length = 0;
+
+    if (!frothy_is_name_start((unsigned char)*cursor)) {
+      cursor++;
+      continue;
+    }
+
+    cursor++;
+    while (cursor < end && frothy_is_name_continue((unsigned char)*cursor)) {
+      cursor++;
+    }
+    word_length = (size_t)(cursor - word_start);
+    if (frothy_word_equals(word_start, word_length, "with") &&
+        !(prev_word_start != NULL &&
+          frothy_word_equals(prev_word_start, prev_word_length, "fn"))) {
+      return true;
+    }
+
+    prev_word_start = word_start;
+    prev_word_length = word_length;
+  }
+
+  return false;
+}
+
+static const char *frothy_find_matching_bracket(const char *start,
+                                                const char *end, char open,
+                                                char close) {
+  const char *cursor = start;
+  int depth = 0;
+  bool in_string = false;
+
+  while (cursor < end) {
+    if (in_string) {
+      if (*cursor == '\\' && cursor + 1 < end) {
+        cursor += 2;
+        continue;
+      }
+      if (*cursor == '"') {
+        in_string = false;
+      }
+      cursor++;
+      continue;
+    }
+
+    if (*cursor == '"') {
+      in_string = true;
+      cursor++;
+      continue;
+    }
+    if (*cursor == open) {
+      depth++;
+    } else if (*cursor == close) {
+      depth--;
+      if (depth == 0) {
+        return cursor;
+      }
+    }
+    cursor++;
+  }
+
+  return NULL;
+}
+
+static bool frothy_source_has_body_opener(const char *start, const char *end) {
+  const char *cursor = start;
+
+  while (cursor < end) {
+    const char *match = NULL;
+    const char *tail = NULL;
+    char close = ']';
+
+    if (*cursor != '[' && *cursor != '{') {
+      cursor++;
+      continue;
+    }
+    if (cursor != start && !isspace((unsigned char)cursor[-1])) {
+      cursor++;
+      continue;
+    }
+    if (*cursor == '{') {
+      close = '}';
+    }
+
+    match = frothy_find_matching_bracket(cursor, end, *cursor, close);
+    if (match == NULL) {
+      cursor++;
+      continue;
+    }
+
+    tail = frothy_shell_skip_spaces(match + 1);
+    if (tail >= end || frothy_contains_call_separator(tail, end) ||
+        frothy_contains_leading_word(tail, end, "else")) {
+      return true;
+    }
+    cursor++;
+  }
+
+  return false;
 }
 
 static bool frothy_source_ends_with_named_code_header(const char *text,
@@ -161,21 +324,60 @@ static bool frothy_source_ends_with_named_code_header(const char *text,
   return frothy_word_equals(token_start, token_length, "to");
 }
 
+static bool frothy_source_ends_with_function_literal_header(const char *text,
+                                                            size_t length) {
+  const char *token_start = NULL;
+  size_t token_length = 0;
+  size_t cursor = frothy_trim_end_index(text, length);
+
+  if (cursor == 0) {
+    return false;
+  }
+  if (text[cursor - 1] == ']' || text[cursor - 1] == '}') {
+    return false;
+  }
+  if (!frothy_find_prev_word(text, &cursor, &token_start, &token_length)) {
+    return false;
+  }
+  if (frothy_word_equals(token_start, token_length, "fn")) {
+    return true;
+  }
+
+  while (1) {
+    size_t before = frothy_trim_end_index(text, cursor);
+
+    if (before == 0 || text[before - 1] != ',') {
+      break;
+    }
+    cursor = before - 1;
+    if (!frothy_find_prev_word(text, &cursor, &token_start, &token_length)) {
+      return false;
+    }
+  }
+
+  if (!frothy_find_prev_word(text, &cursor, &token_start, &token_length) ||
+      !frothy_word_equals(token_start, token_length, "with")) {
+    return false;
+  }
+  if (!frothy_find_prev_word(text, &cursor, &token_start, &token_length)) {
+    return false;
+  }
+  return frothy_word_equals(token_start, token_length, "fn");
+}
+
 static bool frothy_source_ends_with_block_header(const char *text,
                                                  size_t length) {
   const char *end = text + frothy_trim_end_index(text, length);
-  const char *segment = end;
+  const char *segment = text + frothy_segment_start(text, (size_t)(end - text));
   const char *cursor;
   const char *word_start;
   size_t word_length;
 
-  while (segment > text) {
-    char prev = segment[-1];
-
-    if (prev == '\n' || prev == ';') {
-      break;
-    }
-    segment--;
+  if (end == text) {
+    return false;
+  }
+  if (end[-1] == ']' || end[-1] == '}') {
+    return false;
   }
 
   cursor = frothy_shell_skip_spaces(segment);
@@ -204,69 +406,19 @@ static bool frothy_source_ends_with_block_header(const char *text,
     return false;
   }
 
-  while (cursor < end) {
-    if (*cursor == '[' || *cursor == '{') {
-      return false;
-    }
-    cursor++;
-  }
-
-  return true;
+  return !frothy_source_has_body_opener(cursor, end);
 }
 
 static bool frothy_source_ends_with_call_header(const char *text,
                                                 size_t length) {
   const char *end = text + frothy_trim_end_index(text, length);
-  const char *segment = end;
-  const char *cursor;
-  const char *word_start;
-  size_t word_length;
+  const char *segment = text + frothy_segment_start(text, (size_t)(end - text));
+  const char *call_start = frothy_find_last_word(segment, end, "call");
 
-  while (segment > text) {
-    char prev = segment[-1];
-
-    if (prev == '\n' || prev == ';') {
-      break;
-    }
-    segment--;
-  }
-
-  cursor = frothy_shell_skip_spaces(segment);
-  if (cursor >= end || !frothy_is_name_start((unsigned char)*cursor)) {
+  if (call_start == NULL) {
     return false;
   }
-
-  word_start = cursor;
-  cursor++;
-  while (cursor < end && frothy_is_name_continue((unsigned char)*cursor)) {
-    cursor++;
-  }
-  word_length = (size_t)(cursor - word_start);
-  if (!frothy_word_equals(word_start, word_length, "call")) {
-    return false;
-  }
-
-  while (cursor < end) {
-    cursor = frothy_shell_skip_spaces(cursor);
-    if (cursor >= end) {
-      break;
-    }
-    if (!frothy_is_name_start((unsigned char)*cursor)) {
-      cursor++;
-      continue;
-    }
-
-    word_start = cursor;
-    cursor++;
-    while (cursor < end && frothy_is_name_continue((unsigned char)*cursor)) {
-      cursor++;
-    }
-    if (frothy_word_equals(word_start, (size_t)(cursor - word_start), "with")) {
-      return false;
-    }
-  }
-
-  return true;
+  return !frothy_contains_call_separator(call_start + strlen("call"), end);
 }
 
 static bool frothy_word_in_list(const char *start, size_t length,
@@ -309,7 +461,7 @@ static bool frothy_shell_is_reserved_leader(const char *start, size_t length) {
       "in",       "info",     "is",    "nil",    "not",  "or",   "quit",
       "remember",
       "repeat",   "restore",  "save",  "see",    "set",  "show",
-      "to",       "true",     "unless","when",   "while","wipe",
+      "to",       "true",     "unless","when",   "while","dangerous.wipe",
       "with",     "words",
   };
 
@@ -529,7 +681,8 @@ static void frothy_scan_chunk(frothy_input_state_t *state, const char *chunk,
 }
 
 static void frothy_update_trailing_state(frothy_input_state_t *state) {
-  static const char *const keyword_words[] = {"as", "is", "to", "with"};
+  static const char *const keyword_words[] = {"as", "else", "is", "to",
+                                              "with"};
   static const char *const operator_words[] = {"and", "not", "or"};
   size_t i = state->length;
   const char *token_start = NULL;
@@ -609,6 +762,10 @@ static void frothy_update_trailing_state(frothy_input_state_t *state) {
   }
 
   if (frothy_source_ends_with_named_code_header(state->source, i)) {
+    state->trailing_named_code = true;
+    return;
+  }
+  if (frothy_source_ends_with_function_literal_header(state->source, i)) {
     state->trailing_named_code = true;
     return;
   }
@@ -789,7 +946,7 @@ static froth_error_t frothy_print_help(void) {
   FROTH_TRY(frothy_emit_text("remember\n"));
   FROTH_TRY(frothy_emit_text("save\n"));
   FROTH_TRY(frothy_emit_text("restore\n"));
-  FROTH_TRY(frothy_emit_text("wipe\n"));
+  FROTH_TRY(frothy_emit_text("dangerous.wipe\n"));
   FROTH_TRY(frothy_emit_text(".control\n"));
   FROTH_TRY(frothy_emit_text("quit\n"));
   return frothy_emit_text("exit\n");
@@ -876,7 +1033,7 @@ frothy_shell_command_builtin_name(frothy_shell_command_kind_t kind) {
   case FROTHY_SHELL_COMMAND_RESTORE:
     return "restore";
   case FROTHY_SHELL_COMMAND_WIPE:
-    return "wipe";
+    return "dangerous.wipe";
   case FROTHY_SHELL_COMMAND_SEE:
   case FROTHY_SHELL_COMMAND_SHOW:
     return "see";
@@ -935,7 +1092,7 @@ static frothy_shell_command_t frothy_shell_parse_command(const char *command) {
     result.kind = FROTHY_SHELL_COMMAND_SAVE;
   } else if (strcmp(command, "restore") == 0) {
     result.kind = FROTHY_SHELL_COMMAND_RESTORE;
-  } else if (strcmp(command, "wipe") == 0) {
+  } else if (strcmp(command, "dangerous.wipe") == 0) {
     result.kind = FROTHY_SHELL_COMMAND_WIPE;
   } else if (strcmp(command, ".control") == 0) {
     result.kind = FROTHY_SHELL_COMMAND_CONTROL;
@@ -992,26 +1149,26 @@ frothy_shell_command_source(const frothy_shell_command_t *command,
 
   switch (command->kind) {
   case FROTHY_SHELL_COMMAND_WORDS:
-    format = "words()";
+    format = "words:";
     break;
   case FROTHY_SHELL_COMMAND_SAVE:
-    format = "save()";
+    format = "save:";
     break;
   case FROTHY_SHELL_COMMAND_RESTORE:
-    format = "restore()";
+    format = "restore:";
     break;
   case FROTHY_SHELL_COMMAND_WIPE:
-    format = "wipe()";
+    format = "dangerous.wipe:";
     break;
   case FROTHY_SHELL_COMMAND_SHOW:
   case FROTHY_SHELL_COMMAND_SEE:
-    format = "see(\"%.*s\")";
+    format = "see: @%.*s";
     break;
   case FROTHY_SHELL_COMMAND_CORE:
-    format = "core(\"%.*s\")";
+    format = "core: @%.*s";
     break;
   case FROTHY_SHELL_COMMAND_INFO:
-    format = "slotInfo(\"%.*s\")";
+    format = "slotInfo: @%.*s";
     break;
   default:
     return FROTH_ERROR_SIGNATURE;

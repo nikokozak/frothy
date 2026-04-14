@@ -63,7 +63,7 @@ func TestSendResolvedPayloadResetsBeforeWholeFileReplay(t *testing.T) {
 	)
 
 	err := sendResolvedPayload(runtime, &sendPayload{
-		source:          "control.demo = 42",
+		source:          "control.demo is 42",
 		resetBeforeEval: true,
 	})
 	if err != nil {
@@ -72,7 +72,7 @@ func TestSendResolvedPayloadResetsBeforeWholeFileReplay(t *testing.T) {
 	if runtime.resetCalls != 1 {
 		t.Fatalf("resetCalls = %d, want 1", runtime.resetCalls)
 	}
-	if len(replayed) != 1 || replayed[0] != "control.demo = 42" {
+	if len(replayed) != 1 || replayed[0] != "control.demo is 42" {
 		t.Fatalf("replayed = %v", replayed)
 	}
 }
@@ -123,7 +123,7 @@ func TestSendResolvedPayloadRunsBootAfterResetReplay(t *testing.T) {
 	)
 
 	err := sendResolvedPayload(runtime, &sendPayload{
-		source:          "control.demo = 42",
+		source:          "control.demo is 42",
 		resetBeforeEval: true,
 	})
 	if err != nil {
@@ -132,8 +132,8 @@ func TestSendResolvedPayloadRunsBootAfterResetReplay(t *testing.T) {
 	if len(replayed) != 1 {
 		t.Fatalf("replayed = %v, want one replay", replayed)
 	}
-	if len(entries) != 1 || entries[0] != "boot()" {
-		t.Fatalf("entries = %v, want boot()", entries)
+	if len(entries) != 1 || entries[0] != "boot:" {
+		t.Fatalf("entries = %v, want boot:", entries)
 	}
 }
 
@@ -153,7 +153,7 @@ func TestSendResolvedPayloadFailsClosedOnResetUnavailable(t *testing.T) {
 	)
 
 	err := sendResolvedPayload(runtime, &sendPayload{
-		source:          "control.demo = 42",
+		source:          "control.demo is 42",
 		resetBeforeEval: true,
 	})
 	if err == nil {

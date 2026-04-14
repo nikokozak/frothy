@@ -170,14 +170,13 @@ require_not_contains "$BLINK_TRANSCRIPT" 'parse error ('
 BOOT_SETUP_TRANSCRIPT="$(run_file "$ROOT_DIR/tools/frothy/proof_m10_boot_persist.frothy")"
 printf '%s\n' "$BOOT_SETUP_TRANSCRIPT"
 require_contains "$BOOT_SETUP_TRANSCRIPT" 'snapshot: none'
-require_contains "$BOOT_SETUP_TRANSCRIPT" 'nil'
 require_not_contains "$BOOT_SETUP_TRANSCRIPT" 'eval error ('
 require_not_contains "$BOOT_SETUP_TRANSCRIPT" 'parse error ('
 
 BOOT_VERIFY_TRANSCRIPT="$(
   run_transcript \
     'note' \
-    'wipe()' \
+    'dangerous.wipe' \
     'note' \
     'quit'
 )"
@@ -255,8 +254,7 @@ require_sequence "$WORKSHOP_TRANSCRIPT" \
   '[gpio] pin 2 -> OUTPUT' \
   '[gpio] pin 2 = LOW' \
   '[gpio] pin 2 = HIGH' \
-  '[gpio] pin 2 = LOW' \
-  'nil'
+  '[gpio] pin 2 = LOW'
 require_not_contains "$WORKSHOP_TRANSCRIPT" 'eval error ('
 require_not_contains "$WORKSHOP_TRANSCRIPT" 'parse error ('
 

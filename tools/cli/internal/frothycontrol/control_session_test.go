@@ -88,15 +88,15 @@ func (b *fakeBackend) See(string) (*SeeResult, error) {
 }
 
 func (b *fakeBackend) Save(onOutput func([]byte)) (string, error) {
-	return b.Eval("save()", onOutput)
+	return b.Eval("save:", onOutput)
 }
 
 func (b *fakeBackend) Restore(onOutput func([]byte)) (string, error) {
-	return b.Eval("restore()", onOutput)
+	return b.Eval("restore:", onOutput)
 }
 
 func (b *fakeBackend) Wipe(onOutput func([]byte)) (string, error) {
-	return b.Eval("wipe()", onOutput)
+	return b.Eval("dangerous.wipe:", onOutput)
 }
 
 func (b *fakeBackend) Core(name string, onOutput func([]byte)) (string, error) {

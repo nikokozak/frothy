@@ -57,13 +57,13 @@ Frothy `v0.1` requires an explicit interactive contract:
 - after boot and restore, if `boot` is bound to `Code`, it runs under
   top-level recovery before the prompt
 - required inspection entry points are:
-  - `save()`
-  - `restore()`
-  - `wipe()`
-  - `words()`
-  - `see("name")`
-  - `core("name")`
-  - `slotInfo("name")`
+  - `save`
+  - `restore`
+  - `dangerous.wipe`
+  - `words`
+  - `see`
+  - `core`
+  - `slotInfo`
 
 ## Consequences
 

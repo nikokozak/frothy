@@ -52,7 +52,7 @@ MAIN_TRANSCRIPT="$(
   run_transcript \
     'to inc with x' \
     '[ x + 1 ]' \
-    'inc 4' \
+    'inc: 4' \
     '1 / 0' \
     '2' \
     'set = 1' \
@@ -89,7 +89,7 @@ require_not_contains "$PAREN_TRANSCRIPT" 'parse error ('
 
 BRACKET_TRANSCRIPT="$(
   run_transcript \
-    'frame = cells(1)' \
+    'frame is cells(1)' \
     'frame[0' \
     ']' \
     'quit'
@@ -100,7 +100,7 @@ require_not_contains "$BRACKET_TRANSCRIPT" 'parse error ('
 
 STRING_TRANSCRIPT="$(
   run_transcript \
-    'label = "hel' \
+    'label is "hel' \
     'lo"' \
     '2' \
     'quit'
@@ -111,7 +111,7 @@ require_not_contains "$STRING_TRANSCRIPT" 'parse error ('
 
 STRING_BACKSLASH_TRANSCRIPT="$(
   run_transcript \
-    'label = "a' \
+    'label is "a' \
     '\\' \
     'b"' \
     'label' \
@@ -131,6 +131,8 @@ printf '%s\n' "$NOT_TRANSCRIPT"
 require_contains "$NOT_TRANSCRIPT" 'frothy> .. false'
 require_not_contains "$NOT_TRANSCRIPT" 'parse error ('
 
+# Legacy named-definition compatibility: keep multiline recovery coverage for
+# older `name() = ...` spellings without advertising them as the normal path.
 COMMENT_TRANSCRIPT="$(
   run_transcript \
     'count() =' \
@@ -195,6 +197,7 @@ printf '%s\n' "$COMPARE_TRANSCRIPT"
 require_contains "$COMPARE_TRANSCRIPT" 'frothy> .. true'
 require_not_contains "$COMPARE_TRANSCRIPT" 'parse error ('
 
+# Legacy unary-minus continuation on the old named-definition surface.
 UNARY_MINUS_TRANSCRIPT="$(
   run_transcript \
     'count() = -' \
@@ -299,15 +302,15 @@ fi
 
 CALL_TRANSCRIPT="$(
   run_transcript \
-    'count() = 7' \
-    'count:' \
+    'count is 7' \
+    'count' \
     'makeInc is fn [ fn with x [ x + 1 ] ]' \
     'call makeInc: with 41' \
-    'blink = fn(a, b) { a + b }' \
-    'blink 4, 5' \
-    'blink -1, 2' \
-    'tick.on = fn() { 7 }' \
-    'tick.on' \
+    'to blink with a, b [ a + b ]' \
+    'blink: 4, 5' \
+    'blink: -1, 2' \
+    'to tick.on [ 7 ]' \
+    'tick.on:' \
     'quit'
 )"
 printf '%s\n' "$CALL_TRANSCRIPT"

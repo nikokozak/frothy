@@ -16,7 +16,7 @@ type SmokeConfig struct {
 }
 
 func runRawMultilineInterrupt(session *Session) error {
-	if err := session.writeBytes([]byte("control.check = fn(x) {\n")); err != nil {
+	if err := session.writeBytes([]byte("to control.check with x\n")); err != nil {
 		return fmt.Errorf("send multiline source: %w", err)
 	}
 	if _, err := session.waitForRaw([]byte(".. "), rawPromptTimeout); err != nil {
@@ -102,9 +102,9 @@ func RunSmoke(cfg SmokeConfig) error {
 		return fmt.Errorf("re-enter control after interrupt: %w", err)
 	}
 
-	value, err := session.Eval("control.demo = 42", controlCommandTimeout, nil)
+	value, err := session.Eval("control.demo is 42", controlCommandTimeout, nil)
 	if err != nil {
-		return fmt.Errorf("EVAL control.demo = 42: %w", err)
+		return fmt.Errorf("EVAL control.demo is 42: %w", err)
 	}
 	if value != "nil" {
 		return fmt.Errorf("unexpected definition value %q", value)
@@ -166,7 +166,7 @@ func RunSmoke(cfg SmokeConfig) error {
 	if value != "nil" {
 		return fmt.Errorf("unexpected SAVE value %q", value)
 	}
-	value, err = session.Eval("control.demo = 7", controlCommandTimeout, nil)
+	value, err = session.Eval("control.demo is 7", controlCommandTimeout, nil)
 	if err != nil {
 		return fmt.Errorf("mutate after save: %w", err)
 	}
@@ -198,7 +198,7 @@ func RunSmoke(cfg SmokeConfig) error {
 	if !errors.As(err, &controlErr) || controlErr.Phase != phaseInspect {
 		return fmt.Errorf("SEE control.demo after wipe: %v", err)
 	}
-	value, err = session.Eval("control.demo = 42", controlCommandTimeout, nil)
+	value, err = session.Eval("control.demo is 42", controlCommandTimeout, nil)
 	if err != nil {
 		return fmt.Errorf("reseed control.demo after wipe: %w", err)
 	}
@@ -208,7 +208,7 @@ func RunSmoke(cfg SmokeConfig) error {
 
 	bigText := strings.Repeat("a", 240)
 	for i := 0; i < 32; i++ {
-		source := fmt.Sprintf("chunk.word.%02d = %d", i, i)
+		source := fmt.Sprintf("chunk.word.%02d is %d", i, i)
 		value, err = session.Eval(source, controlCommandTimeout, nil)
 		if err != nil {
 			return fmt.Errorf("seed %s: %w", source, err)
@@ -217,7 +217,7 @@ func RunSmoke(cfg SmokeConfig) error {
 			return fmt.Errorf("unexpected seed value %q", value)
 		}
 	}
-	value, err = session.Eval(fmt.Sprintf("bigText = %q", bigText),
+	value, err = session.Eval(fmt.Sprintf("bigText is %q", bigText),
 		controlCommandTimeout, nil)
 	if err != nil {
 		return fmt.Errorf("seed chunked inspect state: %w", err)
@@ -255,9 +255,9 @@ func RunSmoke(cfg SmokeConfig) error {
 		return fmt.Errorf("SEE control.demo after reset: %v", err)
 	}
 
-	value, err = session.Eval("after.reset = 7", controlCommandTimeout, nil)
+	value, err = session.Eval("after.reset is 7", controlCommandTimeout, nil)
 	if err != nil {
-		return fmt.Errorf("post-reset EVAL after.reset = 7: %w", err)
+		return fmt.Errorf("post-reset EVAL after.reset is 7: %w", err)
 	}
 	if value != "nil" {
 		return fmt.Errorf("unexpected post-reset definition value %q", value)
@@ -275,7 +275,7 @@ func RunSmoke(cfg SmokeConfig) error {
 	interruptErr := make(chan error, 1)
 	var interruptTranscript bytes.Buffer
 	go func() {
-		_, err := session.Eval(`while true { core("save") }`, 0,
+		_, err := session.Eval(`while true [ core: @save ]`, 0,
 			func(data []byte) {
 				if len(data) == 0 {
 					return

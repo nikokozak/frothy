@@ -217,30 +217,30 @@ static int test_function_calls_and_blocks(void) {
 
   reset_frothy_state();
 
-  ok &= expect_ok("inc = fn(x) { x + 1 }", &value);
+  ok &= expect_ok("inc is fn with x [ x + 1 ]", &value);
   release_value(&value);
-  ok &= expect_ok("inc(41)", &value);
-  ok &= expect_int_value(value, 42, "inc(41)");
+  ok &= expect_ok("inc: 41", &value);
+  ok &= expect_int_value(value, 42, "inc: 41");
   release_value(&value);
 
   ok &= expect_ok(
-      "sumTo = fn(limit) { total = 0 i = 0 while i < limit { set total = total + i set i = i + 1 } total }",
+      "sumTo is fn with limit [ here total is 0; here i is 0; while i < limit [ set total to total + i; set i to i + 1 ]; total ]",
       &value);
   release_value(&value);
-  ok &= expect_ok("sumTo(4)", &value);
-  ok &= expect_int_value(value, 6, "sumTo(4)");
+  ok &= expect_ok("sumTo: 4", &value);
+  ok &= expect_int_value(value, 6, "sumTo: 4");
   release_value(&value);
 
-  ok &= expect_ok("onlySet = fn() { x = 1 }", &value);
+  ok &= expect_ok("onlySet is fn [ here x is 1 ]", &value);
   release_value(&value);
-  ok &= expect_ok("onlySet()", &value);
-  ok &= expect_nil_value(value, "onlySet()");
+  ok &= expect_ok("onlySet:", &value);
+  ok &= expect_nil_value(value, "onlySet:");
   release_value(&value);
 
-  ok &= expect_error("inc()", FROTH_ERROR_SIGNATURE);
-  ok &= expect_ok("count = 7", &value);
+  ok &= expect_error("inc:", FROTH_ERROR_SIGNATURE);
+  ok &= expect_ok("count is 7", &value);
   release_value(&value);
-  ok &= expect_error("count()", FROTH_ERROR_TYPE_MISMATCH);
+  ok &= expect_error("count:", FROTH_ERROR_TYPE_MISMATCH);
 
   return ok;
 }
@@ -251,36 +251,36 @@ static int test_eval_scratch_limits_and_nested_calls(void) {
 
   reset_frothy_state();
 
-  ok &= expect_ok("pair = fn(a, b) { a }", &value);
+  ok &= expect_ok("pair is fn with a, b [ a ]", &value);
   release_value(&value);
-  ok &= expect_ok("wrap = fn(v) { pair(v, v + 1) }", &value);
+  ok &= expect_ok("wrap is fn with v [ pair: v, v + 1 ]", &value);
   release_value(&value);
-  ok &= expect_ok("chain = fn(v) { wrap(wrap(v)) }", &value);
+  ok &= expect_ok("chain is fn with v [ wrap: (wrap: v) ]", &value);
   release_value(&value);
 
   frothy_runtime_debug_reset_high_water(runtime());
-  ok &= expect_ok("pair(7, 8)", &value);
-  ok &= expect_int_value(value, 7, "pair(7, 8)");
+  ok &= expect_ok("pair: 7, 8", &value);
+  ok &= expect_int_value(value, 7, "pair: 7, 8");
   release_value(&value);
   ok &= expect_eval_high_water(2, "pair eval scratch");
 
   frothy_runtime_debug_reset_high_water(runtime());
-  ok &= expect_ok("pair(9, 10)", &value);
-  ok &= expect_int_value(value, 9, "pair(9, 10)");
+  ok &= expect_ok("pair: 9, 10", &value);
+  ok &= expect_int_value(value, 9, "pair: 9, 10");
   release_value(&value);
   ok &= expect_eval_high_water(2, "pair eval scratch warmed");
 
-  ok &= expect_ok("chain(5)", &value);
-  ok &= expect_int_value(value, 5, "chain(5)");
+  ok &= expect_ok("chain: 5", &value);
+  ok &= expect_int_value(value, 5, "chain: 5");
   release_value(&value);
 
   frothy_runtime_test_set_eval_value_limit(runtime(), 2);
-  ok &= expect_ok("pair(11, 12)", &value);
-  ok &= expect_int_value(value, 11, "pair(11, 12) at limit");
+  ok &= expect_ok("pair: 11, 12", &value);
+  ok &= expect_int_value(value, 11, "pair: 11, 12 at limit");
   release_value(&value);
 
   frothy_runtime_test_set_eval_value_limit(runtime(), 1);
-  ok &= expect_error("pair(13, 14)", FROTH_ERROR_HEAP_OUT_OF_MEMORY);
+  ok &= expect_error("pair: 13, 14", FROTH_ERROR_HEAP_OUT_OF_MEMORY);
   frothy_runtime_test_set_eval_value_limit(runtime(), FROTHY_EVAL_VALUE_CAPACITY);
 
   return ok;
@@ -294,61 +294,61 @@ static int test_stable_rebinding_and_reclamation(void) {
 
   reset_frothy_state();
 
-  ok &= expect_ok("adder = fn(x) { x + 1 }", &value);
+  ok &= expect_ok("adder is fn with x [ x + 1 ]", &value);
   release_value(&value);
-  ok &= expect_ok("apply = fn(v) { adder(v) }", &value);
+  ok &= expect_ok("apply is fn with v [ adder: v ]", &value);
   release_value(&value);
-  ok &= expect_ok("apply(10)", &value);
-  ok &= expect_int_value(value, 11, "apply(10) before rebind");
+  ok &= expect_ok("apply: 10", &value);
+  ok &= expect_int_value(value, 11, "apply: 10 before rebind");
   release_value(&value);
 
   live_before = frothy_runtime_live_object_count(runtime());
   payload_before = frothy_runtime_payload_used(runtime());
-  ok &= expect_ok("adder = fn(x) { x + 2 }", &value);
+  ok &= expect_ok("adder is fn with x [ x + 2 ]", &value);
   release_value(&value);
   ok &= expect_live_objects(live_before, "code slot rebind");
   ok &= expect_payload_used(payload_before, "code slot rebind payload");
-  ok &= expect_ok("apply(10)", &value);
-  ok &= expect_int_value(value, 12, "apply(10) after rebind");
+  ok &= expect_ok("apply: 10", &value);
+  ok &= expect_int_value(value, 12, "apply: 10 after rebind");
   release_value(&value);
 
-  ok &= expect_ok("label = \"one\"", &value);
+  ok &= expect_ok("label is \"one\"", &value);
   release_value(&value);
-  ok &= expect_ok("reader = fn() { label }", &value);
+  ok &= expect_ok("reader is fn [ label ]", &value);
   release_value(&value);
-  ok &= expect_ok("reader()", &value);
-  ok &= expect_text_value(value, "one", "reader() before rebind");
+  ok &= expect_ok("reader:", &value);
+  ok &= expect_text_value(value, "one", "reader: before rebind");
   release_value(&value);
 
   live_before = frothy_runtime_live_object_count(runtime());
   payload_before = frothy_runtime_payload_used(runtime());
-  ok &= expect_ok("label = \"two\"", &value);
+  ok &= expect_ok("label is \"two\"", &value);
   release_value(&value);
   ok &= expect_live_objects(live_before, "text slot rebind");
   ok &= expect_payload_used(payload_before, "text slot rebind payload");
-  ok &= expect_ok("reader()", &value);
-  ok &= expect_text_value(value, "two", "reader() after rebind");
+  ok &= expect_ok("reader:", &value);
+  ok &= expect_text_value(value, "two", "reader: after rebind");
   release_value(&value);
 
-  ok &= expect_ok("frame = cells(1)", &value);
+  ok &= expect_ok("frame is cells(1)", &value);
   release_value(&value);
-  ok &= expect_ok("load = fn() { frame[0] }", &value);
+  ok &= expect_ok("load is fn [ frame[0] ]", &value);
   release_value(&value);
-  ok &= expect_ok("setCell = fn(v) { set frame[0] = v }", &value);
+  ok &= expect_ok("setCell is fn with v [ set frame[0] to v ]", &value);
   release_value(&value);
-  ok &= expect_ok("setCell(7)", &value);
-  ok &= expect_nil_value(value, "setCell(7)");
+  ok &= expect_ok("setCell: 7", &value);
+  ok &= expect_nil_value(value, "setCell: 7");
   release_value(&value);
-  ok &= expect_ok("load()", &value);
-  ok &= expect_int_value(value, 7, "load() before cells rebind");
+  ok &= expect_ok("load:", &value);
+  ok &= expect_int_value(value, 7, "load: before cells rebind");
   release_value(&value);
 
   live_before = frothy_runtime_live_object_count(runtime());
-  ok &= expect_ok("frame = cells(1)", &value);
+  ok &= expect_ok("frame is cells(1)", &value);
   release_value(&value);
   ok &= expect_live_objects(live_before, "cells slot rebind");
-  ok &= expect_ok("load()", &value);
-  ok &= expect_nil_value(value, "load() after cells rebind");
+  ok &= expect_ok("load:", &value);
+  ok &= expect_nil_value(value, "load: after cells rebind");
   release_value(&value);
 
   return ok;
@@ -360,55 +360,55 @@ static int test_cells_store_rules_and_overwrite_reclamation(void) {
 
   reset_frothy_state();
 
-  ok &= expect_ok("frame = cells(2)", &value);
+  ok &= expect_ok("frame is cells(2)", &value);
   release_value(&value);
   ok &= expect_live_objects(1, "cells allocation");
 
-  ok &= expect_ok("poke = fn(v) { set frame[0] = v }", &value);
+  ok &= expect_ok("poke is fn with v [ set frame[0] to v ]", &value);
   release_value(&value);
-  ok &= expect_ok("peek = fn() { frame[0] }", &value);
+  ok &= expect_ok("peek is fn [ frame[0] ]", &value);
   release_value(&value);
   ok &= expect_live_objects(3, "cells helpers");
 
-  ok &= expect_ok("poke(\"alpha\")", &value);
+  ok &= expect_ok("poke: \"alpha\"", &value);
   ok &= expect_nil_value(value, "poke(alpha)");
   release_value(&value);
   ok &= expect_live_objects(4, "cells store first text");
 
-  ok &= expect_ok("poke(\"beta\")", &value);
+  ok &= expect_ok("poke: \"beta\"", &value);
   ok &= expect_nil_value(value, "poke(beta)");
   release_value(&value);
   ok &= expect_live_objects(4, "cells overwrite text");
-  ok &= expect_ok("peek()", &value);
-  ok &= expect_text_value(value, "beta", "peek()");
+  ok &= expect_ok("peek:", &value);
+  ok &= expect_text_value(value, "beta", "peek:");
   release_value(&value);
 
-  ok &= expect_ok("touch = fn() { set frame[1] = true frame[1] }", &value);
+  ok &= expect_ok("touch is fn [ set frame[1] to true; frame[1] ]", &value);
   release_value(&value);
-  ok &= expect_ok("touch()", &value);
+  ok &= expect_ok("touch:", &value);
   if (!frothy_value_is_bool(value) || !frothy_value_as_bool(value)) {
-    fprintf(stderr, "touch() expected true\n");
+    fprintf(stderr, "touch: expected true\n");
     ok = 0;
   }
   release_value(&value);
 
-  ok &= expect_ok("readFar = fn() { frame[2] }", &value);
+  ok &= expect_ok("readFar is fn [ frame[2] ]", &value);
   release_value(&value);
-  ok &= expect_error("readFar()", FROTH_ERROR_BOUNDS);
+  ok &= expect_error("readFar:", FROTH_ERROR_BOUNDS);
 
-  ok &= expect_ok("writeFar = fn(v) { set frame[2] = v }", &value);
+  ok &= expect_ok("writeFar is fn with v [ set frame[2] to v ]", &value);
   release_value(&value);
-  ok &= expect_error("writeFar(9)", FROTH_ERROR_BOUNDS);
+  ok &= expect_error("writeFar: 9", FROTH_ERROR_BOUNDS);
 
-  ok &= expect_ok("factory = fn() { fn() { 1 } }", &value);
+  ok &= expect_ok("factory is fn [ fn [ 1 ] ]", &value);
   release_value(&value);
-  ok &= expect_ok("storeCode = fn() { set frame[0] = factory() }", &value);
+  ok &= expect_ok("storeCode is fn [ set frame[0] to factory: ]", &value);
   release_value(&value);
-  ok &= expect_error("storeCode()", FROTH_ERROR_TYPE_MISMATCH);
+  ok &= expect_error("storeCode:", FROTH_ERROR_TYPE_MISMATCH);
 
-  ok &= expect_ok("bad = fn() { set missing = 1 }", &value);
+  ok &= expect_ok("bad is fn [ set missing to 1 ]", &value);
   release_value(&value);
-  ok &= expect_error("bad()", FROTH_ERROR_UNDEFINED_WORD);
+  ok &= expect_error("bad:", FROTH_ERROR_UNDEFINED_WORD);
 
   return ok;
 }
@@ -419,33 +419,33 @@ static int test_cells_sample_program(void) {
 
   reset_frothy_state();
 
-  ok &= expect_ok("frame = cells(3)", &value);
+  ok &= expect_ok("frame is cells(3)", &value);
   release_value(&value);
   ok &= expect_ok(
-      "writeFrame = fn() { set frame[0] = 7 set frame[1] = false set frame[2] = \"ready\" }",
+      "writeFrame is fn [ set frame[0] to 7; set frame[1] to false; set frame[2] to \"ready\" ]",
       &value);
   release_value(&value);
-  ok &= expect_ok("count = fn() { frame[0] }", &value);
+  ok &= expect_ok("count is fn [ frame[0] ]", &value);
   release_value(&value);
-  ok &= expect_ok("enabled = fn() { frame[1] }", &value);
+  ok &= expect_ok("enabled is fn [ frame[1] ]", &value);
   release_value(&value);
-  ok &= expect_ok("label = fn() { frame[2] }", &value);
-  release_value(&value);
-
-  ok &= expect_ok("writeFrame()", &value);
-  ok &= expect_nil_value(value, "writeFrame()");
+  ok &= expect_ok("label is fn [ frame[2] ]", &value);
   release_value(&value);
 
-  ok &= expect_ok("count()", &value);
-  ok &= expect_int_value(value, 7, "count()");
+  ok &= expect_ok("writeFrame:", &value);
+  ok &= expect_nil_value(value, "writeFrame:");
   release_value(&value);
 
-  ok &= expect_ok("enabled()", &value);
-  ok &= expect_bool_value(value, false, "enabled()");
+  ok &= expect_ok("count:", &value);
+  ok &= expect_int_value(value, 7, "count:");
   release_value(&value);
 
-  ok &= expect_ok("label()", &value);
-  ok &= expect_text_value(value, "ready", "label()");
+  ok &= expect_ok("enabled:", &value);
+  ok &= expect_bool_value(value, false, "enabled:");
+  release_value(&value);
+
+  ok &= expect_ok("label:", &value);
+  ok &= expect_text_value(value, "ready", "label:");
   release_value(&value);
 
   return ok;
@@ -457,19 +457,19 @@ static int test_top_level_set_forms(void) {
 
   reset_frothy_state();
 
-  ok &= expect_ok("unit = 1", &value);
+  ok &= expect_ok("unit is 1", &value);
   release_value(&value);
-  ok &= expect_ok("set unit = 2", &value);
-  ok &= expect_nil_value(value, "set unit = 2");
+  ok &= expect_ok("set unit to 2", &value);
+  ok &= expect_nil_value(value, "set unit to 2");
   release_value(&value);
   ok &= expect_ok("unit", &value);
   ok &= expect_int_value(value, 2, "unit");
   release_value(&value);
 
-  ok &= expect_ok("frame = cells(1)", &value);
+  ok &= expect_ok("frame is cells(1)", &value);
   release_value(&value);
-  ok &= expect_ok("set frame[0] = 7", &value);
-  ok &= expect_nil_value(value, "set frame[0] = 7");
+  ok &= expect_ok("set frame[0] to 7", &value);
+  ok &= expect_nil_value(value, "set frame[0] to 7");
   release_value(&value);
   ok &= expect_ok("frame[0]", &value);
   ok &= expect_int_value(value, 7, "frame[0]");
@@ -490,7 +490,7 @@ static int test_fixed_layout_records(void) {
   ok &= expect_binding_view("Point", FROTHY_VALUE_CLASS_RECORD_DEF,
                             "record Point [ x, y ]", "record def inspect");
 
-  ok &= expect_ok("point = Point: 10, 20", &value);
+  ok &= expect_ok("point is Point: 10, 20", &value);
   ok &= expect_nil_value(value, "point binding");
   release_value(&value);
   ok &= expect_binding_view("point", FROTHY_VALUE_CLASS_RECORD,
@@ -508,12 +508,12 @@ static int test_fixed_layout_records(void) {
 
   ok &= expect_error("Point: 1", FROTH_ERROR_SIGNATURE);
   ok &= expect_error("point->missing", FROTH_ERROR_BOUNDS);
-  ok &= expect_error("set point->x to fn() { 1 }", FROTH_ERROR_TYPE_MISMATCH);
+  ok &= expect_error("set point->x to fn [ 1 ]", FROTH_ERROR_TYPE_MISMATCH);
 
-  ok &= expect_ok("frame = cells(1)", &value);
+  ok &= expect_ok("frame is cells(1)", &value);
   release_value(&value);
-  ok &= expect_ok("set frame[0] = point", &value);
-  ok &= expect_nil_value(value, "set frame[0] = point");
+  ok &= expect_ok("set frame[0] to point", &value);
+  ok &= expect_nil_value(value, "set frame[0] to point");
   release_value(&value);
   ok &= expect_ok("frame[0]->x", &value);
   ok &= expect_int_value(value, 11, "frame[0]->x");
@@ -703,7 +703,7 @@ static int test_temporary_results_release_cleanly(void) {
   ok &= expect_live_objects(0, "temporary text released");
   ok &= expect_payload_used(0, "temporary text payload released");
 
-  ok &= expect_ok("fn() { 1 }", &value);
+  ok &= expect_ok("fn [ 1 ]", &value);
   ok &= expect_live_objects(1, "temporary code retained by caller");
   if (frothy_runtime_payload_used(runtime()) == 0) {
     fprintf(stderr, "temporary code should consume payload\n");
@@ -730,12 +730,12 @@ static int test_code_payload_reuse_with_factory_churn(void) {
 
   reset_frothy_state();
 
-  ok &= expect_ok("factory = fn() { fn() { 1 } }", &value);
+  ok &= expect_ok("factory is fn [ fn [ 1 ] ]", &value);
   release_value(&value);
   baseline_payload = frothy_runtime_payload_used(runtime());
   frothy_runtime_debug_reset_high_water(runtime());
 
-  ok &= expect_ok("factory()", &value);
+  ok &= expect_ok("factory:", &value);
   first_high_water = frothy_runtime_payload_high_water(runtime());
   if (first_high_water == 0) {
     fprintf(stderr, "factory() should allocate payload for returned code\n");
@@ -745,7 +745,7 @@ static int test_code_payload_reuse_with_factory_churn(void) {
   ok &= expect_payload_used(baseline_payload, "factory churn baseline");
 
   for (i = 0; i < 32 && ok; i++) {
-    ok &= expect_ok("factory()", &value);
+    ok &= expect_ok("factory:", &value);
     release_value(&value);
     ok &= expect_payload_used(baseline_payload, "factory churn payload reuse");
     ok &= expect_payload_high_water(first_high_water,
@@ -767,12 +767,12 @@ static int test_allocator_failure_cleanup(void) {
   ok &= expect_payload_used(0, "text append payload cleanup");
 
   frothy_runtime_test_fail_next_append(runtime());
-  ok &= expect_error("fn() { 1 }", FROTH_ERROR_HEAP_OUT_OF_MEMORY);
+  ok &= expect_error("fn [ 1 ]", FROTH_ERROR_HEAP_OUT_OF_MEMORY);
   ok &= expect_live_objects(0, "code append failure");
   ok &= expect_payload_used(0, "code append payload cleanup");
 
   frothy_runtime_test_fail_next_append(runtime());
-  ok &= expect_error("frame = cells(2)", FROTH_ERROR_HEAP_OUT_OF_MEMORY);
+  ok &= expect_error("frame is cells(2)", FROTH_ERROR_HEAP_OUT_OF_MEMORY);
   ok &= expect_live_objects(0, "cells append failure");
   if (froth_vm.cellspace.used != 0) {
     fprintf(stderr, "cells append failure expected cellspace used 0, got %" FROTH_CELL_U_FORMAT "\n",

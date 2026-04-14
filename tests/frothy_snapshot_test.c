@@ -649,10 +649,10 @@ static int write_simple_text_snapshot(void) {
   frothy_value_t value = frothy_value_make_nil();
   int ok = 1;
 
-  ok &= expect_ok("x = \"a\"", &value);
+  ok &= expect_ok("x is \"a\"", &value);
   release_value(&value);
-  ok &= expect_ok("save()", &value);
-  ok &= expect_nil_value(value, "save()");
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "save:");
   release_value(&value);
   return ok;
 }
@@ -663,10 +663,10 @@ static int write_simple_record_snapshot(void) {
 
   ok &= expect_ok("record Point [ x, y ]", &value);
   release_value(&value);
-  ok &= expect_ok("point = Point: 10, 20", &value);
+  ok &= expect_ok("point is Point: 10, 20", &value);
   release_value(&value);
-  ok &= expect_ok("save()", &value);
-  ok &= expect_nil_value(value, "save() record snapshot");
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "save: record snapshot");
   release_value(&value);
   return ok;
 }
@@ -755,7 +755,7 @@ static int populate_near_capacity_overlay(size_t count) {
   }
 
   if (count > 0) {
-    if (!expect_ok("nearCapCode = fn() { 7 }", &value)) {
+    if (!expect_ok("nearCapCode is fn [ 7 ]", &value)) {
       return 0;
     }
     release_value(&value);
@@ -835,54 +835,54 @@ static int test_native_dispatch_and_roundtrip(void) {
   ok &= expect_snapshot_present(false, "fresh workspace");
   ok &= expect_ok("save", &value);
   release_value(&value);
-  ok &= expect_error("save(1)", FROTH_ERROR_SIGNATURE);
-  ok &= expect_ok("save()", &value);
-  ok &= expect_nil_value(value, "save()");
+  ok &= expect_error("save: 1", FROTH_ERROR_SIGNATURE);
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "save:");
   release_value(&value);
   ok &= expect_snapshot_present(true, "snapshot written");
 
-  ok &= expect_ok("frame = cells(2)", &value);
+  ok &= expect_ok("frame is cells(2)", &value);
   release_value(&value);
-  ok &= expect_ok("alias = frame", &value);
+  ok &= expect_ok("alias is frame", &value);
   release_value(&value);
-  ok &= expect_ok("label = \"ready\"", &value);
+  ok &= expect_ok("label is \"ready\"", &value);
   release_value(&value);
-  ok &= expect_ok("writeFrame = fn() { set frame[0] = 9 set frame[1] = \"ok\" }",
+  ok &= expect_ok("writeFrame is fn [ set frame[0] to 9; set frame[1] to \"ok\" ]",
                   &value);
   release_value(&value);
-  ok &= expect_ok("writeFrame()", &value);
+  ok &= expect_ok("writeFrame:", &value);
   release_value(&value);
-  ok &= expect_ok("setAlias = fn(v) { set alias[0] = v }", &value);
+  ok &= expect_ok("setAlias is fn with v [ set alias[0] to v ]", &value);
   release_value(&value);
-  ok &= expect_ok("adder = fn(x) { x + alias[0] }", &value);
+  ok &= expect_ok("adder is fn with x [ x + alias[0] ]", &value);
   release_value(&value);
   ok &= capture_code_renders("adder", &see_before, &core_before);
-  ok &= expect_ok("save()", &value);
-  ok &= expect_nil_value(value, "save()");
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "save:");
   release_value(&value);
 
-  ok &= expect_ok("label = \"mutated\"", &value);
+  ok &= expect_ok("label is \"mutated\"", &value);
   release_value(&value);
-  ok &= expect_ok("setFrame = fn(v) { set frame[0] = v }", &value);
+  ok &= expect_ok("setFrame is fn with v [ set frame[0] to v ]", &value);
   release_value(&value);
-  ok &= expect_ok("setFrame(1)", &value);
+  ok &= expect_ok("setFrame: 1", &value);
   release_value(&value);
-  ok &= expect_ok("restore()", &value);
-  ok &= expect_nil_value(value, "restore()");
+  ok &= expect_ok("restore:", &value);
+  ok &= expect_nil_value(value, "restore:");
   release_value(&value);
 
   ok &= expect_ok("label", &value);
   ok &= expect_text_value(value, "ready", "label after restore");
   release_value(&value);
-  ok &= expect_ok("adder(1)", &value);
-  ok &= expect_int_value(value, 10, "adder(1) after restore");
+  ok &= expect_ok("adder: 1", &value);
+  ok &= expect_int_value(value, 10, "adder: 1 after restore");
   release_value(&value);
   ok &= capture_code_renders("adder", &see_after, &core_after);
   if (ok) {
     ok &= expect_text_equal(see_after, see_before, "see render after restore");
     ok &= expect_text_equal(core_after, core_before, "core render after restore");
   }
-  ok &= expect_ok("setAlias(8)", &value);
+  ok &= expect_ok("setAlias: 8", &value);
   release_value(&value);
   ok &= expect_ok("frame[0]", &value);
   ok &= expect_int_value(value, 8, "shared cells alias");
@@ -922,8 +922,8 @@ static int test_readability_snapshot_roundtrip(void) {
   release_value(&value);
 
   ok &= capture_code_renders("led.route", &see_before, &core_before);
-  ok &= expect_ok("save()", &value);
-  ok &= expect_nil_value(value, "save() readability roundtrip");
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "save: readability roundtrip");
   release_value(&value);
 
   ok &= expect_ok("mode is \"off\"", &value);
@@ -933,8 +933,8 @@ static int test_readability_snapshot_roundtrip(void) {
   ok &= expect_ok("count is 9", &value);
   release_value(&value);
 
-  ok &= expect_ok("restore()", &value);
-  ok &= expect_nil_value(value, "restore() readability roundtrip");
+  ok &= expect_ok("restore:", &value);
+  ok &= expect_nil_value(value, "restore: readability roundtrip");
   release_value(&value);
 
   ok &= expect_ok("led.route:", &value);
@@ -951,14 +951,14 @@ static int test_readability_snapshot_roundtrip(void) {
     ok &= expect_text_equal(core_after, core_before,
                             "readability core render after restore");
   }
-  ok &= expect_ok("see(@count)", &value);
-  ok &= expect_nil_value(value, "see(@count) after restore");
+  ok &= expect_ok("see: @count", &value);
+  ok &= expect_nil_value(value, "see: @count after restore");
   release_value(&value);
-  ok &= expect_ok("core(@count)", &value);
-  ok &= expect_nil_value(value, "core(@count) after restore");
+  ok &= expect_ok("core: @count", &value);
+  ok &= expect_nil_value(value, "core: @count after restore");
   release_value(&value);
-  ok &= expect_ok("slotInfo(@count)", &value);
-  ok &= expect_nil_value(value, "slotInfo(@count) after restore");
+  ok &= expect_ok("slotInfo: @count", &value);
+  ok &= expect_nil_value(value, "slotInfo: @count after restore");
   release_value(&value);
 
   free(see_before);
@@ -983,15 +983,15 @@ static int test_overlay_reset_semantics(void) {
   base_live_objects = frothy_runtime_live_object_count(runtime());
   base_payload = frothy_runtime_payload_used(runtime());
   ok &= expect_live_objects(base_live_objects, "base live objects");
-  ok &= expect_ok("save = 1", &value);
+  ok &= expect_ok("save is 1", &value);
   release_value(&value);
-  ok &= expect_ok("note = \"hello\"", &value);
+  ok &= expect_ok("note is \"hello\"", &value);
   release_value(&value);
-  ok &= expect_ok("frame = cells(1)", &value);
+  ok &= expect_ok("frame is cells(1)", &value);
   release_value(&value);
-  ok &= expect_ok("touchFrame = fn() { set frame[0] = \"cell\" }", &value);
+  ok &= expect_ok("touchFrame is fn [ set frame[0] to \"cell\" ]", &value);
   release_value(&value);
-  ok &= expect_ok("touchFrame()", &value);
+  ok &= expect_ok("touchFrame:", &value);
   release_value(&value);
   ok &= expect_live_objects(base_live_objects + 3, "overlay objects before reset");
 
@@ -1004,8 +1004,8 @@ static int test_overlay_reset_semantics(void) {
   ok &= expect_payload_used(base_payload, "base payload after reset");
   ok &= expect_error("note", FROTH_ERROR_UNDEFINED_WORD);
   ok &= expect_error("frame", FROTH_ERROR_UNDEFINED_WORD);
-  ok &= expect_ok("save()", &value);
-  ok &= expect_nil_value(value, "save() after reset");
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "save: after reset");
   release_value(&value);
   if (froth_vm.cellspace.used != 0) {
     fprintf(stderr, "cellspace should be reset to base, got %" FROTH_CELL_U_FORMAT
@@ -1027,12 +1027,12 @@ static int test_restore_without_snapshot_resets_to_base(void) {
     return 0;
   }
 
-  ok &= expect_ok("junk = 1", &value);
+  ok &= expect_ok("junk is 1", &value);
   release_value(&value);
-  ok &= expect_error("restore()", FROTH_ERROR_SNAPSHOT_NO_SNAPSHOT);
+  ok &= expect_error("restore:", FROTH_ERROR_SNAPSHOT_NO_SNAPSHOT);
   ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
-  ok &= expect_ok("save()", &value);
-  ok &= expect_nil_value(value, "save() after no-snapshot restore");
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "save: after no-snapshot restore");
   release_value(&value);
 
   leave_temp_workspace(&workspace);
@@ -1064,20 +1064,20 @@ static int test_corrupt_snapshot_failures_reset_to_base(void) {
   ok &= write_simple_text_snapshot();
   ok &= patch_active_snapshot_payload(payload_version_offset, &bad_versions,
                                       sizeof(bad_versions), true);
-  ok &= expect_ok("junk = 1", &value);
+  ok &= expect_ok("junk is 1", &value);
   release_value(&value);
-  ok &= expect_error("restore()", FROTH_ERROR_SNAPSHOT_INCOMPAT);
+  ok &= expect_error("restore:", FROTH_ERROR_SNAPSHOT_INCOMPAT);
   ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
-  ok &= expect_ok("save()", &value);
+  ok &= expect_ok("save:", &value);
   release_value(&value);
 
   ok &= frothy_snapshot_wipe() == FROTH_OK;
   ok &= write_simple_text_snapshot();
   ok &= patch_active_snapshot_payload(binding_count_offset, &bad_binding_count,
                                       sizeof(bad_binding_count), true);
-  ok &= expect_ok("junk = 1", &value);
+  ok &= expect_ok("junk is 1", &value);
   release_value(&value);
-  ok &= expect_error("restore()", FROTH_ERROR_SNAPSHOT_OVERFLOW);
+  ok &= expect_error("restore:", FROTH_ERROR_SNAPSHOT_OVERFLOW);
   ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
 
   ok &= frothy_snapshot_wipe() == FROTH_OK;
@@ -1085,30 +1085,30 @@ static int test_corrupt_snapshot_failures_reset_to_base(void) {
   ok &= patch_active_snapshot_payload(binding_object_index_offset,
                                       &bad_object_index,
                                       sizeof(bad_object_index), true);
-  ok &= expect_ok("junk = 1", &value);
+  ok &= expect_ok("junk is 1", &value);
   release_value(&value);
-  ok &= expect_error("restore()", FROTH_ERROR_SNAPSHOT_FORMAT);
+  ok &= expect_error("restore:", FROTH_ERROR_SNAPSHOT_FORMAT);
   ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
 
   ok &= frothy_snapshot_wipe() == FROTH_OK;
   ok &= write_simple_text_snapshot();
   ok &= patch_active_snapshot_payload(symbol_name_offset, &bad_name_byte,
                                       sizeof(bad_name_byte), true);
-  ok &= expect_ok("junk = 1", &value);
+  ok &= expect_ok("junk is 1", &value);
   release_value(&value);
-  ok &= expect_error("restore()", FROTH_ERROR_SNAPSHOT_BAD_NAME);
+  ok &= expect_error("restore:", FROTH_ERROR_SNAPSHOT_BAD_NAME);
   ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
 
   ok &= frothy_snapshot_wipe() == FROTH_OK;
   ok &= write_simple_text_snapshot();
   ok &= patch_active_snapshot_payload(text_payload_offset, &bad_crc_byte,
                                       sizeof(bad_crc_byte), false);
-  ok &= expect_ok("junk = 1", &value);
+  ok &= expect_ok("junk is 1", &value);
   release_value(&value);
-  ok &= expect_error("restore()", FROTH_ERROR_SNAPSHOT_BAD_CRC);
+  ok &= expect_error("restore:", FROTH_ERROR_SNAPSHOT_BAD_CRC);
   ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
-  ok &= expect_ok("save()", &value);
-  ok &= expect_nil_value(value, "save() after bad crc");
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "save: after bad crc");
   release_value(&value);
 
   leave_temp_workspace(&workspace);
@@ -1148,18 +1148,18 @@ static int test_repeated_near_capacity_save_restore(void) {
 
   ok &= expect_live_objects(base_live_objects + overlay_count,
                             "near-cap overlay before save");
-  ok &= expect_ok("save()", &value);
-  ok &= expect_nil_value(value, "save() with near-cap overlay");
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "save: with near-cap overlay");
   release_value(&value);
 
   if (text_count == 0) {
-    ok &= expect_ok("nearCapCode = fn() { 8 }", &value);
+    ok &= expect_ok("nearCapCode is fn [ 8 ]", &value);
   } else {
-    ok &= expect_ok("t000 = \"m\"", &value);
+    ok &= expect_ok("t000 is \"m\"", &value);
   }
   release_value(&value);
-  ok &= expect_ok("restore()", &value);
-  ok &= expect_nil_value(value, "restore() with near-cap overlay");
+  ok &= expect_ok("restore:", &value);
+  ok &= expect_nil_value(value, "restore: with near-cap overlay");
   release_value(&value);
 
   ok &= expect_live_objects(base_live_objects + overlay_count,
@@ -1171,29 +1171,29 @@ static int test_repeated_near_capacity_save_restore(void) {
     ok &= expect_overlay_text_slot(last_index,
                                    "last near-cap binding after restore");
   }
-  ok &= expect_ok("nearCapCode()", &value);
+  ok &= expect_ok("nearCapCode:", &value);
   ok &= expect_int_value(value, 7, "near-cap code after first restore");
   release_value(&value);
 
-  ok &= expect_ok("save()", &value);
-  ok &= expect_nil_value(value, "second save() with near-cap overlay");
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "second save: with near-cap overlay");
   release_value(&value);
 
   if (text_count == 0) {
-    ok &= expect_ok("nearCapCode = fn() { 8 }", &value);
+    ok &= expect_ok("nearCapCode is fn [ 8 ]", &value);
     release_value(&value);
-    ok &= expect_ok("restore()", &value);
-    ok &= expect_nil_value(value, "second restore() with code-only near-cap overlay");
+    ok &= expect_ok("restore:", &value);
+    ok &= expect_nil_value(value, "second restore: with code-only near-cap overlay");
     release_value(&value);
-  } else if (snprintf(mutate_command, sizeof(mutate_command), "t%03zu = \"m\"",
+  } else if (snprintf(mutate_command, sizeof(mutate_command), "t%03zu is \"m\"",
                       last_index) >= (int)sizeof(mutate_command)) {
     fprintf(stderr, "failed to build near-cap mutation command\n");
     ok = 0;
   } else {
     ok &= expect_ok(mutate_command, &value);
     release_value(&value);
-    ok &= expect_ok("restore()", &value);
-    ok &= expect_nil_value(value, "second restore() with near-cap overlay");
+    ok &= expect_ok("restore:", &value);
+    ok &= expect_nil_value(value, "second restore: with near-cap overlay");
     release_value(&value);
   }
 
@@ -1203,7 +1203,7 @@ static int test_repeated_near_capacity_save_restore(void) {
     ok &= expect_overlay_text_slot(last_index,
                                    "last near-cap binding after second restore");
   }
-  ok &= expect_ok("nearCapCode()", &value);
+  ok &= expect_ok("nearCapCode:", &value);
   ok &= expect_int_value(value, 7, "near-cap code after second restore");
   release_value(&value);
 
@@ -1225,7 +1225,7 @@ static int test_decode_failure_after_reset_re_resets_to_base(void) {
   base_payload = frothy_runtime_payload_used(runtime());
 
   ok &= write_simple_text_snapshot();
-  ok &= expect_ok("junk = 1", &value);
+  ok &= expect_ok("junk is 1", &value);
   release_value(&value);
 
   frothy_snapshot_test_set_error_after_objects(FROTH_ERROR_HEAP_OUT_OF_MEMORY);
@@ -1241,14 +1241,14 @@ static int test_decode_failure_after_reset_re_resets_to_base(void) {
   ok &= expect_ok("1", &value);
   ok &= expect_int_value(value, 1, "prompt usable after decode failure");
   release_value(&value);
-  ok &= expect_ok("restore()", &value);
-  ok &= expect_nil_value(value, "restore() after decode failure reuse");
+  ok &= expect_ok("restore:", &value);
+  ok &= expect_nil_value(value, "restore: after decode failure reuse");
   release_value(&value);
   ok &= expect_ok("x", &value);
   ok &= expect_text_value(value, "a", "snapshot restored after decode failure");
   release_value(&value);
-  ok &= expect_ok("save()", &value);
-  ok &= expect_nil_value(value, "save() after decode failure reuse");
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "save: after decode failure reuse");
   release_value(&value);
 
   leave_temp_workspace(&workspace);
@@ -1278,9 +1278,9 @@ static int test_slot_info_errors(void) {
     return 0;
   }
 
-  ok &= expect_error("slotInfo()", FROTH_ERROR_SIGNATURE);
-  ok &= expect_error("slotInfo(\"\")", FROTH_ERROR_BOUNDS);
-  ok &= expect_error("slotInfo(\"missing\")", FROTH_ERROR_UNDEFINED_WORD);
+  ok &= expect_error("slotInfo:", FROTH_ERROR_SIGNATURE);
+  ok &= expect_error("slotInfo: \"\"", FROTH_ERROR_BOUNDS);
+  ok &= expect_error("slotInfo: @missing", FROTH_ERROR_UNDEFINED_WORD);
 
   leave_temp_workspace(&workspace);
   return ok;
@@ -1308,7 +1308,7 @@ static int test_inspect_report_formatting(void) {
 
   ok &= expect_ok("to inc with x [ x + 1 ]", &value);
   release_value(&value);
-  ok &= expect_ok("alias = inc", &value);
+  ok &= expect_ok("alias is inc", &value);
   release_value(&value);
 
   ok &= capture_report_text("alias", FROTHY_INSPECT_REPORT_SEE, &see_text);
@@ -1321,7 +1321,7 @@ static int test_inspect_report_formatting(void) {
                             &base_info_text);
   ok &= capture_report_text("save", FROTHY_INSPECT_REPORT_SEE,
                             &builtin_see_text);
-  ok &= expect_ok("frame = cells(1)", &value);
+  ok &= expect_ok("frame is cells(1)", &value);
   release_value(&value);
   ok &= capture_report_text("frame", FROTHY_INSPECT_REPORT_SLOT_INFO,
                             &cells_info_text);
@@ -1508,7 +1508,7 @@ static int test_startup_without_snapshot(void) {
     return 0;
   }
 
-  ok &= expect_ok("junk = 1", &value);
+  ok &= expect_ok("junk is 1", &value);
   release_value(&value);
   if (frothy_boot_run_startup(&report) != FROTH_OK) {
     fprintf(stderr, "startup without snapshot should not fail\n");
@@ -1547,47 +1547,47 @@ static int test_workshop_base_library_wipe_restore(void) {
   ok &= expect_binding_view("adc.percent", false, FROTHY_VALUE_CLASS_CODE,
                             "base adc.percent view");
   ok &= capture_code_renders("blink", &see_before, &core_before);
-  ok &= expect_ok("adc.percent(A0)", &value);
-  ok &= expect_int_value(value, 50, "base adc.percent(A0)");
+  ok &= expect_ok("adc.percent: A0", &value);
+  ok &= expect_int_value(value, 50, "base adc.percent: A0");
   release_value(&value);
-  ok &= expect_ok("led.off()", &value);
-  ok &= expect_nil_value(value, "led.off()");
+  ok &= expect_ok("led.off:", &value);
+  ok &= expect_nil_value(value, "led.off:");
   release_value(&value);
-  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
-  ok &= expect_int_value(value, 0, "gpio.read after led.off()");
+  ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
+  ok &= expect_int_value(value, 0, "gpio.read after led.off:");
   release_value(&value);
-  ok &= expect_ok("led.on()", &value);
-  ok &= expect_nil_value(value, "led.on()");
+  ok &= expect_ok("led.on:", &value);
+  ok &= expect_nil_value(value, "led.on:");
   release_value(&value);
-  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
-  ok &= expect_int_value(value, 1, "gpio.read after led.on()");
+  ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
+  ok &= expect_int_value(value, 1, "gpio.read after led.on:");
   release_value(&value);
-  ok &= expect_ok("led.toggle()", &value);
-  ok &= expect_nil_value(value, "led.toggle()");
+  ok &= expect_ok("led.toggle:", &value);
+  ok &= expect_nil_value(value, "led.toggle:");
   release_value(&value);
-  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
-  ok &= expect_int_value(value, 0, "gpio.read after led.toggle()");
+  ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
+  ok &= expect_int_value(value, 0, "gpio.read after led.toggle:");
   release_value(&value);
 
-  ok &= expect_ok("blink = fn(pin, count, wait) { 99 }", &value);
+  ok &= expect_ok("to blink with pin, count, wait [ 99 ]", &value);
   release_value(&value);
-  ok &= expect_ok("adc.percent = fn(pin) { 99 }", &value);
+  ok &= expect_ok("to adc.percent with pin [ 99 ]", &value);
   release_value(&value);
   ok &= expect_binding_view("blink", true, FROTHY_VALUE_CLASS_CODE,
                             "overlay blink view");
   ok &= expect_binding_view("adc.percent", true, FROTHY_VALUE_CLASS_CODE,
                             "overlay adc.percent view");
-  ok &= expect_ok("adc.percent(A0)", &value);
-  ok &= expect_int_value(value, 99, "overlay adc.percent(A0)");
+  ok &= expect_ok("adc.percent: A0", &value);
+  ok &= expect_int_value(value, 99, "overlay adc.percent: A0");
   release_value(&value);
-  ok &= expect_ok("led.on()", &value);
-  ok &= expect_nil_value(value, "led.on() before wipe");
+  ok &= expect_ok("led.on:", &value);
+  ok &= expect_nil_value(value, "led.on: before wipe");
   release_value(&value);
 
-  ok &= expect_ok("wipe()", &value);
-  ok &= expect_nil_value(value, "wipe()");
+  ok &= expect_ok("dangerous.wipe:", &value);
+  ok &= expect_nil_value(value, "dangerous.wipe:");
   release_value(&value);
-  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
+  ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
   ok &= expect_int_value(value, 0, "gpio.read after wipe reset");
   release_value(&value);
   ok &= expect_binding_view("blink", false, FROTHY_VALUE_CLASS_CODE,
@@ -1599,8 +1599,8 @@ static int test_workshop_base_library_wipe_restore(void) {
     ok &= expect_text_equal(see_after, see_before, "blink see after wipe");
     ok &= expect_text_equal(core_after, core_before, "blink core after wipe");
   }
-  ok &= expect_ok("adc.percent(A0)", &value);
-  ok &= expect_int_value(value, 50, "restored adc.percent(A0)");
+  ok &= expect_ok("adc.percent: A0", &value);
+  ok &= expect_int_value(value, 50, "restored adc.percent: A0");
   release_value(&value);
 
   free(see_before);
@@ -1621,7 +1621,7 @@ static int test_startup_snapshot_discovery_failure(void) {
     return 0;
   }
 
-  ok &= expect_ok("junk = 1", &value);
+  ok &= expect_ok("junk is 1", &value);
   release_value(&value);
 
   frothy_boot_test_set_pick_active_error(FROTH_ERROR_IO);
@@ -1654,11 +1654,11 @@ static int test_startup_restore_without_boot(void) {
     return 0;
   }
 
-  ok &= expect_ok("label = \"ready\"", &value);
+  ok &= expect_ok("label is \"ready\"", &value);
   release_value(&value);
-  ok &= expect_ok("save()", &value);
+  ok &= expect_ok("save:", &value);
   release_value(&value);
-  ok &= expect_ok("label = \"mutated\"", &value);
+  ok &= expect_ok("label is \"mutated\"", &value);
   release_value(&value);
   ok &= prepare_startup_state();
 
@@ -1688,9 +1688,9 @@ static int test_startup_with_non_code_boot(void) {
     return 0;
   }
 
-  ok &= expect_ok("boot = 1", &value);
+  ok &= expect_ok("boot is 1", &value);
   release_value(&value);
-  ok &= expect_ok("save()", &value);
+  ok &= expect_ok("save:", &value);
   release_value(&value);
   ok &= prepare_startup_state();
 
@@ -1720,11 +1720,11 @@ static int test_startup_with_successful_boot(void) {
     return 0;
   }
 
-  ok &= expect_ok("note = \"saved\"", &value);
+  ok &= expect_ok("note is \"saved\"", &value);
   release_value(&value);
-  ok &= expect_ok("boot = fn() { set note = \"booted\" }", &value);
+  ok &= expect_ok("to boot [ set note to \"booted\" ]", &value);
   release_value(&value);
-  ok &= expect_ok("save()", &value);
+  ok &= expect_ok("save:", &value);
   release_value(&value);
   ok &= prepare_startup_state();
 
@@ -1754,9 +1754,9 @@ static int test_startup_with_failing_boot(void) {
     return 0;
   }
 
-  ok &= expect_ok("boot = fn() { missing }", &value);
+  ok &= expect_ok("to boot [ missing ]", &value);
   release_value(&value);
-  ok &= expect_ok("save()", &value);
+  ok &= expect_ok("save:", &value);
   release_value(&value);
   ok &= prepare_startup_state();
 
@@ -1787,11 +1787,11 @@ static int test_startup_with_bad_arity_boot(void) {
     return 0;
   }
 
-  ok &= expect_ok("note = \"saved\"", &value);
+  ok &= expect_ok("note is \"saved\"", &value);
   release_value(&value);
-  ok &= expect_ok("boot = fn(value) { set note = \"booted\" }", &value);
+  ok &= expect_ok("to boot with value [ set note to \"booted\" ]", &value);
   release_value(&value);
-  ok &= expect_ok("save()", &value);
+  ok &= expect_ok("save:", &value);
   release_value(&value);
   ok &= prepare_startup_state();
 
@@ -1832,9 +1832,9 @@ static int test_startup_with_interrupted_boot(void) {
     return 0;
   }
 
-  ok &= expect_ok("boot = fn() { while true { 1 } }", &value);
+  ok &= expect_ok("to boot [ while true [ 1 ] ]", &value);
   release_value(&value);
-  ok &= expect_ok("save()", &value);
+  ok &= expect_ok("save:", &value);
   release_value(&value);
   ok &= prepare_startup_state();
   child = fork();
@@ -1886,12 +1886,12 @@ static int test_wipe_inside_nested_call_unwinds_cleanly(void) {
     return 0;
   }
 
-  ok &= expect_ok("runner = fn(v) { wipe() }", &value);
+  ok &= expect_ok("runner is fn with v [ dangerous.wipe: ]", &value);
   release_value(&value);
-  ok &= expect_ok("outer = fn(v) { runner(v) 99 }", &value);
+  ok &= expect_ok("outer is fn with v [ runner: v; 99 ]", &value);
   release_value(&value);
-  ok &= expect_ok("outer(\"temp\")", &value);
-  ok &= expect_nil_value(value, "outer(temp)");
+  ok &= expect_ok("outer: \"temp\"", &value);
+  ok &= expect_nil_value(value, "outer: temp");
   release_value(&value);
 
   ok &= expect_error("outer", FROTH_ERROR_UNDEFINED_WORD);
@@ -1915,11 +1915,11 @@ static int test_record_roundtrip_and_truthful_inspection(void) {
 
   ok &= expect_ok("record Point [ x, y ]", &value);
   release_value(&value);
-  ok &= expect_ok("point = Point: 10, 20", &value);
+  ok &= expect_ok("point is Point: 10, 20", &value);
   release_value(&value);
-  ok &= expect_ok("frame = cells(1)", &value);
+  ok &= expect_ok("frame is cells(1)", &value);
   release_value(&value);
-  ok &= expect_ok("set frame[0] = point", &value);
+  ok &= expect_ok("set frame[0] to point", &value);
   release_value(&value);
   ok &= expect_binding_render_view("Point", FROTHY_VALUE_CLASS_RECORD_DEF,
                             "record-def",
@@ -1927,16 +1927,16 @@ static int test_record_roundtrip_and_truthful_inspection(void) {
   ok &= expect_binding_render_view("point", FROTHY_VALUE_CLASS_RECORD, "record",
                             "Point: 10, 20", "record before save");
 
-  ok &= expect_ok("save()", &value);
-  ok &= expect_nil_value(value, "save() record roundtrip");
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "save: record roundtrip");
   release_value(&value);
 
   ok &= expect_ok("record Point [ z ]", &value);
   release_value(&value);
-  ok &= expect_ok("point = Point: 99", &value);
+  ok &= expect_ok("point is Point: 99", &value);
   release_value(&value);
-  ok &= expect_ok("restore()", &value);
-  ok &= expect_nil_value(value, "restore() record roundtrip");
+  ok &= expect_ok("restore:", &value);
+  ok &= expect_nil_value(value, "restore: record roundtrip");
   release_value(&value);
 
   ok &= expect_binding_render_view("Point", FROTHY_VALUE_CLASS_RECORD_DEF,
@@ -1951,7 +1951,7 @@ static int test_record_roundtrip_and_truthful_inspection(void) {
   ok &= expect_ok("frame[0]->y", &value);
   ok &= expect_int_value(value, 20, "frame[0]->y after restore");
   release_value(&value);
-  ok &= expect_ok("restoredPoint = Point: 1, 2", &value);
+  ok &= expect_ok("restoredPoint is Point: 1, 2", &value);
   release_value(&value);
   ok &= expect_binding_render_view("restoredPoint", FROTHY_VALUE_CLASS_RECORD, "record",
                             "Point: 1, 2",
@@ -1973,13 +1973,13 @@ static int test_record_cycle_save_rejection(void) {
 
   ok &= expect_ok("record Node [ next ]", &value);
   release_value(&value);
-  ok &= expect_ok("node = Node: nil", &value);
+  ok &= expect_ok("node is Node: nil", &value);
   release_value(&value);
   ok &= expect_ok("set node->next to node", &value);
   release_value(&value);
   ok &= expect_binding_render_view("node", FROTHY_VALUE_CLASS_RECORD, "record",
                             "Node: <cycle>", "cyclic record render");
-  ok &= expect_error("save()", FROTH_ERROR_NOT_PERSISTABLE);
+  ok &= expect_error("save:", FROTH_ERROR_NOT_PERSISTABLE);
   ok &= expect_snapshot_present(false, "no snapshot after cyclic record save");
   ok &= expect_ok("node->next", &value);
   release_value(&value);
@@ -2007,9 +2007,9 @@ static int test_record_snapshot_rejects_mismatched_record_def_name(void) {
   ok &= patch_active_snapshot_payload(offsets.record_def_name_offset,
                                       &bad_name_byte, sizeof(bad_name_byte),
                                       true);
-  ok &= expect_ok("junk = 1", &value);
+  ok &= expect_ok("junk is 1", &value);
   release_value(&value);
-  ok &= expect_error("restore()", FROTH_ERROR_SNAPSHOT_BAD_NAME);
+  ok &= expect_error("restore:", FROTH_ERROR_SNAPSHOT_BAD_NAME);
   ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
   ok &= expect_error("Point", FROTH_ERROR_UNDEFINED_WORD);
 
@@ -2033,9 +2033,9 @@ static int test_record_snapshot_rejects_record_arity_mismatch(void) {
   ok &= patch_active_snapshot_payload(offsets.record_field_count_offset,
                                       &bad_field_count,
                                       sizeof(bad_field_count), true);
-  ok &= expect_ok("junk = 1", &value);
+  ok &= expect_ok("junk is 1", &value);
   release_value(&value);
-  ok &= expect_error("restore()", FROTH_ERROR_SNAPSHOT_FORMAT);
+  ok &= expect_error("restore:", FROTH_ERROR_SNAPSHOT_FORMAT);
   ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
   ok &= expect_error("Point", FROTH_ERROR_UNDEFINED_WORD);
 
@@ -2071,10 +2071,10 @@ static int test_non_persistable_rejection(void) {
     return 0;
   }
 
-  ok &= expect_error("save()", FROTH_ERROR_NOT_PERSISTABLE);
+  ok &= expect_error("save:", FROTH_ERROR_NOT_PERSISTABLE);
   ok &= expect_snapshot_present(false, "no snapshot after non-persistable save");
-  ok &= expect_ok("wipe()", &result);
-  ok &= expect_nil_value(result, "wipe() after non-persistable save");
+  ok &= expect_ok("dangerous.wipe:", &result);
+  ok &= expect_nil_value(result, "dangerous.wipe after non-persistable save");
   release_value(&result);
 
   leave_temp_workspace(&workspace);

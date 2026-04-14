@@ -260,7 +260,7 @@ def run_phase_one(session: IdfMonitorSession, assume_yes: bool) -> str:
 
 def run_phase_two(session: IdfMonitorSession) -> None:
     session.send_line("note")
-    session.send_line("wipe()")
+    session.send_line("dangerous.wipe")
     session.send_line("note")
     session.run_file(BOOT_PROOF)
     transcript = session.text()
@@ -286,9 +286,9 @@ def run_phase_three(session: IdfMonitorSession) -> None:
 def run_phase_four(session: IdfMonitorSession) -> None:
     session.run_file(CELLS_PROOF)
     session.run_file(WORKSHOP_PROOF)
-    session.send_line("wipe()")
+    session.send_line("dangerous.wipe")
     transcript = session.text()
-    matches = re.findall(r"sample\.read\(\d\)\r?\n(\d+)\r?\nfrothy> ", transcript)
+    matches = re.findall(r"sample\.read: \d\r?\n(\d+)\r?\nfrothy> ", transcript)
     if len(matches) < 4:
         fail("expected four ADC sample readbacks in the transcript")
     require_contains(transcript, "millis | base | native | non-persistable | foreign")
@@ -333,13 +333,13 @@ def run_phase_four(session: IdfMonitorSession) -> None:
             "0",
         ],
     )
-    require_match(transcript, r"adc\.percent\(A0\)\r?\n(\d+)\r?\nfrothy> ")
-    percent_match = re.search(r"adc\.percent\(A0\)\r?\n(\d+)\r?\nfrothy> ", transcript)
+    require_match(transcript, r"adc\.percent: A0\r?\n(\d+)\r?\nfrothy> ")
+    percent_match = re.search(r"adc\.percent: A0\r?\n(\d+)\r?\nfrothy> ", transcript)
     if percent_match is None:
-        fail("expected adc.percent(A0) in transcript")
+        fail("expected adc.percent: A0 in transcript")
     percent_value = int(percent_match.group(1))
     if percent_value < 0 or percent_value > 100:
-        fail(f"expected adc.percent(A0) in 0..100, got {percent_value}")
+        fail(f"expected adc.percent: A0 in 0..100, got {percent_value}")
     require_contains(transcript, "anim[0]")
     require_contains(transcript, "anim[1]")
     require_contains(transcript, "anim[2]")

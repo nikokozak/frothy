@@ -75,7 +75,7 @@ func runCtrlCRawByteMultilineCase(binaryPath string) error {
 	if err != nil {
 		return err
 	}
-	if err := session.send("inc = fn(x) {\n"); err != nil {
+	if err := session.send("to inc with x\n"); err != nil {
 		return err
 	}
 	chunk, err := session.waitFor(func(data []byte) bool {
@@ -133,7 +133,7 @@ func runCtrlCMultilineCase(binaryPath string) error {
 	if err != nil {
 		return err
 	}
-	if err := session.send("inc = fn(x) {\n"); err != nil {
+	if err := session.send("to inc with x\n"); err != nil {
 		return err
 	}
 	chunk, err := session.waitFor(func(data []byte) bool {
@@ -191,7 +191,7 @@ func runCtrlCLoopCase(binaryPath string) error {
 	if err != nil {
 		return err
 	}
-	if err := session.send("while true { core(\"save\") }\n"); err != nil {
+	if err := session.send("while true [ core: @save ]\n"); err != nil {
 		return err
 	}
 	chunk, err := session.waitFor(func(data []byte) bool {
@@ -241,7 +241,7 @@ func proofSafeBoot(binaryPath string) error {
 
 	setupCmd := exec.Command(binaryPath)
 	setupCmd.Dir = workDir
-	setupCmd.Stdin = strings.NewReader("note = nil\nboot = fn() { set note = \"booted\" }\nsave()\nquit\n")
+	setupCmd.Stdin = strings.NewReader("note is nil\nto boot [ set note to \"booted\" ]\nsave\nquit\n")
 	setupOut, err := setupCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("setup run failed: %w\n%s", err, string(setupOut))

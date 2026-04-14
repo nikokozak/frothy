@@ -243,7 +243,7 @@ func TestManagerBuiltinFallbacksUseEvalOnUnknownRequest(t *testing.T) {
 				return m.Save(nil)
 			},
 			directReq:      saveReq,
-			wantEvalSource: "save()",
+			wantEvalSource: "save:",
 		},
 		{
 			name: "restore",
@@ -251,7 +251,7 @@ func TestManagerBuiltinFallbacksUseEvalOnUnknownRequest(t *testing.T) {
 				return m.Restore(nil)
 			},
 			directReq:      restoreReq,
-			wantEvalSource: "restore()",
+			wantEvalSource: "restore:",
 		},
 		{
 			name: "wipe",
@@ -259,7 +259,7 @@ func TestManagerBuiltinFallbacksUseEvalOnUnknownRequest(t *testing.T) {
 				return m.Wipe(nil)
 			},
 			directReq:      wipeReq,
-			wantEvalSource: "wipe()",
+			wantEvalSource: "dangerous.wipe:",
 		},
 		{
 			name: "core",
@@ -267,7 +267,7 @@ func TestManagerBuiltinFallbacksUseEvalOnUnknownRequest(t *testing.T) {
 				return m.Core("save", nil)
 			},
 			directReq:      coreReq,
-			wantEvalSource: `core("save")`,
+			wantEvalSource: "core: @save",
 		},
 		{
 			name: "slot_info",
@@ -275,7 +275,7 @@ func TestManagerBuiltinFallbacksUseEvalOnUnknownRequest(t *testing.T) {
 				return m.SlotInfo("save", nil)
 			},
 			directReq:      slotInfoReq,
-			wantEvalSource: `slotInfo("save")`,
+			wantEvalSource: "slotInfo: @save",
 		},
 	}
 

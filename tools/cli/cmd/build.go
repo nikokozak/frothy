@@ -421,10 +421,10 @@ func seedFrothyRuntime(manager *frothycontrol.Manager, source string) error {
 
 	words, err := manager.Words()
 	if err != nil {
-		return fmt.Errorf("seed words(): %w", err)
+		return fmt.Errorf("seed words: %w", err)
 	}
 	if contains(words, "autorun") && !contains(words, "boot") {
-		if _, err := runControlEval(manager, "boot = fn() { autorun() }"); err != nil {
+		if _, err := runControlEval(manager, "boot is fn [ autorun: ]"); err != nil {
 			return fmt.Errorf("seed boot alias: %w", err)
 		}
 	}
@@ -432,7 +432,7 @@ func seedFrothyRuntime(manager *frothycontrol.Manager, source string) error {
 	if _, err := manager.Save(func(data []byte) {
 		_, _ = os.Stdout.Write(data)
 	}); err != nil {
-		return fmt.Errorf("save(): %w", err)
+		return fmt.Errorf("save: %w", err)
 	}
 	return nil
 }

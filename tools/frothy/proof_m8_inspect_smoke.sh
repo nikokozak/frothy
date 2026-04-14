@@ -71,7 +71,7 @@ require_contains "$HELP_TRANSCRIPT" 'info @name'
 require_contains "$HELP_TRANSCRIPT" 'remember'
 require_contains "$HELP_TRANSCRIPT" 'save'
 require_contains "$HELP_TRANSCRIPT" 'restore'
-require_contains "$HELP_TRANSCRIPT" 'wipe'
+require_contains "$HELP_TRANSCRIPT" 'dangerous.wipe'
 require_contains "$HELP_TRANSCRIPT" '.control'
 require_contains "$HELP_TRANSCRIPT" 'quit'
 require_contains "$HELP_TRANSCRIPT" 'exit'
@@ -85,7 +85,7 @@ WORDS_TRANSCRIPT="$(
 printf '%s\n' "$WORDS_TRANSCRIPT"
 require_contains "$WORDS_TRANSCRIPT" 'save'
 require_contains "$WORDS_TRANSCRIPT" 'restore'
-require_contains "$WORDS_TRANSCRIPT" 'wipe'
+require_contains "$WORDS_TRANSCRIPT" 'dangerous.wipe'
 require_contains "$WORDS_TRANSCRIPT" 'words'
 require_contains "$WORDS_TRANSCRIPT" 'see'
 require_contains "$WORDS_TRANSCRIPT" 'core'
@@ -96,7 +96,7 @@ require_not_contains "$WORDS_TRANSCRIPT" 'frothy> nil'
 
 BOOT_WORDS_TRANSCRIPT="$(
   run_transcript \
-    'boot = fn() { nil }' \
+    'to boot [ nil ]' \
     'words' \
     'quit'
 )"
@@ -106,9 +106,9 @@ require_not_contains "$BOOT_WORDS_TRANSCRIPT" 'frothy> nil'
 
 BASE_TRANSCRIPT="$(
   run_transcript \
-    'see("save")' \
-    'core("save")' \
-    'slotInfo("save")' \
+    'show @save' \
+    'core @save' \
+    'info @save' \
     'quit'
 )"
 printf '%s\n' "$BASE_TRANSCRIPT"
@@ -127,10 +127,10 @@ require_not_contains "$BASE_TRANSCRIPT" 'parse error ('
 INSPECT_TRANSCRIPT="$(
   run_transcript \
     'to inc with x [ x + 1 ]' \
-    'alias = inc' \
+    'alias is inc' \
     'show @alias' \
-    'core("alias")' \
-    'slotInfo("alias")' \
+    'core @alias' \
+    'info @alias' \
     'quit'
 )"
 printf '%s\n' "$INSPECT_TRANSCRIPT"
@@ -172,9 +172,9 @@ require_not_contains "$NORMALIZED_SHOW_TRANSCRIPT" 'parse error ('
 
 REBIND_TRANSCRIPT="$(
   run_transcript \
-    'see = fn() { 42 }' \
-    'slotInfo("see")' \
-    'see()' \
+    'see is fn [ 42 ]' \
+    'info @see' \
+    'see:' \
     'quit'
 )"
 printf '%s\n' "$REBIND_TRANSCRIPT"
@@ -191,12 +191,12 @@ COMMAND_TRANSCRIPT="$(
     'show @alias' \
     'core @alias' \
     'info @alias' \
-    'note = "saved"' \
+    'note is "saved"' \
     'remember' \
-    'note = "changed"' \
+    'note is "changed"' \
     'restore' \
     'note' \
-    'wipe' \
+    'dangerous.wipe' \
     'note' \
     'quit'
 )"
@@ -213,11 +213,11 @@ require_not_contains "$COMMAND_TRANSCRIPT" 'frothy> nil'
 
 SIMPLE_CALL_TRANSCRIPT="$(
   run_transcript \
-    'add = fn(a, b) { a + b }' \
-    'add 4, 5' \
-    'add -1, 2' \
-    'tick.on = fn() { 7 }' \
-    'tick.on' \
+    'to add with a, b [ a + b ]' \
+    'add: 4, 5' \
+    'add: -1, 2' \
+    'to tick.on [ 7 ]' \
+    'tick.on:' \
     'quit'
 )"
 printf '%s\n' "$SIMPLE_CALL_TRANSCRIPT"
@@ -228,21 +228,18 @@ require_not_contains "$SIMPLE_CALL_TRANSCRIPT" 'parse error ('
 
 CALLABLE_TRANSCRIPT="$(
   run_transcript \
-    'note = "saved"' \
-    'save()' \
-    'note = "changed"' \
-    'restore()' \
+    'note is "saved"' \
+    'save' \
+    'note is "changed"' \
+    'restore' \
     'note' \
-    'wipe()' \
+    'dangerous.wipe' \
     'note' \
-    'see("save")' \
+    'show @save' \
     'quit'
 )"
 printf '%s\n' "$CALLABLE_TRANSCRIPT"
 require_contains "$CALLABLE_TRANSCRIPT" '  see: <native save/0>'
 require_contains "$CALLABLE_TRANSCRIPT" 'frothy> "saved"'
 require_contains "$CALLABLE_TRANSCRIPT" 'eval error ('
-if [ "$(count_occurrences "$CALLABLE_TRANSCRIPT" 'frothy> nil')" -ne 3 ]; then
-  echo 'error: expected exactly three raw nils in callable transcript' >&2
-  exit 1
-fi
+require_not_contains "$CALLABLE_TRANSCRIPT" 'frothy> nil'

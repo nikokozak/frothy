@@ -34,9 +34,9 @@ require_contains() {
 
 SETUP_TRANSCRIPT="$(
   run_transcript \
-    'note = nil' \
-    'boot = fn() { see("save") set note = "booted" }' \
-    'save()' \
+    'note is nil' \
+    'to boot [ see: @save; set note to "booted" ]' \
+    'save' \
     'quit'
 )"
 printf '%s\n' "$SETUP_TRANSCRIPT"
@@ -45,7 +45,7 @@ require_contains "$SETUP_TRANSCRIPT" 'snapshot: none'
 BOOT_TRANSCRIPT="$(
   run_transcript \
     'note' \
-    'restore()' \
+    'restore' \
     'note' \
     'quit'
 )"
@@ -77,7 +77,7 @@ if [ -z "$SAVE_LINE" ] || [ -z "$FIRST_BOOTED_LINE" ] || [ "$SAVE_LINE" -ge "$FI
   exit 1
 fi
 if [ -z "$FIRST_NIL_LINE" ] || [ "$FIRST_BOOTED_LINE" -ge "$FIRST_NIL_LINE" ]; then
-  echo 'error: expected the first post-startup note read to succeed before restore()' >&2
+  echo 'error: expected the first post-startup note read to succeed before restore' >&2
   exit 1
 fi
 

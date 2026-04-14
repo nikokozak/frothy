@@ -43,7 +43,7 @@ require_not_contains() {
 
 WORDS_TRANSCRIPT="$(
   run_transcript \
-    'words()' \
+    'words' \
     'quit'
 )"
 printf '%s\n' "$WORDS_TRANSCRIPT"
@@ -61,15 +61,15 @@ require_contains "$WORDS_TRANSCRIPT" 'uart.read'
 
 MAIN_TRANSCRIPT="$(
   run_transcript \
-    'slotInfo("adc.read")' \
-    'gpio.mode(LED_BUILTIN, 1)' \
-    'gpio.write(LED_BUILTIN, 1)' \
-    'gpio.write(LED_BUILTIN, 0)' \
-    'ms(1)' \
-    'adc.read(A0)' \
-    'u = uart.init(UART_TX, UART_RX, 115200)' \
-    'uart.write(79, u)' \
-    'uart.read(u)' \
+    'info @adc.read' \
+    'gpio.mode: LED_BUILTIN, 1' \
+    'gpio.write: LED_BUILTIN, 1' \
+    'gpio.write: LED_BUILTIN, 0' \
+    'ms: 1' \
+    'adc.read: A0' \
+    'u is uart.init: UART_TX, UART_RX, 115200' \
+    'uart.write: 79, u' \
+    'uart.read: u' \
     'quit'
 )"
 printf '%s\n' "$MAIN_TRANSCRIPT"

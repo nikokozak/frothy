@@ -195,31 +195,31 @@ func (m *Manager) See(name string) (*SeeResult, error) {
 func (m *Manager) Save(onOutput func([]byte)) (string, error) {
 	return m.runBuiltinCompat(func(session *Session) (string, error) {
 		return session.Save(controlCommandTimeout, onOutput)
-	}, "save()", onOutput)
+	}, "save:", onOutput)
 }
 
 func (m *Manager) Restore(onOutput func([]byte)) (string, error) {
 	return m.runBuiltinCompat(func(session *Session) (string, error) {
 		return session.Restore(controlCommandTimeout, onOutput)
-	}, "restore()", onOutput)
+	}, "restore:", onOutput)
 }
 
 func (m *Manager) Wipe(onOutput func([]byte)) (string, error) {
 	return m.runBuiltinCompat(func(session *Session) (string, error) {
 		return session.Wipe(controlCommandTimeout, onOutput)
-	}, "wipe()", onOutput)
+	}, "dangerous.wipe:", onOutput)
 }
 
 func (m *Manager) Core(name string, onOutput func([]byte)) (string, error) {
 	return m.runBuiltinCompat(func(session *Session) (string, error) {
 		return session.Core(name, controlCommandTimeout, onOutput)
-	}, fmt.Sprintf(`core(%q)`, name), onOutput)
+	}, fmt.Sprintf("core: @%s", name), onOutput)
 }
 
 func (m *Manager) SlotInfo(name string, onOutput func([]byte)) (string, error) {
 	return m.runBuiltinCompat(func(session *Session) (string, error) {
 		return session.SlotInfo(name, controlCommandTimeout, onOutput)
-	}, fmt.Sprintf(`slotInfo(%q)`, name), onOutput)
+	}, fmt.Sprintf("slotInfo: @%s", name), onOutput)
 }
 
 func (m *Manager) Interrupt() error {

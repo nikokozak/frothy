@@ -12,8 +12,10 @@ type runtimeFormState struct {
 	bracketDepth     int
 	inString         bool
 	trailingEqual    bool
+	trailingKeyword  bool
 	trailingComma    bool
 	trailingOperator bool
+	trailingHeader   bool
 }
 
 // SplitTopLevelForms splits runtime-ready Frothy source into individual
@@ -109,9 +111,14 @@ func runtimeFormScanChunk(state *runtimeFormState, chunk string) {
 }
 
 func runtimeFormUpdateTrailingState(state *runtimeFormState, source string) {
+	keywordWords := []string{"as", "else", "is", "to", "with"}
+	operatorWords := []string{"and", "not", "or"}
+
 	state.trailingEqual = false
+	state.trailingKeyword = false
 	state.trailingComma = false
 	state.trailingOperator = false
+	state.trailingHeader = false
 	if state.inString {
 		return
 	}
@@ -140,18 +147,6 @@ func runtimeFormUpdateTrailingState(state *runtimeFormState, source string) {
 		state.trailingComma = true
 		return
 	}
-	if i >= 3 {
-		tokenEnd := i
-		tokenStart := tokenEnd
-		for tokenStart > 0 && runtimeFormIsNameContinue(source[tokenStart-1]) {
-			tokenStart--
-		}
-		if tokenEnd-tokenStart == 3 && source[tokenStart:tokenEnd] == "not" &&
-			(tokenStart == 0 || !runtimeFormIsNameContinue(source[tokenStart-1])) {
-			state.trailingOperator = true
-			return
-		}
-	}
 	if i >= 2 {
 		prev := source[i-2]
 		if (prev == '<' || prev == '>' || prev == '!' || prev == '=') && last == '=' {
@@ -162,6 +157,27 @@ func runtimeFormUpdateTrailingState(state *runtimeFormState, source string) {
 	switch last {
 	case '+', '-', '*', '/', '%', '<', '>':
 		state.trailingOperator = true
+		return
+	}
+
+	cursor := i
+	if start, end, ok := runtimeFormFindPrevWord(source, &cursor); ok {
+		word := source[start:end]
+		if runtimeFormWordInList(word, keywordWords) {
+			state.trailingKeyword = true
+			return
+		}
+		if runtimeFormWordInList(word, operatorWords) {
+			state.trailingOperator = true
+			return
+		}
+	}
+
+	if runtimeFormEndsWithNamedCodeHeader(source, i) ||
+		runtimeFormEndsWithFunctionLiteralHeader(source, i) ||
+		runtimeFormEndsWithBlockHeader(source, i) ||
+		runtimeFormEndsWithCallHeader(source, i) {
+		state.trailingHeader = true
 	}
 }
 
@@ -178,6 +194,298 @@ func runtimeFormComplete(state *runtimeFormState) bool {
 		state.bracketDepth == 0 &&
 		!state.inString &&
 		!state.trailingEqual &&
+		!state.trailingKeyword &&
 		!state.trailingComma &&
-		!state.trailingOperator
+		!state.trailingOperator &&
+		!state.trailingHeader
+}
+
+func runtimeFormTrimEndIndex(text string, end int) int {
+	for end > 0 && unicode.IsSpace(rune(text[end-1])) {
+		end--
+	}
+	return end
+}
+
+func runtimeFormIsNameStart(ch byte) bool {
+	return ch == '_' ||
+		(ch >= 'a' && ch <= 'z') ||
+		(ch >= 'A' && ch <= 'Z')
+}
+
+func runtimeFormFindPrevWord(text string, cursor *int) (int, int, bool) {
+	end := runtimeFormTrimEndIndex(text, *cursor)
+	start := end
+	for start > 0 && runtimeFormIsNameContinue(text[start-1]) {
+		start--
+	}
+	if start == end || !runtimeFormIsNameStart(text[start]) {
+		return 0, 0, false
+	}
+	*cursor = start
+	return start, end, true
+}
+
+func runtimeFormWordInList(word string, words []string) bool {
+	for _, candidate := range words {
+		if word == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func runtimeFormSkipSpaces(text string, start, end int) int {
+	for start < end && unicode.IsSpace(rune(text[start])) {
+		start++
+	}
+	return start
+}
+
+func runtimeFormSegmentStart(text string, end int) int {
+	for end > 0 {
+		if text[end-1] == ';' {
+			return end
+		}
+		end--
+	}
+	return 0
+}
+
+func runtimeFormFindMatchingBracket(text string, start, end int, open, close byte) int {
+	depth := 0
+	inString := false
+
+	for i := start; i < end; i++ {
+		ch := text[i]
+		if inString {
+			if ch == '\\' && i+1 < end {
+				i++
+				continue
+			}
+			if ch == '"' {
+				inString = false
+			}
+			continue
+		}
+		if ch == '"' {
+			inString = true
+			continue
+		}
+		if ch == open {
+			depth++
+			continue
+		}
+		if ch == close {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+
+	return -1
+}
+
+func runtimeFormHasBodyOpener(text string, start, end int) bool {
+	for i := start; i < end; i++ {
+		if text[i] != '[' && text[i] != '{' {
+			continue
+		}
+		if i == start || unicode.IsSpace(rune(text[i-1])) {
+			open := text[i]
+			close := byte(']')
+			if open == '{' {
+				close = '}'
+			}
+			match := runtimeFormFindMatchingBracket(text, i, end, open, close)
+			if match < 0 {
+				continue
+			}
+			tail := runtimeFormSkipSpaces(text, match+1, end)
+			if tail == end || runtimeFormContainsCallSeparator(text, tail, end) {
+				return true
+			}
+			if runtimeFormContainsLeadingWord(text, tail, end, "else") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func runtimeFormContainsLeadingWord(text string, start, end int, word string) bool {
+	start = runtimeFormSkipSpaces(text, start, end)
+	if start >= end || !runtimeFormIsNameStart(text[start]) {
+		return false
+	}
+	tokenEnd := start + 1
+	for tokenEnd < end && runtimeFormIsNameContinue(text[tokenEnd]) {
+		tokenEnd++
+	}
+	return text[start:tokenEnd] == word
+}
+
+func runtimeFormFindLastWord(text string, start, end int, word string) int {
+	last := -1
+
+	for i := start; i < end; i++ {
+		if !runtimeFormIsNameStart(text[i]) {
+			continue
+		}
+		tokenStart := i
+		i++
+		for i < end && runtimeFormIsNameContinue(text[i]) {
+			i++
+		}
+		if text[tokenStart:i] == word {
+			last = tokenStart
+		}
+	}
+
+	return last
+}
+
+func runtimeFormContainsCallSeparator(text string, start, end int) bool {
+	prevWord := ""
+
+	for i := start; i < end; i++ {
+		if !runtimeFormIsNameStart(text[i]) {
+			continue
+		}
+		tokenStart := i
+		i++
+		for i < end && runtimeFormIsNameContinue(text[i]) {
+			i++
+		}
+		word := text[tokenStart:i]
+		if word == "with" && prevWord != "fn" {
+			return true
+		}
+		prevWord = word
+	}
+	return false
+}
+
+func runtimeFormEndsWithNamedCodeHeader(text string, end int) bool {
+	cursor := runtimeFormTrimEndIndex(text, end)
+	start, finish, ok := runtimeFormFindPrevWord(text, &cursor)
+	if !ok {
+		return false
+	}
+	if text[start:finish] == "to" {
+		return true
+	}
+
+	for {
+		before := runtimeFormTrimEndIndex(text, cursor)
+		if before == 0 || text[before-1] != ',' {
+			break
+		}
+		cursor = before - 1
+		if _, _, ok := runtimeFormFindPrevWord(text, &cursor); !ok {
+			return false
+		}
+	}
+
+	start, finish, ok = runtimeFormFindPrevWord(text, &cursor)
+	if !ok {
+		return false
+	}
+	word := text[start:finish]
+	if word == "to" {
+		return true
+	}
+	if word != "with" {
+		return false
+	}
+	if _, _, ok = runtimeFormFindPrevWord(text, &cursor); !ok {
+		return false
+	}
+	start, finish, ok = runtimeFormFindPrevWord(text, &cursor)
+	if !ok {
+		return false
+	}
+	return text[start:finish] == "to"
+}
+
+func runtimeFormEndsWithFunctionLiteralHeader(text string, end int) bool {
+	cursor := runtimeFormTrimEndIndex(text, end)
+	if cursor == 0 {
+		return false
+	}
+	last := text[cursor-1]
+	if last == ']' || last == '}' {
+		return false
+	}
+
+	start, finish, ok := runtimeFormFindPrevWord(text, &cursor)
+	if !ok {
+		return false
+	}
+	if text[start:finish] == "fn" {
+		return true
+	}
+
+	for {
+		before := runtimeFormTrimEndIndex(text, cursor)
+		if before == 0 || text[before-1] != ',' {
+			break
+		}
+		cursor = before - 1
+		if _, _, ok := runtimeFormFindPrevWord(text, &cursor); !ok {
+			return false
+		}
+	}
+
+	start, finish, ok = runtimeFormFindPrevWord(text, &cursor)
+	if !ok || text[start:finish] != "with" {
+		return false
+	}
+	start, finish, ok = runtimeFormFindPrevWord(text, &cursor)
+	if !ok {
+		return false
+	}
+	return text[start:finish] == "fn"
+}
+
+func runtimeFormEndsWithBlockHeader(text string, end int) bool {
+	end = runtimeFormTrimEndIndex(text, end)
+	if end == 0 {
+		return false
+	}
+	last := text[end-1]
+	if last == ']' || last == '}' {
+		return false
+	}
+
+	segment := runtimeFormSegmentStart(text, end)
+	cursor := runtimeFormSkipSpaces(text, segment, end)
+	if cursor >= end || !runtimeFormIsNameStart(text[cursor]) {
+		return false
+	}
+
+	wordStart := cursor
+	cursor++
+	for cursor < end && runtimeFormIsNameContinue(text[cursor]) {
+		cursor++
+	}
+	word := text[wordStart:cursor]
+	if !runtimeFormWordInList(word, []string{
+		"fn", "cond", "case", "in", "if", "when", "unless", "repeat", "while",
+	}) {
+		return false
+	}
+
+	return !runtimeFormHasBodyOpener(text, cursor, end)
+}
+
+func runtimeFormEndsWithCallHeader(text string, end int) bool {
+	end = runtimeFormTrimEndIndex(text, end)
+	segment := runtimeFormSegmentStart(text, end)
+	callStart := runtimeFormFindLastWord(text, segment, end, "call")
+	if callStart < 0 {
+		return false
+	}
+	return !runtimeFormContainsCallSeparator(text, callStart+len("call"), end)
 }

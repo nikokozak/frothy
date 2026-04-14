@@ -65,14 +65,14 @@ func sendResolvedPayload(manager sendRuntime, payload *sendPayload) error {
 
 	words, err := manager.Words()
 	if err != nil {
-		return fmt.Errorf("words(): %w", err)
+		return fmt.Errorf("words: %w", err)
 	}
 
 	switch {
 	case contains(words, "boot"):
-		value, err = sendControlEval(manager, "boot()")
+		value, err = sendControlEval(manager, "boot:")
 	case contains(words, "autorun"):
-		value, err = sendControlEval(manager, "autorun()")
+		value, err = sendControlEval(manager, "autorun:")
 	default:
 		return nil
 	}

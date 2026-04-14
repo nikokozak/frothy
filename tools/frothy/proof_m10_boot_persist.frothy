@@ -1,4 +1,12 @@
-note = "armed"
-boot.flash = fn(pin) { gpio.mode(pin, 1) gpio.write(pin, 1) ms(25) gpio.write(pin, 0) }
-boot = fn() { boot.flash(LED_BUILTIN) set note = "booted" }
-save()
+note is "armed"
+to boot.flash with pin [
+  gpio.mode: pin, 1;
+  gpio.write: pin, 1;
+  ms: 25;
+  gpio.write: pin, 0
+]
+to boot [
+  boot.flash: LED_BUILTIN;
+  set note to "booted"
+]
+save

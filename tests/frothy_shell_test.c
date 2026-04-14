@@ -38,6 +38,45 @@ static int test_multiline_pending_source(void) {
   return ok;
 }
 
+static int test_maintained_multiline_headers(void) {
+  int ok = 1;
+
+  frothy_shell_test_reset_pending_source();
+  ok &= frothy_shell_test_append_pending_line("helper is") == FROTH_OK;
+  ok &= !frothy_shell_test_pending_is_complete();
+  ok &= frothy_shell_test_append_pending_line("1 +") == FROTH_OK;
+  ok &= !frothy_shell_test_pending_is_complete();
+  ok &= frothy_shell_test_append_pending_line("2") == FROTH_OK;
+  ok &= frothy_shell_test_pending_is_complete();
+  ok &= expect_text(frothy_shell_test_pending_source(),
+                    "helper is\n1 +\n2\n",
+                    "pending maintained binding source");
+
+  frothy_shell_test_reset_pending_source();
+  ok &= frothy_shell_test_append_pending_line("to helper with value") ==
+        FROTH_OK;
+  ok &= !frothy_shell_test_pending_is_complete();
+  ok &= frothy_shell_test_append_pending_line("[ value ]") == FROTH_OK;
+  ok &= frothy_shell_test_pending_is_complete();
+
+  frothy_shell_test_reset_pending_source();
+  ok &= frothy_shell_test_append_pending_line("value is fn with item") ==
+        FROTH_OK;
+  ok &= !frothy_shell_test_pending_is_complete();
+  ok &= frothy_shell_test_append_pending_line("[ item ]") == FROTH_OK;
+  ok &= frothy_shell_test_pending_is_complete();
+
+  frothy_shell_test_reset_pending_source();
+  ok &= frothy_shell_test_append_pending_line("call") == FROTH_OK;
+  ok &= !frothy_shell_test_pending_is_complete();
+  ok &= frothy_shell_test_append_pending_line("makeInc:") == FROTH_OK;
+  ok &= !frothy_shell_test_pending_is_complete();
+  ok &= frothy_shell_test_append_pending_line("with 41") == FROTH_OK;
+  ok &= frothy_shell_test_pending_is_complete();
+
+  return ok;
+}
+
 static int test_pending_source_capacity(void) {
   char *line = NULL;
   size_t length = FROTHY_SHELL_SOURCE_CAPACITY - 2;
@@ -137,6 +176,12 @@ static int test_readability_heads_do_not_rewrite(void) {
                                                sizeof(rewritten));
   ok &= !frothy_shell_test_rewrite_simple_call("in led", rewritten,
                                                sizeof(rewritten));
+  ok &= !frothy_shell_test_rewrite_simple_call("to boot", rewritten,
+                                               sizeof(rewritten));
+  ok &= !frothy_shell_test_rewrite_simple_call("call makeInc", rewritten,
+                                               sizeof(rewritten));
+  ok &= !frothy_shell_test_rewrite_simple_call("count is", rewritten,
+                                               sizeof(rewritten));
   return ok;
 }
 
@@ -144,6 +189,7 @@ int main(void) {
   int ok = 1;
 
   ok &= test_multiline_pending_source();
+  ok &= test_maintained_multiline_headers();
   ok &= test_pending_source_capacity();
   ok &= test_simple_call_rewrite_stays_bounded();
   ok &= test_readability_multiline_headers();

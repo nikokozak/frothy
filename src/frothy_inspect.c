@@ -41,7 +41,7 @@ typedef struct {
 static const frothy_inspect_builtin_doc_t frothy_inspect_builtin_docs[] = {
     {"save", "Save the current overlay snapshot."},
     {"restore", "Restore the most recently saved snapshot."},
-    {"wipe", "Erase the saved snapshot and clear overlay bindings."},
+    {"dangerous.wipe", "Erase the saved snapshot and clear overlay bindings."},
     {"words", "List bound top-level slot names."},
     {"see", "Show the readable form of a slot binding."},
     {"core", "Show the normalized core form of a slot binding."},

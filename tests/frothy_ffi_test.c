@@ -223,8 +223,8 @@ static int test_int_round_trip(void) {
 
   reset_frothy_state();
   ok &= install_test_bindings();
-  ok &= expect_ok("echo.int(7)", &value);
-  ok &= expect_int_value(value, 7, "echo.int(7)");
+  ok &= expect_ok("echo.int: 7", &value);
+  ok &= expect_int_value(value, 7, "echo.int: 7");
   release_value(&value);
   return ok;
 }
@@ -235,7 +235,7 @@ static int test_text_round_trip(void) {
 
   reset_frothy_state();
   ok &= install_test_bindings();
-  ok &= expect_ok("echo.text(\"frothy\")", &value);
+  ok &= expect_ok("echo.text: \"frothy\"", &value);
   ok &= expect_text_value(value, "frothy", "echo.text");
   release_value(&value);
   return ok;
@@ -247,8 +247,8 @@ static int test_nil_no_return(void) {
 
   reset_frothy_state();
   ok &= install_test_bindings();
-  ok &= expect_ok("touch.nil()", &value);
-  ok &= expect_nil_value(value, "touch.nil()");
+  ok &= expect_ok("touch.nil:", &value);
+  ok &= expect_nil_value(value, "touch.nil:");
   release_value(&value);
   return ok;
 }
@@ -259,11 +259,11 @@ static int test_bool_argument_coercion(void) {
 
   reset_frothy_state();
   ok &= install_test_bindings();
-  ok &= expect_ok("bool.arg(true)", &value);
-  ok &= expect_int_value(value, -1, "bool.arg(true)");
+  ok &= expect_ok("bool.arg: true", &value);
+  ok &= expect_int_value(value, -1, "bool.arg: true");
   release_value(&value);
-  ok &= expect_ok("bool.arg(false)", &value);
-  ok &= expect_int_value(value, 0, "bool.arg(false)");
+  ok &= expect_ok("bool.arg: false", &value);
+  ok &= expect_int_value(value, 0, "bool.arg: false");
   release_value(&value);
   return ok;
 }
@@ -276,7 +276,7 @@ static int test_arity_error(void) {
   reset_frothy_state();
   ok &= install_test_bindings();
   ok &= frothy_value_make_int(1, &arg) == FROTH_OK;
-  ok &= expect_error("echo.int()", FROTH_ERROR_SIGNATURE);
+  ok &= expect_error("echo.int:", FROTH_ERROR_SIGNATURE);
   ok &= expect_native_call("touch.nil", &arg, 1, &out, FROTH_ERROR_SIGNATURE);
   return ok;
 }
@@ -325,15 +325,15 @@ static int test_board_millis_monotonic(void) {
 
   reset_frothy_state();
   ok &= install_board_base_slots();
-  ok &= expect_ok("millis()", &start);
+  ok &= expect_ok("millis:", &start);
   ok &= frothy_value_is_int(start);
-  ok &= expect_ok("ms(20)", &after);
-  ok &= expect_nil_value(after, "ms(20)");
+  ok &= expect_ok("ms: 20", &after);
+  ok &= expect_nil_value(after, "ms: 20");
   release_value(&after);
-  ok &= expect_ok("millis()", &after);
+  ok &= expect_ok("millis:", &after);
   ok &= frothy_value_is_int(after);
   if (ok && frothy_value_as_int(after) <= frothy_value_as_int(start)) {
-    fprintf(stderr, "millis() should advance across ms(20)\n");
+    fprintf(stderr, "millis: should advance across ms: 20\n");
     ok = 0;
   }
   release_value(&start);
@@ -347,19 +347,19 @@ static int test_board_gpio_read_round_trip(void) {
 
   reset_frothy_state();
   ok &= install_board_base_slots();
-  ok &= expect_ok("gpio.mode(LED_BUILTIN, 1)", &value);
+  ok &= expect_ok("gpio.mode: LED_BUILTIN, 1", &value);
   ok &= expect_nil_value(value, "gpio.mode");
   release_value(&value);
-  ok &= expect_ok("gpio.write(LED_BUILTIN, 1)", &value);
+  ok &= expect_ok("gpio.write: LED_BUILTIN, 1", &value);
   ok &= expect_nil_value(value, "gpio.write high");
   release_value(&value);
-  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
+  ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
   ok &= expect_int_value(value, 1, "gpio.read after high");
   release_value(&value);
-  ok &= expect_ok("gpio.write(LED_BUILTIN, 0)", &value);
+  ok &= expect_ok("gpio.write: LED_BUILTIN, 0", &value);
   ok &= expect_nil_value(value, "gpio.write low");
   release_value(&value);
-  ok &= expect_ok("gpio.read(LED_BUILTIN)", &value);
+  ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
   ok &= expect_int_value(value, 0, "gpio.read after low");
   release_value(&value);
   return ok;

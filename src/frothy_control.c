@@ -816,7 +816,7 @@ static froth_error_t frothy_control_dispatch(
   case FROTHY_CONTROL_WIPE_REQ:
     FROTH_TRY(frothy_control_handle_builtin_no_args(
         session, header, frothy_builtin_wipe, FROTHY_CONTROL_PHASE_EVAL,
-        "bad WIPE payload", "wipe failed"));
+        "bad WIPE payload", "dangerous.wipe failed"));
     break;
   case FROTHY_CONTROL_CORE_REQ:
     FROTH_TRY(frothy_control_handle_builtin_string_arg(

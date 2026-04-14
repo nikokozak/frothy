@@ -71,7 +71,7 @@ Rules:
 - remap top-level names by symbol identity on restore
 - keep A/B storage and CRC validation
 - if restore fails, remain in a usable base state
-- `wipe()` clears both live and stored overlay state
+- `dangerous.wipe` clears both live and stored overlay state
 
 ## Consequences
 

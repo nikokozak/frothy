@@ -14,7 +14,7 @@ of the original project:
 - live interaction on the device,
 - stable top-level identity,
 - coherent redefinition,
-- explicit save / restore / wipe,
+- explicit save / restore / dangerous.wipe,
 - simple foreign bindings,
 - transparent inspection of the running image,
 - and a practical host-to-ESP32 development loop.
@@ -56,9 +56,9 @@ Everything else is built from those actions.
 
 ### 2.3 Persistent image, not persistent execution
 
-`save()` remembers the current top-level overlay image.
-`restore()` rebuilds that overlay image.
-`wipe()` clears it.
+`save` remembers the current top-level overlay image.
+`restore` rebuilds that overlay image.
+`dangerous.wipe` clears it.
 
 Running evaluation, local scopes, and machine pointers do not persist.
 
@@ -139,7 +139,7 @@ Unicode semantics are out of scope for `v0.1`.
 
 ### 3.7 Code
 
-`fn(...) { ... }` yields `Code`.
+`fn [ ... ]` and `fn with a, b [ ... ]` yield `Code`.
 
 A function may use:
 
@@ -190,19 +190,20 @@ Value lookup proceeds in this order:
 
 ### 4.3 Binding
 
-Inside a block, `name = expr` creates a local in the current lexical scope.
+Inside a block, `name is expr` creates a local in the current lexical scope.
+`here name is expr` is the explicit local-binding form.
 
 If that scope already has a binding for `name`, this is an error.
-Use `set name = expr` to mutate an existing local.
+Use `set name to expr` to mutate an existing local.
 
 A nested block may shadow an outer local or a top-level slot by creating a new
 local binding with the same name.
 
-At top level, `name = expr` creates or rebinds a stable top-level slot.
+At top level, `name is expr` creates or rebinds a stable top-level slot.
 
 ### 4.4 Mutation
 
-`set place = expr` mutates an existing place.
+`set place to expr` mutates an existing place.
 
 A place is either:
 
@@ -217,24 +218,29 @@ If no existing place is found, `set` is a runtime error.
 
 A top-level form is either:
 
-- `name = expr`
-- `set place = expr`
+- `name is expr`
+- `set place to expr`
+- `to name [ block ]`
+- `to name with a, b [ block ]`
 - a REPL expression
 
-`name = expr` creates or rebinds the stable top-level slot `name`.
-`set place = expr` mutates an existing top-level place.
+`name is expr` creates or rebinds the stable top-level slot `name`.
+`set place to expr` mutates an existing top-level place.
+`to name [ block ]` is sugar for binding `name` to zero-arity `Code`.
+`to name with a, b [ block ]` is sugar for binding `name` to `Code` with
+parameters.
 
 Examples:
 
 ```txt
-unit = 120
-frame = cells(64)
+unit is 120
+frame is cells(64)
 
-pulse = fn(pin, duration) {
-  gpio.write(pin, 1)
-  ms(duration)
-  gpio.write(pin, 0)
-}
+to pulse with pin, duration [
+  gpio.write: pin, 1;
+  ms: duration;
+  gpio.write: pin, 0
+]
 ```
 
 ### 5.2 Blocks
@@ -242,15 +248,16 @@ pulse = fn(pin, duration) {
 A block is:
 
 ```txt
-{ item* }
+[ item* ]
 ```
 
 A block introduces a lexical scope.
 
 A block item is one of:
 
-- `name = expr`
-- `set place = expr`
+- `here name is expr`
+- `name is expr`
+- `set place to expr`
 - `expr`
 
 A block yields the value of its last expression.
@@ -265,15 +272,21 @@ Expressions are:
 - `true`, `false`, `nil`
 - name reference
 - grouped expression: `(expr)`
-- function literal: `fn(param1, param2, ...) { block }`
+- function literal: `fn [ block ]`
+- function literal: `fn with a, b [ block ]`
 - cells constructor: `cells(positive_integer_literal)`
 - index read: `expr[index]`
-- call: `expr(arg1, arg2, ...)`
-- conditional expression: `if expr { block }`
-- conditional expression: `if expr { block } else { block }`
-- loop expression: `while expr { block }`
+- ordinary call: `callee: arg1, arg2`
+- computed call: `call expr with arg1, arg2`
+- conditional expression: `if expr [ block ]`
+- conditional expression: `if expr [ block ] else [ block ]`
+- conditional expression: `when expr [ block ]`
+- conditional expression: `unless expr [ block ]`
+- loop expression: `while expr [ block ]`
+- loop expression: `repeat expr [ block ]`
+- loop expression: `repeat expr as name [ block ]`
 - unary operator: `-expr`, `not expr`
-- binary operator: one of `* / % + - < <= > >= == !=`
+- binary operator: one of `* / % + - < <= > >= == != and or`
 
 All binary operators have equal precedence and associate left to right.
 Parentheses are the only grouping mechanism.
@@ -284,12 +297,15 @@ If `if` has no `else` branch and its condition is false, it yields `nil`.
 
 ```txt
 top        := top_assign | top_set | expr
-top_assign := NAME "=" expr
-top_set    := "set" place "=" expr
+top_assign := NAME "is" expr
+           | "to" NAME block
+           | "to" NAME "with" params block
+top_set    := "set" place "to" expr
 
-block      := "{" item* "}"
-item       := NAME "=" expr
-           | "set" place "=" expr
+block      := "[" item* "]"
+item       := "here" NAME "is" expr
+           | NAME "is" expr
+           | "set" place "to" expr
            | expr
 
 place      := NAME
@@ -298,18 +314,25 @@ place      := NAME
 expr       := literal
            | NAME
            | "(" expr ")"
-           | "fn" "(" params? ")" block
+           | "fn" block
+           | "fn" "with" params block
            | "cells" "(" INT_LITERAL ")"
            | expr "[" expr "]"
-           | expr "(" args? ")"
+           | callee ":" args?
+           | "call" expr "with" args
            | "if" expr block
            | "if" expr block "else" block
+           | "when" expr block
+           | "unless" expr block
            | "while" expr block
+           | "repeat" expr block
+           | "repeat" expr "as" NAME block
            | unary expr
            | expr binary expr
 
 params     := NAME ("," NAME)*
 args       := expr ("," expr)*
+callee     := NAME | expr
 ```
 
 ## 6. Evaluation Rules
@@ -342,10 +365,10 @@ Calling any other value is a runtime error.
 Examples:
 
 ```txt
-blink(2)
-gpio.write(pin, 1)
-action()
-(chooseAction())()
+blink: 2
+gpio.write: pin, 1
+action:
+call chooseAction: with
 ```
 
 This preserves the one-namespace model:
@@ -418,7 +441,7 @@ If a top-level write targets a base-image name, the effect in `v0.1` is:
 
 - the stable slot identity is preserved,
 - the current live value becomes the overlay value,
-- `wipe()` and failed `restore()` return that slot to the boot-rebuilt base
+- `dangerous.wipe` and failed `restore` return that slot to the boot-rebuilt base
   value.
 
 In other words, base values can be shadowed by overlay rebinding, but the base
@@ -433,7 +456,7 @@ They are not a general-purpose local allocation mechanism.
 
 ### 7.5 Save
 
-`save()` snapshots the overlay image only.
+`save` snapshots the overlay image only.
 
 The persisted overlay image is:
 
@@ -445,7 +468,7 @@ This walk is deliberately shallow in `v0.1`.
 
 ### 7.6 Restore
 
-`restore()` replaces the current live overlay image with the persisted overlay
+`restore` replaces the current live overlay image with the persisted overlay
 image.
 If restore fails, the system must remain in a usable base state.
 
@@ -454,12 +477,12 @@ rebuilt base image by symbol identity.
 
 ### 7.7 Wipe
 
-`wipe()` clears both:
+`dangerous.wipe` clears both:
 
 - live overlay state,
 - and stored overlay state.
 
-After `wipe()`, the running image is base-only again.
+After `dangerous.wipe`, the running image is base-only again.
 
 ### 7.8 Boot
 
@@ -472,13 +495,13 @@ under top-level recovery before entering the prompt.
 
 The interactive profile requires these built-in entry points:
 
-- `save()`
-- `restore()`
-- `wipe()`
-- `words()`
-- `see("name")`
-- `core("name")`
-- `slotInfo("name")`
+- `save`
+- `restore`
+- `dangerous.wipe`
+- `words`
+- `see`
+- `core`
+- `slotInfo`
 
 These may be implemented as base-image `Code` values.
 
@@ -497,7 +520,7 @@ Definitions need not print a result.
 Incomplete input includes unclosed:
 
 - `(`
-- `{`
+- `[`
 - string literal
 
 ### 8.3 Interrupt
@@ -515,15 +538,18 @@ Interrupted top-level evaluation must roll back to a usable prompt state.
 
 ### 8.4 Inspection
 
-`words()` lists top-level names.
+At the prompt, the current surface normally invokes these entry points as
+`words`, `save`, `restore`, `dangerous.wipe`, `show @name`, `see @name`,
+`core @name`, and `info @name`.
 
-`see("name")` is required at least for overlay `Code` slots in `v0.1`.
+`show` and `see` both route to the normalized binding view.
+`see` is required at least for overlay `Code` slots in `v0.1`.
 It must be derived from canonical IR.
 
-`core("name")` may be implementation-defined debug output in `v0.1`, but should
+`core` may be implementation-defined debug output in `v0.1`, but should
 ideally present canonical IR or a normalized IR dump.
 
-`slotInfo("name")` displays binding metadata such as:
+`info` displays binding metadata through the `slotInfo` entry point, including:
 
 - origin (base or overlay),
 - current value kind,
@@ -544,9 +570,9 @@ Native runtime state does not persist.
 The user-facing call model is ordinary Frothy call syntax:
 
 ```txt
-gpio.write(2, 1)
-ms(250)
-adc.read(A0)
+gpio.write: 2, 1
+ms: 250
+adc.read: A0
 ```
 
 In `v0.1`, the implementation may reuse Froth's existing stack-oriented FFI
@@ -573,28 +599,28 @@ Reader and parser errors should be recoverable to the prompt when possible.
 ## 11. Minimal Example
 
 ```txt
-unit = 120
-frame = cells(16)
+unit is 120
+frame is cells(16)
 
-pulse = fn(pin, n) {
-  gpio.write(pin, 1)
-  ms(n)
-  gpio.write(pin, 0)
-}
+to pulse with pin, n [
+  gpio.write: pin, 1;
+  ms: n;
+  gpio.write: pin, 0
+]
 
-blink = fn(pin) {
-  i = 0
-  gpio.mode(pin, 1)
-  while i < 3 {
-    pulse(pin, unit)
-    ms(unit)
-    set i = i + 1
-  }
-}
+to blink with pin [
+  here i is 0;
+  gpio.mode: pin, 1;
+  while i < 3 [
+    pulse: pin, unit;
+    ms: unit;
+    set i to i + 1
+  ]
+]
 
-boot = fn() {
-  blink(LED_BUILTIN)
-}
+to boot [
+  blink: LED_BUILTIN
+]
 ```
 
 This sits in the intended expressive center of Frothy `v0.1`.

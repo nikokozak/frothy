@@ -35,7 +35,7 @@ static const frothy_base_slot_t frothy_base_slots[] = {
      FROTHY_BASE_SLOT_SHELL_SUPPRESSES_RAW_OUTPUT},
     {"restore", frothy_builtin_restore, 0,
      FROTHY_BASE_SLOT_SHELL_SUPPRESSES_RAW_OUTPUT},
-    {"wipe", frothy_builtin_wipe, 0,
+    {"dangerous.wipe", frothy_builtin_wipe, 0,
      FROTHY_BASE_SLOT_SHELL_SUPPRESSES_RAW_OUTPUT},
     {"words", frothy_builtin_words, 0,
      FROTHY_BASE_SLOT_EMITS_OUTPUT |
