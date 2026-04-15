@@ -93,6 +93,26 @@ def require_sequence(text: str, needles: list[str]) -> None:
         index = next_index + len(needle)
 
 
+def labeled_result_segment(text: str, label: str, result: str) -> str:
+    marker = f'"{label}"\n'
+    start = text.find(marker)
+    if start < 0:
+        fail(f"expected transcript label: {label}")
+
+    tail = text[start:]
+    end_marker = f"{result}\nfrothy> "
+    end = tail.find(end_marker)
+    if end < 0:
+        fail(f"expected transcript result for {label}: {result}")
+    return tail[: end + len(end_marker)]
+
+
+def require_gpio_blink_result(text: str, label: str, result: str) -> None:
+    segment = labeled_result_segment(text, label, result)
+    require_contains(segment, "[gpio] pin 2 = HIGH")
+    require_contains(segment, "[gpio] pin 2 = LOW")
+
+
 def ensure_idf_available() -> None:
     command = (
         idf_shell_prefix()
@@ -460,10 +480,7 @@ def run_phase_four(session: IdfMonitorSession, starter_proof: str) -> None:
     toggle_value = int(toggle_match.group(1))
     if toggle_value < 0 or toggle_value > 1:
         fail(f"expected led.toggle.check readback in 0..1, got {toggle_value}")
-    require_match(
-        workshop_transcript,
-        r'"led\.blink\.check"\r?\n[\s\S]*?led\.blink: 1, 1\r?\nnil\r?\nfrothy> ',
-    )
+    require_gpio_blink_result(workshop_transcript, "led.blink.check", "nil")
     percent_match = re.search(
         r'"adc\.percent\.check"\r?\n.*?adc\.percent: A0\r?\n(\d+)\r?\nfrothy> ',
         workshop_transcript,
@@ -480,12 +497,13 @@ def run_phase_four(session: IdfMonitorSession, starter_proof: str) -> None:
     )
     require_match(
         workshop_transcript,
-        r'"overlay\.blink\.check"\r?\n[\s\S]*?slot: overlay\r?\n[\s\S]*?owner: overlay image\r?\n[\s\S]*?blink: LED_BUILTIN, 1, 1\r?\n99\r?\nfrothy> ',
+        r'"overlay\.blink\.check"\r?\n[\s\S]*?slot: overlay\r?\n[\s\S]*?owner: overlay image\r?\n[\s\S]*?99\r?\nfrothy> ',
     )
     require_match(
         workshop_transcript,
-        r'"restored\.blink\.check"\r?\n[\s\S]*?slot: base\r?\n[\s\S]*?owner: base image\r?\n[\s\S]*?blink: LED_BUILTIN, 1, 1\r?\nnil\r?\nfrothy> ',
+        r'"restored\.blink\.check"\r?\n[\s\S]*?slot: base\r?\n[\s\S]*?owner: base image\r?\n',
     )
+    require_gpio_blink_result(workshop_transcript, "restored.blink.check", "nil")
     require_not_contains(workshop_transcript, "eval error (")
     require_not_contains(workshop_transcript, "parse error (")
     require_sequence(

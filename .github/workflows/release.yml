@@ -92,6 +92,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: refs/tags/${{ inputs.release_tag }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/cli/go.mod
       - name: Verify version
         run: |
           tag_version="${RELEASE_TAG#v}"

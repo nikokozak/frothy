@@ -50,7 +50,7 @@ clean-cli: ## Remove repo-local froth-cli binary (not SDK mirror)
 test: version-check test-runner-bin ## Run the fast self-contained local test gate
 	@$(TEST_RUNNER) fast
 
-test-all: version-check test-runner-bin ## Run the exhaustive local test gate (include board smoke when PORT=/dev/... is set)
+test-all: version-check test-runner-bin ## Run the exhaustive local test gate (C, Go, shell only)
 	@FROTHY_EDITOR_SMOKE_PORT="$(PORT)" $(TEST_RUNNER) all
 
 test-frothy: version-check test-runner-bin ## Run Frothy host ctests and proofs
@@ -62,10 +62,10 @@ test-cli: version-check test-runner-bin ## Run CLI unit and fake-daemon tests
 test-cli-local: version-check test-runner-bin ## Run CLI local-runtime tests
 	@$(TEST_RUNNER) cli-local
 
-test-vscode: version-check test-runner-bin ## Run VS Code extension tests and host editor smoke
+test-vscode: version-check test-runner-bin ## Run VS Code extension tests, package smoke, and host editor smoke
 	@$(TEST_RUNNER) vscode
 
-test-vscode-board: version-check test-runner-bin ## Run VS Code board editor smoke (use PORT=/dev/...)
+test-vscode-board: version-check test-runner-bin ## Run VS Code board editor smoke on a real device (use PORT=/dev/...)
 	@$(TEST_RUNNER) vscode-board --port "$(PORT)"
 
 test-integration: version-check test-runner-bin ## Run CLI project integration tests

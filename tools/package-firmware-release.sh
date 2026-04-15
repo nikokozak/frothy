@@ -28,7 +28,12 @@ mkdir -p "$(dirname "$OUTPUT")"
 FILE_LIST=$(mktemp "${TMPDIR:-/tmp}/froth-firmware-files.XXXXXX")
 trap 'rm -f "$FILE_LIST"' EXIT INT TERM
 
-python3 -c 'import json, pathlib, sys; manifest = json.loads(pathlib.Path(sys.argv[1]).read_text()); print("flasher_args.json"); [print(path) for path in sorted(set(manifest["flash_files"].values()))]' "$MANIFEST_PATH" > "$FILE_LIST"
+if ! command -v go >/dev/null 2>&1; then
+  printf 'go is required to read %s without Python\n' "$MANIFEST_PATH" >&2
+  exit 1
+fi
+
+go run "$ROOT_DIR/tools/firmware_manifest_files.go" "$MANIFEST_PATH" > "$FILE_LIST"
 
 while IFS= read -r relpath; do
   if [ ! -f "$BUILD_DIR/$relpath" ]; then

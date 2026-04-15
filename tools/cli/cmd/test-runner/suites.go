@@ -6,6 +6,20 @@ import (
 	"path/filepath"
 )
 
+func ensureCLI(paths pathSet, env map[string]string, stepName string) error {
+	return runCommand(
+		paths,
+		stepName,
+		env,
+		paths.Root,
+		"make",
+		"--no-print-directory",
+		"-C",
+		filepath.Join(paths.Root, "tools", "cli"),
+		"build",
+	)
+}
+
 func runFast() error {
 	if err := runFrothy(); err != nil {
 		return err
@@ -20,16 +34,6 @@ func runAll() error {
 	if err := runCLILocal(); err != nil {
 		return err
 	}
-	if err := runVSCode(); err != nil {
-		return err
-	}
-	if port := boardSmokePort(); port != "" {
-		if err := runVSCodeBoard(port); err != nil {
-			return err
-		}
-	} else {
-		fmt.Println("[skip] vscode:proof-board (set FROTHY_EDITOR_SMOKE_PORT or make test-all PORT=/dev/... to include real-board editor smoke)")
-	}
 	return runCLIIntegration()
 }
 
@@ -42,6 +46,9 @@ func runFrothy() error {
 		return err
 	}
 	env := baseTestEnv(paths)
+	if err := ensureCLI(paths, env, "frothy:cli-build"); err != nil {
+		return err
+	}
 	buildDir := profileBuildDir(paths, "host-default")
 	if err := runCommand(paths, "frothy:ctest", env, paths.Root, "ctest", "--test-dir", buildDir, "--output-on-failure", "-L", "frothy"); err != nil {
 		return err
@@ -117,17 +124,7 @@ func runVSCodeBoard(port string) error {
 }
 
 func prepareVSCode(paths pathSet, env map[string]string) error {
-	if err := runCommand(
-		paths,
-		"vscode:cli-build",
-		env,
-		paths.Root,
-		"make",
-		"--no-print-directory",
-		"-C",
-		filepath.Join(paths.Root, "tools", "cli"),
-		"build",
-	); err != nil {
+	if err := ensureCLI(paths, env, "vscode:cli-build"); err != nil {
 		return err
 	}
 	if err := runCommand(
@@ -150,21 +147,22 @@ func prepareVSCode(paths pathSet, env map[string]string) error {
 	); err != nil {
 		return err
 	}
+	if err := runCommand(
+		paths,
+		"vscode:package-smoke",
+		env,
+		filepath.Join(paths.Root, "tools", "vscode"),
+		"npm",
+		"run",
+		"test:package",
+	); err != nil {
+		return err
+	}
 	return nil
 }
 
 func prepareVSCodeBoard(paths pathSet, env map[string]string) error {
-	if err := runCommand(
-		paths,
-		"vscode:cli-build",
-		env,
-		paths.Root,
-		"make",
-		"--no-print-directory",
-		"-C",
-		filepath.Join(paths.Root, "tools", "cli"),
-		"build",
-	); err != nil {
+	if err := ensureCLI(paths, env, "vscode:cli-build"); err != nil {
 		return err
 	}
 	vscodeDir := filepath.Join(paths.Root, "tools", "vscode")
@@ -209,14 +207,23 @@ func runCLIIntegration() error {
 
 func printList() {
 	fmt.Println("fast")
-	fmt.Println("  frothy")
-	fmt.Println("  cli")
+	fmt.Println("  core local gate (C, Go, shell)")
+	fmt.Println("  includes: frothy, cli")
 	fmt.Println("all")
-	fmt.Println("  fast")
-	fmt.Println("  cli-local")
-	fmt.Println("  vscode")
-	fmt.Println("  vscode-board --port <PORT>")
-	fmt.Println("  integration")
+	fmt.Println("  extended local gate (C, Go, shell)")
+	fmt.Println("  includes: fast, cli-local, integration")
+	fmt.Println("frothy")
+	fmt.Println("  host ctest + core proof.sh host lane")
+	fmt.Println("cli")
+	fmt.Println("  CLI unit tests")
+	fmt.Println("cli-local")
+	fmt.Println("  CLI local-runtime tests")
+	fmt.Println("integration")
+	fmt.Println("  CLI integration tests")
+	fmt.Println("vscode")
+	fmt.Println("  extension-local Node lane: npm test, npm run test:package, host editor smoke")
+	fmt.Println("vscode-board --port <PORT>")
+	fmt.Println("  extension board smoke on a real device")
 	fmt.Println("profiles")
 	for _, name := range sortedProfileNames() {
 		fmt.Printf("  %s: %s\n", name, profiles[name].Description)

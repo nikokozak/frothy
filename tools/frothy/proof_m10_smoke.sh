@@ -169,19 +169,22 @@ require_file_contains() {
 require_sequence() {
   transcript=$1
   shift
-  TRANSCRIPT=$transcript python3 - "$@" <<'PY'
-import os
-import sys
-
-text = os.environ["TRANSCRIPT"].replace("\r\n", "\n")
-index = 0
-for needle in sys.argv[1:]:
-    next_index = text.find(needle, index)
-    if next_index < 0:
-        sys.stderr.write(f"error: expected transcript sequence element: {needle}\n")
-        raise SystemExit(1)
-    index = next_index + len(needle)
-PY
+  printf '%s\0' "$@" | env TRANSCRIPT="$transcript" awk '
+    BEGIN {
+      RS = "\0"
+      text = ENVIRON["TRANSCRIPT"]
+      index_pos = 1
+    }
+    {
+      segment = substr(text, index_pos)
+      next_index = index(segment, $0)
+      if (next_index == 0) {
+        printf("error: expected transcript sequence element: %s\n", $0) > "/dev/stderr"
+        exit 1
+      }
+      index_pos += next_index - 1 + length($0)
+    }
+  '
 }
 
 STARTER_DIR="$WORK_DIR/workshop-starter"
