@@ -131,7 +131,7 @@ Held boundary:
 References:
 
 - `tools/frothy/proof_m10_smoke.sh`
-- `tools/frothy/m10_esp32_proof_transcript.txt`
+- `docs/archive/proofs/m10_esp32_proof_transcript.txt`
 - `boards/`
 - `boards/esp32-devkit-v1/WORKSHOP.md`
 

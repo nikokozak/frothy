@@ -32,7 +32,8 @@ If this file and the roadmap disagree, the roadmap wins.
   Reference: roadmap section 7.
 - [x] M3a Device smoke
   Deliverable: ESP32 shell stub reaches prompt and safe boot.
-  Reference: roadmap section 7 and checked-in prompt transcripts.
+  Reference: roadmap section 7 and
+  `docs/archive/proofs/m3a_esp32_prompt_transcript.txt`.
 - [x] M4 Parser + canonical IR
   Deliverable: parser and canonical IR under focused test coverage.
   Reference: roadmap section 7.
@@ -54,7 +55,7 @@ If this file and the roadmap disagree, the roadmap wins.
 - [x] M10 Hardware proof
   Deliverable: blink, boot persistence, and cells proof on ESP32.
   Reference: `./tools/frothy/proof_m10_smoke.sh <PORT>` and
-  `tools/frothy/m10_esp32_proof_transcript.txt`.
+  `docs/archive/proofs/m10_esp32_proof_transcript.txt`.
 
 ## Movable Post-v0.1 Queue
 
@@ -186,7 +187,7 @@ keep each item's description and references so deferral does not erase context.
   `boards/esp32-devkit-v1/WORKSHOP.md`; physical packing and labeling remain
   open.
   References: `tools/frothy/proof_m10_smoke.sh`,
-  `tools/frothy/m10_esp32_proof_transcript.txt`, `boards/`, and
+  `docs/archive/proofs/m10_esp32_proof_transcript.txt`, `boards/`, and
   `boards/esp32-devkit-v1/WORKSHOP.md`.
 - [~] Workshop rehearsal plus measured performance/persistence closeout
   Deliverable: run the real lesson path end to end, verify loop cadence,

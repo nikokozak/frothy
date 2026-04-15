@@ -34,6 +34,7 @@ tools/vscode/test/test.froth
 tools/cli/cli
 tools/cli/froth-cli
 tools/cli/froth-debug
+tools/cli/test-runner
 tools/cli/minicom_capture
 tools/cli/tmp-froth-cli
 tools/frothy/__pycache__/

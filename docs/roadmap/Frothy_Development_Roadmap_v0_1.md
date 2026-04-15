@@ -582,7 +582,7 @@ Exit criteria:
 Closeout:
 
 - Closed on 2026-04-12 with a checked-in transcript at
-  `tools/frothy/m10_esp32_proof_transcript.txt`.
+  `docs/archive/proofs/m10_esp32_proof_transcript.txt`.
 - The first live-board failure on 2026-04-12 was not an ESP-IDF visibility
   problem after all; the real runtime-side issue was avoidable ESP32 main-task
   stack pressure from Frothy shell-local line buffers, compounded by a device

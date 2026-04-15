@@ -178,4 +178,4 @@ Froth, not rebuild the same transport stack in slightly different clothes.
 - `docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
 - `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md`
 - `tools/frothy/proof_m10_smoke.sh`
-- `tools/frothy/m10_esp32_proof_transcript.txt`
+- `docs/archive/proofs/m10_esp32_proof_transcript.txt`
