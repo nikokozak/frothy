@@ -3116,6 +3116,10 @@ static froth_error_t frothy_parse_top_level_internal(const char *source,
     err = frothy_parse_expr(&parser, false, &root);
   }
 
+  while (err == FROTH_OK && parser.current.kind == FROTHY_TOKEN_SEMICOLON) {
+    err = frothy_parser_advance(&parser);
+  }
+
   if (err == FROTH_OK && require_eof &&
       parser.current.kind != FROTHY_TOKEN_EOF) {
     err = FROTH_ERROR_SIGNATURE;

@@ -70,7 +70,7 @@
       },
       {
         "command": "frothy.sendSelection",
-        "title": "Frothy: Send Selection / Line",
+        "title": "Frothy: Send Selection / Form",
         "icon": "$(play)"
       },
       {
@@ -141,6 +141,11 @@
         "key": "ctrl+shift+enter",
         "mac": "cmd+shift+enter",
         "when": "editorTextFocus && (resourceExtname == .frothy || resourceExtname == .froth)"
+      },
+      {
+        "command": "frothy.interrupt",
+        "key": "ctrl+shift+backspace",
+        "mac": "cmd+shift+backspace"
       }
     ],
     "viewsContainers": {

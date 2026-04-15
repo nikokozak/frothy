@@ -411,6 +411,45 @@ static int test_top_level_prefix_consumes_multiline_forms(void) {
   return ok;
 }
 
+static int test_top_level_trailing_semicolons(void) {
+  static const char *const source = "first is 1;\nsecond is 2\n";
+  frothy_ir_program_t program;
+  const frothy_ir_node_t *root = NULL;
+  size_t consumed = 0;
+  froth_error_t err;
+  int ok = 1;
+
+  frothy_ir_program_init(&program);
+  err = frothy_parse_top_level("setFlag!: 7;", &program);
+  if (err != FROTH_OK) {
+    fprintf(stderr, "trailing semicolon parse failed: %d\n", (int)err);
+    frothy_ir_program_free(&program);
+    return 0;
+  }
+  frothy_ir_program_free(&program);
+
+  frothy_ir_program_init(&program);
+  err = frothy_parse_top_level_prefix(source, &consumed, &program);
+  if (err != FROTH_OK) {
+    fprintf(stderr, "prefix parse with semicolon failed: %d\n", (int)err);
+    frothy_ir_program_free(&program);
+    return 0;
+  }
+  root = &program.nodes[program.root];
+  if (root->kind != FROTHY_IR_NODE_WRITE_SLOT ||
+      strcmp(root->as.write_slot.slot_name, "first") != 0) {
+    fprintf(stderr, "prefix parse with semicolon expected first slot write\n");
+    ok = 0;
+  }
+  if (strcmp(source + consumed, "second is 2\n") != 0) {
+    fprintf(stderr, "prefix parse with semicolon consumed wrong span: `%s`\n",
+            source + consumed);
+    ok = 0;
+  }
+  frothy_ir_program_free(&program);
+  return ok;
+}
+
 int main(void) {
   static const char *const fixture_cases[] = {
       "assign_int",
@@ -557,6 +596,7 @@ int main(void) {
       render_surface_designator_expected);
   ok &= test_capacity_failures_recover();
   ok &= test_top_level_prefix_consumes_multiline_forms();
+  ok &= test_top_level_trailing_semicolons();
 
   return ok ? 0 : 1;
 }

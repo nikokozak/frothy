@@ -201,7 +201,7 @@ func runtimeFormUpdateTrailingState(state *runtimeFormState, source string) {
 }
 
 func runtimeFormIsNameContinue(ch byte) bool {
-	return ch == '_' || ch == '.' ||
+	return ch == '_' || ch == '.' || ch == '!' || ch == '?' || ch == '@' ||
 		(ch >= 'a' && ch <= 'z') ||
 		(ch >= 'A' && ch <= 'Z') ||
 		(ch >= '0' && ch <= '9')

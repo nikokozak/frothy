@@ -107,6 +107,22 @@ with 41
 	}
 }
 
+func TestSplitTopLevelFormsHandlesPunctuatedNamesInHeaders(t *testing.T) {
+	source := `to tm1629.brightness! with level
+[ tm1629.raw.brightness!: level ]
+`
+	forms, err := SplitTopLevelForms(source)
+	if err != nil {
+		t.Fatalf("SplitTopLevelForms: %v", err)
+	}
+	want := []string{
+		"to tm1629.brightness! with level\n[ tm1629.raw.brightness!: level ]",
+	}
+	if !reflect.DeepEqual(forms, want) {
+		t.Fatalf("forms = %#v, want %#v", forms, want)
+	}
+}
+
 func TestSplitTopLevelFormsRejectsIncompleteInput(t *testing.T) {
 	if _, err := SplitTopLevelForms("to boot\n"); err == nil {
 		t.Fatal("SplitTopLevelForms succeeded, want error")

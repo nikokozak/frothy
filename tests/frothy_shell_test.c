@@ -60,6 +60,13 @@ static int test_maintained_multiline_headers(void) {
   ok &= frothy_shell_test_pending_is_complete();
 
   frothy_shell_test_reset_pending_source();
+  ok &= frothy_shell_test_append_pending_line("to helper! with value") ==
+        FROTH_OK;
+  ok &= !frothy_shell_test_pending_is_complete();
+  ok &= frothy_shell_test_append_pending_line("[ value ]") == FROTH_OK;
+  ok &= frothy_shell_test_pending_is_complete();
+
+  frothy_shell_test_reset_pending_source();
   ok &= frothy_shell_test_append_pending_line("value is fn with item") ==
         FROTH_OK;
   ok &= !frothy_shell_test_pending_is_complete();

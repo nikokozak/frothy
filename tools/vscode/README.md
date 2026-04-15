@@ -37,7 +37,7 @@ Extension-specific expectations:
 
 - `Frothy: Connect Device`
 - `Frothy: Disconnect`
-- `Frothy: Send Selection / Line`
+- `Frothy: Send Selection / Form`
 - `Frothy: Send File`
 - `Frothy: Interrupt`
 - `Frothy: Words`
@@ -49,11 +49,14 @@ Extension-specific expectations:
 
 ## Send Semantics
 
-`Send Selection / Line` is intentional additive eval.
+`Send Selection / Form` is intentional additive eval.
 
 `Send File` is whole-file `reset + eval`. If the connected firmware does not
 support control `reset`, the extension blocks the send and tells you to upgrade
 or reflash the firmware instead of replaying the file additively.
+
+`Interrupt` is bound to `Cmd+Shift+Backspace` on macOS and
+`Ctrl+Shift+Backspace` on other platforms.
 
 ## Development
 

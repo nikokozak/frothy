@@ -4,6 +4,7 @@ import {
   ConnectCandidate,
   ControlSessionClient,
 } from "./control-session-client";
+import { findTopLevelFormAtLine } from "./runtime-forms";
 import {
   ControllerHost,
   DocumentLike,
@@ -12,7 +13,7 @@ import {
   TerminalLike,
 } from "./controller";
 
-const bindingNamePattern = /[A-Za-z0-9_.]+/;
+const bindingNamePattern = /[A-Za-z0-9_.!?@]+/;
 
 export class BufferedOutputChannel implements OutputChannelLike {
   private buffer = "";
@@ -87,6 +88,13 @@ class VSCodeEditor implements EditorLike {
 
   currentLineText(): string {
     return this.editor.document.lineAt(this.editor.selection.active.line).text;
+  }
+
+  currentRuntimeFormText(): string | null {
+    return findTopLevelFormAtLine(
+      this.editor.document.getText(),
+      this.editor.selection.active.line,
+    );
   }
 
   selectedName(): string | null {

@@ -1,145 +1,268 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "Froth",
-  "scopeName": "source.froth",
+  "name": "Frothy",
+  "scopeName": "source.frothy",
   "patterns": [
     {
       "include": "#line-comment"
     },
     {
-      "include": "#block-comment"
-    },
-    {
       "include": "#string"
     },
     {
-      "include": "#definition"
+      "include": "#named-code-definition"
     },
     {
-      "include": "#tick"
+      "include": "#function-literal-head"
     },
     {
-      "include": "#numbers"
+      "include": "#record-definition"
+    },
+    {
+      "include": "#binding-definition"
+    },
+    {
+      "include": "#loop-binding"
     },
     {
       "include": "#slot-designator"
     },
     {
-      "include": "#builtins"
+      "include": "#field-access"
     },
     {
-      "include": "#brackets"
+      "include": "#builtin"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#call-target"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
     }
   ],
   "repository": {
     "line-comment": {
-      "name": "comment.line.backslash.froth",
-      "match": "(?<!\\S)\\\\ .*$"
-    },
-    "block-comment": {
-      "name": "comment.block.paren.froth",
-      "begin": "(?<!\\S)(\\()",
-      "beginCaptures": {
-        "1": {
-          "name": "punctuation.definition.comment.begin.froth"
-        }
-      },
-      "end": "(\\))",
-      "endCaptures": {
-        "1": {
-          "name": "punctuation.definition.comment.end.froth"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#block-comment"
-        }
-      ]
+      "name": "comment.line.backslash.frothy",
+      "match": "(?<!\\S)\\\\.*$"
     },
     "string": {
-      "name": "string.quoted.double.froth",
+      "name": "string.quoted.double.frothy",
       "begin": "\"",
       "beginCaptures": {
         "0": {
-          "name": "punctuation.definition.string.begin.froth"
+          "name": "punctuation.definition.string.begin.frothy"
         }
       },
       "end": "\"",
       "endCaptures": {
         "0": {
-          "name": "punctuation.definition.string.end.froth"
+          "name": "punctuation.definition.string.end.frothy"
         }
       },
       "patterns": [
         {
-          "name": "constant.character.escape.froth",
+          "name": "constant.character.escape.frothy",
           "match": "\\\\(?:[ntr\\\\\"]|x[0-9A-Fa-f]{2})"
         }
       ]
     },
-    "definition": {
+    "named-code-definition": {
+      "begin": "(?<![A-Za-z0-9_.!?@])(to)(\\s+)([A-Za-z_][A-Za-z0-9_.!?@]*)",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.definition.frothy"
+        },
+        "3": {
+          "name": "entity.name.function.frothy"
+        }
+      },
+      "end": "(?=\\[|$)",
       "patterns": [
         {
-          "match": "(?<!\\S)(:)(?=\\s)\\s+([^\\s\\[\\]\"';]+)",
-          "captures": {
-            "1": {
-              "name": "keyword.control.definition.froth"
-            },
-            "2": {
-              "name": "entity.name.function.froth"
-            }
-          }
+          "name": "keyword.control.parameters.frothy",
+          "match": "(?<![A-Za-z0-9_.!?@])(with)(?=\\s)"
         },
         {
-          "name": "keyword.control.definition.froth",
-          "match": "(?<!\\S);(?=\\s|$)"
+          "name": "variable.parameter.frothy",
+          "match": "[A-Za-z_][A-Za-z0-9_.!?@]*"
+        },
+        {
+          "name": "punctuation.separator.parameter.frothy",
+          "match": ","
         }
       ]
     },
-    "tick": {
-      "match": "(?<!\\S)(')([^\\s\\[\\]\"';]+)",
+    "function-literal-head": {
+      "begin": "(?<![A-Za-z0-9_.!?@])(fn)(?=\\s)",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.type.function.frothy"
+        }
+      },
+      "end": "(?=\\[|$)",
+      "patterns": [
+        {
+          "name": "keyword.control.parameters.frothy",
+          "match": "(?<![A-Za-z0-9_.!?@])(with)(?=\\s)"
+        },
+        {
+          "name": "variable.parameter.frothy",
+          "match": "[A-Za-z_][A-Za-z0-9_.!?@]*"
+        },
+        {
+          "name": "punctuation.separator.parameter.frothy",
+          "match": ","
+        }
+      ]
+    },
+    "record-definition": {
+      "match": "(?<![A-Za-z0-9_.!?@])(record)(\\s+)([A-Za-z_][A-Za-z0-9_.!?@]*)",
       "captures": {
         "1": {
-          "name": "keyword.operator.tick.froth"
+          "name": "keyword.control.declaration.frothy"
         },
-        "2": {
-          "name": "variable.other.froth"
+        "3": {
+          "name": "entity.name.type.frothy"
         }
       }
+    },
+    "binding-definition": {
+      "match": "(?<![A-Za-z0-9_.!?@])(?:(here)(\\s+))?([A-Za-z_][A-Za-z0-9_.!?@]*)(\\s+)(is)(?=\\s|$)",
+      "captures": {
+        "1": {
+          "name": "keyword.control.declaration.frothy"
+        },
+        "3": {
+          "name": "variable.other.definition.frothy"
+        },
+        "5": {
+          "name": "keyword.control.definition.frothy"
+        }
+      }
+    },
+    "loop-binding": {
+      "match": "(?<![A-Za-z0-9_.!?@])(as)(\\s+)([A-Za-z_][A-Za-z0-9_.!?@]*)(?=\\s|\\[|$)",
+      "captures": {
+        "1": {
+          "name": "keyword.control.loop.frothy"
+        },
+        "3": {
+          "name": "variable.parameter.frothy"
+        }
+      }
+    },
+    "slot-designator": {
+      "name": "variable.other.slot-designator.frothy",
+      "match": "@[A-Za-z_][A-Za-z0-9_.!?@]*"
+    },
+    "field-access": {
+      "match": "(->)([A-Za-z_][A-Za-z0-9_.!?@]*)",
+      "captures": {
+        "1": {
+          "name": "keyword.operator.field.frothy"
+        },
+        "2": {
+          "name": "variable.other.property.frothy"
+        }
+      }
+    },
+    "builtin": {
+      "name": "support.function.builtin.frothy",
+      "match": "(?<![A-Za-z0-9_.!?@])(?:save|restore|dangerous\\.wipe|words|see|core|slotInfo|cells)(?![A-Za-z0-9_.!?@])"
+    },
+    "constants": {
+      "name": "constant.language.frothy",
+      "match": "(?<![A-Za-z0-9_.!?@])(?:true|false|nil)(?![A-Za-z0-9_.!?@])"
     },
     "numbers": {
       "patterns": [
         {
-          "name": "constant.numeric.hex.froth",
-          "match": "(?<!\\S)-?0x[0-9A-Fa-f]+(?!\\S)"
+          "name": "constant.numeric.hex.frothy",
+          "match": "(?<![A-Za-z0-9_.!?@])-?0x[0-9A-Fa-f]+(?![A-Za-z0-9_.!?@])"
         },
         {
-          "name": "constant.numeric.binary.froth",
-          "match": "(?<!\\S)-?0b[01]+(?!\\S)"
+          "name": "constant.numeric.binary.frothy",
+          "match": "(?<![A-Za-z0-9_.!?@])-?0b[01]+(?![A-Za-z0-9_.!?@])"
         },
         {
-          "name": "constant.numeric.decimal.froth",
-          "match": "(?<!\\S)-?\\d+(?!\\S)"
+          "name": "constant.numeric.decimal.frothy",
+          "match": "(?<![A-Za-z0-9_.!?@])-?\\d+(?![A-Za-z0-9_.!?@])"
         }
       ]
     },
-    "slot-designator": {
-      "match": "@[A-Za-z_][A-Za-z0-9_\\.]*",
-      "name": "variable.other.slot-designator.froth"
+    "call-target": {
+      "name": "support.function.call.frothy",
+      "match": "[A-Za-z_][A-Za-z0-9_.!?@]*(?=:)"
     },
-    "builtins": {
-      "name": "support.function.builtin.froth",
-      "match": "(?<!\\S)(?:dangerous-reset|dangerous\\.wipe|restore|release|negate|invert|lshift|rshift|choose|catch|throw|times|while|when|unless|repeat|cond|case|in|words|emit|key\\?|key|millis|keep|call|drop|over|2over|swap|tuck|dup|2dup|2drop|2swap|rot|-rot|nip|dip|set|assign|to|value|is|here|with|as|fn|save|def|get|and|xor|abs|cr|if|bi|or|see|core|info|true|false|nil|not|cells|s\\.emit|s\\.len|s@|s\\.=|s\\.keep|q\\.len|q@|/mod|\\.s|\\.|\\+|-|\\*|<|>|=|>r|r>|r@)(?!\\S)"
-    },
-    "brackets": {
+    "keywords": {
       "patterns": [
         {
-          "name": "punctuation.section.brackets.froth",
-          "match": "(?<!\\S)p\\["
+          "name": "keyword.control.conditional.frothy",
+          "match": "(?<![A-Za-z0-9_.!?@])(?:if|else|when|unless|cond|case)(?![A-Za-z0-9_.!?@])"
         },
         {
-          "name": "punctuation.section.brackets.froth",
-          "match": "\\[|\\]"
+          "name": "keyword.control.loop.frothy",
+          "match": "(?<![A-Za-z0-9_.!?@])(?:while|repeat)(?![A-Za-z0-9_.!?@])"
+        },
+        {
+          "name": "keyword.control.frothy",
+          "match": "(?<![A-Za-z0-9_.!?@])(?:set|call|in|with|here|to|is|record)(?![A-Za-z0-9_.!?@])"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.word.frothy",
+          "match": "(?<![A-Za-z0-9_.!?@])(?:and|or|not)(?![A-Za-z0-9_.!?@])"
+        },
+        {
+          "name": "keyword.operator.symbol.frothy",
+          "match": "==|!=|<=|>=|[-+*/%<>]"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.section.group.begin.frothy",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.section.group.end.frothy",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.section.block.begin.frothy",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.section.block.end.frothy",
+          "match": "\\]"
+        },
+        {
+          "name": "punctuation.separator.arguments.frothy",
+          "match": ","
+        },
+        {
+          "name": "punctuation.separator.statement.frothy",
+          "match": ";"
+        },
+        {
+          "name": "punctuation.separator.call.frothy",
+          "match": ":"
         }
       ]
     }

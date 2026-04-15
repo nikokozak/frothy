@@ -5,6 +5,7 @@
 #include "frothy_eval.h"
 #include "frothy_inspect.h"
 #include "frothy_ir.h"
+#include "frothy_name_rules.h"
 #include "frothy_parser.h"
 #include "frothy_value.h"
 #include "froth_slot_table.h"
@@ -78,11 +79,11 @@ static froth_error_t frothy_emit_text(const char *text) {
 }
 
 static bool frothy_is_name_start(unsigned char byte) {
-  return isalpha(byte) || byte == '_';
+  return frothy_name_byte_is_start(byte);
 }
 
 static bool frothy_is_name_continue(unsigned char byte) {
-  return isalnum(byte) || byte == '_' || byte == '.';
+  return frothy_name_byte_is_slot_continue(byte);
 }
 
 static bool frothy_word_equals(const char *start, size_t length,

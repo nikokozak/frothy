@@ -51,6 +51,7 @@ export interface EditorLike {
   readonly document: DocumentLike;
   selectionText(): string;
   currentLineText(): string;
+  currentRuntimeFormText(): string | null;
   selectedName(): string | null;
 }
 
@@ -217,9 +218,16 @@ export class FrothyController {
       return;
     }
 
-    const text = editor.selectionText().trim().length > 0
-      ? editor.selectionText()
-      : editor.currentLineText();
+    let text: string;
+    try {
+      text = editor.selectionText().trim().length > 0
+        ? editor.selectionText()
+        : editor.currentRuntimeFormText() ?? editor.currentLineText();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.deps.host.showErrorMessage(`Frothy eval failed: ${message}`);
+      return;
+    }
     if (text.trim().length === 0) {
       return;
     }

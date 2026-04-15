@@ -67,6 +67,7 @@ class FakeEditor {
   constructor(fsPath, lineText) {
     this.document = new FakeDocument(fsPath);
     this.lineText = lineText;
+    this.formText = lineText;
     this.selectionValue = "";
     this.name = "probe";
   }
@@ -77,6 +78,10 @@ class FakeEditor {
 
   currentLineText() {
     return this.lineText;
+  }
+
+  currentRuntimeFormText() {
+    return this.formText;
   }
 
   selectedName() {
@@ -353,6 +358,24 @@ async function main() {
     client.resetImpl = async () => ({});
     await controller.sendFile();
     assertEq(controller.getSnapshot().degradedSendFile, false, "degraded cleared");
+  });
+
+  await test("send selection uses the enclosing runtime form", async () => {
+    const host = new FakeHost();
+    host.editor.lineText = "to demo.pong.setup [";
+    host.editor.formText = [
+      "to demo.pong.setup [",
+      "  matrix.init:;",
+      "  matrix.brightness!: 1;",
+      "]",
+    ].join("\n");
+    const client = new FakeClient();
+    const controller = createController(host, client);
+
+    await controller.connectToDevice();
+    await controller.sendSelection();
+    assertEq(client.evalCalls.length, 1, "send selection should eval once");
+    assertEq(client.evalCalls[0], host.editor.formText, "send selection should eval full form");
   });
 
   await test("helper exit drops the session back to disconnected", async () => {
