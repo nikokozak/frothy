@@ -66,6 +66,7 @@ determine what words and pins are available on the target.
   "platform": "esp-idf",
   "chip": "esp32",
   "description": "Short description of the board.",
+  "sources": ["src/my_board_runtime.c"],
 
   "config": {
     "cell_size_bits": 32,
@@ -96,6 +97,7 @@ determine what words and pins are available on the target.
 | `platform` | yes | Platform directory name. Must match a directory under `platforms/`. |
 | `chip` | yes | Chip identifier (e.g. `esp32`, `esp32s3`, `rp2040`, `host`). |
 | `description` | no | One-line summary, shown in editor UI and generated docs. |
+| `sources` | no | Extra C source files owned by this board. Entries resolve first relative to the board directory, then relative to the repo root. |
 | `config` | yes | Build-time configuration. See below. |
 | `peripherals` | yes | Which generic FFI modules this board uses. See below. |
 | `pins` | yes | Named pin constants. See below. |

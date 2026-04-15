@@ -81,6 +81,10 @@ defaults. The generic board-config path now seeds both the inherited Froth
 substrate sizes and selected Frothy runtime capacities when a board needs
 them, including the TM1629 board's larger Frothy payload arena.
 
+Board-owned extra C runtime sources are also declared from `board.json`
+`sources`, so the build and flash path pulls them from the selected board
+declaration instead of product-wide hardcoded source lists.
+
 ## Held Boundary
 
 This tranche does not port the rest of the old workshop runtime.

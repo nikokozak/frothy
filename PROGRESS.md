@@ -105,6 +105,11 @@ file is wrong.
   is exported from that base image, `frothy doctor` no longer treats source-build
   tools as attendee blockers, and the manual release workflow no longer
   promises an attendee firmware artifact that this tranche does not publish.
+- Board-selected build input is now truthful again: host and ESP-IDF builds
+  resolve board-owned extra C sources from the selected board declaration
+  instead of carrying hardcoded TM1629 linkage in the global build lists, so
+  the default v1 board path stays a plain base Frothy image unless a board
+  explicitly declares more.
 - The attendee-facing naming and recovery story is now explicit on the
   maintained Frothy path: Frothy owns the product/docs/editor/install identity,
   the default CLI home is `~/.frothy` with `FROTHY_HOME` override, Frothy now

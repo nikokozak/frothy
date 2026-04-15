@@ -2,6 +2,15 @@ set(FROTH_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../..")
 
 include(${FROTH_ROOT}/cmake/froth_board_assets.cmake)
 
+if(NOT DEFINED FROTH_BOARD OR FROTH_BOARD STREQUAL "")
+  get_property(FROTH_BOARD_CACHE_VALUE CACHE FROTH_BOARD PROPERTY VALUE)
+  if(FROTH_BOARD_CACHE_VALUE)
+    set(FROTH_BOARD "${FROTH_BOARD_CACHE_VALUE}")
+  else()
+    set(FROTH_BOARD "esp32-devkit-v1")
+  endif()
+endif()
+
 set(FROTH_BOARD_CONFIG_CELL_SIZE_BITS 32)
 set(FROTH_BOARD_CONFIG_HEAP_SIZE 4096)
 set(FROTH_BOARD_CONFIG_DS_DEPTH 256)
@@ -120,6 +129,8 @@ if(EXISTS "${FROTH_BOARD_JSON_PATH}")
   endif()
 endif()
 
+frothy_resolve_board_sources(FROTHY_BOARD_SRCS "${FROTH_ROOT}" "${FROTH_BOARD}")
+
 set(FROTHY_KERNEL_PRODUCT_SRCS
     ${FROTH_ROOT}/src/frothy_boot.c
     ${FROTH_ROOT}/src/frothy_base_image.c
@@ -131,10 +142,9 @@ set(FROTHY_KERNEL_PRODUCT_SRCS
     ${FROTH_ROOT}/src/frothy_parser.c
     ${FROTH_ROOT}/src/frothy_snapshot.c
     ${FROTH_ROOT}/src/frothy_snapshot_codec.c
-    ${FROTH_ROOT}/src/frothy_tm1629.c
     ${FROTH_ROOT}/src/frothy_value.c
     ${FROTH_ROOT}/src/frothy_eval.c
-    ${FROTH_ROOT}/boards/${FROTH_BOARD}/ffi.c
+    ${FROTHY_BOARD_SRCS}
 )
 
 set(FROTHY_KERNEL_RETAINED_SUBSTRATE_SRCS

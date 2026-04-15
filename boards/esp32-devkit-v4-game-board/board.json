@@ -20,6 +20,9 @@
     "has_snapshots": true,
     "snapshot_block_size": 2048
   },
+  "sources": [
+    "src/frothy_tm1629.c"
+  ],
   "peripherals": [
     "gpio",
     "adc"

@@ -166,6 +166,8 @@ set(FROTH_TDESC_MAX 32 CACHE STRING "Maximum concurrent transient string descrip
 set(FROTH_FFI_MAX_TABLES 8 CACHE STRING "Maximum number of FFI binding tables.")
 set(FROTH_PROJECT_FFI_CONFIG "" CACHE FILEPATH "Optional project FFI config fragment")
 
+frothy_resolve_board_sources(FROTHY_BOARD_SRCS "${CMAKE_SOURCE_DIR}" "${FROTH_BOARD}")
+
 set(FROTHY_RETAINED_FROTH_SUBSTRATE_SRCS
   src/froth_console.c
   src/froth_stack.c
@@ -176,8 +178,7 @@ set(FROTHY_RETAINED_FROTH_SUBSTRATE_SRCS
 
 set(FROTHY_PRODUCT_FFI_SRCS
   src/frothy_ffi.c
-  src/frothy_tm1629.c
-  boards/${FROTH_BOARD}/ffi.c
+  ${FROTHY_BOARD_SRCS}
 )
 
 set(FROTHY_COMPAT_LAYER_SRCS
@@ -562,13 +563,20 @@ if(FROTHY_BUILD_HOST)
   set(FROTHY_ESP_IDF_BOARD_CONFIG_SMOKE
       "${CMAKE_SOURCE_DIR}/tests/esp_idf_board_config_smoke.sh")
   if(EXISTS "${FROTHY_ESP_IDF_BOARD_CONFIG_SMOKE}")
-    add_test(NAME frothy_esp_idf_board_config_smoke
-      COMMAND /bin/sh "${FROTHY_ESP_IDF_BOARD_CONFIG_SMOKE}"
-              "${CMAKE_COMMAND}"
-              "${CMAKE_SOURCE_DIR}"
-              "esp32-devkit-v4-game-board")
-    set_tests_properties(frothy_esp_idf_board_config_smoke
-      PROPERTIES LABELS "frothy" TIMEOUT 60)
+    foreach(FROTHY_ESP_IDF_BOARD_UNDER_TEST
+            esp32-devkit-v1
+            esp32-devkit-v4-game-board)
+      string(REPLACE "-" "_" FROTHY_ESP_IDF_BOARD_TEST_ID
+             "${FROTHY_ESP_IDF_BOARD_UNDER_TEST}")
+      add_test(NAME "frothy_esp_idf_board_config_${FROTHY_ESP_IDF_BOARD_TEST_ID}_smoke"
+        COMMAND /bin/sh "${FROTHY_ESP_IDF_BOARD_CONFIG_SMOKE}"
+                "${CMAKE_COMMAND}"
+                "${CMAKE_SOURCE_DIR}"
+                "${FROTHY_ESP_IDF_BOARD_UNDER_TEST}")
+      set_tests_properties(
+        "frothy_esp_idf_board_config_${FROTHY_ESP_IDF_BOARD_TEST_ID}_smoke"
+        PROPERTIES LABELS "frothy" TIMEOUT 60)
+    endforeach()
   endif()
 
   if(EXISTS "${CMAKE_SOURCE_DIR}/benchmarks/frothy_runtime_bench.c")

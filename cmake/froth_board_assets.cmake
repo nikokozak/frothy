@@ -10,6 +10,54 @@ function(froth_write_if_changed output content)
   endif()
 endfunction()
 
+function(frothy_resolve_board_sources out_var source_root board)
+  set(board_ffi_path "${source_root}/boards/${board}/ffi.c")
+  if(NOT EXISTS "${board_ffi_path}")
+    message(FATAL_ERROR "board ${board} is missing ffi.c")
+  endif()
+
+  set(board_sources "${board_ffi_path}")
+  set(board_json_path "${source_root}/boards/${board}/board.json")
+  if(EXISTS "${board_json_path}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+      "${board_json_path}"
+    )
+
+    file(READ "${board_json_path}" board_json_content)
+    string(JSON board_source_count ERROR_VARIABLE board_source_error
+           LENGTH "${board_json_content}" sources)
+    if(NOT board_source_error AND NOT board_source_count STREQUAL "0")
+      math(EXPR board_last_source_index "${board_source_count} - 1")
+      foreach(board_source_index RANGE 0 ${board_last_source_index})
+        string(JSON board_source_entry GET "${board_json_content}" sources
+               ${board_source_index})
+        if(IS_ABSOLUTE "${board_source_entry}")
+          message(FATAL_ERROR
+            "board ${board} source must be relative, got ${board_source_entry}")
+        endif()
+        if("${board_source_entry}" MATCHES "(^|[\\\\/])\\.\\.([\\\\/]|$)")
+          message(FATAL_ERROR
+            "board ${board} source may not escape the repo root: ${board_source_entry}")
+        endif()
+
+        set(board_relative_source "${source_root}/boards/${board}/${board_source_entry}")
+        set(root_relative_source "${source_root}/${board_source_entry}")
+        if(EXISTS "${board_relative_source}")
+          list(APPEND board_sources "${board_relative_source}")
+        elseif(EXISTS "${root_relative_source}")
+          list(APPEND board_sources "${root_relative_source}")
+        else()
+          message(FATAL_ERROR
+            "board ${board} declares missing source ${board_source_entry}")
+        endif()
+      endforeach()
+    endif()
+  endif()
+
+  list(REMOVE_DUPLICATES board_sources)
+  set(${out_var} "${board_sources}" PARENT_SCOPE)
+endfunction()
+
 function(froth_embed_board_assets target source_root board use_custom_targets)
   target_include_directories(${target} PRIVATE "${CMAKE_BINARY_DIR}")
 
