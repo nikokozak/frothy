@@ -13,3 +13,5 @@ typedef struct {
 
 froth_error_t frothy_boot_run_startup(frothy_startup_report_t *report);
 froth_error_t frothy_boot(void);
+
+void frothy_boot_test_set_skip_boot(bool skip);

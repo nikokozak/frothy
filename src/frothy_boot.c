@@ -120,9 +120,14 @@ frothy_boot_report_error(frothy_startup_report_t *report, bool restore_phase,
 }
 
 static froth_error_t frothy_boot_test_pick_active_error = FROTH_OK;
+static bool frothy_boot_test_skip_boot = false;
 
 void frothy_boot_test_set_pick_active_error(froth_error_t err) {
   frothy_boot_test_pick_active_error = err;
+}
+
+void frothy_boot_test_set_skip_boot(bool skip) {
+  frothy_boot_test_skip_boot = skip;
 }
 
 froth_error_t frothy_boot_run_startup(frothy_startup_report_t *report) {
@@ -171,6 +176,9 @@ froth_error_t frothy_boot_run_startup(frothy_startup_report_t *report) {
   err = frothy_boot_should_run(&should_run);
   if (err != FROTH_OK) {
     return frothy_boot_report_error(report, false, err);
+  }
+  if (frothy_boot_test_skip_boot) {
+    should_run = false;
   }
   if (!should_run) {
     return FROTH_OK;

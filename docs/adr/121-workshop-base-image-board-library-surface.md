@@ -1,10 +1,10 @@
-# Frothy ADR-117: Workshop Base-Image Board/Library Surface
+# Frothy ADR-121: Workshop Base-Image Board/Library Surface
 
 **Date**: 2026-04-14
 **Status**: Accepted
 **Spec sections**: `docs/spec/Frothy_Language_Spec_v0_1.md`, sections 4, 8, 10 and Appendix C
 **Roadmap queue item**: `Workshop base-image library and board surface`
-**Related ADRs**: `docs/adr/108-frothy-ffi-boundary.md`, `docs/adr/107-interactive-profile-boot-and-interrupt.md`
+**Related ADRs**: `docs/adr/108-frothy-ffi-boundary.md`, `docs/adr/107-interactive-profile-boot-and-interrupt.md`, `docs/adr/119-tm1629-board-base-surface-and-registry.md`
 
 ## Context
 
@@ -17,11 +17,12 @@ must preserve the accepted Frothy boundary:
 - do not reopen the native boundary or the persistence model first
 
 The post-`v0.1` queue item for workshop board/library work specifically calls
-for blink, animation, `millis`, ADC, GPIO, and related helpers.
+for blink, animation, `millis`, ADC, GPIO, display helpers, input helpers, and
+one truthful shipped demo-board behavior.
 
 ## Decision
 
-The first workshop base-image cut is:
+The maintained workshop base-image cut is:
 
 - add `millis()` as a native base-image uptime read backed by
   `platform_uptime_ms()`, wrapped into the existing immediate integer range
@@ -29,13 +30,8 @@ The first workshop base-image cut is:
   `gpio.read(pin)`
 - keep existing native board bindings unchanged:
   `gpio.mode`, `gpio.write`, `ms`, `adc.read`, `uart.*`, and seeded pins
-- add a Frothy-native preflashed workshop library loaded from
-  `boards/<board>/lib/workshop.frothy`
-
-Note:
-the initial workshop cut used `workshop.frothy`; the maintained board path was
-later generalized by ADR-119 to `boards/<board>/lib/base.frothy` without
-changing the base-image rule.
+- load the Frothy-native workshop library from `boards/<board>/lib/base.frothy`
+  as base image
 
 The shipped workshop base-library names are:
 
@@ -47,23 +43,35 @@ The shipped workshop base-library names are:
   `gpio.toggle(pin)`
 - `adc.max`
 - `adc.percent(pin)`
+- `tm1629.raw.*`, `tm1629.*`, `matrix.*`, `grid.*`, `joy.*`, `knob.*`
+
+The shipped demo-board namespace is:
+
+- `demo.pong.*`
+- `boot`
+
+The tiny public workshop repo is exported from that same canonical
+`base.frothy` source. It is not an independently authored second demo source.
 
 ## Base/Overlay Rule
 
-The workshop library is seeded as base image, not as overlay.
+The workshop library and shipped Pong demo are seeded as base image, not as
+overlay.
 
 Implementation rule:
 
 - the embedded workshop source is evaluated during `frothy_base_image_install()`
 - base-image seeding runs with `boot_complete` cleared so top-level writes are
   marked base rather than overlay
-- the base-image code keeps an explicit list of workshop slot names so reset and
-  `wipe()` reinstall them even after overlay redefinition
+- board-owned base names are captured at install time so reset and
+  `dangerous.wipe` reinstall them even after overlay redefinition
 
 User-visible consequence:
 
-- redefining `blink` or `adc.percent` in the session is allowed
-- `wipe()` restores the preflashed workshop definitions
+- redefining `blink`, `matrix.init`, or `demo.pong.frame` in the session is
+  allowed
+- `dangerous.wipe` restores the preflashed workshop definitions and shipped
+  Pong demo
 
 ## Held Boundary
 
@@ -73,7 +81,7 @@ This tranche does not:
 - add new handle/value classes
 - calibrate ADC into volts or board-specific physical units
 - widen into PWM, I2C, UART teaching helpers, or board-specific sensor APIs
-- migrate inherited `boards/**/lib/board.froth` into product surface by default
+- add a second workshop runtime mode or an independent starter scaffold
 
 ## Proof
 
@@ -81,16 +89,17 @@ Host proof stays mandatory:
 
 - `cmake -S . -B build && cmake --build build`
 - `ctest --test-dir build --output-on-failure`
-- `sh tools/frothy/proof_m10_smoke.sh --host-only`
+- `sh tools/frothy/export_workshop_repo.sh check`
 
 Board proof remains the exact workshop command path:
 
-- `sh tools/frothy/proof_m10_smoke.sh --assume-blink-confirmed <PORT>`
+- `sh tools/frothy/proof.sh workshop-v4 <PORT>`
 
 The proof ladder must show:
 
 - `millis()` is base/native and monotonic across `ms(...)`
 - `gpio.read` round-trips on host and board
-- `blink` and `adc.percent` are base/code slots
-- overlay redefinition is removed by `wipe()`
-- the preflashed workshop library survives reset/wipe as part of the base image
+- board helpers and `demo.pong.*` are base-owned slots
+- overlay redefinition is removed by `dangerous.wipe`
+- the preflashed workshop library and shipped Pong demo survive reset/wipe as
+  part of the base image

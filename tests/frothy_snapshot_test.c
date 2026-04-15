@@ -807,6 +807,10 @@ static int prepare_startup_state(void) {
   return 1;
 }
 
+static bool startup_runs_base_boot(void) {
+  return frothy_base_image_has_slot("demo.pong.setup");
+}
+
 static int expect_startup_report(const frothy_startup_report_t *report,
                                  bool snapshot_found,
                                  froth_error_t restore_error,
@@ -1527,11 +1531,16 @@ static int test_startup_without_snapshot(void) {
 
   ok &= expect_ok("junk is 1", &value);
   release_value(&value);
+  if (startup_runs_base_boot()) {
+    frothy_boot_test_set_skip_boot(true);
+  }
   if (frothy_boot_run_startup(&report) != FROTH_OK) {
     fprintf(stderr, "startup without snapshot should not fail\n");
+    frothy_boot_test_set_skip_boot(false);
     leave_temp_workspace(&workspace);
     return 0;
   }
+  frothy_boot_test_set_skip_boot(false);
 
   ok &= expect_startup_report(&report, false, FROTH_OK, false, FROTH_OK,
                               "startup without snapshot");
@@ -1815,12 +1824,17 @@ static int test_startup_restore_without_boot(void) {
   ok &= expect_ok("label is \"mutated\"", &value);
   release_value(&value);
   ok &= prepare_startup_state();
+  if (startup_runs_base_boot()) {
+    frothy_boot_test_set_skip_boot(true);
+  }
 
   if (frothy_boot_run_startup(&report) != FROTH_OK) {
     fprintf(stderr, "startup restore without boot should not fail\n");
+    frothy_boot_test_set_skip_boot(false);
     leave_temp_workspace(&workspace);
     return 0;
   }
+  frothy_boot_test_set_skip_boot(false);
 
   ok &= expect_startup_report(&report, true, FROTH_OK, false, FROTH_OK,
                               "startup restore without boot");

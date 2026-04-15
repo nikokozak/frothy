@@ -241,6 +241,12 @@ static int test_surface_metadata_and_smoke(void) {
   ok &= expect_ok("grid.height", &value);
   ok &= expect_int_value(value, 8, "grid.height");
   release_value(&value);
+  ok &= expect_ok("demo.pong.frameMs", &value);
+  ok &= expect_int_value(value, 42, "demo.pong.frameMs");
+  release_value(&value);
+  ok &= expect_ok("demo.pong.ballStepMs", &value);
+  ok &= expect_int_value(value, 160, "demo.pong.ballStepMs");
+  release_value(&value);
   ok &= expect_ok("adc.percent: A0", &value);
   ok &= expect_int_value(value, expected_a0_percent, "adc.percent: A0");
   release_value(&value);
@@ -278,6 +284,30 @@ static int test_surface_metadata_and_smoke(void) {
 
   ok &= expect_ok("matrix.init:", &value);
   ok &= expect_nil_value(value, "matrix.init:");
+  release_value(&value);
+  ok &= expect_ok("demo.pong.setup:", &value);
+  ok &= expect_nil_value(value, "demo.pong.setup:");
+  release_value(&value);
+  ok &= expect_ok("demo.pong.draw:", &value);
+  ok &= expect_nil_value(value, "demo.pong.draw:");
+  release_value(&value);
+  ok &= expect_ok("tm1629.row@: 2", &value);
+  ok &= expect_int_value(value, 2049, "demo.pong row 2 paddles");
+  release_value(&value);
+  ok &= expect_ok("tm1629.row@: 3", &value);
+  ok &= expect_int_value(value, 2081, "demo.pong row 3 paddles plus ball");
+  release_value(&value);
+  ok &= expect_ok("tm1629.row@: 4", &value);
+  ok &= expect_int_value(value, 2049, "demo.pong row 4 paddles");
+  release_value(&value);
+  ok &= expect_ok("demo.pong.advanceBall:", &value);
+  ok &= expect_nil_value(value, "demo.pong.advanceBall:");
+  release_value(&value);
+  ok &= expect_ok("demo.pong.ballX", &value);
+  ok &= expect_int_value(value, 6, "demo.pong.ballX after advance");
+  release_value(&value);
+  ok &= expect_ok("demo.pong.ballY", &value);
+  ok &= expect_int_value(value, 4, "demo.pong.ballY after advance");
   release_value(&value);
   ok &= expect_error("tm1629.raw.init: -1, 19, 23", FROTH_ERROR_BOUNDS);
   ok &= expect_error("tm1629.raw.init: 18, 18, 23", FROTH_ERROR_BOUNDS);
@@ -334,6 +364,12 @@ static int test_surface_metadata_and_smoke(void) {
   ok &= capture_slot_info_text("knob.left", &slot_info);
   ok &= expect_contains(slot_info, "owner: base image", "knob.left owner");
   ok &= expect_contains(slot_info, "kind: code", "knob.left kind");
+  free(slot_info);
+  slot_info = NULL;
+
+  ok &= capture_slot_info_text("boot", &slot_info);
+  ok &= expect_contains(slot_info, "owner: base image", "boot owner");
+  ok &= expect_contains(slot_info, "kind: code", "boot kind");
   free(slot_info);
   slot_info = NULL;
 

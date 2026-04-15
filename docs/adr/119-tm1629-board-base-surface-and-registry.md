@@ -4,7 +4,7 @@
 **Status**: Accepted
 **Spec sections**: `docs/spec/Frothy_Language_Spec_v0_1.md`, sections 4, 8, 10 and Appendix C
 **Roadmap queue item**: `Workshop starter project and frozen board/game surface`
-**Related ADRs**: `docs/adr/108-frothy-ffi-boundary.md`, `docs/adr/117-workshop-base-image-board-library-surface.md`
+**Related ADRs**: `docs/adr/108-frothy-ffi-boundary.md`, `docs/adr/121-workshop-base-image-board-library-surface.md`
 
 ## Context
 
