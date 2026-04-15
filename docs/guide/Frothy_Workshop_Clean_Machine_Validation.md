@@ -38,9 +38,10 @@ The current release workflow builds and publishes:
 The attendee extension path is the Marketplace listing `frothy.frothy`, with
 the VSIX kept as fallback.
 The workshop proto-board firmware is not a published attendee asset.
-Carry the CLI assets, the matching checksums file, access to the workshop repo
-for `pong.frothy`, and preflashed `esp32-devkit-v4-game-board` boards into
-the clean-machine passes.
+Carry the CLI assets, the matching checksums file, access to
+[nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) for
+`pong.frothy`, and preflashed `esp32-devkit-v4-game-board` boards into the
+clean-machine passes.
 
 ## Clean-Machine Procedure
 
@@ -55,7 +56,7 @@ the clean-machine passes.
    `Frothy: Connect Device`.
 8. Confirm the board is already running the shipped Pong demo.
 9. Run `Frothy: Send Selection / Line` on `1 + 1`.
-10. Open the workshop repo and send `pong.frothy`.
+10. Open [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) and send `pong.frothy`.
 11. Change one visible behavior in `pong.frothy` and resend it.
 12. Confirm the prompt and workshop base image with `words`,
    `info @matrix.init`, `info @grid.clear`, `info @joy.up?`, and

@@ -45,7 +45,7 @@ You do not need a repo checkout, ESP-IDF, or a source build before arriving.
 | CLI | macOS via Homebrew; Linux x86_64 via release tarball |
 | VS Code | Marketplace listing `frothy.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback on a machine that can already run `frothy` |
 | Hardware | preflashed `esp32-devkit-v4-game-board` proto board |
-| Workshop source | one tiny repo containing `README.md` and `pong.frothy` |
+| Workshop source | [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) |
 
 Not promised here:
 
@@ -59,7 +59,7 @@ Not promised here:
 macOS:
 
 ```sh
-brew tap nikokozak/homebrew-frothy
+brew tap nikokozak/frothy
 brew install frothy
 frothy doctor
 ```
@@ -93,7 +93,7 @@ available during the transition.
 
 1. Plug in the preflashed `esp32-devkit-v4-game-board` proto board.
 2. Confirm the board is already running the shipped Pong demo.
-3. Clone or open the workshop repo and open `pong.frothy`.
+3. Clone or open [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) and open `pong.frothy`.
 4. Open VS Code.
 5. Run `Frothy: Connect Device`.
 6. Run `Frothy: Send Selection / Line` on a small expression.

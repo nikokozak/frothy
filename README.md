@@ -39,7 +39,7 @@ Use the smallest maintained doc set for the workshop path:
 - `boards/esp32-devkit-v4-game-board/WORKSHOP.md`: room-side hardware pack-out and
   recovery card
 - `workshop/README.md`: the tiny checked-in source for the public workshop
-  repo and `pong.frothy`
+  repo, published at [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop)
 - `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`: workshop
   rehearsal status note and required real-device proof command
 
@@ -55,7 +55,7 @@ publish:
 | VS Code | Marketplace listing `frothy.frothy`, with matching `frothy-vscode-v<extension-version>.vsix` fallback | supported on the same machines that can already run the installed CLI |
 | Firmware / recovery | workshop-board recovery for `esp32-devkit-v4-game-board` is maintainer-only from the repo checkout and [boards/esp32-devkit-v4-game-board/WORKSHOP.md](/Users/niko/Developer/Frothy/boards/esp32-devkit-v4-game-board/WORKSHOP.md) | attendees do not flash; maintainers carry preflashed `esp32-devkit-v4-game-board` boards |
 | Source build | checkout build via `make build` | maintainer path, not required before the workshop |
-| Workshop repo | tiny public repo containing `README.md` and `pong.frothy` | attendees open and edit `pong.frothy` against the preflashed demo board |
+| Workshop repo | [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) containing `README.md` and `pong.frothy` | attendees open and edit `pong.frothy` against the preflashed demo board |
 
 Windows, extra boards, and custom toolchain setups are not part of the
 maintained attendee promise for this tranche.
@@ -99,7 +99,7 @@ The maintained workshop assumptions for this tranche are:
   they arrive
 - the current workshop run uses a preflashed `esp32-devkit-v4-game-board`
   proto board
-- the tiny public workshop repo is just `README.md` plus `pong.frothy`
+- the public workshop repo is [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop)
 - if VS Code cannot find `frothy` on `PATH`, set `frothy.cliPath` to the
   absolute path of the installed binary; legacy `froth` fallback remains
   available during the transition

@@ -27,7 +27,7 @@ Extension-specific expectations:
 - macOS/Homebrew and Linux x86_64 release tarballs are the maintained attendee
   paths for this tranche
 - Windows is not part of the maintained workshop path
-- the workshop repo is intentionally tiny: `README.md` plus `pong.frothy`
+- the workshop repo is intentionally tiny: [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop)
 - VS Code auto-discovers `frothy` first and falls back to legacy `froth`
   during the transition
 - if VS Code cannot find the CLI on `PATH`, set `frothy.cliPath` to the

@@ -6,7 +6,7 @@ It covers only the promised attendee surface:
 - released `frothy` CLI
 - Frothy VS Code Marketplace install, with matching VSIX fallback
 - preflashed `esp32-devkit-v4-game-board` proto board
-- workshop repo containing `pong.frothy`
+- workshop repo [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop)
 
 Start elsewhere when needed:
 
