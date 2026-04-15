@@ -23,8 +23,11 @@ The current workshop promise is narrower than the repo's total board surface:
 
 - preflashed `esp32-devkit-v4-game-board` proto board in the room
 - released CLI plus matching VSIX only
-- the published recovery zip still targets `esp32-devkit-v1`
+- no attendee-facing firmware or recovery zip in this tranche
 - no extra-board guarantee before the workshop
+
+`esp32-devkit-v1` remains an accepted board model in the repo; it is simply
+not the mounted preflashed workshop board.
 
 The room-side hardware checklist and recovery card for that board live in
 `boards/esp32-devkit-v4-game-board/WORKSHOP.md`.

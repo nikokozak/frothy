@@ -42,7 +42,7 @@ file is wrong.
   `gpio.read()` are now native base slots, the preflashed workshop helper
   library is seeded as base image and survives `dangerous.wipe`, and the M10 proof
   ladder now covers `blink`, `animate`, GPIO helpers, and `adc.percent`.
-  Reference: `docs/adr/117-workshop-base-image-board-library-surface.md`.
+  Reference: `docs/adr/121-workshop-base-image-board-library-surface.md`.
 - The Frothy-native TM1629 workshop board cut is now landed:
   `esp32-devkit-v4-game-board` ships a maintained TM1629 C runtime plus
   baked-in `tm1629.raw.*`, `tm1629.*`, and `matrix.*` base-image surfaces;
@@ -64,7 +64,7 @@ file is wrong.
   all survived the local proof ladder plus repeated review cycles.
 - The first detailed Friday workshop run spec is now checked in at
   `docs/roadmap/Frothy_Workshop_Run_Spec_2026-04-17.md`; it freezes the lesson
-  arc, `Get Home` inspection puzzle, `Get Home+` starter game, required helper
+  arc, `Get Home` inspection puzzle, the shared `pong.frothy` game, required helper
   surface, persistence teaching points, and rehearsal checklist.
 - The v4 workshop-helper tranche is now landed on the maintained proto-board
   path: `esp32-devkit-v4-game-board` base now carries the generic workshop
@@ -100,6 +100,11 @@ file is wrong.
   `tools/package-release.sh`, and the VS Code docs all agree on the promised
   attendee path of released CLI assets, matching VSIX, and preflashed
   `esp32-devkit-v4-game-board` hardware.
+- The workshop product shape is now simpler and single-sourced in-repo: the
+  v4 board base image is the canonical demo-board source, `workshop/pong.frothy`
+  is exported from that base image, `frothy doctor` no longer treats source-build
+  tools as attendee blockers, and the manual release workflow no longer
+  promises an attendee firmware artifact that this tranche does not publish.
 - The attendee-facing naming and recovery story is now explicit on the
   maintained Frothy path: Frothy owns the product/docs/editor/install identity,
   the default CLI home is `~/.frothy` with `FROTHY_HOME` override, Frothy now
@@ -107,12 +112,9 @@ file is wrong.
   whole-file editor send blocks unsafe replay when control `reset` is
   unavailable, and the control proof ladder now re-checks recovery on the real
   ESP32 path.
-- The earlier lesson/game starter scaffold and its proof path are still
-  available on `frothy new --target esp32-devkit-v1`; that board target
-  remains valid, and `esp32-devkit-v1` versus
-  `esp32-devkit-v4-game-board` names board revisions rather than protocol
-  generations. The current workshop board/base-image surface is the v4 helper
-  path.
+- `esp32-devkit-v1` and `esp32-devkit-v4-game-board` remain accepted board
+  models in the repo; the workshop promise is simply narrower and currently
+  centered on the mounted preflashed v4 board.
 - The workshop-operational slice is now concrete in-repo without widening the
   product surface: `README.md` points at one minimal front door,
   `docs/guide/Frothy_Workshop_Quick_Reference.md` keeps the in-room prompt and

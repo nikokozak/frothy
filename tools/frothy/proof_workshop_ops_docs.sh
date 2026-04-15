@@ -5,9 +5,13 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 cd "$repo_root"
 
+sh tools/frothy/export_workshop_repo.sh check
+test -f workshop/README.md
+
 rg -n '^## Start Here$' README.md
 rg -n 'Frothy_Workshop_Quick_Reference\.md|Frothy_Workshop_Clean_Machine_Validation\.md|boards/esp32-devkit-v4-game-board/WORKSHOP\.md|Frothy_Workshop_Rehearsal_Closeout_2026-04-14\.md' \
   README.md
+rg -n 'pong\.frothy|export_workshop_repo\.sh' workshop/README.md
 rg -n 'proof\.sh workshop-v4 <PORT>' README.md \
   docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md
 rg -n 'Frothy_Workshop_Quick_Reference\.md|Frothy_Workshop_Clean_Machine_Validation\.md' \

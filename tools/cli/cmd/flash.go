@@ -1,35 +1,23 @@
 package cmd
 
 import (
-	"archive/zip"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/nikokozak/frothy/tools/cli/internal/firmware"
 	"github.com/nikokozak/frothy/tools/cli/internal/frothycontrol"
 	"github.com/nikokozak/frothy/tools/cli/internal/project"
-	"github.com/nikokozak/frothy/tools/cli/internal/sdk"
 	serialpkg "github.com/nikokozak/frothy/tools/cli/internal/serial"
 )
 
-const prebuiltFirmwareBoard = "esp32-devkit-v1"
-
-var flashLookPath = exec.LookPath
 var flashBuildManifest = runBuildManifest
 var flashResolvePort = resolveFlashPort
 var flashESPIDFDirFn = flashESPIDFDir
 var flashApplyRuntime = applyRuntimeAfterFlash
-
-type firmwareManifest = firmware.Manifest
 
 func runFlash() error {
 	cwd, err := os.Getwd()
@@ -52,7 +40,7 @@ func runFlash() error {
 		return runFlashLegacy()
 	}
 
-	return runFlashPrebuilt()
+	return fmt.Errorf("`%s flash` now supports source-based flashing only. Workshop boards are preflashed; for maintainer flashing, run from a Frothy project or repo checkout", cliCommandName)
 }
 
 func runFlashManifest(manifest *project.Manifest, root string) error {
@@ -140,323 +128,6 @@ func runFlashLegacy() error {
 	default:
 		return fmt.Errorf("unknown target: %s", targetFlag)
 	}
-}
-
-func runFlashPrebuilt() error {
-	if targetFlag != "" && targetFlag != "esp-idf" {
-		return fmt.Errorf("pre-built flashing only supports the default ESP32 firmware; remove --target %s or create a project with `%s new`", targetFlag, cliCommandName)
-	}
-
-	version, err := cliVersion()
-	if err != nil {
-		return err
-	}
-
-	cacheDir, err := firmwareCacheDir(version)
-	if err != nil {
-		return err
-	}
-
-	manifest, err := validateFirmwareDir(cacheDir)
-	if err != nil {
-		manifest, err = populateFirmwareCache(version, cacheDir)
-		if err != nil {
-			return fmt.Errorf("pre-built firmware not available for v%s: %w\nTo build from source, create a project with `%s new` and run `%s build && %s flash`.", version, err, cliCommandName, cliCommandName, cliCommandName)
-		}
-	}
-
-	port, err := resolveFlashPort()
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Flashing pre-built firmware v%s to %s...\n", version, port)
-	return flashPrebuiltFirmware(cacheDir, manifest, port)
-}
-
-func firmwareCacheDir(version string) (string, error) {
-	home, err := sdk.FrothyHome()
-	if err != nil {
-		return "", err
-	}
-
-	return filepath.Join(home, "firmware", "v"+version, prebuiltFirmwareBoard), nil
-}
-
-func populateFirmwareCache(version string, cacheDir string) (*firmwareManifest, error) {
-	parentDir := filepath.Dir(cacheDir)
-	if err := os.MkdirAll(parentDir, 0755); err != nil {
-		return nil, fmt.Errorf("create firmware cache parent: %w", err)
-	}
-
-	tempDir, err := os.MkdirTemp(parentDir, ".firmware-*")
-	if err != nil {
-		return nil, fmt.Errorf("create firmware temp dir: %w", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	archivePath := filepath.Join(tempDir, firmwareZipAssetName(version))
-	if err := downloadReleaseAsset(version, firmwareZipAssetName(version), archivePath); err != nil {
-		return nil, err
-	}
-
-	checksums, err := fetchReleaseChecksums(version)
-	if err != nil {
-		return nil, err
-	}
-
-	wantSHA, ok := checksums[firmwareZipAssetName(version)]
-	if !ok {
-		return nil, fmt.Errorf("checksums missing %s", firmwareZipAssetName(version))
-	}
-	if err := verifyFileSHA256(archivePath, wantSHA); err != nil {
-		return nil, err
-	}
-
-	extractDir := filepath.Join(tempDir, "extract")
-	if err := extractFirmwareZip(archivePath, extractDir); err != nil {
-		return nil, err
-	}
-
-	manifest, err := validateFirmwareDir(extractDir)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := activateDirectory(cacheDir, extractDir); err != nil {
-		return nil, fmt.Errorf("activate firmware cache: %w", err)
-	}
-
-	return manifest, nil
-}
-
-func downloadReleaseAsset(version string, asset string, destPath string) error {
-	return downloadFile(releaseAssetURL(version, asset), destPath)
-}
-
-func fetchReleaseChecksums(version string) (map[string]string, error) {
-	url := releaseAssetURL(version, checksumsAssetName(version))
-	resp, err := setupHTTPClient.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("GET %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GET %s: unexpected status %s", url, resp.Status)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read checksums: %w", err)
-	}
-
-	checksums := make(map[string]string)
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			return nil, fmt.Errorf("invalid checksum line: %s", line)
-		}
-		checksums[filepath.Base(fields[len(fields)-1])] = fields[0]
-	}
-
-	return checksums, nil
-}
-
-func verifyFileSHA256(path string, want string) error {
-	file, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("open %s: %w", path, err)
-	}
-	defer file.Close()
-
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return fmt.Errorf("hash %s: %w", path, err)
-	}
-
-	got := hex.EncodeToString(hash.Sum(nil))
-	if !strings.EqualFold(got, want) {
-		return fmt.Errorf("checksum mismatch for %s: got %s want %s", filepath.Base(path), got, want)
-	}
-
-	return nil
-}
-
-func extractFirmwareZip(archivePath string, destDir string) error {
-	reader, err := zip.OpenReader(archivePath)
-	if err != nil {
-		return fmt.Errorf("open %s: %w", archivePath, err)
-	}
-	defer reader.Close()
-
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("create extract dir: %w", err)
-	}
-
-	for _, file := range reader.File {
-		destPath, err := firmware.SafeJoin(destDir, file.Name)
-		if err != nil {
-			return err
-		}
-
-		info := file.FileInfo()
-		if info.IsDir() {
-			if err := os.MkdirAll(destPath, 0755); err != nil {
-				return fmt.Errorf("create %s: %w", destPath, err)
-			}
-			continue
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("zip contains unsupported symlink: %s", file.Name)
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("zip contains unsupported entry: %s", file.Name)
-		}
-
-		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-			return fmt.Errorf("create dir for %s: %w", destPath, err)
-		}
-
-		src, err := file.Open()
-		if err != nil {
-			return fmt.Errorf("open zip entry %s: %w", file.Name, err)
-		}
-
-		dst, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-		if err != nil {
-			src.Close()
-			return fmt.Errorf("create %s: %w", destPath, err)
-		}
-
-		_, copyErr := io.Copy(dst, src)
-		closeErr := dst.Close()
-		srcErr := src.Close()
-		if copyErr != nil {
-			return fmt.Errorf("write %s: %w", destPath, copyErr)
-		}
-		if closeErr != nil {
-			return fmt.Errorf("close %s: %w", destPath, closeErr)
-		}
-		if srcErr != nil {
-			return fmt.Errorf("close zip entry %s: %w", file.Name, srcErr)
-		}
-	}
-
-	return nil
-}
-
-func validateFirmwareDir(dir string) (*firmwareManifest, error) {
-	manifestPath := filepath.Join(dir, "flasher_args.json")
-	manifest, err := firmware.LoadManifest(manifestPath)
-	if err != nil {
-		return nil, fmt.Errorf("firmware cache invalid: %w", err)
-	}
-	if err := firmware.ValidateFiles(dir, manifest); err != nil {
-		return nil, fmt.Errorf("firmware cache invalid: %w", err)
-	}
-
-	return manifest, nil
-}
-
-func flashPrebuiltFirmware(root string, manifest *firmwareManifest, port string) error {
-	esptoolPath, err := resolveEsptool()
-	if err != nil {
-		return err
-	}
-
-	files, err := firmware.OrderedFiles(manifest)
-	if err != nil {
-		return err
-	}
-
-	args := []string{
-		"--chip", manifest.ExtraEsptoolArgs.Chip,
-		"--port", port,
-	}
-	if manifest.ExtraEsptoolArgs.Before != "" {
-		args = append(args, "--before", manifest.ExtraEsptoolArgs.Before)
-	}
-	if manifest.ExtraEsptoolArgs.After != "" {
-		args = append(args, "--after", manifest.ExtraEsptoolArgs.After)
-	}
-	if manifest.ExtraEsptoolArgs.Stub != nil && !*manifest.ExtraEsptoolArgs.Stub {
-		args = append(args, "--no-stub")
-	}
-
-	args = append(args, "write_flash")
-	args = append(args, manifest.WriteFlashArgs...)
-	for _, file := range files {
-		fullPath, err := firmware.RegularFilePath(root, file.Path)
-		if err != nil {
-			return err
-		}
-		args = append(args, file.Offset, fullPath)
-	}
-
-	cmd := exec.Command(esptoolPath, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("esptool flash: %w", err)
-	}
-
-	return nil
-}
-func resolveEsptool() (string, error) {
-	for _, candidate := range []string{"esptool.py", "esptool"} {
-		path, err := flashLookPath(candidate)
-		if err == nil {
-			return path, nil
-		}
-	}
-
-	return "", fmt.Errorf("esptool is required for flashing. Install it with:\n  brew install esptool\n  pip install esptool")
-}
-
-func firmwareZipAssetName(version string) string {
-	return fmt.Sprintf("frothy-v%s-%s.zip", version, prebuiltFirmwareBoard)
-}
-
-func checksumsAssetName(version string) string {
-	return fmt.Sprintf("frothy-v%s-checksums.txt", version)
-}
-
-func activateDirectory(targetDir string, sourceDir string) error {
-	parentDir := filepath.Dir(targetDir)
-	backupDir := ""
-
-	if _, err := os.Stat(targetDir); err == nil {
-		backupDir = filepath.Join(parentDir, "."+filepath.Base(targetDir)+"-backup")
-		if err := os.RemoveAll(backupDir); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("clear firmware backup dir: %w", err)
-		}
-		if err := os.Rename(targetDir, backupDir); err != nil {
-			return fmt.Errorf("stage existing firmware cache: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("stat existing firmware cache: %w", err)
-	}
-
-	if err := os.Rename(sourceDir, targetDir); err != nil {
-		if backupDir != "" {
-			_ = os.Rename(backupDir, targetDir)
-		}
-		return err
-	}
-
-	if backupDir != "" {
-		if err := os.RemoveAll(backupDir); err != nil {
-			return fmt.Errorf("remove old firmware cache backup: %w", err)
-		}
-	}
-
-	return nil
 }
 
 func flashESPIDF(root string) error {

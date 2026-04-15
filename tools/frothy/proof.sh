@@ -102,16 +102,15 @@ case "$1" in
       usage >&2
       exit 1
     }
-    for proof_name in stack-budget repl ctrl-c control editor inspect boot ffi safe-boot workshop-docs; do
+    for proof_name in stack-budget repl ctrl-c control inspect boot ffi safe-boot workshop-docs; do
       printf '==> %s\n' "$proof_name"
-      if [ "$proof_name" = control ] || [ "$proof_name" = editor ]; then
+      if [ "$proof_name" = control ]; then
         sh "$0" "$proof_name" --host-only
       else
         sh "$0" "$proof_name"
       fi
     done
-    printf '==> m10 --host-only\n'
-    exec sh "$0" m10 --host-only
+    exit 0
     ;;
   *)
     proof_name=$1

@@ -7,7 +7,7 @@ TEST_RUNNER_SOURCES := $(shell find tools/cli/cmd/test-runner -type f -name '*.g
 
 .PHONY: help \
 	build build-kernel build-cli release run clean clean-kernel clean-cli \
-	test test-all test-publishability test-frothy test-cli test-cli-local test-vscode test-vscode-board test-integration test-list test-runner-bin sdk-payload version version-bump version-check \
+	test test-all test-publishability test-frothy test-cli test-cli-local test-vscode test-vscode-board test-integration test-list test-runner-bin workshop-export-check sdk-payload version version-bump version-check \
 	check-cmake check-make check-go
 
 help:
@@ -55,6 +55,9 @@ test-all: version-check test-runner-bin ## Run the exhaustive local test gate (C
 
 test-publishability: version-check test-runner-bin ## Run the full shipped-surface local gate (adds VS Code host smoke)
 	@FROTHY_EDITOR_SMOKE_PORT="$(PORT)" $(TEST_RUNNER) publishability
+
+workshop-export-check: ## Verify workshop/pong.frothy matches the canonical v4 base image export
+	@sh tools/frothy/export_workshop_repo.sh check
 
 test-frothy: version-check test-runner-bin ## Run Frothy host ctests and proofs
 	@$(TEST_RUNNER) frothy

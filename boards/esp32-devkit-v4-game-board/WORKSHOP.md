@@ -57,7 +57,8 @@ sh tools/frothy/proof.sh workshop-v4 <PORT>
 3. If saved state is broken, power-cycle or reset the board, press `Ctrl-C`
    during the safe-boot window, then run `dangerous.wipe`.
 4. After recovery, confirm `info @matrix.init`, `info @grid.clear`,
-   `info @joy.up?`, and `1 + 1` at the prompt before handing the board back.
+   `info @joy.up?`, `info @demo.pong.run`, and `1 + 1` at the prompt before
+   handing the board back.
 5. If the display is dark, run `matrix.init:`, `grid.clear:`, and `grid.show:`
    before assuming the board is bad.
 6. If the VS Code path is blocked, keep using the CLI path instead of changing
@@ -65,17 +66,8 @@ sh tools/frothy/proof.sh workshop-v4 <PORT>
 
 ## Reflash Paths
 
-Fastest project-based recovery from a maintainer checkout:
-
-```sh
-frothy new --target esp32-devkit-v4-game-board recover-board
-cd recover-board
-frothy --port <path> doctor
-frothy --port <path> flash
-```
-
 Direct maintainer reflash from this repo when you need the current checked-in
-base image:
+base image and shipped Pong demo:
 
 ```sh
 cd targets/esp-idf
@@ -83,8 +75,8 @@ cd targets/esp-idf
 idf.py -DFROTH_BOARD=esp32-devkit-v4-game-board -p <path> flash
 ```
 
-After reflashing, reconnect and re-run the workshop checks from
-`docs/guide/Frothy_Workshop_Quick_Reference.md`.
+After reflashing, reconnect, confirm the board boots back into Pong, and
+re-run the workshop checks from `docs/guide/Frothy_Workshop_Quick_Reference.md`.
 
 ## Do Not Do In The Room
 

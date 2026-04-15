@@ -41,6 +41,13 @@ func runPublishability() error {
 	if err := runAll(); err != nil {
 		return err
 	}
+	paths, err := detectPaths()
+	if err != nil {
+		return err
+	}
+	if err := runCommand(paths, "publishability:workshop-export", baseTestEnv(paths), paths.Root, "sh", filepath.Join(paths.Root, "tools", "frothy", "export_workshop_repo.sh"), "check"); err != nil {
+		return err
+	}
 	return runVSCode()
 }
 

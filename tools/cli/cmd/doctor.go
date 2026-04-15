@@ -23,7 +23,7 @@ func runDoctor() error {
 	if path, err := doctorLookPath("cmake"); err == nil {
 		fmt.Printf("cmake: %s\n", path)
 	} else {
-		doctorFailure("cmake", "not found", "Install CMake and ensure `cmake` is on PATH.")
+		doctorOptional("cmake", "not found", "Needed only for source builds from a Frothy repo checkout.")
 	}
 
 	if path, name, err := findMakeTool(doctorLookPath); err == nil {
@@ -33,14 +33,14 @@ func runDoctor() error {
 			fmt.Printf("make: %s\n", path)
 		}
 	} else {
-		doctorFailure("make", "not found", "Install GNU Make and ensure `make` or `gmake` is on PATH.")
+		doctorOptional("make", "not found", "Needed only for source builds from a Frothy repo checkout.")
 	}
 
 	candidates, err := serialpkg.ListCandidates()
 	if err != nil {
 		doctorFailure("serial", fmt.Sprintf("error: %v", err), fmt.Sprintf("Check USB permissions and retry `%s doctor`.", cliCommandName))
 	} else if len(candidates) == 0 {
-		doctorFailure("serial", "no USB-serial ports found", "Connect a USB-serial device and retry.")
+		doctorFailure("serial", "no USB-serial ports found", "Connect a preflashed Frothy board and retry.")
 	} else {
 		fmt.Printf("serial: %d port(s)\n", len(candidates))
 		for _, p := range candidates {
@@ -194,7 +194,7 @@ func doctorDeviceRemediation() string {
 	if portFlag != "" {
 		return fmt.Sprintf("Check the device on `%s` and retry `%s doctor --port %s`.", portFlag, cliCommandName, portFlag)
 	}
-	return fmt.Sprintf("Connect a Frothy device or retry with `%s doctor --port <path>`.", cliCommandName)
+	return fmt.Sprintf("Connect a preflashed Frothy board or retry with `%s doctor --port <path>`.", cliCommandName)
 }
 
 func isBareProjectMode(err error) bool {

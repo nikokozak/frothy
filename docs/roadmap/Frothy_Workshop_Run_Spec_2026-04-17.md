@@ -2,7 +2,7 @@
 
 Status: draft workshop-content and rehearsal spec
 Date: 2026-04-14
-Authority: `docs/spec/Frothy_Language_Spec_v0_1.md`, `docs/adr/107-interactive-profile-boot-and-interrupt.md`, `docs/adr/108-frothy-ffi-boundary.md`, `docs/adr/117-workshop-base-image-board-library-surface.md`, `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`, `docs/guide/Frothy_Workshop_Install_Quickstart.md`
+Authority: `docs/spec/Frothy_Language_Spec_v0_1.md`, `docs/adr/107-interactive-profile-boot-and-interrupt.md`, `docs/adr/108-frothy-ffi-boundary.md`, `docs/adr/121-workshop-base-image-board-library-surface.md`, `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`, `docs/guide/Frothy_Workshop_Install_Quickstart.md`
 
 ## Purpose
 
@@ -13,7 +13,7 @@ It defines:
 
 - the teaching arc
 - the inspection puzzle
-- the primary starter game
+- the primary shared workshop game
 - the minimum workshop helper surface
 - the rehearsal and freeze criteria
 
@@ -38,7 +38,7 @@ The content shape is therefore:
 
 1. code along
 2. inspect and repair
-3. modify a shared starter
+3. modify a shared exported game file
 4. extend it into a personal variant
 
 This keeps the first hour structured and the second hour open enough to feel
@@ -108,7 +108,7 @@ Flow:
 
 1. connect board
 2. send one tiny expression
-3. run `led.blink(2, 120)` or the matrix hello check if the matrix helper path
+3. run `led.blink: 2, 120` or the matrix hello check if the matrix helper path
    is already frozen
 4. demonstrate `Ctrl-C`
 5. explain that `dangerous.wipe` is the factory reset for the overlay image
@@ -133,9 +133,9 @@ Required demonstration sequence:
 2. redefine it live
 3. inspect it with `show @name`
 4. mention `core @name` and `info @name`
-5. `save()`
+5. `save`
 6. modify it again
-7. `restore()`
+7. `restore`
 
 Important truth to preserve:
 
@@ -172,18 +172,18 @@ Then show the board input surface:
 - knob or potentiometer helper words
 - the discovery helper path for unknown pins or ranges
 
-### 4. Shared starter game: `Get Home+`: 58-100 min
+### 4. Shared workshop game: `Pong`: 58-100 min
 
-All pairs start from one common game scaffold.
+All pairs start from one common exported game file.
 
-The starter should already:
+The file should already:
 
-- draw the house
-- render the player
-- read one control surface
-- handle win and reset
+- draw the paddles and ball
+- read the knob control surface
+- handle reset and replay
+- expose a small visible parameter surface
 
-Attendees spend this phase modifying and extending the same starter.
+Attendees spend this phase modifying and extending the same `pong.frothy`.
 
 ### 5. Personal extension sprint: 100-115 min
 
@@ -199,7 +199,7 @@ Each pair shows:
 - one thing they changed
 - one thing they learned about inspection or recovery
 
-Close by reminding them to `save()` if they want the current overlay retained.
+Close by reminding them to `save` if they want the current overlay retained.
 
 ## Inspection Puzzle Spec: `Get Home`
 
@@ -328,64 +328,62 @@ Hint 3:
 
 If a pair breaks the puzzle:
 
-- `restore()` should bring back their last saved state if they saved it
+- `restore` should bring back their last saved state if they saved it
 - `dangerous.wipe` should return the session to base-only state
 - the facilitator must also be able to resend the puzzle file quickly
 
-## Shared Starter Game Spec: `Get Home+`
+## Shared Workshop Game Spec: `Pong`
 
-### Why This Is The Primary Starter
+### Why This Is The Primary Shared Game
 
-`Get Home+` should be the main workshop game because it grows directly out of
-the inspection puzzle.
+`Pong` should be the main workshop game because it is already running on the
+shipped preflashed board and can be exported directly from the same canonical
+base-image source.
 
 That continuity matters:
 
-- the students already know the world
+- the first board state is already visible on plug-in
+- the editable workshop file matches the shipped demo board
 - the key names already make sense
-- the first meaningful change is already behind them
-- the second half of the workshop feels like extension, not reset
+- the second half of the workshop feels like extension, not a second setup path
 
 ### Core Loop
 
-The starter game is a tiny navigable grid game:
+The shared workshop game is a tiny Pong loop:
 
-- the player is one lit pixel
-- the house is a visible target region
-- one or more hazards or blockers prevent a trivial straight-line win
-- the player wins by reaching the house
+- each player controls one paddle
+- the ball bounces across the grid
+- a miss resets the rally
+- joystick click exits the loop cleanly
 
 Required core behaviors:
 
-- player movement
+- paddle read/update
+- ball update
 - screen redraw
-- win detection
-- reset or replay
+- collision/reset
+- replay
 
 Optional base behaviors:
 
-- one moving hazard
-- one timer
-- one score counter
+- faster/slower frame timing
+- different paddle sizes
+- different reset behavior
 
-### Required Starter Names
+### Required Shared Names
 
 Recommended names:
 
-- `game.reset`
-- `game.tick`
-- `game.run`
-- `game.win`
-- `player.x`
-- `player.y`
-- `player.draw`
-- `player.move`
-- `goal.draw`
-- `goal.reached?`
-- `hazard.step`
-- `hazard.draw`
+- `demo.pong.setup`
+- `demo.pong.readPaddles`
+- `demo.pong.advanceBall`
+- `demo.pong.tickBall`
+- `demo.pong.draw`
+- `demo.pong.frame`
+- `demo.pong.run`
+- `boot`
 
-The starter should preserve the simple naming style used in the puzzle.
+The shared file should preserve the simple naming style used in the puzzle.
 
 ### Required Student Modification Surface
 
@@ -394,10 +392,10 @@ top-level words.
 
 The intended modification surface is:
 
-- one movement word
+- one speed or timing slot
 - one draw word
-- one parameter slot
-- one win or reset behavior
+- one reset or bounce behavior
+- one control mapping or paddle-size slot
 
 ### Extension Ladder
 
@@ -405,73 +403,39 @@ Offer the ladder as a menu, not a command.
 
 Level 1: safe extensions
 
-- change player speed
-- change hazard speed
+- change ball speed
+- change paddle size
+- invert the controls
 - add a trail
-- change the win flash
-- move the house
-- add a restart button
+- change the reset flash
 
 Level 2: game-feel extensions
 
-- use a knob to control speed
-- use joystick click to restart
+- use the joystick for one paddle
+- add a second ball
 - add a countdown
-- add a second hazard
-- make hazards wrap around the grid
+- make the ball accelerate
+- add a restart gesture
 
 Level 3: authorship extensions
 
-- add score or best time
-- add multiple goals
-- add a moving house
-- add a chase enemy
+- add score or rally count
+- add AI on one paddle
+- add ball spin or angle changes
+- add attract mode or demo variations
 - save a preferred difficulty or behavior in the overlay
 
 No pair should be forced past Level 1 to feel successful.
-
-## Alternative Starters
-
-These are allowed as backup or future variants.
-They are not the main workshop path.
-
-### Alternative A: `Quick Draw / Lockout`
-
-Use if the matrix path is shaky but button input is strong.
-
-Good fit:
-
-- low rendering complexity
-- immediate fun
-- easy scoring
-
-Not preferred as the main path because it is less continuous with the
-inspection puzzle.
-
-### Alternative B: `Maze / Ghost Chase`
-
-Use only if the matrix helper path is already robust in rehearsal.
-
-Good fit:
-
-- visibly game-like
-- natural joystick use
-
-Cost:
-
-- more support load
-- more moving state to explain
 
 ## Minimum Workshop Helper Surface
 
 The workshop content needs a small named board-facing helper layer.
 This section is a workshop requirement, not an accepted new language contract.
 
-The exact vehicle may be:
+The exact vehicle is:
 
-- preflashed base-image helper code
-- a shipped starter file
-- or a tiny workshop support library sent at the start of class
+- preflashed base-image helper code for the board surface and shipped Pong demo
+- one tiny workshop repo containing `README.md` and exported `pong.frothy`
 
 The attendee-facing names should still be frozen before rehearsal.
 
@@ -481,15 +445,15 @@ Required:
 
 - `grid.width`
 - `grid.height`
-- `grid.clear()`
-- `grid.set(x, y, v)`
-- `grid.toggle(x, y)`
-- `grid.show()`
+- `grid.clear`
+- `grid.set: x, y, v`
+- `grid.toggle: x, y`
+- `grid.show`
 
 Strongly preferred:
 
-- `grid.rect(x, y, w, h, v)`
-- `grid.fill(v)`
+- `grid.rect: x, y, w, h, v`
+- `grid.fill: v`
 
 The workshop should never force attendees to think about matrix driver
 registers, raw I2C traffic, or scanning details.
@@ -498,11 +462,11 @@ registers, raw I2C traffic, or scanning details.
 
 Required if the board uses a joystick:
 
-- `joy.up?()`
-- `joy.down?()`
-- `joy.left?()`
-- `joy.right?()`
-- `joy.click?()`
+- `joy.up?`
+- `joy.down?`
+- `joy.left?`
+- `joy.right?`
+- `joy.click?`
 
 Required if the board uses discrete buttons instead:
 
@@ -510,8 +474,8 @@ Required if the board uses discrete buttons instead:
 
 Required if the board exposes analog controls:
 
-- `knob.left()`
-- `knob.right()`
+- `knob.left`
+- `knob.right`
 
 or equivalent named helpers built on `adc.percent`.
 
@@ -527,37 +491,20 @@ Recommended approach:
 Example shape:
 
 - `joy.up.pin`
-- `joy.up? = fn() { gpio.read(joy.up.pin) }`
+- `to joy.up? [ (gpio.read: joy.up.pin) == 0 ]`
 
 This keeps remapping on the maintained Frothy surface and uses stable
 top-level rebinding directly.
 
 ### Discovery Helpers
 
-The workshop should ship one of the following:
+This tranche does not add new `learn.*` helpers.
 
-Option A: explicit `learn` helpers
+The workshop relies on:
 
-- `learn.digital()`
-- `learn.analog()`
-
-Expected behavior:
-
-- `learn.digital()` reports which pin changed when a button or joystick input
-  is pressed
-- `learn.analog()` reports the active pin and a changing normalized range while
-  a potentiometer is moved
-
-Option B: a documented board-map plus probe snippets
-
-If `learn.*` is not ready in time, the fallback must still be smooth:
-
-- a printed board map
-- one copy/paste digital probe snippet
-- one copy/paste analog probe snippet
-
-Option A is preferred.
-Option B is acceptable for this workshop only if it is rehearsed.
+- the documented board map
+- the frozen semantic `joy.*` and `knob.*` helpers
+- one copy/paste prompt-check path from the quick reference
 
 ## Persistence Story To Teach
 
@@ -565,8 +512,8 @@ The workshop must teach the real persistence story, not a softer paraphrase.
 
 Required truths:
 
-- `save()` snapshots the current overlay image
-- `restore()` replaces the current live overlay with the saved overlay
+- `save` snapshots the current overlay image
+- `restore` replaces the current live overlay with the saved overlay
 - `dangerous.wipe` clears both the live overlay and the saved snapshot
 - startup restores a snapshot if one exists
 - after restore, startup runs `boot` only if `boot` is currently bound to
@@ -575,7 +522,7 @@ Required truths:
 Do not teach:
 
 - `dangerous.wipe` as if it only clears RAM
-- `restore()` as if it works after `dangerous.wipe`
+- `restore` as if it works after `dangerous.wipe`
 - `boot` as if restore only happens when `boot` is defined
 
 ## Facilitator Script Notes
@@ -626,7 +573,7 @@ Required artifacts:
 - attendee install note
 - one one-page cheat sheet
 - one puzzle file: `Get Home`
-- one starter game file or repo: `Get Home+`
+- one workshop repo containing `README.md` and `pong.frothy`
 - one facilitator note with hint ladder and pacing cues
 - one board smoke check routine
 
@@ -637,8 +584,8 @@ Recommended cheat sheet content:
 - `show @name`
 - `core @name`
 - `info @name`
-- `save()`
-- `restore()`
+- `save`
+- `restore`
 - `dangerous.wipe:`
 - the frozen board helper names
 
@@ -665,16 +612,16 @@ Check:
 - do they understand that `dangerous.wipe` also erases the saved snapshot?
 - do they find `hero.step` without being told immediately?
 - do they actually redefine code during the puzzle?
-- do they make at least one meaningful modification to `Get Home+`?
+- do they make at least one meaningful modification to `pong.frothy`?
 - is the second half still energetic, or does it collapse into debugging?
 
 If the rehearsal exposes friction, cut breadth before adding features.
 
 Cut in this order:
 
-1. optional alternative starters
-2. extra hazards or scoring features
-3. analog-control extensions
+1. extra Pong features beyond speed/draw/reset edits
+2. scoring or AI features
+3. analog-control extensions beyond the shipped knobs
 4. richer discovery helpers beyond the minimum path
 
 Do not cut:
@@ -684,12 +631,12 @@ Do not cut:
 - recovery teaching
 - one visible personal extension
 
-## Open Decisions To Close Before Friday
+## Closed Decisions
 
-- exact workshop board helper names for grid and inputs
-- whether `learn.digital` and `learn.analog` land in time
-- whether the matrix path is stable enough for the full `Get Home+` route
-- whether the puzzle and starter ship as preflashed helpers, sendable files, or
-  a small checked-out repo bundle
-- whether the current workshop gate date in the roadmap note should be updated
-  from `2026-04-16` to `2026-04-17`
+- the workshop board helper names are the frozen `grid.*`, `joy.*`, and
+  `knob.*` surface on `esp32-devkit-v4-game-board`
+- this tranche does not add `learn.digital` or `learn.analog`
+- the matrix path is the maintained workshop route
+- the shipped board boots the Pong demo from the base image, and the workshop
+  source is a tiny repo containing exported `pong.frothy`
+- the workshop gate date should match the actual Friday 2026-04-17 run

@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestWorkshopStarterSourceFilesResolveIntoCompleteForms(t *testing.T) {
+func TestStarterSourceFilesResolveIntoCompleteForms(t *testing.T) {
 	root := t.TempDir()
 
 	manifest := `[project]
@@ -45,8 +45,8 @@ platform = "esp-idf"
 	if len(result.Warnings) != 0 {
 		t.Fatalf("Resolve warnings = %v, want none", result.Warnings)
 	}
-	if len(result.Files) != 3 {
-		t.Fatalf("resolved files = %v, want 3 starter files", result.Files)
+	if len(result.Files) != 1 {
+		t.Fatalf("resolved files = %v, want 1 starter file", result.Files)
 	}
 
 	runtimeSource := StripBoundaryMarkers(result.Source)
@@ -54,19 +54,14 @@ platform = "esp-idf"
 	if err != nil {
 		t.Fatalf("SplitTopLevelForms: %v", err)
 	}
-	if len(forms) < 6 {
-		t.Fatalf("forms = %d, want multiple starter definitions", len(forms))
+	if len(forms) < 2 {
+		t.Fatalf("forms = %d, want simple starter definitions", len(forms))
 	}
 
 	for _, needle := range []string{
-		`to lesson.ready [`,
-		`to lesson.animate with step [`,
-		`\ #allow-toplevel`,
-		`player is cells(2)`,
-		`to game.capture [`,
-		`to boot [`,
-		`lesson.ready:;`,
-		`game.reset:`,
+		`note = nil`,
+		`boot {`,
+		`set note = "Hello from Frothy!"`,
 	} {
 		if !strings.Contains(runtimeSource, needle) {
 			t.Fatalf("runtime source missing %q\n%s", needle, runtimeSource)

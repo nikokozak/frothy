@@ -52,6 +52,17 @@ jobs:
           name: cli-artifacts
           path: dist/*.tar.gz
 
+  validate-workshop-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.release_tag }}
+      - name: Verify workshop docs and export surface
+        run: |
+          sh tools/frothy/export_workshop_repo.sh check
+          sh tools/frothy/proof_workshop_ops_docs.sh
+
   build-vscode:
     runs-on: ubuntu-latest
     steps:
@@ -80,54 +91,12 @@ jobs:
           name: vscode-artifacts
           path: dist/*.vsix
 
-  build-esp32:
-    runs-on: ubuntu-latest
-    env:
-      FROTHY_HOME: ${{ github.workspace }}/.frothy-home
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: refs/tags/${{ inputs.release_tag }}
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: tools/cli/go.mod
-      - name: Verify version
-        run: |
-          tag_version="${RELEASE_TAG#v}"
-          file_version="$(cat VERSION)"
-          if [ "$tag_version" != "$file_version" ]; then
-            echo "ERROR: tag $RELEASE_TAG does not match VERSION ($file_version)"
-            exit 1
-          fi
-          make version-check
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.espressif
-            ${{ github.workspace }}/.frothy-home/sdk/esp-idf
-          key: esp-idf-v5.5-esp32-${{ hashFiles('tools/setup-esp-idf.sh') }}
-      - name: Install ESP-IDF
-        run: ./tools/setup-esp-idf.sh
-      - name: Build firmware
-        run: |
-          . "$FROTHY_HOME/sdk/esp-idf/export.sh"
-          cd targets/esp-idf
-          idf.py set-target esp32
-          idf.py -DFROTH_BOARD=esp32-devkit-v1 build
-      - name: Package firmware
-        run: |
-          ./tools/package-firmware-release.sh "targets/esp-idf/build" "${RELEASE_TAG#v}" "$GITHUB_WORKSPACE/dist/frothy-${RELEASE_TAG}-esp32-devkit-v1.zip"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: firmware-artifacts
-          path: dist/*.zip
-
   release:
     runs-on: ubuntu-latest
     needs:
       - build-cli
       - build-vscode
-      - build-esp32
+      - validate-workshop-surface
     steps:
       - uses: actions/checkout@v4
         with:
@@ -135,10 +104,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: cli-artifacts
-          path: dist
-      - uses: actions/download-artifact@v4
-        with:
-          name: firmware-artifacts
           path: dist
       - uses: actions/download-artifact@v4
         with:
@@ -153,7 +118,6 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           files: |
             dist/*.tar.gz
-            dist/*.zip
             dist/*.vsix
             dist/*-checksums.txt
           prerelease: ${{ startsWith(inputs.release_tag, 'v0.') }}

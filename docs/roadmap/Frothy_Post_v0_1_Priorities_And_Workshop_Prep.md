@@ -27,7 +27,8 @@ What is already settled:
 - the direct-control transport, helper/editor path, and measured runtime
   hardening slices are landed
 - the workshop release/install matrix, Frothy CLI/install identity, attendee
-  quickstart, serial recovery path, and sanctioned starter scaffold are now
+  quickstart, serial recovery path, and sanctioned `pong.frothy` workshop
+  export are now
   landed on `main`
 
 What still needs explicit surfacing is the order of the next follow-on work.

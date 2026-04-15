@@ -90,40 +90,13 @@ func TestRunNewSetsESP32PlatformFromTargetFlag(t *testing.T) {
 		t.Fatalf("project.Resolve warnings = %v, want none", resolved.Warnings)
 	}
 
-	lessonSource := mustReadFile(t, filepath.Join(projectDir, "src", "workshop", "lesson.froth"))
-	if !strings.Contains(lessonSource, `\ #allow-toplevel`) {
-		t.Fatalf("lesson scaffold = %q, want allow-toplevel pragma", lessonSource)
-	}
-	if !strings.Contains(lessonSource, "to lesson.ready [") {
-		t.Fatalf("lesson scaffold = %q, want lesson-ready helper", lessonSource)
-	}
-	if !strings.Contains(lessonSource, "to lesson.animate with step [") {
-		t.Fatalf("lesson scaffold = %q, want lesson animate helper", lessonSource)
-	}
-
-	gameSource := mustReadFile(t, filepath.Join(projectDir, "src", "workshop", "game.froth"))
-	if !strings.Contains(gameSource, `\ #allow-toplevel`) {
-		t.Fatalf("game scaffold = %q, want allow-toplevel pragma", gameSource)
-	}
-	if !strings.Contains(gameSource, "player is cells(2)") {
-		t.Fatalf("game scaffold = %q, want player cell state", gameSource)
-	}
-	if !strings.Contains(gameSource, "to game.capture [") {
-		t.Fatalf("game scaffold = %q, want game capture helper", gameSource)
+	if _, err := os.Stat(filepath.Join(projectDir, "src", "workshop")); !os.IsNotExist(err) {
+		t.Fatalf("workshop scaffold should not be created, stat err = %v", err)
 	}
 
 	mainSource := mustReadFile(t, filepath.Join(projectDir, "src", "main.froth"))
-	if !strings.Contains(mainSource, `\ #use "./workshop/lesson.froth"`) {
-		t.Fatalf("main scaffold = %q, want workshop lesson include", mainSource)
-	}
-	if !strings.Contains(mainSource, `\ #use "./workshop/game.froth"`) {
-		t.Fatalf("main scaffold = %q, want workshop game include", mainSource)
-	}
-	if !strings.Contains(mainSource, `lesson.ready:;`) {
-		t.Fatalf("main scaffold = %q, want lesson-ready boot step separator", mainSource)
-	}
-	if !strings.Contains(mainSource, `game.reset:`) {
-		t.Fatalf("main scaffold = %q, want game-reset boot step", mainSource)
+	if !strings.Contains(mainSource, "boot {") {
+		t.Fatalf("main scaffold = %q, want default boot block", mainSource)
 	}
 
 	manifestText := mustReadFile(t, filepath.Join(projectDir, "froth.toml"))

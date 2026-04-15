@@ -161,3 +161,37 @@ func TestRunDoctorReportsGMakeAndOptionalTooling(t *testing.T) {
 		t.Fatalf("stdout = %q, want optional esptool note", stdout)
 	}
 }
+
+func TestRunDoctorTreatsMissingBuildToolsAsOptional(t *testing.T) {
+	resetCommandGlobals(t)
+
+	toolsDir := t.TempDir()
+	prependPath(t, toolsDir)
+
+	oldDoctorLookPath := doctorLookPath
+	doctorLookPath = func(name string) (string, error) {
+		switch name {
+		case "cmake", "make", "gmake", "esptool.py", "esptool":
+			return "", os.ErrNotExist
+		default:
+			return filepath.Join(toolsDir, name), nil
+		}
+	}
+	t.Cleanup(func() { doctorLookPath = oldDoctorLookPath })
+
+	withChdir(t, t.TempDir())
+	portFlag = "/dev/definitely-not-a-froth-device"
+
+	stdout, _ := captureOutput(t, func() {
+		if err := runDoctor(); err != nil {
+			t.Fatalf("runDoctor: %v", err)
+		}
+	})
+
+	if !strings.Contains(stdout, "cmake: not found") || !strings.Contains(stdout, "Needed only for source builds from a Frothy repo checkout.") {
+		t.Fatalf("stdout = %q, want optional cmake note", stdout)
+	}
+	if !strings.Contains(stdout, "make: not found") || !strings.Contains(stdout, "Needed only for source builds from a Frothy repo checkout.") {
+		t.Fatalf("stdout = %q, want optional make note", stdout)
+	}
+}

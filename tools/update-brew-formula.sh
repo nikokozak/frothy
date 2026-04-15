@@ -50,9 +50,6 @@ class Frothy < Formula
     end
   end
 
-  depends_on "cmake" => :recommended
-  depends_on "make" => :recommended
-
   def install
     bin.install "frothy"
   end

@@ -6,6 +6,7 @@ docs/superpowers/
 docs/perm-tutorial.md
 build/
 build-*-helper/
+build-v4-*/
 Testing/
 
 # macOS / editor noise
@@ -22,6 +23,7 @@ dist/
 froth_a.snap
 froth_b.snap
 targets/esp-idf/.cache/
+targets/esp-idf/build-v4-*/
 targets/esp-idf/sdkconfig
 tools/cli/internal/sdk/generated/
 

@@ -4,8 +4,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/cli/cmd/release-defaults.env"
 
-# Release assets and tap metadata stay Frothy-branded during the transition.
-# The release-time `froth` executable name stays separate from those asset names.
+# Release assets and tap metadata stay Frothy-branded.
+# Manual maintainer-only firmware packaging stays available separately.
 RELEASE_REPO_SLUG=${RELEASE_REPO_SLUG:-$FROTHY_DEFAULT_RELEASE_REPO_SLUG}
 HOMEBREW_TAP_REPO_SLUG=${HOMEBREW_TAP_REPO_SLUG:-$FROTHY_DEFAULT_HOMEBREW_TAP_REPO_SLUG}
 DEFAULT_FIRMWARE_BOARD=${DEFAULT_FIRMWARE_BOARD:-$FROTHY_DEFAULT_FIRMWARE_BOARD}

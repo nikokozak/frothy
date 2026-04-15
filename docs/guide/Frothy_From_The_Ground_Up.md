@@ -1206,58 +1206,15 @@ to boot [
 ]
 ```
 
-For the current workshop and hardware path, prefer the board-target starter:
+For the current workshop and hardware path, prefer the shipped demo-board flow
+instead of a project starter:
 
-```sh
-tools/cli/frothy-cli new --target esp32-devkit-v1 workshop
-```
+1. use the preflashed `esp32-devkit-v4-game-board`
+2. open the exported `workshop/pong.frothy`
+3. send or edit it live against the running board
 
-The generated `src/main.froth` is already on the current spoken surface:
-
-```frothy
-\ #use "./workshop/lesson.froth"
-\ #use "./workshop/game.froth"
-
-to boot [
-  lesson.ready:;
-  game.reset:
-]
-```
-
-And the starter helper files are normal Frothy source, not opaque magic:
-
-```frothy
-\ #allow-toplevel
-status is "booting"
-sensor.pin is A0
-
-to lesson.ready [
-  led.off:
-  set status to "Workshop starter ready"
-]
-```
-
-```frothy
-\ #allow-toplevel
-player is cells(2)
-score is 0
-
-to game.reset [
-  set player[0] to 0
-  set player[1] to 0
-  set score to 0
-]
-```
-
-Typical project loop:
-
-```sh
-cd workshop
-tools/cli/frothy-cli tooling resolve-source src/main.froth > /tmp/workshop-resolved.frothy
-tools/cli/frothy-cli send
-tools/cli/frothy-cli build
-tools/cli/frothy-cli --port /dev/cu.usbserial-0001 flash
-```
+That keeps the workshop path aligned with the actual shipped board state
+instead of introducing a second starter source.
 
 `frothy send` does three important things for project source:
 
@@ -1351,8 +1308,9 @@ the whole runtime source into ESP-IDF firmware at build time. Instead it:
 That is a better fit for Frothy's image model. Firmware and overlay state are
 related, but not the same thing.
 
-Outside a project checkout, `frothy flash` can also fetch and flash a prebuilt
-release firmware for the default ESP32 target.
+Outside a project checkout, `frothy flash` now stops and tells you to use a
+Frothy project or repo checkout. Attendee boards are preflashed, and
+maintainer recovery stays source-based.
 
 ### What can go wrong
 
@@ -2560,7 +2518,7 @@ your head.
   live surface
 - filtered board FFI surface, including GPIO, ADC, UART, and current board
   extras such as I2C where the profile exposes them
-- project scaffolding, build, flash, doctor, and workshop starter workflows
+- project scaffolding, build, flash, doctor, and workshop editing workflows
 
 **Active now**
 

@@ -4,8 +4,9 @@ Use this during the maintained workshop path.
 It covers only the promised attendee surface:
 
 - released `frothy` CLI
-- matching `frothy-vscode-v<extension-version>.vsix`
+- Frothy VS Code Marketplace install, with matching VSIX fallback
 - preflashed `esp32-devkit-v4-game-board` proto board
+- workshop repo containing `pong.frothy`
 
 Start elsewhere when needed:
 
@@ -21,12 +22,13 @@ Start elsewhere when needed:
 1. Plug in the preflashed `esp32-devkit-v4-game-board` proto board.
 2. Run `frothy doctor`.
 3. If several serial ports are visible, rerun `frothy --port <path> doctor`.
-4. Open a `.froth` or `.frothy` file in VS Code.
-5. Run `Frothy: Connect Device`.
-6. Run `Frothy: Send Selection / Line` on `1 + 1`.
-7. Run `matrix.init:`, `grid.clear:`, `grid.set: 1, 1, true`, and `grid.show:`
+4. Confirm the board is already running the shipped Pong demo.
+5. Open `pong.frothy` or another `.frothy` file in VS Code.
+6. Run `Frothy: Connect Device`.
+7. Run `Frothy: Send Selection / Line` on `1 + 1`.
+8. Run `matrix.init:`, `grid.clear:`, `grid.set: 1, 1, true`, and `grid.show:`
    for the first visible matrix proof.
-8. If the extension path is blocked, fall back to
+9. If the extension path is blocked, fall back to
    `frothy --port <path> connect`.
 
 ## Prompt Checks
@@ -58,6 +60,8 @@ Stable workshop helper surface:
 - `joy.*`: semantic active-low joystick readers
 - `knob.*`: semantic analog helpers
 - `dangerous.wipe`: base-image factory reset for the live overlay
+- `demo.pong.*` plus `boot`: the shipped demo-board surface and the editable
+  workshop example
 
 Most-used board and base-image calls:
 
@@ -117,5 +121,7 @@ Remember:
   send; reflash instead of replaying the file additively.
 - The board boots into bad saved state: use safe boot, inspect `boot`, then
   run `dangerous.wipe`.
+- The board does not start in Pong after a clean power cycle: treat that as a
+  maintainer recovery issue, not an attendee setup issue.
 - The extension is unstable on one laptop: keep the class moving with the CLI
   fallback, not ad hoc toolchain installs.

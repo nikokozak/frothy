@@ -14,6 +14,7 @@ Keep the rest of the workshop path in the small shared docs set:
 - `../../docs/guide/Frothy_Workshop_Quick_Reference.md`
 - `../../docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`
 - `../../boards/esp32-devkit-v4-game-board/WORKSHOP.md`
+- `../../workshop/README.md`
 
 ## Install
 
@@ -26,6 +27,7 @@ Extension-specific expectations:
 - macOS/Homebrew and Linux x86_64 release tarballs are the maintained attendee
   paths for this tranche
 - Windows is not part of the maintained workshop path
+- the workshop repo is intentionally tiny: `README.md` plus `pong.frothy`
 - VS Code auto-discovers `frothy` first and falls back to legacy `froth`
   during the transition
 - if VS Code cannot find the CLI on `PATH`, set `frothy.cliPath` to the

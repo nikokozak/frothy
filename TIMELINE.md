@@ -141,14 +141,14 @@ keep each item's description and references so deferral does not erase context.
   `tools/frothy/proof_f1_control_smoke.sh`, and
   `tools/frothy/proof_m10_smoke.sh`.
 - [x] Workshop starter project and frozen board/game surface
-  Deliverable: one sanctioned project folder and one sanctioned lesson/game
-  surface for the workshop path, proved through the maintained host and board
-  ladders.
+  Deliverable: one sanctioned editable workshop game surface, exported from
+  the canonical demo-board base image and proved through the maintained host
+  and board ladders.
   References: `tools/cli/cmd/new.go`,
   `tools/cli/internal/project/starter.go`,
-  `tools/frothy/proof_m10_smoke.sh`,
-  `tools/frothy/proof_m10_workshop_starter_checks.frothy`,
-  `docs/adr/117-workshop-base-image-board-library-surface.md`, and
+  `tools/frothy/export_workshop_repo.sh`,
+  `workshop/pong.frothy`,
+  `docs/adr/121-workshop-base-image-board-library-surface.md`, and
   `docs/guide/Frothy_Workshop_Install_Quickstart.md`.
 - [x] Minimal docs front door and quick reference
   Deliverable: install, first connect, inspection, board API, persistence, and
@@ -169,11 +169,11 @@ keep each item's description and references so deferral does not erase context.
   Deliverable: preflashed boards, known-good data cables, spare hardware,
   board labels, and a written reflash/fallback procedure.
   Note: the written room-side pack-out and recovery card now live in
-  `boards/esp32-devkit-v1/WORKSHOP.md`; physical packing and labeling remain
+  `boards/esp32-devkit-v4-game-board/WORKSHOP.md`; physical packing and labeling remain
   open.
   References: `tools/frothy/proof_m10_smoke.sh`,
   `docs/archive/proofs/m10_esp32_proof_transcript.txt`, `boards/`, and
-  `boards/esp32-devkit-v1/WORKSHOP.md`.
+  `boards/esp32-devkit-v4-game-board/WORKSHOP.md`.
 - [~] Workshop rehearsal plus measured performance/persistence closeout
   Deliverable: run the real lesson path end to end, verify loop cadence,
   sensor flow, and `save` / `restore` / `dangerous.wipe`, and freeze the take-home path.
