@@ -212,6 +212,10 @@ static int test_readability_heads_do_not_rewrite(void) {
                                                sizeof(rewritten));
   ok &= !frothy_shell_test_rewrite_simple_call("count is", rewritten,
                                                sizeof(rewritten));
+  ok &= !frothy_shell_test_rewrite_simple_call("led.pin", rewritten,
+                                               sizeof(rewritten));
+  ok &= !frothy_shell_test_rewrite_simple_call("gpio.write LED_BUILTIN, 1",
+                                               rewritten, sizeof(rewritten));
   return ok;
 }
 

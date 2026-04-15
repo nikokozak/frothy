@@ -516,14 +516,14 @@ static bool frothy_shell_rewrite_simple_call(const char *command, char *buffer,
   if (*rest != '\0' && !isspace((unsigned char)*rest)) {
     return false;
   }
+  /* Dotted names are ordinary slot names, not prompt-level implicit calls. */
+  if (memchr(name_start, '.', name_length) != NULL) {
+    return false;
+  }
 
   rest = frothy_shell_skip_spaces(rest);
   if (*rest == '\0') {
-    if (memchr(name_start, '.', name_length) == NULL) {
-      return false;
-    }
-    needed = snprintf(buffer, capacity, "%.*s:", (int)name_length, name_start);
-    return needed >= 0 && (size_t)needed < capacity;
+    return false;
   }
 
   if (frothy_shell_rest_starts_syntax_word(rest)) {
