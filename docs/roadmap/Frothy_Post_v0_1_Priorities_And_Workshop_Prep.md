@@ -32,13 +32,13 @@ What is already settled:
   landed on `main`
 
 What still needs explicit surfacing is the order of the next follow-on work.
-The workshop implementation tranche is now landed on `main`, but the immediate
-queue head changed after an ESP32 `boot` loop exposed that ordinary embedded
-looping still depended on hidden C stack depth through the recursive
-evaluator. The first explicit evaluator-frame-stack tranche and the
-prompt-facing record repair are now landed on `main`; the remaining runtime
-item is closeout around the bounded frame-arena ownership shape plus refreshed
-proof on the maintained device path.
+The workshop implementation tranche is now landed on `main`, and the immediate
+queue is workshop-operational closeout: clean-machine validation, room-side
+hardware prep, and one recorded measured rehearsal pass. The first explicit
+evaluator-frame-stack tranche and the prompt-facing record repair are now
+landed on `main`; the bounded frame-arena ownership revisit is pushed back
+until Frothy intentionally grows multiple live runtime instances or another
+re-entrant evaluator owner in one process.
 
 The workshop-operational artifacts are now concrete in-repo:
 
@@ -55,21 +55,20 @@ still have to be run and recorded.
 
 ## Why This Order
 
-- Runtime closeout still leads because the first explicit
-  evaluator-frame-stack tranche is landed, but the bounded frame-arena
-  ownership shape still needs final maintainability judgment and refreshed
-  proof on the maintained device path. Keep that work narrow; do not reopen
-  recursive evaluator execution by another path. References:
-  `src/frothy_eval.c`, `tests/frothy_eval_test.c`,
-  `tools/frothy/proof_eval_stack_budget.sh`, and
-  `docs/adr/118-explicit-evaluator-frame-stack-for-canonical-ir-execution.md`.
-- Clean-machine validation, classroom hardware prep, and measured rehearsal are
-  next because the remaining workshop risk is operational. The install/docs
+- Clean-machine validation, classroom hardware prep, and measured rehearsal now
+  lead because the remaining workshop risk is operational. The install/docs
   surface and the room-side recovery artifacts are already checked in; what is
   left is to execute and record the real passes. References:
   `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`,
   `boards/esp32-devkit-v4-game-board/WORKSHOP.md`, and
   `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`.
+- The evaluator frame-arena ownership revisit is deferred because the first
+  explicit evaluator-frame-stack tranche is already landed and the maintained
+  path still runs through one runtime-owned evaluator arena. Revisit it when
+  Frothy intentionally grows multiple live runtime instances or another
+  re-entrant evaluator owner. References: `src/frothy_eval.c`,
+  `tests/frothy_eval_test.c`, `tools/frothy/proof_eval_stack_budget.sh`, and
+  `docs/adr/118-explicit-evaluator-frame-stack-for-canonical-ir-execution.md`.
 - Workspace/image flow stays deferred because the staged queue is already
   single-sourced in
   `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`, and this note

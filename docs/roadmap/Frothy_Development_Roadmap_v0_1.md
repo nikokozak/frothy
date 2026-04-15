@@ -23,24 +23,27 @@ It is a sequencing and control document.
 
 This block is the live control surface for repo status.
 
-Current milestone: `evaluator execution-stack hardening`
-Today's goal: keep the landed explicit evaluator-frame-stack tranche
-authoritative on the maintained hardware path, settle the remaining
-frame-arena ownership/maintainability question, and close the runtime slice
-with refreshed focused proofs
-Next artifact: evaluator hardening closeout around the bounded frame arena plus
-refreshed host/device proofs for the non-recursive evaluator path
+Current milestone: `workshop operational closeout`
+Today's goal: execute and record the remaining clean-machine validation,
+room-side hardware/recovery prep, and one complete workshop-board rehearsal
+pass while keeping the evaluator frame-arena ownership revisit deferred behind
+the maintained single-runtime path
+Next artifact: refreshed workshop operational closeout across the clean-machine
+checklist, room-side recovery card, and recorded v4 rehearsal note
 Blocked by: none
-Next proof command: `cmake -S . -B build && cmake --build build && ./build/frothy_eval_tests && ./build/frothy_shell_tests && sh tools/frothy/proof_eval_stack_budget.sh`
+Next proof command: `sh tools/frothy/proof.sh workshop-v4 <PORT>`
 Slip against plan: the explicit evaluator-frame-stack tranche, prompt-facing
 record repair, workshop-operational docs, publishability-reset stack, and
-CLI/install rename tranche are now landed on `main`; the remaining
-pre-workshop risk is operational closeout on clean machines and real devices
-rather than more repo-shape churn
-Cut candidate if slip persists: treat frame-arena ownership as the last narrow
-runtime cleanup item, keep the workshop queue limited to clean-machine
+CLI/install rename tranche are now landed on `main`; the bounded
+frame-arena ownership revisit is deferred until Frothy intentionally grows
+multiple live runtime instances, so the remaining pre-workshop risk is
+operational closeout on clean machines and real devices rather than more
+repo-shape churn
+Cut candidate if slip persists: narrow the promised platform matrix to
+machines that actually pass, keep the workshop queue limited to clean-machine
 validation, room kit prep, and one recorded measured rehearsal, and continue
-to defer broader workspace/image-flow growth
+to defer both the evaluator frame-arena ownership revisit and broader
+workspace/image-flow growth
 
 ## 3. Operating Rules
 

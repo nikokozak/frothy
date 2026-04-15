@@ -55,18 +55,6 @@ If this file and the roadmap disagree, the roadmap wins.
 The queue below is intentionally movable. Reorder it as priorities change, but
 keep each item's description and references so deferral does not erase context.
 
-- [~] Evaluator execution-stack hardening closeout
-  Deliverable: keep the explicit evaluator-frame-stack tranche authoritative,
-  settle the remaining bounded frame-arena ownership/maintainability question,
-  and rerun the focused host/device proof slice for the non-recursive
-  evaluator path.
-  Note: the first explicit-stack tranche for `CALL`, `IF`, `WHILE`, `SEQ`, and
-  required compound evaluation paths is landed on `main`; remaining work is
-  closeout and proof, not restoring recursive IR execution.
-  References: Frothy ADR-118, Frothy ADR-105,
-  `docs/archive/adr/040-cs-trampoline-executor.md`, `src/frothy_eval.c`,
-  `src/frothy_shell.c`, `tests/frothy_eval_test.c`,
-  `tests/frothy_shell_test.c`, and `tools/frothy/proof_eval_stack_budget.sh`.
 - [x] Prompt-facing record surface matches the landed implementation
   Deliverable: the prompt-facing shell accepts the maintained `record ...`
   forms and keeps record definition, construction, field access, inspection,
@@ -174,16 +162,17 @@ keep each item's description and references so deferral does not erase context.
   References: `tools/frothy/proof_m10_smoke.sh`,
   `docs/archive/proofs/m10_esp32_proof_transcript.txt`, `boards/`, and
   `boards/esp32-devkit-v4-game-board/WORKSHOP.md`.
-- [~] Workshop rehearsal plus measured performance/persistence closeout
-  Deliverable: run the real lesson path end to end, verify loop cadence,
-  sensor flow, and `save` / `restore` / `dangerous.wipe`, and freeze the take-home path.
-  Note: the rehearsal status note and proof command are checked in, but the
-  measured real-device closeout itself remains open until one complete pass is
-  captured and recorded.
-  References: `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md`,
-  `docs/spec/Frothy_Language_Spec_v0_1.md`, `tools/frothy/`,
-  `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`, and the
-  starter project above.
+- [~] Workshop operational closeout
+  Deliverable: execute and record the remaining clean-machine validation,
+  room-side hardware/recovery prep, and one complete real-device rehearsal on
+  the maintained workshop path.
+  Note: the checklist, room-side recovery card, and rehearsal status note are
+  checked in, but the actual clean-machine passes, physical room pack-out, and
+  one complete recorded rehearsal remain open.
+  References: `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`,
+  `boards/esp32-devkit-v4-game-board/WORKSHOP.md`,
+  `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`,
+  `docs/spec/Frothy_Language_Spec_v0_1.md`, and `tools/frothy/`.
 - [x] Publishability reset tranche 1: immediate cuts
   Deliverable: after the 2026-04-16 workshop gate is stable, remove tracked
   repo pollution, archive historical proof artifacts out of active tooling,
@@ -226,6 +215,19 @@ keep each item's description and references so deferral does not erase context.
   intentionally reprioritized.
   References: Frothy ADR-115 and
   `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`.
+- [ ] Deferred evaluator frame-arena ownership revisit
+  Deliverable: revisit shared evaluator frame-arena ownership only when
+  Frothy intentionally grows multiple live runtime instances or another
+  re-entrant evaluator owner in one process.
+  Note: the first explicit-stack tranche for `CALL`, `IF`, `WHILE`, `SEQ`, and
+  required compound evaluation paths is landed on `main`; the maintained
+  single-runtime path keeps that explicit stack authoritative, so the
+  remaining ownership cleanup is deferred rather than a current workshop
+  blocker.
+  References: Frothy ADR-118, Frothy ADR-105,
+  `docs/archive/adr/040-cs-trampoline-executor.md`, `src/frothy_eval.c`,
+  `src/frothy_shell.c`, `tests/frothy_eval_test.c`,
+  `tests/frothy_shell_test.c`, and `tools/frothy/proof_eval_stack_budget.sh`.
 
 ## Queue Rules
 

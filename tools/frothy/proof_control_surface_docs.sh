@@ -110,27 +110,26 @@ if [ "$future_queue_block" != "$expected_future_queue_block" ]; then
   exit 1
 fi
 
-rg -n '^Current milestone: `evaluator execution-stack hardening`$' \
+rg -n '^Current milestone: `workshop operational closeout`$' \
   docs/roadmap/Frothy_Development_Roadmap_v0_1.md
 rg -n '^Next artifact:' docs/roadmap/Frothy_Development_Roadmap_v0_1.md
-rg -n 'bounded frame arena' docs/roadmap/Frothy_Development_Roadmap_v0_1.md
-rg -n 'non-recursive evaluator path' \
+rg -n 'frame-arena ownership revisit' \
   docs/roadmap/Frothy_Development_Roadmap_v0_1.md
-rg -n 'frothy_eval_tests && \./build/frothy_shell_tests && sh tools/frothy/proof_eval_stack_budget\.sh' \
+rg -n 'proof\.sh workshop-v4 <PORT>' \
   docs/roadmap/Frothy_Development_Roadmap_v0_1.md
 
 require_absent '^## Current Control Snapshot$' PROGRESS.md TIMELINE.md
 rg -n '^## Remaining Gates$' PROGRESS.md
 require_literal '`TIMELINE.md` for the live movable queue' PROGRESS.md
-rg -n '^\- \[~\] Evaluator execution-stack hardening closeout$' TIMELINE.md
+rg -n '^\- \[~\] Workshop operational closeout$' TIMELINE.md
 rg -n '^\- \[ \] Clean-machine validation on promised platforms$' TIMELINE.md
 rg -n '^\- \[ \] Classroom hardware and recovery kit$' TIMELINE.md
-rg -n '^\- \[~\] Workshop rehearsal plus measured performance/persistence closeout$' TIMELINE.md
 rg -n '^\- \[ \] Deferred workspace/image-flow queue$' TIMELINE.md
+rg -n '^\- \[ \] Deferred evaluator frame-arena ownership revisit$' TIMELINE.md
 
 rg -n '^## Why This Order$|^## Publishability Reset$|^## Workshop Gate For 2026-04-16$' \
   docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md
-rg -n 'bounded frame-arena|operational|Workspace_Image_Flow_Tranche_1|Frothy_Repo_Audit_2026-04' \
+rg -n 'frame-arena ownership revisit|workshop-operational closeout|Workspace_Image_Flow_Tranche_1|Frothy_Repo_Audit_2026-04' \
   docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md
 require_absent '^## Priority Stack$|^### [0-9]+\.' \
   docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md

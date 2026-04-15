@@ -37,4 +37,4 @@ rg -n 'Frothy_Workshop_Quick_Reference\.md|Frothy_Workshop_Clean_Machine_Validat
 rg -n '^## Required Proof Command$|^## Current Branch Status$|^## Measured Notes$|^## Remaining Manual Gate$' \
   docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md
 rg -n '^- \[x\] Minimal docs front door and quick reference$' TIMELINE.md
-rg -n 'Workshop rehearsal plus measured performance/persistence closeout' TIMELINE.md
+rg -n 'Workshop operational closeout' TIMELINE.md

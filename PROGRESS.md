@@ -34,10 +34,11 @@ file is wrong.
 - This control-surface repair tranche is landed: `PROGRESS.md` and
   `TIMELINE.md` are thin again, `AGENTS.md` supports targeted work, and the
   forward queue now lives in one short roadmap note plus Frothy ADR-116.
-- The workshop-first follow-on order is now the resumed queue after evaluator
-  execution-stack hardening: delivery/editor/recovery, inspection, board
-  library and surface, readability language work, records, then
-  performance/persistence closeout.
+- The workshop-operational queue now leads: clean-machine validation,
+  room-side hardware/recovery prep, and one recorded measured rehearsal pass;
+  the evaluator frame-arena ownership revisit is deferred until Frothy
+  intentionally grows multiple live runtime instances or another re-entrant
+  evaluator owner.
 - The first workshop base-image board/library cut is landed: `millis()` and
   `gpio.read()` are now native base slots, the preflashed workshop helper
   library is seeded as base image and survives `dangerous.wipe`, and the M10 proof
@@ -82,9 +83,9 @@ file is wrong.
   now includes both the eval stack-budget tripwire and shell record coverage.
 - The evaluator stack-overflow regression found by a simple ESP32 `boot` loop
   is therefore no longer defended only by compile-time frame-size hygiene; the
-  remaining runtime item is closeout around the current bounded frame-arena
-  ownership shape plus refreshed device proof, not reintroducing recursive IR
-  execution.
+  explicit evaluator-frame-stack tranche is the maintained path, and the
+  remaining bounded frame-arena ownership revisit is now deferred until
+  multi-instance runtime work makes shared ownership matter.
 - The ESP32 shell-path overflow on multiline `in` / `cond` / `case` definitions
   is fixed in the current tree by removing a 1KB rewrite buffer from
   `frothy_shell_run()`'s task stack, widening the stack-budget proof to cover
@@ -148,13 +149,15 @@ file is wrong.
 
 ## Remaining Gates
 
-- Runtime closeout is still open: the explicit evaluator-frame-stack tranche is
-  landed, but the bounded frame-arena ownership shape still needs final
-  maintainability judgment plus refreshed focused proof on the maintained
-  host/device slice.
-- The remaining pre-workshop risk is operational rather than structural:
+- Workshop-operational closeout is now the active gate:
   clean-machine validation and room-side hardware/recovery prep still need to
-  be executed; the focused v4 workshop-board hardware smoke is now recorded.
+  be executed, and one complete recorded rehearsal pass still needs to be
+  captured; the focused v4 workshop-board hardware smoke is now recorded.
+- The evaluator frame-arena ownership revisit is deferred: the explicit
+  evaluator-frame-stack tranche is landed, and the remaining shared-ownership
+  question does not block the maintained single-runtime path until Frothy
+  intentionally grows multiple live runtime instances or another re-entrant
+  evaluator owner.
 - Workspace/image flow remains intentionally deferred and single-sourced in
   `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`.
 - See `TIMELINE.md` for the live movable queue and
