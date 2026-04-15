@@ -1,15 +1,15 @@
 # Froth Host Tooling Roadmap
 
 **Date:** 2026-03-16
-**Purpose:** Track all host tooling work items, decisions, and dependencies. AI agents should read this file to understand what's built, what's next, and what's deferred.
+**Purpose:** Track all host tooling work items, decisions, and dependencies. Contributors should read this file to understand what's built, what's next, and what's deferred.
 
 ## Code Standards
 
-This is non-negotiable. All code in this project, whether written by a human or an AI, must hold up to open source release standards. The bar is set by projects like the RP2040 SDK, SQLite, and Redis: code that strangers will read, judge, and build on for years.
+This is non-negotiable. All code in this project must hold up to open source release standards. The bar is set by projects like the RP2040 SDK, SQLite, and Redis: code that strangers will read, judge, and build on for years.
 
 **Style:**
 - Write like the RP2040 datasheet. Informal, expressive, technically precise.
-- No em-dashes. No AI-isms ("straightforward", "leverage", "robust", "comprehensive", "it's important to note"). Just say the thing.
+- No em-dashes. No filler phrasing ("straightforward", "leverage", "robust", "comprehensive", "it's important to note"). Just say the thing.
 - Comments explain why, not what. If the code is clear, no comment is needed.
 - Short declarative sentences. One idea per sentence.
 
@@ -25,7 +25,7 @@ This is non-negotiable. All code in this project, whether written by a human or 
 **TypeScript code:** strict mode, no `any` types, explicit error handling, minimal dependencies.
 **C code:** C11, `froth_` prefix, snake_case, clang-format (project .clang-format when established).
 
-**Review discipline:** Every tranche of work gets a self-review and a Codex review before commit. Fix everything flagged. No exceptions.
+**Review discipline:** Every tranche of work gets a self-review and a focused review before commit. Fix everything flagged. No exceptions.
 
 ## Status Key
 

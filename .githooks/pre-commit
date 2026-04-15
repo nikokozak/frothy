@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # .githooks/pre-commit
 #
-# Git-level safety net. Catches commits made outside Claude Code.
+# Git-level safety net. Catches commits made outside the preferred workflow.
 # Install with: git config core.hooksPath .githooks
 #
 # This is a SOFT gate — warns but does not block by default.

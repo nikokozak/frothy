@@ -14,7 +14,7 @@ It is meant to be:
 - executable,
 - trackable,
 - reviewable,
-- and realistic for one developer plus an AI coding assistant.
+- and realistic for one developer inside the thesis timebox.
 
 This is not a vision memo.
 It is a sequencing and control document.

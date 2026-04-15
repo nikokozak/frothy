@@ -1,4 +1,3 @@
-.claude
 .githooks/*
 !.githooks/
 !.githooks/pre-commit
@@ -6,6 +5,7 @@ froth-session
 docs/superpowers/
 docs/perm-tutorial.md
 build/
+build-*-helper/
 Testing/
 
 # macOS / editor noise

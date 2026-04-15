@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-16
 **Status:** Accepted vision. Workshop skeleton in progress.
-**Audience:** Implementers, AI agents building the extension, future contributors.
+**Audience:** Implementers and future contributors.
 **Related:** ADR-035 (daemon), ADR-036 (probes), tooling-and-link-architecture-proposal-2026-03.md
 
 ## Core Principle
@@ -202,10 +202,10 @@ All extension code must hold up to open source release standards. The bar is pro
 - TypeScript strict mode. No `any` types. Explicit error handling.
 - Minimal dependencies. `@types/vscode` and `@types/node` only. No frameworks.
 - Comments explain why, not what. If the code is clear, no comment.
-- No em-dashes. No AI voice ("straightforward", "leverage", "robust"). Short declarative sentences.
+- No em-dashes. No filler voice ("straightforward", "leverage", "robust"). Short declarative sentences.
 - Every function readable in under 30 seconds. Clean module boundaries.
 - No technical debt. If it's not right, fix it now.
-- Review every tranche with self-review and Codex before commit.
+- Review every tranche with self-review and focused review before commit.
 
 See `docs/archive/concepts/host-tooling-roadmap.md` for the full code standards section.
 

@@ -8,7 +8,7 @@
 
 The VS Code extension needs live observability into a running device. During a long-running eval (e.g. a sensor loop), the host currently has no way to query device state. The stop-and-wait model blocks all communication until the eval completes.
 
-A general queue model was considered and rejected. Codex review of the device-side C code identified three problems:
+A general queue model was considered and rejected. Review of the device-side C code identified three problems:
 
 1. **No architectural queue.** ESP32 UART RX ring is 256 bytes. Multiple COBS frames can overflow it. The device processes frames inline and synchronously. Queued requests just sit in UART buffers accidentally.
 
@@ -101,4 +101,4 @@ WATCH_REQ can only be sent when no eval is active (between evals). The device re
 - `src/froth_executor.c:44`: safe-point interrupt check
 - `src/froth_slot_table.c:57-67`: slot_get_impl (pure read)
 - `platforms/esp-idf/platform.c:40-46`: 0x03 bug (interrupt before mux classification)
-- Codex review session 019cf804-1762-7071-9431-7f84136412f5 (protocol safety analysis)
+- Protocol safety review session (2026-03-16)

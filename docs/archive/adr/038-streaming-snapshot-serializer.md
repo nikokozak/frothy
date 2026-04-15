@@ -189,6 +189,6 @@ Relocation map entries are `(u16 old_offset, u16 new_offset)` pairs, appended as
 
 - ADR-026: Snapshot persistence implementation (format v1)
 - ADR-027: Platform snapshot storage API
-- Codex design review (Mar 17): confirmed approach, identified visited bitset sizing, DFS depth worst case, u16 relocation pairs
+- Snapshot design review (Mar 17): confirmed approach, identified visited bitset sizing, DFS depth worst case, u16 relocation pairs
 - Mecrisp-Stellaris, Zeptoforth, AmForth: compile-to-flash persistence models (prior art research, Mar 17)
 - ESP32Forth (ueforth): raw heap dump persistence model (prior art research, Mar 17)

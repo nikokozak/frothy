@@ -597,7 +597,7 @@ The resolved source is one big string passed to `froth_evaluate_input`. The eval
 - ADR-039: Host tooling UX and daemon lifecycle
 - ADR-042: Extension UX and local target
 - ADR-041: Strict bare identifiers (no implicit slot creation)
-- Codex UX architecture review (Mar 20): SDK embedding, form graph, library discipline, connect semantics
+- UX architecture review (Mar 20): SDK embedding, form graph, library discipline, connect semantics
 - Go `embed` package: https://pkg.go.dev/embed
 - MicroPython workflow: instant REPL, low ceremony (influence on onboarding lanes)
 - ESP-IDF workflow: explicit, reproducible, hostile first hour (influence on CLI absorbing complexity)
