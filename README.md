@@ -76,36 +76,17 @@ The attendee quickstart lives in
 The in-room prompt and recovery cheat sheet lives in
 `docs/guide/Frothy_Workshop_Quick_Reference.md`.
 
-Install the maintained Frothy CLI path first.
+Use that guide for the exact Homebrew, release-tarball, and VSIX install
+commands.
 
-Preferred macOS workshop path:
+The maintained workshop assumptions for this tranche are:
 
-```sh
-brew tap nikokozak/frothy
-brew install frothy
-froth doctor
-```
-
-Linux x86_64 release-tarball path:
-
-```sh
-tar -xzf frothy-v<version>-linux-amd64.tar.gz
-mkdir -p "$HOME/.local/bin"
-install -m 0755 froth "$HOME/.local/bin/froth"
-froth doctor
-```
-
-Then install the matching VS Code extension asset from the GitHub Release:
-
-```sh
-code --install-extension /path/to/frothy-vscode-v<extension-version>.vsix
-```
-
-If VS Code cannot find `froth` on `PATH`, set `frothy.cliPath` to the absolute
-path of the installed binary.
-
-Attendees do not need a repo checkout, `esp-idf`, or source builds before they
-arrive. The maintained path assumes a preflashed `esp32-devkit-v1`.
+- attendees use the installed CLI command `froth`
+- attendees do not need a repo checkout, `esp-idf`, or source builds before
+  they arrive
+- the maintained hardware path assumes a preflashed `esp32-devkit-v1`
+- if VS Code cannot find `froth` on `PATH`, set `frothy.cliPath` to the
+  absolute path of the installed binary
 
 The maintained editor path stays on the accepted direct-control surface:
 
@@ -130,14 +111,23 @@ make test
 make test-all
 ```
 
+Optional extension lanes:
+
+```sh
+make test-vscode
+make test-vscode-board PORT=/dev/...
+```
+
 The host build produces:
 
 - `build/Frothy`: primary Frothy host runtime
 
 The maintained test contract is:
 
-- `make test`: fast self-contained local gate
-- `make test-all`: exhaustive local gate
+- `make test`: fast self-contained local gate (`C`, `Go`, `Shell`)
+- `make test-all`: exhaustive local gate (`C`, `Go`, `Shell`)
+- `make test-vscode`: explicit extension-local `Node` lane
+- `make test-vscode-board PORT=/dev/...`: explicit real-device extension lane
 - `make test-list`: list maintained suites and profiles
 - `sh tools/frothy/proof_workshop_ops_docs.sh`: workshop front-door and ops
   docs sanity
@@ -178,8 +168,9 @@ implementation salvage where explicitly adopted. Do not treat its roadmap,
 language semantics, AGENTS guidance, or implementation priorities as active
 Frothy policy.
 
-See `docs/reference/Froth_Substrate_References.md` for the curated reference
-set that remains useful during the transition.
+See `docs/reference/Froth_Substrate_References.md` and
+`docs/reference/Frothy_Retained_Substrate_Manifest.md` for the curated
+reference set and the current retained-substrate boundary.
 
 Historical Froth-era design notes now live under `docs/archive/`.
 

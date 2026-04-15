@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nikokozak/froth/tools/cli/internal/serial"
+	"github.com/nikokozak/frothy/tools/cli/internal/serial"
 	"golang.org/x/sys/unix"
 )
 

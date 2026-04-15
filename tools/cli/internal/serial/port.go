@@ -8,7 +8,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/nikokozak/froth/tools/cli/internal/protocol"
+	"github.com/nikokozak/frothy/tools/cli/internal/protocol"
 	"go.bug.st/serial"
 )
 

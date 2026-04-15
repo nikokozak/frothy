@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	baseproto "github.com/nikokozak/froth/tools/cli/internal/protocol"
+	baseproto "github.com/nikokozak/frothy/tools/cli/internal/protocol"
 )
 
 type stubTransport struct {

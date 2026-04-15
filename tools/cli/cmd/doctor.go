@@ -9,10 +9,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nikokozak/froth/tools/cli/internal/frothycontrol"
-	"github.com/nikokozak/froth/tools/cli/internal/project"
-	"github.com/nikokozak/froth/tools/cli/internal/sdk"
-	serialpkg "github.com/nikokozak/froth/tools/cli/internal/serial"
+	"github.com/nikokozak/frothy/tools/cli/internal/frothycontrol"
+	"github.com/nikokozak/frothy/tools/cli/internal/project"
+	"github.com/nikokozak/frothy/tools/cli/internal/sdk"
+	serialpkg "github.com/nikokozak/frothy/tools/cli/internal/serial"
 )
 
 var doctorLookPath = exec.LookPath

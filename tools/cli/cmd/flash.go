@@ -17,10 +17,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nikokozak/froth/tools/cli/internal/frothycontrol"
-	"github.com/nikokozak/froth/tools/cli/internal/project"
-	"github.com/nikokozak/froth/tools/cli/internal/sdk"
-	serialpkg "github.com/nikokozak/froth/tools/cli/internal/serial"
+	"github.com/nikokozak/frothy/tools/cli/internal/frothycontrol"
+	"github.com/nikokozak/frothy/tools/cli/internal/project"
+	"github.com/nikokozak/frothy/tools/cli/internal/sdk"
+	serialpkg "github.com/nikokozak/frothy/tools/cli/internal/serial"
 )
 
 const prebuiltFirmwareBoard = "esp32-devkit-v1"

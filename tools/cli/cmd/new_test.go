@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nikokozak/froth/tools/cli/internal/project"
+	"github.com/nikokozak/frothy/tools/cli/internal/project"
 )
 
 func TestRunNewCreatesProjectSkeletonWithDefaultPosixTarget(t *testing.T) {

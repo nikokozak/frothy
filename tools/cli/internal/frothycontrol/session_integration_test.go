@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	baseproto "github.com/nikokozak/froth/tools/cli/internal/protocol"
+	baseproto "github.com/nikokozak/frothy/tools/cli/internal/protocol"
 )
 
 const rawReplLineLimit = 1024

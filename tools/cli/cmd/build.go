@@ -9,9 +9,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/nikokozak/froth/tools/cli/internal/frothycontrol"
-	"github.com/nikokozak/froth/tools/cli/internal/project"
-	"github.com/nikokozak/froth/tools/cli/internal/sdk"
+	"github.com/nikokozak/frothy/tools/cli/internal/frothycontrol"
+	"github.com/nikokozak/frothy/tools/cli/internal/project"
+	"github.com/nikokozak/frothy/tools/cli/internal/sdk"
 )
 
 var ensureSDKRoot = sdk.EnsureSDK

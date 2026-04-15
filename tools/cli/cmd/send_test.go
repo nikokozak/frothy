@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nikokozak/froth/tools/cli/internal/frothycontrol"
-	baseproto "github.com/nikokozak/froth/tools/cli/internal/protocol"
+	"github.com/nikokozak/frothy/tools/cli/internal/frothycontrol"
+	baseproto "github.com/nikokozak/frothy/tools/cli/internal/protocol"
 )
 
 type stubSendRuntime struct {

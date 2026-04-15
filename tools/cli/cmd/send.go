@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/nikokozak/froth/tools/cli/internal/frothycontrol"
-	"github.com/nikokozak/froth/tools/cli/internal/project"
-	baseproto "github.com/nikokozak/froth/tools/cli/internal/protocol"
+	"github.com/nikokozak/frothy/tools/cli/internal/frothycontrol"
+	"github.com/nikokozak/frothy/tools/cli/internal/project"
+	baseproto "github.com/nikokozak/frothy/tools/cli/internal/protocol"
 )
 
 type sendRuntime interface {

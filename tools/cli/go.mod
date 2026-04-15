@@ -1,4 +1,4 @@
-module github.com/nikokozak/froth/tools/cli
+module github.com/nikokozak/frothy/tools/cli
 
 go 1.25.3
 

@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	baseproto "github.com/nikokozak/froth/tools/cli/internal/protocol"
-	"github.com/nikokozak/froth/tools/cli/internal/serial"
+	baseproto "github.com/nikokozak/frothy/tools/cli/internal/protocol"
+	"github.com/nikokozak/frothy/tools/cli/internal/serial"
 )
 
 var ErrInterrupted = errors.New("control request interrupted")

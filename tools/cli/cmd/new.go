@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/nikokozak/froth/tools/cli/internal/project"
+	"github.com/nikokozak/frothy/tools/cli/internal/project"
 )
 
 func runNew(args []string) error {
@@ -62,7 +62,8 @@ platform = "%s"
 # Preferred: export a null-terminated frothy_ffi_entry_t[] table
 # named frothy_project_bindings.
 # For arity > 0 entries, set .param_count = FROTHY_FFI_PARAM_COUNT(params).
-# Compatibility: legacy froth_ffi_entry_t[] froth_project_bindings also works.
+# Retained compatibility only: legacy froth_ffi_entry_t[] froth_project_bindings
+# still works, but new code should start on the maintained frothy_ffi path.
 # Optional: set .stack_effect on each frothy_ffi_entry_t if you want
 # slotInfo to show an explicit effect line for maintained bindings.
 #

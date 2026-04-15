@@ -17,37 +17,17 @@ Keep the rest of the workshop path in the small shared docs set:
 
 ## Install
 
-The extension requires the installed Frothy CLI command, which is still
-spelled `froth` during the transition.
+The canonical attendee install flow lives in
+`docs/guide/Frothy_Workshop_Install_Quickstart.md` in the repo root.
 
-Supported attendee path:
+Extension-specific expectations:
 
-- macOS: install the `frothy` Homebrew formula, which provides `froth`
-- Linux x86_64: install the release tarball and place `froth` on `PATH`
-- Windows is not part of the maintained workshop path for this tranche
-
-Preferred macOS install:
-
-```sh
-brew tap nikokozak/frothy
-brew install frothy
-froth doctor
-```
-
-Then install the matching release VSIX:
-
-```sh
-code --install-extension /path/to/frothy-vscode-v<extension-version>.vsix
-```
-
-If VS Code cannot find `froth` on `PATH`, set `frothy.cliPath` to the absolute
-path of the installed binary.
-
-The public naming split is intentional for now:
-
-- product, docs, release assets, and commands palette: `Frothy`
-- installed CLI command: `froth`
-- repo-local checkout build: `tools/cli/froth-cli`
+- the installed CLI command is still `froth` during the transition
+- macOS/Homebrew and Linux x86_64 release tarballs are the maintained attendee
+  paths for this tranche
+- Windows is not part of the maintained workshop path
+- if VS Code cannot find `froth` on `PATH`, set `frothy.cliPath` to the
+  absolute path of the installed binary
 
 ## Maintained Commands
 

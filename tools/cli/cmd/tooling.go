@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nikokozak/froth/tools/cli/internal/frothycontrol"
+	"github.com/nikokozak/frothy/tools/cli/internal/frothycontrol"
 )
 
 type lookPathFunc func(string) (string, error)

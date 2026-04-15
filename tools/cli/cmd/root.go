@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nikokozak/froth/tools/cli/internal/sdk"
+	"github.com/nikokozak/frothy/tools/cli/internal/sdk"
 )
 
 // Global flags

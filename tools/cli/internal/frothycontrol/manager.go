@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	baseproto "github.com/nikokozak/froth/tools/cli/internal/protocol"
-	"github.com/nikokozak/froth/tools/cli/internal/serial"
+	baseproto "github.com/nikokozak/frothy/tools/cli/internal/protocol"
+	"github.com/nikokozak/frothy/tools/cli/internal/serial"
 )
 
 var openSerialTransport = serial.Open

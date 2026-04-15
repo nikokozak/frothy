@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/nikokozak/froth/tools/cli/internal/protocol"
+	"github.com/nikokozak/frothy/tools/cli/internal/protocol"
 	"golang.org/x/sys/unix"
 )
 

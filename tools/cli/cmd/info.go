@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/nikokozak/froth/tools/cli/internal/frothycontrol"
+	"github.com/nikokozak/frothy/tools/cli/internal/frothycontrol"
 )
 
 func runInfo() error {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nikokozak/froth/tools/cli/cmd"
+	"github.com/nikokozak/frothy/tools/cli/cmd"
 )
 
 func main() {
