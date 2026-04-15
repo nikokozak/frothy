@@ -103,6 +103,19 @@ file is wrong.
   --target esp32-devkit-v1` emits the sanctioned lesson/game starter, resolve
   is warning-free, and the maintained M10 board proof now scaffolds, resolves,
   runs, and checks that starter on the attached ESP32 path.
+- The workshop-operational slice is now concrete in-repo without widening the
+  product surface: `README.md` points at one minimal front door,
+  `docs/guide/Frothy_Workshop_Quick_Reference.md` keeps the in-room prompt and
+  recovery path short, `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`
+  freezes the promised clean-machine checklist, `boards/esp32-devkit-v1/WORKSHOP.md`
+  holds the room-side kit and reflash card, and
+  `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md` carries the
+  branch-local rehearsal status note plus the required real-device proof
+  command.
+- The remaining manual workshop gates stay explicit: separate clean-machine
+  passes on the promised platforms, physical room pack-out, and the final
+  measured real-device rehearsal closeout are still exit steps, not work that
+  prose can claim complete.
 
 ## Near-Term Priority Stack
 

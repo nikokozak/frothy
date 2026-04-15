@@ -32,12 +32,17 @@ player[1]
 game.capture:
 score
 save
+set status to "mutated"
 set player[0] to 9
 set player[1] to 8
-set score to 0
 "game.restore.check"
 restore
-player[0]
-player[1]
-score
+status == "Workshop starter ready"
+player[0] == 1
+player[1] == 1
+"game.wipe.check"
 dangerous.wipe
+lesson.ready:
+"base.recovery.check"
+info @blink
+blink: LED_BUILTIN, 1, 1

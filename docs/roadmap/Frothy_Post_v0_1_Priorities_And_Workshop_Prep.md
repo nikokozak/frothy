@@ -38,6 +38,19 @@ evaluator. The live control surface now puts evaluator execution-stack
 hardening first. The workshop-operational list below is the resumed order after
 that runtime tranche lands.
 
+The workshop-operational artifacts are now concrete in-repo:
+
+- `docs/guide/Frothy_Workshop_Quick_Reference.md`
+- `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`
+- `boards/esp32-devkit-v1/WORKSHOP.md`
+- `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`
+
+Those files freeze the front door, the clean-machine checklist, the room-side
+recovery card, and the rehearsal status note plus proof command.
+They do not claim that every manual gate has already been executed; clean
+machines, physical room pack-out, and the final measured real-device closeout
+still have to be run and recorded.
+
 ## Priority Stack
 
 ### 1. Priority repair: live-shell records must match the landed record surface
@@ -80,6 +93,7 @@ References:
 - `README.md`
 - `tools/vscode/README.md`
 - `docs/guide/Frothy_From_The_Ground_Up.md`
+- `docs/guide/Frothy_Workshop_Quick_Reference.md`
 
 ### 3. Clean-machine validation on promised platforms
 
@@ -98,6 +112,7 @@ References:
 - `.github/workflows/release.yml`
 - `README.md`
 - `tools/vscode/README.md`
+- `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`
 
 ### 4. Classroom hardware and recovery kit
 
@@ -118,6 +133,7 @@ References:
 - `tools/frothy/proof_m10_smoke.sh`
 - `tools/frothy/m10_esp32_proof_transcript.txt`
 - `boards/`
+- `boards/esp32-devkit-v1/WORKSHOP.md`
 
 ### 5. Workshop rehearsal plus measured performance/persistence closeout
 
@@ -137,6 +153,7 @@ References:
 - `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md`
 - `docs/spec/Frothy_Language_Spec_v0_1.md`
 - `tools/frothy/`
+- `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`
 
 ### 6. Later workspace/image-flow work
 

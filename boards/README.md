@@ -12,6 +12,17 @@ what convenience words to expose to the user. If a platform already exists
 for your chip, writing a board is straightforward. If not, see
 `platforms/README.md` for how to write one.
 
+## Maintained workshop board
+
+The current workshop promise is narrower than the repo's total board surface:
+
+- preflashed `esp32-devkit-v1` only
+- released CLI plus matching VSIX only
+- no extra-board guarantee before the workshop
+
+The room-side hardware checklist and recovery card for that board live in
+`boards/esp32-devkit-v1/WORKSHOP.md`.
+
 ## Directory layout
 
 ```

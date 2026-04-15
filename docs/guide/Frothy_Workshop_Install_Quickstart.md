@@ -3,6 +3,12 @@
 This is the attendee-facing install note for the current workshop tranche.
 Keep it short, operational, and truthful.
 
+Use this with:
+
+- `Frothy_Workshop_Quick_Reference.md` during the actual lesson path
+- `Frothy_Workshop_Clean_Machine_Validation.md` when maintainers rehearse the
+  promised install surface
+
 ## Copy/Paste Email
 
 ```text

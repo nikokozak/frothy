@@ -25,6 +25,21 @@ The repo reuses inherited Froth substrate where that is the simplest working
 path, but Froth's old roadmap, stack-centric user model, and language
 priorities are not active policy here.
 
+## Start Here
+
+Use the smallest maintained doc set for the workshop path:
+
+- `docs/guide/Frothy_Workshop_Install_Quickstart.md`: attendee install note
+  and preflight
+- `docs/guide/Frothy_Workshop_Quick_Reference.md`: first connect, inspection,
+  board surface, persistence, and troubleshooting
+- `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`: promised-platform
+  validation checklist and recording sheet
+- `boards/esp32-devkit-v1/WORKSHOP.md`: room-side hardware pack-out and
+  recovery card
+- `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`: workshop
+  rehearsal status note and required real-device proof command
+
 ## Workshop Support Matrix
 
 The promised attendee path is smaller than the repo surface:
@@ -58,6 +73,8 @@ rename slice is worth the churn.
 
 The attendee quickstart lives in
 `docs/guide/Frothy_Workshop_Install_Quickstart.md`.
+The in-room prompt and recovery cheat sheet lives in
+`docs/guide/Frothy_Workshop_Quick_Reference.md`.
 
 Install the maintained Frothy CLI path first.
 
@@ -122,6 +139,10 @@ The maintained test contract is:
 - `make test`: fast self-contained local gate
 - `make test-all`: exhaustive local gate
 - `make test-list`: list maintained suites and profiles
+- `sh tools/frothy/proof_workshop_ops_docs.sh`: workshop front-door and ops
+  docs sanity
+- `sh tools/frothy/proof_m10_smoke.sh --assume-blink-confirmed --transcript-out /tmp/frothy-m10.txt <PORT>`:
+  real-device workshop proof
 
 Run the currently shipped CLI as `froth`:
 

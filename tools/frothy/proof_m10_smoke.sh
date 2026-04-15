@@ -146,6 +146,17 @@ require_count_at_least() {
   fi
 }
 
+require_count_exact() {
+  transcript=$1
+  needle=$2
+  expected=$3
+  actual=$(printf '%s\n' "$transcript" | grep -F -c "$needle")
+  if [ "$actual" -ne "$expected" ]; then
+    echo "error: expected exactly $expected occurrences of: $needle (got $actual)" >&2
+    exit 1
+  fi
+}
+
 require_file_contains() {
   path=$1
   needle=$2
@@ -345,10 +356,21 @@ require_sequence "$STARTER_TRANSCRIPT" \
   'frothy> 50'
 require_sequence "$STARTER_TRANSCRIPT" \
   '"game.restore.check"' \
-  'frothy> 1' \
-  'frothy> 1' \
-  'frothy> 50'
-require_not_contains "$STARTER_TRANSCRIPT" 'eval error ('
+  'frothy> true' \
+  'frothy> true' \
+  'frothy> true'
+require_sequence "$STARTER_TRANSCRIPT" \
+  '"game.wipe.check"' \
+  'frothy> eval error (4)'
+require_count_exact "$STARTER_TRANSCRIPT" 'eval error (4)' 1
+require_sequence "$STARTER_TRANSCRIPT" \
+  '"base.recovery.check"' \
+  'blink' \
+  'slot: base' \
+  '[gpio] pin 2 -> OUTPUT' \
+  '[gpio] pin 2 = LOW' \
+  '[gpio] pin 2 = HIGH' \
+  '[gpio] pin 2 = LOW'
 require_not_contains "$STARTER_TRANSCRIPT" 'parse error ('
 
 if [ -e "$WORK_DIR/froth_a.snap" ] || [ -e "$WORK_DIR/froth_b.snap" ]; then
@@ -375,12 +397,38 @@ if [ ! -f "$HOME/.froth/sdk/esp-idf/export.sh" ]; then
   exit 1
 fi
 
-PYTHON_ARGS="--port $PORT"
+set -- --port "$PORT"
 if [ "$ASSUME_BLINK" -eq 1 ]; then
-  PYTHON_ARGS="--assume-blink-confirmed $PYTHON_ARGS"
+  set -- --assume-blink-confirmed "$@"
 fi
 if [ -n "$TRANSCRIPT_OUT" ]; then
-  PYTHON_ARGS="--transcript-out $TRANSCRIPT_OUT $PYTHON_ARGS"
+  set -- --transcript-out "$TRANSCRIPT_OUT" "$@"
 fi
 
-exec python3 "$ROOT_DIR/tools/frothy/proof_m10_esp32_smoke.py" $PYTHON_ARGS
+is_retryable_serial_failure() {
+  path=$1
+  grep -E \
+    'Could not exclusively lock port|device disconnected or multiple access on port|device reports readiness to read but returned no data|Waiting for the device to reconnect|port is busy or doesn'\''t exist' \
+    "$path" >/dev/null
+}
+
+attempt=1
+max_attempts=${FROTHY_M10_DEVICE_ATTEMPTS:-4}
+while [ "$attempt" -le "$max_attempts" ]; do
+  err_file="$WORK_DIR/device-proof.$attempt.stderr"
+  if python3 "$ROOT_DIR/tools/frothy/proof_m10_esp32_smoke.py" "$@" 2>"$err_file"; then
+    rm -f "$err_file"
+    exit 0
+  fi
+
+  if [ "$attempt" -lt "$max_attempts" ] && is_retryable_serial_failure "$err_file"; then
+    printf 'retry: device proof attempt %s/%s hit serial contention, retrying\n' \
+      "$attempt" "$max_attempts" >&2
+    attempt=$((attempt + 1))
+    sleep "$attempt"
+    continue
+  fi
+
+  cat "$err_file" >&2
+  exit 1
+done

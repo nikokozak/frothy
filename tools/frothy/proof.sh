@@ -36,6 +36,7 @@ proofs:
   boot
   ffi
   safe-boot
+  workshop-docs
   m10 [--host-only|--assume-blink-confirmed|--transcript-out PATH|<PORT>]
 EOF
 }
@@ -72,6 +73,9 @@ run_one() {
     safe-boot)
       run_test_runner proof-safeboot "$@"
       ;;
+    workshop-docs)
+      exec sh "$SCRIPT_DIR/proof_workshop_ops_docs.sh" "$@"
+      ;;
     m10)
       exec sh "$SCRIPT_DIR/proof_m10_smoke.sh" "$@"
       ;;
@@ -94,7 +98,7 @@ case "$1" in
       usage >&2
       exit 1
     }
-    for proof_name in stack-budget repl ctrl-c control editor inspect boot ffi safe-boot; do
+    for proof_name in stack-budget repl ctrl-c control editor inspect boot ffi safe-boot workshop-docs; do
       printf '==> %s\n' "$proof_name"
       if [ "$proof_name" = control ] || [ "$proof_name" = editor ]; then
         sh "$0" "$proof_name" --host-only

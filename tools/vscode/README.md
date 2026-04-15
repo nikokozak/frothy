@@ -8,6 +8,13 @@ surface:
 - there is no daemon, shared port owner, or local-runtime editor mode in the
   maintained path
 
+Keep the rest of the workshop path in the small shared docs set:
+
+- `../../docs/guide/Frothy_Workshop_Install_Quickstart.md`
+- `../../docs/guide/Frothy_Workshop_Quick_Reference.md`
+- `../../docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`
+- `../../boards/esp32-devkit-v1/WORKSHOP.md`
+
 ## Install
 
 The extension requires the installed Frothy CLI command, which is still

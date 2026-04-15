@@ -78,6 +78,12 @@ def require_count_at_least(text: str, needle: str, expected: int) -> None:
         fail(f"expected at least {expected} occurrences of {needle!r}, got {actual}")
 
 
+def require_count_exact(text: str, needle: str, expected: int) -> None:
+    actual = text.count(needle)
+    if actual != expected:
+        fail(f"expected exactly {expected} occurrences of {needle!r}, got {actual}")
+
+
 def require_sequence(text: str, needles: list[str]) -> None:
     index = 0
     for needle in needles:
@@ -107,6 +113,34 @@ def ensure_idf_available() -> None:
             "ESP-IDF tools are unavailable; expected export.sh to make "
             f"`idf.py` visible.\n{result.stdout}{result.stderr}"
         )
+
+
+def wait_for_port_ready(port: str, timeout: float = 15.0) -> None:
+    deadline = time.monotonic() + timeout
+    lsof_bin = shutil.which("lsof")
+    last_state = "unknown"
+
+    while time.monotonic() < deadline:
+        if not os.path.exists(port):
+            last_state = "missing"
+            time.sleep(0.25)
+            continue
+
+        if lsof_bin is not None:
+            holders = subprocess.run(
+                [lsof_bin, port],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if holders.returncode == 0:
+                last_state = "busy"
+                time.sleep(0.25)
+                continue
+
+        return
+
+    fail(f"serial port is not ready: {port} ({last_state})")
 
 
 class IdfMonitorSession:
@@ -205,7 +239,10 @@ class IdfMonitorSession:
 
     def send_line(self, text: str, timeout: float = 10.0) -> None:
         os.write(self.master_fd, text.encode("utf-8") + b"\n")
-        self.read_until_any([PROMPT, CONT_PROMPT], timeout)
+        try:
+            self.read_until_any([PROMPT, CONT_PROMPT], timeout)
+        except SystemExit:
+            fail(f"command {text!r} did not reach a prompt\n{self.text()}")
 
     def send_raw(self, data: bytes) -> None:
         os.write(self.master_fd, data)
@@ -273,7 +310,6 @@ def run_phase_two(session: IdfMonitorSession) -> None:
     session.send_line("note")
     session.send_line("dangerous.wipe")
     session.send_line("note")
-    session.run_file(BOOT_PROOF)
     transcript = session.text()
     segment = transcript[len(boot_transcript) :]
     require_contains(boot_transcript, "snapshot: found")
@@ -286,6 +322,16 @@ def run_phase_two(session: IdfMonitorSession) -> None:
             "eval error (4)",
         ],
     )
+    require_not_contains(segment, "parse error (")
+
+
+def run_phase_two_boot_setup(session: IdfMonitorSession) -> None:
+    start = session.text()
+    session.run_file(BOOT_PROOF)
+    transcript = session.text()
+    segment = transcript[len(start) :]
+    require_contains(transcript, "snapshot: none")
+    require_not_contains(segment, "eval error (")
     require_not_contains(segment, "parse error (")
 
 
@@ -306,60 +352,70 @@ def run_phase_three(session: IdfMonitorSession) -> None:
     require_not_contains(segment, "parse error (")
 
 
-def build_workshop_starter_proof() -> tuple[str, str]:
+def build_workshop_starter_bundle() -> tuple[str, str]:
     temp_dir = tempfile.mkdtemp(prefix="frothy-m10-workshop-")
-    starter_dir = os.path.join(temp_dir, "workshop-starter")
-    starter_proof = os.path.join(temp_dir, "workshop-starter-proof.frothy")
-    scaffold = subprocess.run(
-        [CLI_BIN, "new", "--target", "esp32-devkit-v1", starter_dir],
-        cwd=ROOT_DIR,
-        env=idf_env(),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if scaffold.returncode != 0:
-        fail(f"failed to scaffold workshop starter\n{scaffold.stdout}{scaffold.stderr}")
-
-    resolved = subprocess.run(
-        [CLI_BIN, "tooling", "resolve-source", os.path.join(starter_dir, "src", "main.froth")],
-        cwd=ROOT_DIR,
-        env=idf_env(),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if resolved.returncode != 0:
-        fail(
-            "failed to resolve workshop starter source\n"
-            f"{resolved.stdout}{resolved.stderr}"
+    try:
+        starter_dir = os.path.join(temp_dir, "workshop-starter")
+        starter_proof = os.path.join(temp_dir, "workshop-starter-proof.frothy")
+        scaffold = subprocess.run(
+            [CLI_BIN, "new", "--target", "esp32-devkit-v1", starter_dir],
+            cwd=ROOT_DIR,
+            env=idf_env(),
+            capture_output=True,
+            text=True,
+            check=False,
         )
-    if "warning:" in resolved.stderr:
-        fail(f"workshop starter resolve emitted warnings\n{resolved.stderr}")
+        if scaffold.returncode != 0:
+            fail(
+                "failed to scaffold workshop starter\n"
+                f"{scaffold.stdout}{scaffold.stderr}"
+            )
 
-    with open(starter_proof, "w", encoding="utf-8") as handle:
-        handle.write(resolved.stdout)
-        if resolved.stdout and not resolved.stdout.endswith("\n"):
-            handle.write("\n")
-        with open(WORKSHOP_STARTER_CHECKS_PROOF, "r", encoding="utf-8") as tail:
-            handle.write(tail.read())
+        resolved = subprocess.run(
+            [
+                CLI_BIN,
+                "tooling",
+                "resolve-source",
+                os.path.join(starter_dir, "src", "main.froth"),
+            ],
+            cwd=ROOT_DIR,
+            env=idf_env(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if resolved.returncode != 0:
+            fail(
+                "failed to resolve workshop starter source\n"
+                f"{resolved.stdout}{resolved.stderr}"
+            )
+        if "warning:" in resolved.stderr:
+            fail(f"workshop starter resolve emitted warnings\n{resolved.stderr}")
 
-    return temp_dir, starter_proof
+        runtime_source = resolved.stdout
+        if runtime_source and not runtime_source.endswith("\n"):
+            runtime_source += "\n"
+
+        with open(starter_proof, "w", encoding="utf-8") as handle:
+            handle.write(runtime_source)
+            with open(WORKSHOP_STARTER_CHECKS_PROOF, "r", encoding="utf-8") as tail:
+                handle.write(tail.read())
+
+        return temp_dir, starter_proof
+    except BaseException:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
 
 
-def run_phase_four(session: IdfMonitorSession) -> None:
+def run_phase_four(session: IdfMonitorSession, starter_proof: str) -> None:
     phase_start = session.text()
     session.run_file(CELLS_PROOF)
     cells_transcript = session.text()[len(phase_start) :]
     session.run_file(WORKSHOP_PROOF)
     workshop_transcript = session.text()[len(phase_start) + len(cells_transcript) :]
     session.send_line("dangerous.wipe")
-    temp_dir, starter_proof = build_workshop_starter_proof()
     starter_start = len(session.text())
-    try:
-        session.run_file(starter_proof)
-    finally:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+    session.run_file(starter_proof)
     starter_transcript = session.text()[starter_start:]
     matches = re.findall(r"sample\.read: \d\r?\n(\d+)\r?\nfrothy> ", cells_transcript)
     if len(matches) < 4:
@@ -452,9 +508,15 @@ def run_phase_four(session: IdfMonitorSession) -> None:
             '"Workshop starter ready"',
         ],
     )
-    require_match(
+    require_sequence(
         starter_transcript,
-        r'"lesson\.blink\.check"\r?\n[\s\S]*?led\.blink: 1, 1\r?\nnil\r?\nfrothy> ',
+        [
+            '"lesson.blink.check"',
+            '[gpio] pin 2 = LOW',
+            '[gpio] pin 2 = HIGH',
+            '[gpio] pin 2 = LOW',
+            'nil',
+        ],
     )
     require_sequence(
         starter_transcript,
@@ -489,19 +551,22 @@ def run_phase_four(session: IdfMonitorSession) -> None:
     score_value = int(score_match.group(1))
     if score_value < 0 or score_value > 100:
         fail(f"expected game.capture score in 0..100, got {score_value}")
+    require_match(
+        starter_transcript,
+        r'"game\.restore\.check"\r?\n[\s\S]*?restore\r?\n[\s\S]*?true\r?\nfrothy> [\s\S]*?true\r?\nfrothy> [\s\S]*?true\r?\nfrothy> ',
+    )
     require_sequence(
         starter_transcript,
         [
-            '"game.restore.check"',
-            'player[0]',
-            '1',
-            'player[1]',
-            '1',
-            'score',
-            str(score_value),
+            '"game.wipe.check"',
+            'eval error (4)',
         ],
     )
-    require_not_contains(starter_transcript, "eval error (")
+    require_count_exact(starter_transcript, "eval error (4)", 1)
+    require_match(
+        starter_transcript,
+        r'"base\.recovery\.check"\r?\n[\s\S]*?info @blink\r?\n[\s\S]*?slot: base\r?\n[\s\S]*?blink: LED_BUILTIN, 1, 1\r?\n[\s\S]*?\[gpio\] pin 2 = LOW\r?\n\[gpio\] pin 2 = HIGH\r?\n\[gpio\] pin 2 = LOW\r?\nnil\r?\nfrothy> ',
+    )
     require_not_contains(starter_transcript, "parse error (")
 
 
@@ -537,6 +602,7 @@ def main() -> int:
 
     emitted = []
 
+    wait_for_port_ready(args.port)
     first_session = IdfMonitorSession(args.port, flash=True)
     try:
         first_session.wait_for_stable_prompt(timeout=120.0)
@@ -547,6 +613,7 @@ def main() -> int:
     finally:
         first_session.close()
 
+    wait_for_port_ready(args.port)
     second_session = IdfMonitorSession(args.port, flash=True)
     try:
         second_session.wait_for_stable_prompt(timeout=120.0)
@@ -555,13 +622,28 @@ def main() -> int:
     finally:
         second_session.close()
 
+    wait_for_port_ready(args.port)
     third_session = IdfMonitorSession(args.port, flash=True)
     try:
-        run_phase_three(third_session)
-        run_phase_four(third_session)
+        third_session.wait_for_stable_prompt(timeout=120.0)
+        run_phase_two_boot_setup(third_session)
         emitted.append(third_session.text())
     finally:
         third_session.close()
+
+    wait_for_port_ready(args.port)
+    fourth_session = IdfMonitorSession(args.port, flash=False)
+    starter_bundle_dir = None
+    starter_proof = None
+    try:
+        starter_bundle_dir, starter_proof = build_workshop_starter_bundle()
+        run_phase_three(fourth_session)
+        run_phase_four(fourth_session, starter_proof)
+        emitted.append(fourth_session.text())
+    finally:
+        if starter_bundle_dir is not None:
+            shutil.rmtree(starter_bundle_dir, ignore_errors=True)
+        fourth_session.close()
 
     combined = "".join(emitted)
     print(combined, end="")

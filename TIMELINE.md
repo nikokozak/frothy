@@ -164,27 +164,40 @@ keep each item's description and references so deferral does not erase context.
   `tools/frothy/proof_m10_workshop_starter_checks.frothy`,
   `docs/adr/117-workshop-base-image-board-library-surface.md`, and
   `docs/guide/Frothy_Workshop_Install_Quickstart.md`.
-- [ ] Minimal docs front door and quick reference
+- [x] Minimal docs front door and quick reference
   Deliverable: install, first connect, inspection, board API, persistence, and
   troubleshooting docs that point at the maintained Frothy path.
-  References: `README.md`, `docs/guide/Frothy_From_The_Ground_Up.md`, and
+  References: `README.md`, `docs/guide/Frothy_From_The_Ground_Up.md`,
+  `docs/guide/Frothy_Workshop_Quick_Reference.md`, and
   `tools/vscode/README.md`.
 - [ ] Clean-machine validation on promised platforms
   Deliverable: prove the attendee path on at least macOS Apple Silicon, macOS
   Intel, and Linux x86_64 before the workshop.
-  References: `.github/workflows/release.yml`, `README.md`, and the workshop
+  Note: the exact checklist and recording sheet are now frozen in
+  `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`; the actual
+  machine-by-machine passes remain open.
+  References: `.github/workflows/release.yml`, `README.md`,
+  `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`, and the workshop
   install path above.
 - [ ] Classroom hardware and recovery kit
   Deliverable: preflashed boards, known-good data cables, spare hardware,
   board labels, and a written reflash/fallback procedure.
+  Note: the written room-side pack-out and recovery card now live in
+  `boards/esp32-devkit-v1/WORKSHOP.md`; physical packing and labeling remain
+  open.
   References: `tools/frothy/proof_m10_smoke.sh`,
-  `tools/frothy/m10_esp32_proof_transcript.txt`, and `boards/`.
-- [ ] Workshop rehearsal plus measured performance/persistence closeout
+  `tools/frothy/m10_esp32_proof_transcript.txt`, `boards/`, and
+  `boards/esp32-devkit-v1/WORKSHOP.md`.
+- [~] Workshop rehearsal plus measured performance/persistence closeout
   Deliverable: run the real lesson path end to end, verify loop cadence,
   sensor flow, and `save` / `restore` / `dangerous.wipe`, and freeze the take-home path.
+  Note: the branch-local rehearsal status note and proof command are checked
+  in, but the measured real-device closeout itself remains open until one
+  complete pass is captured and recorded.
   References: `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md`,
-  `docs/spec/Frothy_Language_Spec_v0_1.md`, `tools/frothy/`, and the starter
-  project above.
+  `docs/spec/Frothy_Language_Spec_v0_1.md`, `tools/frothy/`,
+  `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`, and the
+  starter project above.
 - [ ] Publishability reset tranche 1: immediate cuts
   Deliverable: after the 2026-04-16 workshop gate is stable, remove tracked
   repo pollution, archive historical proof artifacts out of active tooling,
