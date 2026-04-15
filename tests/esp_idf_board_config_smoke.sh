@@ -141,6 +141,20 @@ set(FROTHY_BOARD_BASE_HEADER "${CMAKE_BINARY_DIR}/frothy_board_base_lib.h")
 if(NOT EXISTS "${FROTHY_BOARD_BASE_HEADER}")
   message(FATAL_ERROR "esp-idf target did not emit frothy_board_base_lib.h")
 endif()
+set(FROTHY_BOARD_BASE_SOURCE
+    "${SOURCE_DIR}/boards/${BOARD_UNDER_TEST}/lib/base.frothy")
+if(NOT EXISTS "${FROTHY_BOARD_BASE_SOURCE}")
+  message(FATAL_ERROR "esp-idf target board is missing lib/base.frothy")
+endif()
+file(READ "${FROTHY_BOARD_BASE_SOURCE}" EXPECTED_BASE_HEX HEX)
+string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1, "
+       EXPECTED_BASE_BYTES "${EXPECTED_BASE_HEX}")
+set(EXPECTED_BASE_CONTENT
+    "#pragma once\nstatic const char frothy_board_base_lib[] = {${EXPECTED_BASE_BYTES}0x00};\n")
+file(READ "${FROTHY_BOARD_BASE_HEADER}" ACTUAL_BASE_CONTENT)
+if(NOT ACTUAL_BASE_CONTENT STREQUAL EXPECTED_BASE_CONTENT)
+  message(FATAL_ERROR "frothy_board_base_lib.h does not match board lib/base.frothy")
+endif()
 
 string(MAKE_C_IDENTIFIER "${COMPONENT_LIB}" COMPONENT_LIB_ID)
 if(NOT TARGET "froth_board_pins_${COMPONENT_LIB_ID}")

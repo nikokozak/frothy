@@ -10,7 +10,7 @@ It records the current focused workshop-board proof state on the maintained
 ## Required Proof Command
 
 ```sh
-sh tools/frothy/proof.sh workshop-v4 --live-controls <PORT>
+sh tools/frothy/proof.sh workshop-v4 <PORT>
 ```
 
 ## Current Branch Status
@@ -24,8 +24,7 @@ sh tools/frothy/proof.sh workshop-v4 --live-controls <PORT>
 
 - A successful focused real-device proof was recorded on 2026-04-15 against
   the mounted `esp32-devkit-v4-game-board` on `/dev/cu.usbserial-0001`.
-- Command run:
-  `sh tools/frothy/proof.sh workshop-v4 --live-controls /dev/cu.usbserial-0001`
+- Command run: `sh tools/frothy/proof.sh workshop-v4 /dev/cu.usbserial-0001`
 - Observed behavior matched the frozen workshop helper surface:
   `matrix.init`, `grid.clear`, `grid.fill`, `grid.set`, `grid.rect`,
   `knob.left/right`, idle `joy.*?`, and `dangerous.wipe` restoring

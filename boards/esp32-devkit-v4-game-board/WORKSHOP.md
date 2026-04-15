@@ -47,7 +47,7 @@ Run this against the attached workshop proto board to prove the baked-in v4
 helper surface directly, including live joystick transitions:
 
 ```sh
-sh tools/frothy/proof.sh workshop-v4 --live-controls <PORT>
+sh tools/frothy/proof.sh workshop-v4 <PORT>
 ```
 
 ## First-Line Recovery

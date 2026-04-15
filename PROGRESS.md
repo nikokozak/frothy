@@ -117,8 +117,7 @@ file is wrong.
   reflash card, and
   `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md` carries the
   checked-in rehearsal status note plus the focused
-  `sh tools/frothy/proof.sh workshop-v4 --live-controls <PORT>` real-device
-  proof command.
+  `sh tools/frothy/proof.sh workshop-v4 <PORT>` real-device proof command.
 - The remaining manual workshop gates stay explicit: separate clean-machine
   passes on the promised platforms and physical room pack-out are still exit
   steps, not work that prose can claim complete; the focused v4 mounted-board

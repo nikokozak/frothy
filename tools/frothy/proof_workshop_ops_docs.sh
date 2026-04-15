@@ -8,7 +8,7 @@ cd "$repo_root"
 rg -n '^## Start Here$' README.md
 rg -n 'Frothy_Workshop_Quick_Reference\.md|Frothy_Workshop_Clean_Machine_Validation\.md|boards/esp32-devkit-v4-game-board/WORKSHOP\.md|Frothy_Workshop_Rehearsal_Closeout_2026-04-14\.md' \
   README.md
-rg -n 'proof\.sh workshop-v4 --live-controls <PORT>' README.md \
+rg -n 'proof\.sh workshop-v4 <PORT>' README.md \
   docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md
 rg -n 'Frothy_Workshop_Quick_Reference\.md|Frothy_Workshop_Clean_Machine_Validation\.md' \
   docs/guide/Frothy_Workshop_Install_Quickstart.md \
@@ -24,7 +24,7 @@ rg -n 'without a repo checkout and without `esp-idf`|Only promise the rows that 
   docs/guide/Frothy_Workshop_Clean_Machine_Validation.md
 rg -n 'froth --port <path> doctor|froth --port <path> connect|dangerous\.wipe|froth --port <path> flash|idf\.py -DFROTH_BOARD=esp32-devkit-v4-game-board' \
   boards/esp32-devkit-v4-game-board/WORKSHOP.md
-rg -n 'proof\.sh workshop-v4 --live-controls <PORT>' \
+rg -n 'proof\.sh workshop-v4 <PORT>' \
   boards/esp32-devkit-v4-game-board/WORKSHOP.md
 rg -n '^## Minimum Room Pack-Out$|^## First-Line Recovery$|^## Reflash Paths$|^## Do Not Do In The Room$' \
   boards/esp32-devkit-v4-game-board/WORKSHOP.md

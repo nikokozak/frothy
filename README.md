@@ -48,7 +48,7 @@ The promised attendee path is smaller than the repo surface:
 | --- | --- | --- |
 | CLI release | `frothy-v<version>-darwin-arm64.tar.gz`, `frothy-v<version>-darwin-amd64.tar.gz`, `frothy-v<version>-linux-amd64.tar.gz` | macOS via Homebrew is the preferred attendee path; Linux x86_64 can use the release tarball directly |
 | VS Code | `frothy-vscode-v<extension-version>.vsix` | supported on the same machines that can already run the installed CLI |
-| Firmware / recovery | legacy published firmware asset: `frothy-v<version>-esp32-devkit-v1.zip`; current workshop-board recovery for `esp32-devkit-v4-game-board` is maintainer-only from the repo checkout and [boards/esp32-devkit-v4-game-board/WORKSHOP.md](/Users/niko/Developer/Frothy/boards/esp32-devkit-v4-game-board/WORKSHOP.md) | attendees do not flash; maintainers carry preflashed `esp32-devkit-v4-game-board` boards |
+| Firmware / recovery | current workshop-board recovery for `esp32-devkit-v4-game-board` is maintainer-only from the repo checkout and [boards/esp32-devkit-v4-game-board/WORKSHOP.md](/Users/niko/Developer/Frothy/boards/esp32-devkit-v4-game-board/WORKSHOP.md) | attendees do not flash; maintainers carry preflashed `esp32-devkit-v4-game-board` boards |
 | Source build | checkout build via `make build` | maintainer path, not required before the workshop |
 
 Windows, extra boards, and custom toolchain setups are not part of the
@@ -134,8 +134,7 @@ The maintained test contract is:
 - `make test-list`: list maintained suites and profiles
 - `sh tools/frothy/proof_workshop_ops_docs.sh`: workshop front-door and ops
   docs sanity
-- `sh tools/frothy/proof.sh workshop-v4 --live-controls <PORT>`: focused
-  real-device
+- `sh tools/frothy/proof.sh workshop-v4 <PORT>`: focused real-device
   `esp32-devkit-v4-game-board` workshop proof
 
 Run the currently shipped CLI as `froth`:

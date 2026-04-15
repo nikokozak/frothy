@@ -3,7 +3,7 @@
   "vendor": "DoIt",
   "platform": "esp-idf",
   "chip": "esp32",
-  "description": "Workshop proto board built on an ESP32 DevKit V4 with a TM1629 12x8 matrix.",
+  "description": "Workshop proto board built on an ESP32 DevKit V4 with a TM1629 12x8 matrix; raw A0 and BUTTON_1 intentionally share GPIO34 on the mounted board.",
   "config": {
     "cell_size_bits": 32,
     "heap_size": 16384,

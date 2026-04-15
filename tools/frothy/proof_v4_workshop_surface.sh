@@ -3,17 +3,21 @@ set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 CLI_BIN="${FROTHY_CLI_BINARY:-$ROOT_DIR/tools/cli/froth-cli}"
-RUN_LIVE_CONTROLS=0
+RUN_LIVE_CONTROLS=1
 PORT=
 
 usage() {
-  echo "usage: $0 [--live-controls] <PORT>" >&2
+  echo "usage: $0 [--skip-live-controls] <PORT>" >&2
 }
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --live-controls)
       RUN_LIVE_CONTROLS=1
+      shift
+      ;;
+    --skip-live-controls)
+      RUN_LIVE_CONTROLS=0
       shift
       ;;
     -h|--help)
@@ -205,7 +209,14 @@ try:
     expect_exact(session, "overlay joy.up.pin", "joy.up.pin", "2")
     session.command("dangerous.wipe:")
     expect_exact(session, "restored joy.up.pin", "joy.up.pin", "17")
+    expect_exact(session, "restored joy.down.pin", "joy.down.pin", "16")
+    expect_exact(session, "restored joy.left.pin", "joy.left.pin", "13")
+    expect_exact(session, "restored joy.right.pin", "joy.right.pin", "14")
     expect_exact(session, "restored joy.click.pin", "joy.click.pin", "25")
+    expect_exact(session, "restored knob.left.pin", "knob.left.pin", "33")
+    expect_exact(session, "restored knob.right.pin", "knob.right.pin", "32")
+    expect_range(session, "knob.left after wipe", "knob.left:", 0, 100)
+    expect_range(session, "knob.right after wipe", "knob.right:", 0, 100)
 
     if RUN_LIVE_CONTROLS:
         expect_live_transition(session, "joy.up?", "joy.up?:", "true", "false")

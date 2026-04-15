@@ -37,7 +37,7 @@ proofs:
   ffi
   safe-boot
   workshop-docs
-  workshop-v4 <PORT>
+  workshop-v4 [--skip-live-controls] <PORT>
   m10 [--host-only|--assume-blink-confirmed|--transcript-out PATH|<PORT>]
 EOF
 }
