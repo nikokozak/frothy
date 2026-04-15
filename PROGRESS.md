@@ -27,9 +27,10 @@ file is wrong.
   `docs/audit/Frothy_Repo_Audit_2026-04.md`; it now serves as the reference
   record for the landed publishability reset rather than as a future cleanup
   ledger.
-- The Frothy-versus-`froth` naming boundary is now explicit and frozen in the
-  maintained surface: repo, product, docs, and editor are Frothy, while the
-  installed CLI path remains intentionally transitional `froth`.
+- The Frothy CLI/install rename tranche is now landed: repo, product, docs,
+  release assets, installed CLI, and repo-local checkout build all use the
+  Frothy-owned `frothy` / `frothy-cli` names, while VS Code keeps only narrow
+  legacy `froth` discovery fallback during the transition.
 - This control-surface repair tranche is landed: `PROGRESS.md` and
   `TIMELINE.md` are thin again, `AGENTS.md` supports targeted work, and the
   forward queue now lives in one short roadmap note plus Frothy ADR-116.
@@ -100,12 +101,13 @@ file is wrong.
   attendee path of released CLI assets, matching VSIX, and preflashed
   `esp32-devkit-v4-game-board` hardware.
 - The attendee-facing naming and recovery story is now explicit on the
-  maintained Frothy path: Frothy owns the product/docs/editor identity, the
-  installed release command remains transitional `froth`, whole-file editor
-  send blocks unsafe replay when control `reset` is unavailable, and the
-  control proof ladder now re-checks recovery on the real ESP32 path.
+  maintained Frothy path: Frothy owns the product/docs/editor/install identity,
+  the default CLI home is `~/.frothy` with `FROTHY_HOME` precedence and legacy
+  `FROTH_HOME` fallback, whole-file editor send blocks unsafe replay when
+  control `reset` is unavailable, and the control proof ladder now re-checks
+  recovery on the real ESP32 path.
 - The earlier lesson/game starter scaffold and its proof path are still
-  available on `froth new --target esp32-devkit-v1`, but that is now a
+  available on `frothy new --target esp32-devkit-v1`, but that is now a
   retained v1 path rather than the maintained Friday workshop hardware target;
   the current workshop board/base-image surface is the v4 helper path.
 - The workshop-operational slice is now concrete in-repo without widening the

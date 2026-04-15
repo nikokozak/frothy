@@ -17,7 +17,7 @@ import (
 func TestPackageReleaseScriptIncludesBinaryAndReadme(t *testing.T) {
 	repoRoot := repoRootForScriptTest(t)
 	workDir := t.TempDir()
-	binaryPath := filepath.Join(workDir, "froth-cli")
+	binaryPath := filepath.Join(workDir, "frothy-cli")
 	if err := os.WriteFile(binaryPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write binary: %v", err)
 	}
@@ -39,14 +39,14 @@ func TestPackageReleaseScriptIncludesBinaryAndReadme(t *testing.T) {
 
 	archivePath := filepath.Join(outputDir, "frothy-v0.1.0-darwin-arm64.tar.gz")
 	entries := untarEntries(t, archivePath)
-	if _, ok := entries["froth"]; !ok {
-		t.Fatalf("archive entries = %v, want froth", sortedKeys(entries))
+	if _, ok := entries["frothy"]; !ok {
+		t.Fatalf("archive entries = %v, want frothy", sortedKeys(entries))
 	}
 	readme, ok := entries["README.txt"]
 	if !ok {
 		t.Fatalf("archive entries = %v, want README.txt", sortedKeys(entries))
 	}
-	if !strings.Contains(readme, "Installed command: froth") {
+	if !strings.Contains(readme, "Installed command: frothy") {
 		t.Fatalf("README.txt = %q, want installed command note", readme)
 	}
 }

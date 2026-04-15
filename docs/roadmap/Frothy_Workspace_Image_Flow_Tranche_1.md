@@ -130,7 +130,7 @@ Editor and helper constraints:
 - `tools/vscode/src/control-session-client.ts` keeps one helper child per VS
   Code window and one active control owner
 - `tools/vscode/src/send-file.ts` resolves saved-on-disk source through
-  `froth tooling resolve-source`
+  `frothy tooling resolve-source`
 - `tools/vscode/src/extension.ts` derives workspace/root context from the
   active folder and stays on direct helper-owned control
 - `tools/vscode/src/send-file-reset.ts` preserves truthful whole-file

@@ -32,7 +32,7 @@ func runTooling(args []string) error {
 			fileArg = args[1]
 		}
 		if len(args) > 2 {
-			return fmt.Errorf("usage: froth tooling resolve-source [file]")
+			return fmt.Errorf("usage: %s tooling resolve-source [file]", cliCommandName)
 		}
 		return runToolingResolveSource(fileArg)
 	case "control-smoke":

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
+const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const {
   ControlSessionClient,
@@ -168,18 +170,64 @@ async function main() {
     assertEq(disconnected.length, 2, "disconnected event count");
   });
 
-  await test("CLI discovery still prefers froth and repo-local paths", async () => {
+  await test("CLI discovery prefers frothy and keeps legacy fallback paths", async () => {
     const cwd = path.resolve(__dirname, "..", "..");
     const candidates = cliCandidates(cwd);
+    assert(candidates.includes("frothy"), "frothy candidate");
     assert(candidates.includes("froth"), "froth candidate");
     assert(
+      candidates.some((candidate) => candidate.endsWith(path.join("tools", "cli", "frothy-cli"))),
+      "repo-local frothy-cli candidate",
+    );
+    assert(
       candidates.some((candidate) => candidate.endsWith(path.join("tools", "cli", "froth-cli"))),
-      "repo-local froth-cli candidate",
+      "repo-local legacy froth-cli candidate",
+    );
+    assert(
+      candidates.some((candidate) => candidate.endsWith(path.join("tools", "cli", "frothy"))),
+      "repo-local frothy candidate",
     );
     assert(
       candidates.some((candidate) => candidate.endsWith(path.join("tools", "cli", "froth"))),
-      "repo-local froth candidate",
+      "repo-local legacy froth candidate",
     );
+    assert(
+      candidates.indexOf("frothy") < candidates.indexOf("froth"),
+      "frothy comes before legacy froth",
+    );
+  });
+
+  await test("CLI discovery picks repo-local frothy-cli before legacy PATH froth", async () => {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "frothy-cli-discovery-"));
+    const pathDir = fs.mkdtempSync(path.join(os.tmpdir(), "frothy-cli-path-"));
+
+    try {
+      const repoCli = path.join(repoRoot, "tools", "cli", "frothy-cli");
+      const legacyCli = path.join(pathDir, "froth");
+      fs.mkdirSync(path.dirname(repoCli), { recursive: true });
+      fs.writeFileSync(repoCli, "#!/bin/sh\n");
+      fs.writeFileSync(legacyCli, "#!/bin/sh\n");
+
+      const candidates = cliCandidates(repoRoot).filter((candidate) => ![
+        "frothy",
+        "/opt/homebrew/bin/frothy",
+        "/usr/local/bin/frothy",
+        "frothy-cli",
+      ].includes(candidate));
+
+      let resolved = null;
+      for (const candidate of candidates) {
+        resolved = resolveCliCandidate(candidate, repoRoot, pathDir);
+        if (resolved) {
+          break;
+        }
+      }
+
+      assertEq(resolved, repoCli, "repo-local frothy-cli wins before legacy PATH froth");
+    } finally {
+      fs.rmSync(repoRoot, { recursive: true, force: true });
+      fs.rmSync(pathDir, { recursive: true, force: true });
+    }
   });
 
   await test("resolveCliCandidate finds repo-local files", async () => {

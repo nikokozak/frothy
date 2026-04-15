@@ -38,7 +38,7 @@ func runDoctor() error {
 
 	candidates, err := serialpkg.ListCandidates()
 	if err != nil {
-		doctorFailure("serial", fmt.Sprintf("error: %v", err), "Check USB permissions and retry `froth doctor`.")
+		doctorFailure("serial", fmt.Sprintf("error: %v", err), fmt.Sprintf("Check USB permissions and retry `%s doctor`.", cliCommandName))
 	} else if len(candidates) == 0 {
 		doctorFailure("serial", "no USB-serial ports found", "Connect a USB-serial device and retry.")
 	} else {
@@ -51,7 +51,7 @@ func runDoctor() error {
 	if exportPath, ok := doctorESPIDFStatus(); ok {
 		fmt.Printf("esp-idf: installed (%s)\n", filepath.Dir(exportPath))
 	} else {
-		doctorOptional("esp-idf", "not found", "Needed only for custom ESP32 builds. Install with `froth setup esp-idf`.")
+		doctorOptional("esp-idf", "not found", fmt.Sprintf("Needed only for custom ESP32 builds. Install with `%s setup esp-idf`.", cliCommandName))
 	}
 
 	if path, err := doctorLookPath("esptool.py"); err == nil {
@@ -71,7 +71,7 @@ func runDoctor() error {
 	if err == nil {
 		runProjectDoctor(manifest, root)
 	} else if !isBareProjectMode(err) {
-		doctorFailure("project", fmt.Sprintf("error: %v", err), "Fix `froth.toml` and retry `froth doctor`.")
+		doctorFailure("project", fmt.Sprintf("error: %v", err), fmt.Sprintf("Fix `froth.toml` and retry `%s doctor`.", cliCommandName))
 	}
 
 	probePort, probeErr := doctorProbePort(candidates)
@@ -154,7 +154,7 @@ func runProjectDoctor(manifest *project.Manifest, root string) {
 
 	kernelRoot, err := findKernelRoot()
 	if err != nil {
-		doctorFailure("board", "sdk not available", "Run `froth build` to extract the embedded SDK, then retry `froth doctor`.")
+		doctorFailure("board", "sdk not available", fmt.Sprintf("Run `%s build` to extract the embedded SDK, then retry `%s doctor`.", cliCommandName, cliCommandName))
 		return
 	}
 
@@ -167,7 +167,7 @@ func runProjectDoctor(manifest *project.Manifest, root string) {
 }
 
 func doctorESPIDFStatus() (string, bool) {
-	home, err := sdk.FrothHome()
+	home, err := sdk.FrothyHome()
 	if err != nil || home == "" {
 		return "", false
 	}
@@ -192,9 +192,9 @@ func doctorOptional(label string, status string, note string) {
 
 func doctorDeviceRemediation() string {
 	if portFlag != "" {
-		return fmt.Sprintf("Check the device on `%s` and retry `froth doctor --port %s`.", portFlag, portFlag)
+		return fmt.Sprintf("Check the device on `%s` and retry `%s doctor --port %s`.", portFlag, cliCommandName, portFlag)
 	}
-	return "Connect a Frothy device or retry with `froth doctor --port <path>`."
+	return fmt.Sprintf("Connect a Frothy device or retry with `%s doctor --port <path>`.", cliCommandName)
 }
 
 func isBareProjectMode(err error) bool {

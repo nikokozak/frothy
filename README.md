@@ -61,13 +61,14 @@ The published naming split is explicit for now:
 | Thing | Name today |
 | --- | --- |
 | Product, repo, docs, release assets, Homebrew formula, and editor surface | `Frothy` / `frothy` |
-| Installed CLI command from released assets | `froth` |
-| Repo-local checkout CLI build | `tools/cli/froth-cli` |
+| Installed CLI command from released assets | `frothy` |
+| Repo-local checkout CLI build | `tools/cli/frothy-cli` |
 | Host runtime built from source | `build/Frothy` |
 
-That transitional split is deliberate. Frothy owns the public product and
-release identity; the shipped command name stays `froth` until a later CLI
-rename slice is worth the churn.
+The CLI rename tranche is now landed: Frothy owns the public product and
+release identity, and the installed/repo-local CLI surface is `frothy`.
+VS Code still keeps legacy `froth` discovery as a temporary compatibility path
+during the transition.
 
 ## Workshop Install
 
@@ -81,13 +82,14 @@ commands.
 
 The maintained workshop assumptions for this tranche are:
 
-- attendees use the installed CLI command `froth`
+- attendees use the installed CLI command `frothy`
 - attendees do not need a repo checkout, `esp-idf`, or source builds before
   they arrive
 - the current workshop run uses a preflashed `esp32-devkit-v4-game-board`
   proto board
-- if VS Code cannot find `froth` on `PATH`, set `frothy.cliPath` to the
-  absolute path of the installed binary
+- if VS Code cannot find `frothy` on `PATH`, set `frothy.cliPath` to the
+  absolute path of the installed binary; legacy `froth` fallback remains
+  available during the transition
 
 The maintained editor path stays on the accepted direct-control surface:
 
@@ -137,15 +139,15 @@ The maintained test contract is:
 - `sh tools/frothy/proof.sh workshop-v4 <PORT>`: focused real-device
   `esp32-devkit-v4-game-board` workshop proof
 
-Run the currently shipped CLI as `froth`:
+Run the currently shipped CLI as `frothy`:
 
 ```sh
-froth --version
-froth doctor
-froth build
-froth flash
-froth connect
-froth send src/main.froth
+frothy --version
+frothy doctor
+frothy build
+frothy flash
+frothy connect
+frothy send src/main.froth
 ```
 
 ## Active Docs

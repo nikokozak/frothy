@@ -74,7 +74,7 @@ func TestRunNewSetsESP32PlatformFromTargetFlag(t *testing.T) {
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
-	if !strings.Contains(stdout, "froth doctor") || !strings.Contains(stdout, "froth flash") {
+	if !strings.Contains(stdout, "frothy doctor") || !strings.Contains(stdout, "frothy flash") {
 		t.Fatalf("stdout = %q, want ESP32 setup next steps", stdout)
 	}
 

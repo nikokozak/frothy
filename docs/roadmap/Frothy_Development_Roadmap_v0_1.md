@@ -33,9 +33,10 @@ refreshed host/device proofs for the non-recursive evaluator path
 Blocked by: none
 Next proof command: `cmake -S . -B build && cmake --build build && ./build/frothy_eval_tests && ./build/frothy_shell_tests && sh tools/frothy/proof_eval_stack_budget.sh`
 Slip against plan: the explicit evaluator-frame-stack tranche, prompt-facing
-record repair, workshop-operational docs, and publishability-reset stack are
-now landed on `main`; the remaining pre-workshop risk is operational closeout
-on clean machines and real devices rather than more repo-shape churn
+record repair, workshop-operational docs, publishability-reset stack, and
+CLI/install rename tranche are now landed on `main`; the remaining
+pre-workshop risk is operational closeout on clean machines and real devices
+rather than more repo-shape churn
 Cut candidate if slip persists: treat frame-arena ownership as the last narrow
 runtime cleanup item, keep the workshop queue limited to clean-machine
 validation, room kit prep, and one recorded measured rehearsal, and continue
@@ -301,7 +302,7 @@ Deliverables:
 
 Verification:
 
-- [x] `./tools/cli/froth-cli --target esp-idf build`
+- [x] `./tools/cli/frothy-cli --target esp-idf build`
 - [x] `make test` covers the host PTY safe-boot smoke
 - [x] prompt transcript captured from target session
 
@@ -784,36 +785,38 @@ Did not widen in this slice:
 
 Status:
 
-- landed on 2026-04-13 as a docs/tooling-notes tranche
+- superseded in practice by the 2026-04-15 Frothy CLI/install rename tranche
 
 Why now:
 
 - the language-definition docs are now tight enough that naming cleanup can
   proceed against a stable control surface
-- repo-local `froth-cli`, release-time `froth`, and intended global `frothy`
-  still read as separate truths in executable-adjacent docs and tooling notes
-- the repo needs one explicit Frothy-first naming note before broader release
-  or discovery cleanup continues
+- repo-local `frothy-cli`, installed `frothy`, and narrow legacy `froth`
+  compatibility now need to read as one explicit truth in docs and tooling
+- the repo needs one Frothy-owned naming note instead of the earlier
+  transitional split
 
 Approach:
 
 - keep runtime, transport, and language semantics unchanged
 - align repo-control docs and executable-adjacent notes around one explicit
   Frothy-first CLI identity
-- preserve current binaries and proof paths where names remain transitional
+- keep legacy compatibility explicit only where transition coverage still
+  needs it
 - avoid implicit renames without the matching control-doc update
 
 Closeout:
 
-- `README.md`, local build labels, release tooling notes, and VS Code CLI
-  discovery/config wording now explain the current `froth-cli` /
-  release-time `froth` / intended global `frothy` split in one place
-- no binaries, tarball contents, formula install targets, CLI help text,
-  discovery order, or editor command ids changed
+- `README.md`, local build labels, release tooling notes, workshop docs, proof
+  scripts, and VS Code CLI discovery/config wording now explain the current
+  `frothy` / `frothy-cli` identity in one place
+- release artifacts, Homebrew formula install targets, CLI help text, and
+  discovery order now prefer `frothy`, while legacy `froth` fallback remains
+  explicit in transition points only
 
 Proof:
 
-- `make test-all && rg -n 'repo-local \`froth-cli\`' README.md && rg -n 'release-time \`froth\`' README.md && rg -n 'intended global \`frothy\`' README.md && rg -n 'landed on 2026-04-13 as a docs/tooling-notes tranche' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'first CLI naming-alignment artifact is landed' PROGRESS.md && rg -n '\`CLI naming alignment\`: landed on 2026-04-13 as the first truthful' TIMELINE.md`
+- `cd tools/cli && go test ./... && make test-vscode && rg -n 'Installed CLI command from released assets \\| \`frothy\`' README.md && rg -n 'legacy \`froth\` fallback' tools/vscode/README.md docs/guide/Frothy_Workshop_Install_Quickstart.md`
 
 #### Immediate control hardening + `RESET`
 
@@ -1144,8 +1147,9 @@ If implementation resumed today, the next steps should be:
   grouping, `cond`/`case`, Frothy-native `try/catch`, restricted
   binding/place designators, and the explicit recovery-boundary story before
   widening runtime semantics again
-- [x] align repo-local `froth-cli`, release-time `froth`, and intended global
-  `frothy` naming notes before broader discovery and release cleanup
+- [x] align repo-local `frothy-cli`, installed `frothy`, and narrow legacy
+  `froth` compatibility naming notes before broader discovery and release
+  cleanup
 - [x] define the first workspace/image-flow tranche as a doc-only
   slot-bundle-first ADR plus roadmap note before any helper, editor, manifest,
   or kernel surface widens

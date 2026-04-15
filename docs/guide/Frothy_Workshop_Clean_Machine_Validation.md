@@ -14,9 +14,9 @@ Use it to run and record those passes.
 
 | Platform | CLI install path | Extension asset | Board path | Must pass |
 | --- | --- | --- | --- | --- |
-| macOS Apple Silicon | `brew install frothy` preferred; `frothy-v<version>-darwin-arm64.tar.gz` fallback | matching `frothy-vscode-v<extension-version>.vsix` | preflashed `esp32-devkit-v4-game-board` proto board | `froth doctor`, VS Code connect, `matrix.init`, `grid.show`, CLI fallback |
-| macOS Intel | `brew install frothy` preferred; `frothy-v<version>-darwin-amd64.tar.gz` fallback | matching `frothy-vscode-v<extension-version>.vsix` | preflashed `esp32-devkit-v4-game-board` proto board | `froth doctor`, VS Code connect, `matrix.init`, `grid.show`, CLI fallback |
-| Linux x86_64 | `frothy-v<version>-linux-amd64.tar.gz` | matching `frothy-vscode-v<extension-version>.vsix` | preflashed `esp32-devkit-v4-game-board` proto board | `froth doctor`, VS Code connect, `matrix.init`, `grid.show`, CLI fallback |
+| macOS Apple Silicon | `brew install frothy` preferred; `frothy-v<version>-darwin-arm64.tar.gz` fallback | matching `frothy-vscode-v<extension-version>.vsix` | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, `matrix.init`, `grid.show`, CLI fallback |
+| macOS Intel | `brew install frothy` preferred; `frothy-v<version>-darwin-amd64.tar.gz` fallback | matching `frothy-vscode-v<extension-version>.vsix` | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, `matrix.init`, `grid.show`, CLI fallback |
+| Linux x86_64 | `frothy-v<version>-linux-amd64.tar.gz` | matching `frothy-vscode-v<extension-version>.vsix` | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, `matrix.init`, `grid.show`, CLI fallback |
 
 Not promised here:
 
@@ -43,10 +43,11 @@ Carry the CLI assets, the matching checksums file, and preflashed
 
 1. Start from a machine without a repo checkout and without `esp-idf`.
 2. Install the CLI from the promised path for that platform.
-3. Run `froth doctor`.
-4. If several ports are visible, rerun `froth --port <path> doctor`.
+3. Run `frothy doctor`.
+4. If several ports are visible, rerun `frothy --port <path> doctor`.
 5. Install the matching VSIX with `code --install-extension`.
-6. If VS Code cannot find `froth`, set `frothy.cliPath`.
+6. If VS Code cannot find `frothy`, set `frothy.cliPath`. Legacy `froth`
+   fallback remains available during the transition.
 7. Connect the preflashed `esp32-devkit-v4-game-board` proto board and run
    `Frothy: Connect Device`.
 8. Run `Frothy: Send Selection / Line` on `1 + 1`.
@@ -57,7 +58,7 @@ Carry the CLI assets, the matching checksums file, and preflashed
     `grid.show:` for a visible matrix proof.
 11. Confirm one input and one analog helper with `joy.up?:` and `knob.left:`.
 12. Prove recovery with `save`, `dangerous.wipe`, reconnect, and
-    `froth --port <path> connect`.
+    `frothy --port <path> connect`.
 13. After recovery, confirm the board is back in a usable base image with
     `words`, `info @grid.clear`, `info @joy.up?`, and `1 + 1`.
 14. Record the exact machine, asset names, board, pass/fail result, and any

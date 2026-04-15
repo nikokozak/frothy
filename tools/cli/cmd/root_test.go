@@ -11,7 +11,7 @@ func TestExecutePrintsUsageWithNoCommand(t *testing.T) {
 	resetCommandGlobals(t)
 
 	oldArgs := os.Args
-	os.Args = []string{"froth"}
+	os.Args = []string{"frothy"}
 	t.Cleanup(func() { os.Args = oldArgs })
 
 	stdout, stderr := captureOutput(t, func() {
@@ -23,7 +23,7 @@ func TestExecutePrintsUsageWithNoCommand(t *testing.T) {
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
-	if !strings.Contains(stdout, "Usage: froth [flags] <command>") {
+	if !strings.Contains(stdout, "Usage: frothy [flags] <command>") {
 		t.Fatalf("stdout = %q, want usage", stdout)
 	}
 }
@@ -32,7 +32,7 @@ func TestExecuteRejectsUnknownCommand(t *testing.T) {
 	resetCommandGlobals(t)
 
 	oldArgs := os.Args
-	os.Args = []string{"froth", "definitely-not-a-command"}
+	os.Args = []string{"frothy", "definitely-not-a-command"}
 	t.Cleanup(func() { os.Args = oldArgs })
 
 	err := Execute()
@@ -48,7 +48,7 @@ func TestExecutePrintsVersion(t *testing.T) {
 	resetCommandGlobals(t)
 
 	oldArgs := os.Args
-	os.Args = []string{"froth", "--version"}
+	os.Args = []string{"frothy", "--version"}
 	t.Cleanup(func() { os.Args = oldArgs })
 
 	stdout, stderr := captureOutput(t, func() {
@@ -60,7 +60,7 @@ func TestExecutePrintsVersion(t *testing.T) {
 	if stderr != "" {
 		t.Fatalf("stderr = %q, want empty", stderr)
 	}
-	want := "froth " + frothVersion(t)
+	want := "frothy " + frothVersion(t)
 	if !strings.Contains(stdout, want) {
 		t.Fatalf("stdout = %q, want %q", stdout, want)
 	}
@@ -70,7 +70,7 @@ func TestExecuteDispatchesSetup(t *testing.T) {
 	resetCommandGlobals(t)
 
 	oldArgs := os.Args
-	os.Args = []string{"froth", "setup", "esp-idf", "--force"}
+	os.Args = []string{"frothy", "setup", "esp-idf", "--force"}
 	t.Cleanup(func() { os.Args = oldArgs })
 
 	var got []string
@@ -98,7 +98,7 @@ func TestExecuteDispatchesToolingResolveSource(t *testing.T) {
 	withChdir(t, projectRoot)
 
 	oldArgs := os.Args
-	os.Args = []string{"froth", "tooling", "resolve-source", filePath}
+	os.Args = []string{"frothy", "tooling", "resolve-source", filePath}
 	t.Cleanup(func() { os.Args = oldArgs })
 
 	stdout, stderr := captureOutput(t, func() {

@@ -54,8 +54,8 @@ platform = "%s"
 # \ #use "../lib/utils.froth"
 
 # This [target] block is the project authority after scaffolding.
-# froth new defaults to posix.
-# froth new --target <board> can prefill a non-posix target.
+# frothy new defaults to posix.
+# frothy new --target <board> can prefill a non-posix target.
 # You can also edit these values later.
 
 # Project FFI: compile your own C bindings alongside the kernel.
@@ -111,13 +111,13 @@ froth_b.snap
 	fmt.Printf("Next steps:\n")
 	fmt.Printf("  cd %s\n", dir)
 	if platform == "esp-idf" {
-		fmt.Printf("  froth doctor      # verify CLI, ESP-IDF, and serial path\n")
-		fmt.Printf("  froth send        # send to a preflashed board\n")
-		fmt.Printf("  froth build       # build firmware\n")
-		fmt.Printf("  froth flash       # flash firmware and apply runtime\n")
+		fmt.Printf("  %s doctor      # verify CLI, ESP-IDF, and serial path\n", cliCommandName)
+		fmt.Printf("  %s send        # send to a preflashed board\n", cliCommandName)
+		fmt.Printf("  %s build       # build firmware\n", cliCommandName)
+		fmt.Printf("  %s flash       # flash firmware and apply runtime\n", cliCommandName)
 	} else {
-		fmt.Printf("  froth send        # send to device\n")
-		fmt.Printf("  froth build       # build firmware\n")
+		fmt.Printf("  %s send        # send to device\n", cliCommandName)
+		fmt.Printf("  %s build       # build firmware\n", cliCommandName)
 	}
 
 	return nil

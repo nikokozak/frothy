@@ -172,7 +172,7 @@
         "frothy.cliPath": {
           "type": "string",
           "default": "",
-          "description": "Absolute path to the installed `froth` CLI binary. Leave empty to auto-discover `froth` on PATH or a repo-local `tools/cli/froth-cli` build."
+          "description": "Absolute path to the installed `frothy` CLI binary. Leave empty to auto-discover `frothy` on PATH, fall back to legacy `froth`, or use a repo-local `tools/cli/frothy-cli` build."
         },
         "frothy.port": {
           "type": "string",

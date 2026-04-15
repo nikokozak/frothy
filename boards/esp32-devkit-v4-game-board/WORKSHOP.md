@@ -52,8 +52,8 @@ sh tools/frothy/proof.sh workshop-v4 <PORT>
 
 ## First-Line Recovery
 
-1. Run `froth --port <path> doctor`.
-2. Run `froth --port <path> connect` and evaluate `1 + 1`.
+1. Run `frothy --port <path> doctor`.
+2. Run `frothy --port <path> connect` and evaluate `1 + 1`.
 3. If saved state is broken, power-cycle or reset the board, press `Ctrl-C`
    during the safe-boot window, then run `dangerous.wipe`.
 4. After recovery, confirm `info @matrix.init`, `info @grid.clear`,
@@ -68,10 +68,10 @@ sh tools/frothy/proof.sh workshop-v4 <PORT>
 Fastest project-based recovery from a maintainer checkout:
 
 ```sh
-froth new --target esp32-devkit-v4-game-board recover-board
+frothy new --target esp32-devkit-v4-game-board recover-board
 cd recover-board
-froth --port <path> doctor
-froth --port <path> flash
+frothy --port <path> doctor
+frothy --port <path> flash
 ```
 
 Direct maintainer reflash from this repo when you need the current checked-in
@@ -79,7 +79,7 @@ base image:
 
 ```sh
 cd targets/esp-idf
-. "$HOME/.froth/sdk/esp-idf/export.sh"
+. "${FROTHY_HOME:-${FROTH_HOME:-$HOME/.frothy}}/sdk/esp-idf/export.sh"
 idf.py -DFROTH_BOARD=esp32-devkit-v4-game-board -p <path> flash
 ```
 

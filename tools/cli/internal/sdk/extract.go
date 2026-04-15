@@ -26,7 +26,11 @@ func VersionFromFS(fsys fs.FS) (string, error) {
 	return version, nil
 }
 
-func FrothHome() (string, error) {
+func FrothyHome() (string, error) {
+	if home := os.Getenv("FROTHY_HOME"); home != "" {
+		return home, nil
+	}
+
 	if home := os.Getenv("FROTH_HOME"); home != "" {
 		return home, nil
 	}
@@ -36,11 +40,15 @@ func FrothHome() (string, error) {
 		return "", fmt.Errorf("home dir: %w", err)
 	}
 
-	return filepath.Join(home, ".froth"), nil
+	return filepath.Join(home, ".frothy"), nil
+}
+
+func FrothHome() (string, error) {
+	return FrothyHome()
 }
 
 func SDKPath(version string) (string, error) {
-	frothHome, err := FrothHome()
+	frothHome, err := FrothyHome()
 	if err != nil {
 		return "", err
 	}
@@ -58,7 +66,7 @@ func EnsureSDK() (string, error) {
 		return "", err
 	}
 
-	frothHome, err := FrothHome()
+	frothHome, err := FrothyHome()
 	if err != nil {
 		return "", err
 	}
@@ -155,7 +163,7 @@ func ensureSDKFromFS(fsys fs.FS, frothHome string, version string) (string, erro
 		return "", fmt.Errorf("create sdk cache dir: %w", err)
 	}
 
-	tempDir, err := os.MkdirTemp(parentDir, ".froth-sdk-*")
+	tempDir, err := os.MkdirTemp(parentDir, ".frothy-sdk-*")
 	if err != nil {
 		return "", fmt.Errorf("create sdk temp dir: %w", err)
 	}
@@ -193,7 +201,7 @@ func ensureSDKFromFS(fsys fs.FS, frothHome string, version string) (string, erro
 }
 
 func sdkPathForHome(frothHome string, version string) string {
-	return filepath.Join(frothHome, "sdk", "froth-"+version)
+	return filepath.Join(frothHome, "sdk", "frothy-"+version)
 }
 
 func payloadDigestFromFS(fsys fs.FS) (string, error) {

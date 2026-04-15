@@ -17,13 +17,13 @@ func TestRunSetupESPIDFUsesLocalScriptInsideRepo(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "setup.log")
 	mustWriteFile(t, filepath.Join(repoRoot, "CMakeLists.txt"), "project(Froth)\n")
 	mustWriteFile(t, filepath.Join(repoRoot, "src", "froth_vm.h"), "/* vm */\n")
-	mustWriteExecutable(t, filepath.Join(repoRoot, "tools", "setup-esp-idf.sh"), "#!/bin/sh\nprintf 'args=%s\\nFROTH_HOME=%s\\n' \"$*\" \"$FROTH_HOME\" > \""+logPath+"\"\n")
+	mustWriteExecutable(t, filepath.Join(repoRoot, "tools", "setup-esp-idf.sh"), "#!/bin/sh\nprintf 'args=%s\\nFROTHY_HOME=%s\\nFROTH_HOME=%s\\n' \"$*\" \"$FROTHY_HOME\" \"$FROTH_HOME\" > \""+logPath+"\"\n")
 
 	if err := os.MkdirAll(filepath.Join(repoRoot, "nested"), 0755); err != nil {
 		t.Fatalf("mkdir nested: %v", err)
 	}
 	withChdir(t, filepath.Join(repoRoot, "nested"))
-	t.Setenv("FROTH_HOME", "/tmp/froth-home")
+	t.Setenv("FROTHY_HOME", "/tmp/frothy-home")
 
 	if err := runSetup([]string{"esp-idf", "--force"}); err != nil {
 		t.Fatalf("runSetup: %v", err)
@@ -33,8 +33,8 @@ func TestRunSetupESPIDFUsesLocalScriptInsideRepo(t *testing.T) {
 	if !strings.Contains(log, "args=--force") {
 		t.Fatalf("setup log = %q, want --force", log)
 	}
-	if !strings.Contains(log, "FROTH_HOME=/tmp/froth-home") {
-		t.Fatalf("setup log = %q, want FROTH_HOME", log)
+	if !strings.Contains(log, "FROTHY_HOME=/tmp/frothy-home") {
+		t.Fatalf("setup log = %q, want FROTHY_HOME", log)
 	}
 }
 
@@ -49,7 +49,7 @@ func TestRunSetupESPIDFDownloadsTaggedRawScriptOutsideRepo(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		fmt.Fprintf(w, "#!/bin/sh\nprintf 'args=%%s\\nFROTH_HOME=%%s\\n' \"$*\" \"$FROTH_HOME\" > %q\n", logPath)
+		fmt.Fprintf(w, "#!/bin/sh\nprintf 'args=%%s\\nFROTHY_HOME=%%s\\nFROTH_HOME=%%s\\n' \"$*\" \"$FROTHY_HOME\" \"$FROTH_HOME\" > %q\n", logPath)
 	}))
 	defer server.Close()
 
@@ -58,7 +58,7 @@ func TestRunSetupESPIDFDownloadsTaggedRawScriptOutsideRepo(t *testing.T) {
 	t.Cleanup(func() { rawContentBase = oldRawBase })
 
 	withChdir(t, t.TempDir())
-	t.Setenv("FROTH_HOME", "/tmp/froth-home")
+	t.Setenv("FROTHY_HOME", "/tmp/frothy-home")
 
 	if err := runSetup([]string{"esp-idf", "--force"}); err != nil {
 		t.Fatalf("runSetup: %v", err)
@@ -68,8 +68,8 @@ func TestRunSetupESPIDFDownloadsTaggedRawScriptOutsideRepo(t *testing.T) {
 	if !strings.Contains(log, "args=--force") {
 		t.Fatalf("setup log = %q, want --force", log)
 	}
-	if !strings.Contains(log, "FROTH_HOME=/tmp/froth-home") {
-		t.Fatalf("setup log = %q, want FROTH_HOME", log)
+	if !strings.Contains(log, "FROTHY_HOME=/tmp/frothy-home") {
+		t.Fatalf("setup log = %q, want FROTHY_HOME", log)
 	}
 }
 

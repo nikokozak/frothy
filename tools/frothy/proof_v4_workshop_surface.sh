@@ -2,7 +2,7 @@
 set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
-CLI_BIN="${FROTHY_CLI_BINARY:-$ROOT_DIR/tools/cli/froth-cli}"
+CLI_BIN="${FROTHY_CLI_BINARY:-$ROOT_DIR/tools/cli/frothy-cli}"
 RUN_LIVE_CONTROLS=1
 PORT=
 

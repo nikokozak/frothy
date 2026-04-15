@@ -22,7 +22,7 @@ rg -n '^## Promised Matrix$|^## Release Assets To Stage$|^## Clean-Machine Proce
   docs/guide/Frothy_Workshop_Clean_Machine_Validation.md
 rg -n 'without a repo checkout and without `esp-idf`|Only promise the rows that actually passed|Do not widen the support matrix because a machine "probably" works\.' \
   docs/guide/Frothy_Workshop_Clean_Machine_Validation.md
-rg -n 'froth --port <path> doctor|froth --port <path> connect|dangerous\.wipe|froth --port <path> flash|idf\.py -DFROTH_BOARD=esp32-devkit-v4-game-board' \
+rg -n 'frothy --port <path> doctor|frothy --port <path> connect|dangerous\.wipe|frothy --port <path> flash|idf\.py -DFROTH_BOARD=esp32-devkit-v4-game-board' \
   boards/esp32-devkit-v4-game-board/WORKSHOP.md
 rg -n 'proof\.sh workshop-v4 <PORT>' \
   boards/esp32-devkit-v4-game-board/WORKSHOP.md

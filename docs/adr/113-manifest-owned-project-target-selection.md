@@ -10,14 +10,14 @@
 
 Frothy now has a real project workflow:
 
-- `froth new` scaffolds a project
-- `froth build` reads `froth.toml`
-- optional platform toolchains are installed separately with `froth setup`
+- `frothy new` scaffolds a project
+- `frothy build` reads `froth.toml`
+- optional platform toolchains are installed separately with `frothy setup`
 
 Target selection now appears in three different contexts:
 
-- `froth new` creates a new manifest
-- `froth build` and `froth flash` operate either on an existing manifest
+- `frothy new` creates a new manifest
+- `frothy build` and `frothy flash` operate either on an existing manifest
   project or on a legacy non-project checkout
 - optional platform toolchains such as ESP-IDF should still stay out of the
   default flow unless a project or legacy path explicitly asks for them
@@ -32,9 +32,9 @@ manifest project already exists.
 
 How it works:
 
-- `froth new` is always posix-first
+- `frothy new` is always posix-first
 - users must edit `[target]` manually for every non-posix project
-- `froth build` and `froth flash` read the manifest only
+- `frothy build` and `frothy flash` read the manifest only
 
 Trade-offs:
 
@@ -42,13 +42,13 @@ Trade-offs:
 - Con: removes a useful scaffold convenience even though `new` is not yet
   building anything or resolving a toolchain.
 
-### Option B: Keep manifest projects authoritative, but allow `froth new --target` as scaffold-time sugar
+### Option B: Keep manifest projects authoritative, but allow `frothy new --target` as scaffold-time sugar
 
 How it works:
 
-- `froth new` defaults to the posix scaffold
-- `froth new --target <board>` may prefill `[target]` in the new manifest
-- once a manifest project exists, `froth build` and `froth flash` reject
+- `frothy new` defaults to the posix scaffold
+- `frothy new --target <board>` may prefill `[target]` in the new manifest
+- once a manifest project exists, `frothy build` and `frothy flash` reject
   `--target` and require the project target to come from `froth.toml`
 - outside a manifest project, legacy build and flash paths may still use
   `--target`
@@ -71,13 +71,13 @@ authority for project platform selection after scaffolding.
 
 Policy:
 
-- `froth new` scaffolds the default posix project when `--target` is omitted
-- `froth new --target <board>` may prefill the new manifest with a non-posix
+- `frothy new` scaffolds the default posix project when `--target` is omitted
+- `frothy new --target <board>` may prefill the new manifest with a non-posix
   target, but this is only scaffold-time sugar; it does not resolve or install
   any platform toolchain by itself
 - optional platform toolchains are resolved only when the manifest explicitly
   names that platform
-- once a manifest project exists, `froth build` and `froth flash` do not accept
+- once a manifest project exists, `frothy build` and `frothy flash` do not accept
   `--target`; users must edit `[target]` in `froth.toml` instead
 - legacy non-project build and flash paths may continue to use target flags
   until they are retired, but that flag is not the authority for manifest

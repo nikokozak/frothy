@@ -19,7 +19,7 @@ type ResolveResult struct {
 // It reads froth.toml dependencies for named includes and resolves
 // relative includes against the containing file's directory.
 // ResolveEntry resolves a single entry file path without a manifest.
-// Used by `froth send <file>` outside a project.
+// Used by `frothy send <file>` outside a project.
 func ResolveEntry(entryPath string, projectRoot string) (*ResolveResult, error) {
 	return doResolve(nil, entryPath, projectRoot)
 }

@@ -31,7 +31,7 @@ func runBuild() error {
 		return runBuildLegacy()
 	}
 	if targetFlag != "" {
-		return fmt.Errorf("`froth build` does not accept --target inside a project; edit [target] in froth.toml")
+		return fmt.Errorf("`%s build` does not accept --target inside a project; edit [target] in froth.toml", cliCommandName)
 	}
 
 	if err := cleanBuildDirIfRequested(filepath.Join(root, ".froth-build")); err != nil {
@@ -625,13 +625,13 @@ func isShellSafe(s string) bool {
 }
 
 func espIDFExportPath() (string, error) {
-	home, err := sdk.FrothHome()
+	home, err := sdk.FrothyHome()
 	if err != nil {
 		return "", err
 	}
 	p := filepath.Join(home, "sdk", "esp-idf", "export.sh")
 	if _, err := os.Stat(p); err != nil {
-		return "", fmt.Errorf("ESP-IDF not found (run `froth setup esp-idf`)")
+		return "", fmt.Errorf("ESP-IDF not found (run `%s setup esp-idf`)", cliCommandName)
 	}
 	return p, nil
 }

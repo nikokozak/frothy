@@ -3,7 +3,7 @@
 Use this during the maintained workshop path.
 It covers only the promised attendee surface:
 
-- released `froth` CLI
+- released `frothy` CLI
 - matching `frothy-vscode-v<extension-version>.vsix`
 - preflashed `esp32-devkit-v4-game-board` proto board
 
@@ -19,15 +19,15 @@ Start elsewhere when needed:
 ## First Connect
 
 1. Plug in the preflashed `esp32-devkit-v4-game-board` proto board.
-2. Run `froth doctor`.
-3. If several serial ports are visible, rerun `froth --port <path> doctor`.
+2. Run `frothy doctor`.
+3. If several serial ports are visible, rerun `frothy --port <path> doctor`.
 4. Open a `.froth` or `.frothy` file in VS Code.
 5. Run `Frothy: Connect Device`.
 6. Run `Frothy: Send Selection / Line` on `1 + 1`.
 7. Run `matrix.init:`, `grid.clear:`, `grid.set: 1, 1, true`, and `grid.show:`
    for the first visible matrix proof.
 8. If the extension path is blocked, fall back to
-   `froth --port <path> connect`.
+   `frothy --port <path> connect`.
 
 ## Prompt Checks
 
@@ -108,10 +108,10 @@ Remember:
 
 ## When Something Goes Wrong
 
-- VS Code cannot find the CLI: set `frothy.cliPath` to the absolute `froth`
-  binary path.
+- VS Code cannot find the CLI: set `frothy.cliPath` to the absolute `frothy`
+  binary path. Legacy `froth` fallback remains available during the transition.
 - Several USB serial devices are visible: use
-  `froth --port <path> doctor` and `froth --port <path> connect`.
+  `frothy --port <path> doctor` and `frothy --port <path> connect`.
 - The matrix stays dark: run `matrix.init:`, then `grid.clear:` and `grid.show:`.
 - Whole-file send is blocked as unsafe: the firmware is too old for reset-safe
   send; reflash instead of replaying the file additively.

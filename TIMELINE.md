@@ -1,6 +1,6 @@
 # Frothy Timeline
 
-*Last updated: 2026-04-14*
+*Last updated: 2026-04-15*
 
 This file is the movable milestone and queue ledger for Frothy.
 The roadmap current-state block in
@@ -120,9 +120,9 @@ keep each item's description and references so deferral does not erase context.
   `tools/vscode/README.md`, `README.md`, and
   `docs/guide/Frothy_Workshop_Install_Quickstart.md`.
 - [x] Attendee-facing naming alignment
-  Deliverable: ship one explicit transitional story for Frothy versus
-  `froth` / `froth-cli` so attendees do not bounce between names during the
-  workshop path.
+  Deliverable: ship the Frothy-owned `frothy` installed command and
+  `frothy-cli` repo-local build, while keeping legacy `froth` fallback only at
+  explicit transition points so attendees do not bounce between equal names.
   References: `README.md`, `tools/vscode/README.md`,
   `tools/package-release.sh`, and `tools/cli/Makefile`.
 - [x] Attendee install email and quickstart
@@ -192,9 +192,10 @@ keep each item's description and references so deferral does not erase context.
   References: `docs/audit/Frothy_Repo_Audit_2026-04.md`,
   `tools/vscode/test/package-smoke.js`, and `Makefile`.
 - [x] Publishability reset tranche 2: naming and packaging normalization
-  Deliverable: freeze one publishable identity matrix for Frothy versus
-  transitional `froth` / `froth-cli`, normalize the Go module/import path, and
-  keep any installed-binary rename separate if it is still too risky.
+  Deliverable: freeze one publishable identity matrix for Frothy, move the
+  shipped CLI/install surface to `frothy` and the repo-local checkout build to
+  `frothy-cli`, normalize the Go module/import path, and keep any legacy
+  compatibility narrow and explicit.
   References: `docs/audit/Frothy_Repo_Audit_2026-04.md`, `README.md`,
   `tools/cli/go.mod`, and `tools/package-release.sh`.
 - [x] Publishability reset tranche 3: proof and dependency collapse

@@ -25,7 +25,7 @@ func TestIntegrationToolingControlSessionLocalRuntime(t *testing.T) {
 
 	projectDir := filepath.Join(workspace, "control-session")
 	if out, err := runIntegrationCLI(t, projectDir, env, 3*time.Minute, "build"); err != nil {
-		t.Fatalf("froth build failed: %v\n%s", err, out)
+		t.Fatalf("frothy build failed: %v\n%s", err, out)
 	}
 
 	runtimePath := filepath.Join(projectDir, ".froth-build", "firmware", "Frothy")

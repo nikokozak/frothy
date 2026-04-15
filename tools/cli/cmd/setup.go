@@ -19,7 +19,7 @@ var (
 
 func runSetup(args []string) error {
 	if len(args) == 0 {
-		fmt.Println("Usage: froth setup <target>")
+		fmt.Printf("Usage: %s setup <target>\n", cliCommandName)
 		fmt.Println()
 		fmt.Println("Available setup targets:")
 		fmt.Println("  esp-idf")
@@ -41,7 +41,7 @@ func runSetupESPIDF(args []string) error {
 		case "--force":
 			scriptArgs = append(scriptArgs, arg)
 		default:
-			return fmt.Errorf("unknown argument for `froth setup esp-idf`: %s", arg)
+			return fmt.Errorf("unknown argument for `%s setup esp-idf`: %s", cliCommandName, arg)
 		}
 	}
 
@@ -58,7 +58,7 @@ func runSetupESPIDF(args []string) error {
 	}
 
 	scriptURL := rawTaggedURL(version, "tools/setup-esp-idf.sh")
-	tempDir, err := os.MkdirTemp("", "froth-setup-esp-idf-*")
+	tempDir, err := os.MkdirTemp("", "frothy-setup-esp-idf-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}

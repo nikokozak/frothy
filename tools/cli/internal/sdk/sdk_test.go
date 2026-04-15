@@ -14,15 +14,42 @@ import (
 	"testing/fstest"
 )
 
-func TestFrothHomeUsesEnvironmentOverride(t *testing.T) {
+func TestFrothyHomeUsesEnvironmentOverride(t *testing.T) {
+	t.Setenv("FROTHY_HOME", "/tmp/frothy-home")
+
+	home, err := FrothyHome()
+	if err != nil {
+		t.Fatalf("FrothyHome: %v", err)
+	}
+	if home != "/tmp/frothy-home" {
+		t.Fatalf("home = %q, want %q", home, "/tmp/frothy-home")
+	}
+}
+
+func TestFrothyHomePrefersFROTHYHOMEOverLegacyFROTHHOME(t *testing.T) {
+	t.Setenv("FROTHY_HOME", "/tmp/frothy-home")
 	t.Setenv("FROTH_HOME", "/tmp/froth-home")
 
-	home, err := FrothHome()
+	home, err := FrothyHome()
 	if err != nil {
-		t.Fatalf("FrothHome: %v", err)
+		t.Fatalf("FrothyHome: %v", err)
 	}
-	if home != "/tmp/froth-home" {
-		t.Fatalf("home = %q, want %q", home, "/tmp/froth-home")
+	if home != "/tmp/frothy-home" {
+		t.Fatalf("home = %q, want %q", home, "/tmp/frothy-home")
+	}
+}
+
+func TestFrothyHomeDefaultsToDotFrothy(t *testing.T) {
+	t.Setenv("FROTHY_HOME", "")
+	t.Setenv("FROTH_HOME", "")
+	t.Setenv("HOME", "/tmp/frothy-user")
+
+	home, err := FrothyHome()
+	if err != nil {
+		t.Fatalf("FrothyHome: %v", err)
+	}
+	if home != "/tmp/frothy-user/.frothy" {
+		t.Fatalf("home = %q, want %q", home, "/tmp/frothy-user/.frothy")
 	}
 }
 
@@ -51,7 +78,7 @@ func TestEnsureSDKExtractsEmbeddedTree(t *testing.T) {
 		t.Fatalf("ensureSDKFromFS: %v", err)
 	}
 
-	wantRoot := filepath.Join(frothHome, "sdk", "froth-"+version)
+	wantRoot := filepath.Join(frothHome, "sdk", "frothy-"+version)
 	if sdkRoot != wantRoot {
 		t.Fatalf("sdk root = %q, want %q", sdkRoot, wantRoot)
 	}

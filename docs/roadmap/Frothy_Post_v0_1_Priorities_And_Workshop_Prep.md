@@ -26,9 +26,9 @@ What is already settled:
   docs-only boundary
 - the direct-control transport, helper/editor path, and measured runtime
   hardening slices are landed
-- the workshop release/install matrix, transitional Frothy-versus-`froth`
-  naming story, attendee quickstart, serial recovery path, and sanctioned
-  starter scaffold are now landed on `main`
+- the workshop release/install matrix, Frothy CLI/install identity, attendee
+  quickstart, serial recovery path, and sanctioned starter scaffold are now
+  landed on `main`
 
 What still needs explicit surfacing is the order of the next follow-on work.
 The workshop implementation tranche is now landed on `main`, but the immediate
@@ -82,7 +82,8 @@ The publishability-reset stack frozen in
 That means the repo now has:
 
 1. archived historical proof artifacts in `docs/archive/`
-2. one explicit Frothy-versus-`froth` publishability matrix
+2. one explicit Frothy-owned publishability matrix plus narrow legacy
+   compatibility notes
 3. a maintained core proof/dependency surface centered on `C`, `Go`, and
    `Shell`, with `Node` and hardware-only `Python` kept explicit
 4. an explicit retained-substrate/runtime-boundary record in code and docs
@@ -93,7 +94,8 @@ That means the repo now has:
 Before the 2026-04-16 workshop:
 
 - publish a truthful install path with a frozen support matrix
-- publish one clear naming story for Frothy versus `froth`
+- publish one clear Frothy-owned CLI/install story, with legacy `froth`
+  compatibility called out only where still needed
 - give attendees a sendable install note and a preflight path before they
   arrive
 - keep the introspection, puzzle, blink, animation, sensor, and persistence

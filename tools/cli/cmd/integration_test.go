@@ -35,13 +35,13 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	integrationCLIHome, err = os.MkdirTemp("", "froth-cli-integration-")
+	integrationCLIHome, err = os.MkdirTemp("", "frothy-cli-integration-")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "create temp dir: %v\n", err)
 		os.Exit(1)
 	}
 
-	integrationCLIPath = filepath.Join(integrationCLIHome, "froth")
+	integrationCLIPath = filepath.Join(integrationCLIHome, "frothy")
 	build := exec.Command("go", "build", "-o", integrationCLIPath, ".")
 	build.Dir = filepath.Join(repoRoot, "tools", "cli")
 	buildOutput, err := build.CombinedOutput()
@@ -65,7 +65,7 @@ func TestIntegrationNewBuildAndRunBoot(t *testing.T) {
 
 	projectDir := filepath.Join(workspace, "hello-posix")
 	if out, err := runIntegrationCLI(t, projectDir, env, 3*time.Minute, "build"); err != nil {
-		t.Fatalf("froth build failed: %v\n%s", err, out)
+		t.Fatalf("frothy build failed: %v\n%s", err, out)
 	}
 
 	binaryPath := filepath.Join(projectDir, ".froth-build", "firmware", "Frothy")
@@ -109,7 +109,7 @@ boot {
 `)
 
 	if out, err := runIntegrationCLI(t, projectDir, env, 3*time.Minute, "build"); err != nil {
-		t.Fatalf("froth build failed: %v\n%s", err, out)
+		t.Fatalf("frothy build failed: %v\n%s", err, out)
 	}
 
 	binaryPath := filepath.Join(projectDir, ".froth-build", "firmware", "Frothy")
@@ -175,7 +175,7 @@ func TestIntegrationDoctorShowsProjectInfo(t *testing.T) {
 	projectDir := filepath.Join(workspace, "doctor-project")
 	out, err := runIntegrationCLI(t, projectDir, env, 90*time.Second, "doctor")
 	if err != nil {
-		t.Fatalf("froth doctor failed: %v\n%s", err, out)
+		t.Fatalf("frothy doctor failed: %v\n%s", err, out)
 	}
 
 	assertContains(t, out, "project: doctor-project")
@@ -194,13 +194,13 @@ func integrationRepoRoot() (string, error) {
 func integrationEnv(t *testing.T) []string {
 	t.Helper()
 
-	home := filepath.Join(t.TempDir(), "froth-home")
+	home := filepath.Join(t.TempDir(), "frothy-home")
 	if err := os.MkdirAll(home, 0755); err != nil {
 		t.Fatalf("mkdir froth home: %v", err)
 	}
 
 	env := os.Environ()
-	env = append(env, "FROTH_HOME="+home)
+	env = append(env, "FROTHY_HOME="+home)
 	return env
 }
 
@@ -208,11 +208,11 @@ func integrationHomeFromEnv(t *testing.T, env []string) string {
 	t.Helper()
 
 	for _, entry := range env {
-		if strings.HasPrefix(entry, "FROTH_HOME=") {
-			return strings.TrimPrefix(entry, "FROTH_HOME=")
+		if strings.HasPrefix(entry, "FROTHY_HOME=") {
+			return strings.TrimPrefix(entry, "FROTHY_HOME=")
 		}
 	}
-	t.Fatal("FROTH_HOME missing from environment")
+	t.Fatal("FROTHY_HOME missing from environment")
 	return ""
 }
 

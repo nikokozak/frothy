@@ -35,7 +35,7 @@ class IdfMonitorSession:
     def __init__(self, port: str) -> None:
         self.master_fd, slave_fd = pty.openpty()
         command = (
-            '. "$HOME/.froth/sdk/esp-idf/export.sh" >/dev/null 2>&1 && '
+        f'. "{os.environ.get("FROTHY_HOME") or os.environ.get("FROTH_HOME") or os.path.join(os.path.expanduser("~"), ".frothy")}/sdk/esp-idf/export.sh" >/dev/null 2>&1 && '
             f"idf.py -p {shlex.quote(port)} flash monitor"
         )
         self.proc = subprocess.Popen(

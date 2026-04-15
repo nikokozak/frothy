@@ -66,7 +66,7 @@ Trade-offs:
 Keep the VS Code extension thin, but replace the daemon/socket boundary with an
 extension-owned helper child process:
 
-- VS Code spawns `froth tooling control-session`
+- VS Code spawns `frothy tooling control-session`
 - the helper owns one direct control session
 - the extension talks to the helper with newline-delimited JSON over stdio
 - the helper exits or is discarded with the editor session
@@ -132,8 +132,9 @@ docs listed above wherever they conflict with Frothy ADR-110 and this decision.
 - File-send remains honest about current limitations: the protocol shape
   includes `reset`, but the first extension cut must warn before falling back
   to additive send until kernel support lands.
-- Extension branding and command/settings names can move to `Frothy` while the
-  CLI binary name stays `froth` per Frothy ADR-109.
+- Extension branding and command/settings names align with `Frothy`, the
+  installed CLI is now `frothy`, and VS Code keeps only narrow legacy `froth`
+  fallback per Frothy ADR-120.
 - User-facing local mode is deferred instead of dragging old daemon/local-target
   complexity into the first Frothy editor cut.
 - Future on-device slice-2 commands can replace helper-side `EVAL` wrappers

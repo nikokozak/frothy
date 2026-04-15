@@ -40,7 +40,7 @@ func runFlash() error {
 	manifest, root, err := project.Load(cwd)
 	if err == nil {
 		if targetFlag != "" {
-			return fmt.Errorf("`froth flash` does not accept --target inside a project; edit [target] in froth.toml")
+			return fmt.Errorf("`%s flash` does not accept --target inside a project; edit [target] in froth.toml", cliCommandName)
 		}
 		return runFlashManifest(manifest, root)
 	}
@@ -144,7 +144,7 @@ func runFlashLegacy() error {
 
 func runFlashPrebuilt() error {
 	if targetFlag != "" && targetFlag != "esp-idf" {
-		return fmt.Errorf("pre-built flashing only supports the default ESP32 firmware; remove --target %s or create a project with `froth new`", targetFlag)
+		return fmt.Errorf("pre-built flashing only supports the default ESP32 firmware; remove --target %s or create a project with `%s new`", targetFlag, cliCommandName)
 	}
 
 	version, err := cliVersion()
@@ -161,7 +161,7 @@ func runFlashPrebuilt() error {
 	if err != nil {
 		manifest, err = populateFirmwareCache(version, cacheDir)
 		if err != nil {
-			return fmt.Errorf("pre-built firmware not available for v%s: %w\nTo build from source, create a project with `froth new` and run `froth build && froth flash`.", version, err)
+			return fmt.Errorf("pre-built firmware not available for v%s: %w\nTo build from source, create a project with `%s new` and run `%s build && %s flash`.", version, err, cliCommandName, cliCommandName, cliCommandName)
 		}
 	}
 
@@ -175,7 +175,7 @@ func runFlashPrebuilt() error {
 }
 
 func firmwareCacheDir(version string) (string, error) {
-	home, err := sdk.FrothHome()
+	home, err := sdk.FrothyHome()
 	if err != nil {
 		return "", err
 	}

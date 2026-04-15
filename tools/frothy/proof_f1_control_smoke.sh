@@ -89,7 +89,7 @@ build_cli_binary() {
 
 run_flash_apply_smoke() {
   work_dir="$(mktemp -d "${TMPDIR:-/tmp}/frothy-f1-control.XXXXXX")"
-  cli_bin="$work_dir/froth"
+  cli_bin="$work_dir/frothy"
   project_dir="$work_dir/flash-proof"
 
   cleanup() {

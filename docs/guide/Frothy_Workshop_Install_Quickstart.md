@@ -20,8 +20,9 @@ What to install:
 - the Frothy CLI release
 - the matching Frothy VS Code extension VSIX
 
-The product name is Frothy, but the installed CLI command is still `froth`
-during the transition. That is expected.
+The product name is Frothy and the installed CLI command is `frothy`.
+VS Code still accepts legacy `froth` discovery during the transition when
+needed, but new install guidance should use `frothy`.
 
 Supported attendee path:
 - macOS (Apple Silicon or Intel): install the `frothy` Homebrew formula
@@ -29,7 +30,7 @@ Supported attendee path:
 - Windows is not part of the maintained workshop path for this tranche
 
 Install steps:
-1. Install the CLI and run `froth doctor`
+1. Install the CLI and run `frothy doctor`
 2. Install the matching `frothy-vscode-v<extension-version>.vsix`
 3. Bring a known-good USB data cable for the preflashed `esp32-devkit-v4-game-board`
    proto board
@@ -42,7 +43,7 @@ You do not need a repo checkout, ESP-IDF, or a source build before arriving.
 | Surface | Supported attendee path |
 | --- | --- |
 | CLI | macOS via Homebrew; Linux x86_64 via release tarball |
-| VS Code | matching `frothy-vscode-v<extension-version>.vsix` on a machine that can already run `froth` |
+| VS Code | matching `frothy-vscode-v<extension-version>.vsix` on a machine that can already run `frothy` |
 | Hardware | preflashed `esp32-devkit-v4-game-board` proto board |
 
 Not promised here:
@@ -59,7 +60,7 @@ macOS:
 ```sh
 brew tap nikokozak/frothy
 brew install frothy
-froth doctor
+frothy doctor
 ```
 
 Linux x86_64:
@@ -67,8 +68,8 @@ Linux x86_64:
 ```sh
 tar -xzf frothy-v<version>-linux-amd64.tar.gz
 mkdir -p "$HOME/.local/bin"
-install -m 0755 froth "$HOME/.local/bin/froth"
-froth doctor
+install -m 0755 frothy "$HOME/.local/bin/frothy"
+frothy doctor
 ```
 
 VS Code:
@@ -77,8 +78,9 @@ VS Code:
 code --install-extension /path/to/frothy-vscode-v<extension-version>.vsix
 ```
 
-If VS Code cannot find `froth` on `PATH`, set `frothy.cliPath` to the absolute
-path of the installed binary.
+If VS Code cannot find `frothy` on `PATH`, set `frothy.cliPath` to the
+absolute path of the installed binary. Legacy `froth` fallback remains
+available during the transition.
 
 ## First Connect
 
@@ -93,7 +95,7 @@ path of the installed binary.
 
 Before class, confirm:
 
-- `froth doctor` completes without CLI-path or serial-visibility surprises
+- `frothy doctor` completes without CLI-path or serial-visibility surprises
 - VS Code installs the VSIX successfully
 - your laptop can see the board over USB
 - `matrix.init:` and `grid.show:` work on the attached proto board

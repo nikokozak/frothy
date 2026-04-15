@@ -33,8 +33,8 @@ kit.
 
 ## First-Line Recovery
 
-1. Run `froth --port <path> doctor`.
-2. Run `froth --port <path> connect` and evaluate `1 + 1`.
+1. Run `frothy --port <path> doctor`.
+2. Run `frothy --port <path> connect` and evaluate `1 + 1`.
 3. If saved state is broken, power-cycle or reset the board, press `Ctrl-C`
    during the safe-boot window, then run `dangerous.wipe`.
 4. After recovery, confirm `info @blink` and `1 + 1` at the prompt before
@@ -47,17 +47,17 @@ kit.
 Fastest default-board recovery from released assets:
 
 ```sh
-froth --port <path> flash
+frothy --port <path> flash
 ```
 
 Starter-project recovery when you need the sanctioned lesson path back on the
 board:
 
 ```sh
-froth new --target esp32-devkit-v1 recover-board
+frothy new --target esp32-devkit-v1 recover-board
 cd recover-board
-froth --port <path> doctor
-froth --port <path> flash
+frothy --port <path> doctor
+frothy --port <path> flash
 ```
 
 After reflashing, reconnect and re-run the starter or lesson path from the

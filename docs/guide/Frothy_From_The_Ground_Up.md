@@ -1140,8 +1140,8 @@ Frothy is an image language, but the CLI gives you a project scaffold so you
 can version source, dependencies, build settings, and board target choice
 cleanly.
 
-Inside this repo, the repo-local CLI binary is `tools/cli/froth-cli`. In a
-packaged release, the user-facing command is `froth`.
+Inside this repo, the repo-local CLI binary is `tools/cli/frothy-cli`. In a
+packaged release, the user-facing command is `frothy`.
 
 ### Hands-on walkthrough
 
@@ -1150,7 +1150,7 @@ packaged release, the user-facing command is `froth`.
 Create the default POSIX project:
 
 ```sh
-tools/cli/froth-cli new hello
+tools/cli/frothy-cli new hello
 ```
 
 That writes:
@@ -1209,7 +1209,7 @@ to boot [
 For the current workshop and hardware path, prefer the board-target starter:
 
 ```sh
-tools/cli/froth-cli new --target esp32-devkit-v1 workshop
+tools/cli/frothy-cli new --target esp32-devkit-v1 workshop
 ```
 
 The generated `src/main.froth` is already on the current spoken surface:
@@ -1253,13 +1253,13 @@ Typical project loop:
 
 ```sh
 cd workshop
-tools/cli/froth-cli tooling resolve-source src/main.froth > /tmp/workshop-resolved.frothy
-tools/cli/froth-cli send
-tools/cli/froth-cli build
-tools/cli/froth-cli --port /dev/cu.usbserial-0001 flash
+tools/cli/frothy-cli tooling resolve-source src/main.froth > /tmp/workshop-resolved.frothy
+tools/cli/frothy-cli send
+tools/cli/frothy-cli build
+tools/cli/frothy-cli --port /dev/cu.usbserial-0001 flash
 ```
 
-`froth send` does three important things for project source:
+`frothy send` does three important things for project source:
 
 1. resolves includes
 2. strips boundary markers
@@ -1272,21 +1272,21 @@ also work.
 
 Useful project commands:
 
-- `froth send`
-- `froth build`
-- `froth connect`
-- `froth connect --local`
-- `froth doctor`
-- `froth tooling resolve-source`
+- `frothy send`
+- `frothy build`
+- `frothy connect`
+- `frothy connect --local`
+- `frothy doctor`
+- `frothy tooling resolve-source`
 
 ### What can go wrong
 
 - The default POSIX scaffold still shows compatibility sugar. That does not
   mean the spoken surface is unsupported; it means the generated examples are
   not yet fully normalized.
-- `froth send` talks to a real device or runtime. If no device is connected,
-  use `froth connect --local` or the host binary directly.
-- `froth doctor` is the first thing to run when board setup feels uncertain.
+- `frothy send` talks to a real device or runtime. If no device is connected,
+  use `frothy connect --local` or the host binary directly.
+- `frothy doctor` is the first thing to run when board setup feels uncertain.
 - Include resolution errors usually mean the manifest dependency path or a
   relative `#use` path is wrong.
 - Whole-file or project send is intentionally reset-plus-eval. If the connected
@@ -1319,11 +1319,11 @@ What lands in `.froth-build/` for a POSIX project:
 For a normal POSIX project:
 
 ```sh
-froth build
-froth flash
+frothy build
+frothy flash
 ```
 
-`froth flash` on POSIX is intentionally simple. It builds and then prints the
+`frothy flash` on POSIX is intentionally simple. It builds and then prints the
 binary path because there is no hardware flash step:
 
 ```text
@@ -1333,11 +1333,11 @@ binary: /path/to/project/.froth-build/firmware/Frothy
 For an ESP32 project:
 
 ```sh
-froth new --target esp32-devkit-v1 blink
+frothy new --target esp32-devkit-v1 blink
 cd blink
-froth doctor
-froth build
-froth flash
+frothy doctor
+frothy build
+frothy flash
 ```
 
 The important implementation detail is this: the CLI no longer tries to bake
@@ -1351,14 +1351,14 @@ the whole runtime source into ESP-IDF firmware at build time. Instead it:
 That is a better fit for Frothy's image model. Firmware and overlay state are
 related, but not the same thing.
 
-Outside a project checkout, `froth flash` can also fetch and flash a prebuilt
+Outside a project checkout, `frothy flash` can also fetch and flash a prebuilt
 release firmware for the default ESP32 target.
 
 ### What can go wrong
 
-- If `esp-idf` is missing, `froth doctor` will tell you before `froth build`
+- If `esp-idf` is missing, `frothy doctor` will tell you before `frothy build`
   fails later.
-- If no USB-serial port is visible, `froth flash` cannot choose a device.
+- If no USB-serial port is visible, `frothy flash` cannot choose a device.
 - If several ports are visible, pass `--port`.
 - On ESP32, build success does not mean your overlay source has been applied
   yet; that happens after flashing.
@@ -2153,7 +2153,7 @@ host stays polite:
 
 ### Worked Example
 
-`froth send`, `froth build`, and `froth flash` all depend on this machinery.
+`frothy send`, `frothy build`, and `frothy flash` all depend on this machinery.
 
 For example, after an ESP32 flash, the CLI reconnects and sends the staged
 runtime source through control mode rather than pretending firmware flashing and
@@ -2346,7 +2346,7 @@ const frothy_ffi_entry_t frothy_project_bindings[] = {
 Then build:
 
 ```sh
-froth build
+frothy build
 ```
 
 What build does today:

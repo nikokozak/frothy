@@ -3,7 +3,7 @@ set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 BINARY="${FROTHY_BINARY:-$ROOT_DIR/build/Frothy}"
-CLI_BIN="${FROTHY_CLI_BINARY:-$ROOT_DIR/tools/cli/froth-cli}"
+CLI_BIN="${FROTHY_CLI_BINARY:-$ROOT_DIR/tools/cli/frothy-cli}"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/frothy-m10.XXXXXX")"
 HOST_ONLY=0
 ASSUME_BLINK=0
@@ -192,8 +192,8 @@ STARTER_OUTPUT="$("$CLI_BIN" new --target esp32-devkit-v1 "$STARTER_DIR")"
 printf '%s\n' "$STARTER_OUTPUT"
 require_contains "$STARTER_OUTPUT" 'Created project workshop-starter'
 require_contains "$STARTER_OUTPUT" 'target: esp32-devkit-v1 (esp-idf)'
-require_contains "$STARTER_OUTPUT" 'froth doctor'
-require_contains "$STARTER_OUTPUT" 'froth flash'
+require_contains "$STARTER_OUTPUT" 'frothy doctor'
+require_contains "$STARTER_OUTPUT" 'frothy flash'
 for starter_file in \
   "$STARTER_DIR/src/main.froth" \
   "$STARTER_DIR/src/workshop/lesson.froth" \
@@ -395,8 +395,9 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ ! -f "$HOME/.froth/sdk/esp-idf/export.sh" ]; then
-  echo "error: missing ESP-IDF export script at $HOME/.froth/sdk/esp-idf/export.sh" >&2
+FROTHY_HOME_DIR="${FROTHY_HOME:-${FROTH_HOME:-$HOME/.frothy}}"
+if [ ! -f "$FROTHY_HOME_DIR/sdk/esp-idf/export.sh" ]; then
+  echo "error: missing ESP-IDF export script at $FROTHY_HOME_DIR/sdk/esp-idf/export.sh" >&2
   exit 1
 fi
 

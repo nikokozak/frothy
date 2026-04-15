@@ -49,7 +49,7 @@ func TestEnsureSDKFromFSConcurrentCallsAreAtomic(t *testing.T) {
 		}
 	}
 
-	wantRoot := filepath.Join(frothHome, "sdk", "froth-"+version)
+	wantRoot := filepath.Join(frothHome, "sdk", "frothy-"+version)
 	for i, path := range paths {
 		if path != wantRoot {
 			t.Fatalf("paths[%d] = %q, want %q", i, path, wantRoot)
@@ -60,8 +60,8 @@ func TestEnsureSDKFromFSConcurrentCallsAreAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadDir sdk cache: %v", err)
 	}
-	if len(entries) != 1 || entries[0].Name() != "froth-"+version {
-		t.Fatalf("sdk cache entries = %v, want only froth-%s", entryNames(entries), version)
+	if len(entries) != 1 || entries[0].Name() != "frothy-"+version {
+		t.Fatalf("sdk cache entries = %v, want only frothy-%s", entryNames(entries), version)
 	}
 }
 

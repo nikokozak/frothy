@@ -143,7 +143,7 @@ func formatConnectedMessage(board string, port string) string {
 }
 
 func localConnectPaths() (string, string, error) {
-	home, err := sdk.FrothHome()
+	home, err := sdk.FrothyHome()
 	if err != nil {
 		return "", "", err
 	}
@@ -155,7 +155,7 @@ func localConnectPaths() (string, string, error) {
 func buildLocalConnectBinary(buildDir string, kernelRoot string) error {
 	cmakePath, err := connectLookPath("cmake")
 	if err != nil {
-		return fmt.Errorf("cmake is required for 'froth connect --local'; install CMake and try again")
+		return fmt.Errorf("cmake is required for '%s connect --local'; install CMake and try again", cliCommandName)
 	}
 
 	makePath, err := connectLookPath("make")
@@ -163,7 +163,7 @@ func buildLocalConnectBinary(buildDir string, kernelRoot string) error {
 		makePath, _, err = findMakeTool(connectLookPath)
 	}
 	if err != nil {
-		return fmt.Errorf("make is required for 'froth connect --local'; install GNU Make and ensure `make` or `gmake` is on PATH")
+		return fmt.Errorf("make is required for '%s connect --local'; install GNU Make and ensure `make` or `gmake` is on PATH", cliCommandName)
 	}
 
 	if err := runQuietBuildCommand(buildDir, cmakePath,

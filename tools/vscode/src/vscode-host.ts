@@ -234,7 +234,7 @@ export function createVSCodeCliPathResolver(
       }
 
       host.showErrorMessage(
-        `Configured Frothy CLI not found: ${configured}. Install the Frothy CLI (\`froth\`) or update frothy.cliPath.`,
+        `Configured Frothy CLI not found: ${configured}. Install the Frothy CLI (\`frothy\`); legacy \`froth\` is still accepted during the transition, or update frothy.cliPath.`,
       );
       return null;
     }
@@ -247,7 +247,7 @@ export function createVSCodeCliPathResolver(
     }
 
     host.showErrorMessage(
-      "Frothy CLI not found. Install the Frothy CLI (`froth`) and ensure it is on PATH, or set frothy.cliPath.",
+      "Frothy CLI not found. Install the Frothy CLI (`frothy`) and ensure it is on PATH; legacy `froth` is still accepted during the transition, or set frothy.cliPath.",
     );
     return null;
   };

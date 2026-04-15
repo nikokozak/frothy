@@ -46,7 +46,7 @@ func TestFindKernelRootFromFallsBackToSDK(t *testing.T) {
 		t.Fatalf("mkdir nested dir: %v", err)
 	}
 
-	sdkRoot := filepath.Join(t.TempDir(), "sdk", "froth-"+frothVersion(t))
+	sdkRoot := filepath.Join(t.TempDir(), "sdk", "frothy-"+frothVersion(t))
 	originalEnsureSDKRoot := ensureSDKRoot
 	ensureSDKRoot = func() (string, error) {
 		return sdkRoot, nil

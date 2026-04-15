@@ -76,7 +76,10 @@ substrate behavior from them.
 
 - Frothy can no longer publish by default under Froth branding.
 - Implementers get a clear authority split before code reorganization begins.
-- The repo temporarily carries Frothy release names and `froth` local commands.
+- The repo temporarily carried Frothy release names and `froth` local
+  commands during bootstrap; the later CLI/home identity tranche moved the
+  shipped and repo-local command surface to `frothy` / `frothy-cli` and kept
+  legacy `froth` only as explicit compatibility fallback where needed.
 - Later runtime and tooling work must decide when command and binary renaming
   becomes worth the churn.
 

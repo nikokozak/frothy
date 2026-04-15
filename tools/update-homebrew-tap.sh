@@ -26,8 +26,7 @@ git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${HOMEBREW_TA
 git -C "$TAP_DIR" config user.name "github-actions[bot]"
 git -C "$TAP_DIR" config user.email "github-actions[bot]@users.noreply.github.com"
 
-# Keep the tap and formula Frothy-branded while the installed binary remains
-# `froth`.
+# Keep the tap and formula aligned with the Frothy-owned installed binary.
 "$ROOT_DIR/tools/update-brew-formula.sh" "$VERSION" "$DARWIN_ARM64_SHA" "$DARWIN_AMD64_SHA" "$LINUX_AMD64_SHA" "$TAP_DIR/Formula/frothy.rb"
 ruby -c "$TAP_DIR/Formula/frothy.rb"
 

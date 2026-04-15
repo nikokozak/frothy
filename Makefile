@@ -17,7 +17,7 @@ help:
 
 ##@ Build
 build: build-kernel build-cli ## Build everything (kernel + CLI)
-	@echo "==> Done. Frothy: build/Frothy, repo-local froth-cli: tools/cli/froth-cli"
+	@echo "==> Done. Frothy: build/Frothy, repo-local frothy-cli: tools/cli/frothy-cli"
 
 build-kernel: check-cmake check-make ## Build the Frothy host runtime
 	@echo "==> Building Frothy host runtime (POSIX, 32-bit)..."
@@ -27,9 +27,9 @@ build-kernel: check-cmake check-make ## Build the Frothy host runtime
 
 build-cli: check-go ## Build CLI tool
 	@mkdir -p "$(GO_CACHE_DIR)"
-	@echo "==> Building repo-local froth-cli..."
+	@echo "==> Building repo-local frothy-cli..."
 	@$(MAKE) --no-print-directory -C tools/cli build GOCACHE="$(GO_CACHE_DIR)"
-	@echo "==> Repo-local froth-cli ready: tools/cli/froth-cli"
+	@echo "==> Repo-local frothy-cli ready: tools/cli/frothy-cli"
 
 release: version-check build-cli ## Build release tarball (current platform)
 	@tools/package-release.sh
@@ -43,8 +43,8 @@ clean: clean-kernel clean-cli ## Remove all build artifacts
 clean-kernel: ## Remove kernel build directory
 	@rm -rf build
 
-clean-cli: ## Remove repo-local froth-cli binary (not SDK mirror)
-	@rm -f tools/cli/froth-cli
+clean-cli: ## Remove repo-local frothy-cli binary (not SDK mirror)
+	@rm -f tools/cli/frothy-cli
 
 ##@ Test
 test: version-check test-runner-bin ## Run the fast self-contained local test gate

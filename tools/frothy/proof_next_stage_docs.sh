@@ -38,7 +38,6 @@ require_rg "^- Next artifact: $NEXT_ARTIFACT$" \
 require_rg "^- Next proof(:| command:)? \`$NEXT_PROOF\`$" \
   "$ROOT_DIR/PROGRESS.md" "$ROOT_DIR/TIMELINE.md"
 
-require_rg 'repo-local `froth-cli`' "$ROOT_DIR/README.md"
-require_rg 'release-time `froth`' "$ROOT_DIR/README.md"
-require_rg 'intended global `frothy`' "$ROOT_DIR/README.md"
+require_rg 'repo-local `frothy-cli`' "$ROOT_DIR/README.md"
+require_rg 'Installed CLI command from released assets \| `frothy`' "$ROOT_DIR/README.md"
 reject_rg '`F1 Core hardening`' "$ROOT_DIR/README.md"

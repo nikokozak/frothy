@@ -16,6 +16,10 @@ var (
 
 var runSetupCommand = runSetup
 
+const (
+	cliCommandName = "frothy"
+)
+
 // Execute parses os.Args and dispatches to the right subcommand.
 func Execute() error {
 	args := os.Args[1:]
@@ -40,7 +44,7 @@ func Execute() error {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("froth %s\n", version)
+			fmt.Printf("%s %s\n", cliCommandName, version)
 			return nil
 		default:
 			remaining = append(remaining, args[i])
@@ -83,7 +87,7 @@ func Execute() error {
 }
 
 func printUsage() {
-	fmt.Println("Usage: froth [flags] <command>")
+	fmt.Printf("Usage: %s [flags] <command>\n", cliCommandName)
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  new <name>      Create a new Frothy project")
