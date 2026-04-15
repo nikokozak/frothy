@@ -14,6 +14,10 @@ rg -n 'Frothy_Workshop_Quick_Reference\.md|Frothy_Workshop_Clean_Machine_Validat
 rg -n 'pong\.frothy|export_workshop_repo\.sh' workshop/README.md
 rg -n 'proof\.sh workshop-v4 <PORT>' README.md \
   docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md
+rg -n -- '--live-controls' README.md \
+  boards/esp32-devkit-v4-game-board/WORKSHOP.md \
+  docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md \
+  docs/adr/121-workshop-base-image-board-library-surface.md
 rg -n 'Frothy_Workshop_Quick_Reference\.md|Frothy_Workshop_Clean_Machine_Validation\.md' \
   docs/guide/Frothy_Workshop_Install_Quickstart.md \
   tools/vscode/README.md

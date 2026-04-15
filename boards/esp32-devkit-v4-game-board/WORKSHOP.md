@@ -44,11 +44,14 @@ kit.
 ## Focused Proof
 
 Run this against the attached workshop proto board to prove the baked-in v4
-helper surface directly, including live joystick transitions:
+helper surface directly without requiring manual joystick input:
 
 ```sh
 sh tools/frothy/proof.sh workshop-v4 <PORT>
 ```
+
+Add `--live-controls` only when you intentionally want the manual joystick and
+button prompts.
 
 ## First-Line Recovery
 

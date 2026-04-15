@@ -13,6 +13,8 @@ It records the current focused workshop-board proof state on the maintained
 sh tools/frothy/proof.sh workshop-v4 <PORT>
 ```
 
+Add `--live-controls` only for an explicit manual joystick/button pass.
+
 ## Current Branch Status
 
 - The docs/front-door, clean-machine checklist, room-side recovery card, and

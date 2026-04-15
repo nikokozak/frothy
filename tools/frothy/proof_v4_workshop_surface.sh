@@ -3,11 +3,11 @@ set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 CLI_BIN="${FROTHY_CLI_BINARY:-$ROOT_DIR/tools/cli/frothy-cli}"
-RUN_LIVE_CONTROLS=1
+RUN_LIVE_CONTROLS=0
 PORT=
 
 usage() {
-  echo "usage: $0 [--skip-live-controls] <PORT>" >&2
+  echo "usage: $0 [--live-controls] <PORT>" >&2
 }
 
 while [ "$#" -gt 0 ]; do
@@ -17,6 +17,7 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --skip-live-controls)
+      # Backward-compatible no-op now that non-interactive checks are default.
       RUN_LIVE_CONTROLS=0
       shift
       ;;

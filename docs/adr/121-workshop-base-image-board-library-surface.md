@@ -95,6 +95,9 @@ Board proof remains the exact workshop command path:
 
 - `sh tools/frothy/proof.sh workshop-v4 <PORT>`
 
+Use `--live-controls` only for an explicit manual joystick/button extension of
+that proof.
+
 The proof ladder must show:
 
 - `millis()` is base/native and monotonic across `ms(...)`

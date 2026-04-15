@@ -146,8 +146,10 @@ The maintained test contract is:
 - `make test-list`: list maintained suites and profiles
 - `sh tools/frothy/proof_workshop_ops_docs.sh`: workshop front-door and ops
   docs sanity
-- `sh tools/frothy/proof.sh workshop-v4 <PORT>`: focused real-device
-  `esp32-devkit-v4-game-board` workshop proof
+- `sh tools/frothy/proof.sh workshop-v4 <PORT>`: focused non-interactive
+  real-device `esp32-devkit-v4-game-board` workshop proof
+- `sh tools/frothy/proof.sh workshop-v4 --live-controls <PORT>`: optional
+  manual joystick/button extension to the same board proof
 
 Run the currently shipped CLI as `frothy`:
 

@@ -37,7 +37,8 @@ proofs:
   ffi
   safe-boot
   workshop-docs
-  workshop-v4 [--skip-live-controls] <PORT>
+  workshop-v4 [--live-controls] <PORT>
+  workshop-v4-live <PORT>
   m10 [--host-only|--assume-blink-confirmed|--transcript-out PATH|<PORT>]
 EOF
 }
@@ -79,6 +80,9 @@ run_one() {
       ;;
     workshop-v4)
       exec sh "$SCRIPT_DIR/proof_v4_workshop_surface.sh" "$@"
+      ;;
+    workshop-v4-live)
+      exec sh "$SCRIPT_DIR/proof_v4_workshop_surface.sh" --live-controls "$@"
       ;;
     m10)
       exec sh "$SCRIPT_DIR/proof_m10_smoke.sh" "$@"
