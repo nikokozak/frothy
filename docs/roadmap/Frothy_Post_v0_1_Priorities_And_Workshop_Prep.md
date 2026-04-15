@@ -34,9 +34,10 @@ What still needs explicit surfacing is the order of the next follow-on work.
 The workshop implementation tranche is now landed on `main`, but the immediate
 queue head changed after an ESP32 `boot` loop exposed that ordinary embedded
 looping still depended on hidden C stack depth through the recursive
-evaluator. The live control surface now puts evaluator execution-stack
-hardening first. The workshop-operational list below is the resumed order after
-that runtime tranche lands.
+evaluator. The first explicit evaluator-frame-stack tranche and the
+prompt-facing record repair are now landed on `main`; the remaining runtime
+item is closeout around the bounded frame-arena ownership shape plus refreshed
+proof on the maintained device path.
 
 The workshop-operational artifacts are now concrete in-repo:
 
@@ -51,159 +52,41 @@ They do not claim that every manual gate has already been executed; clean
 machines, physical room pack-out, and the final measured real-device closeout
 still have to be run and recorded.
 
-## Priority Stack
+## Why This Order
 
-### 1. Priority repair: live-shell records must match the landed record surface
+- Runtime closeout still leads because the first explicit
+  evaluator-frame-stack tranche is landed, but the bounded frame-arena
+  ownership shape still needs final maintainability judgment and refreshed
+  proof on the maintained device path. Keep that work narrow; do not reopen
+  recursive evaluator execution by another path. References:
+  `src/frothy_eval.c`, `tests/frothy_eval_test.c`,
+  `tools/frothy/proof_eval_stack_budget.sh`, and
+  `docs/adr/118-explicit-evaluator-frame-stack-for-canonical-ir-execution.md`.
+- Clean-machine validation, classroom hardware prep, and measured rehearsal are
+  next because the remaining workshop risk is operational. The install/docs
+  surface and the room-side recovery artifacts are already checked in; what is
+  left is to execute and record the real passes. References:
+  `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`,
+  `boards/esp32-devkit-v1/WORKSHOP.md`, and
+  `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`.
+- Workspace/image flow stays deferred because the staged queue is already
+  single-sourced in
+  `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`, and this note
+  should not become a second implementation ledger for that future work.
 
-Goal:
+## Publishability Reset
 
-- make the prompt-facing shell accept the maintained `record ...` forms and
-  keep record definition, construction, field access, inspection, and
-  save/restore behavior aligned with the landed parser, evaluator, and snapshot
-  record surface
+The publishability-reset stack frozen in
+`docs/audit/Frothy_Repo_Audit_2026-04.md` is now landed on `main`.
 
-Held boundary:
+That means the repo now has:
 
-- do not widen records beyond the already accepted fixed-layout surface
-- fix prompt-path drift before more workshop-facing polish assumes the shell is
-  truthful
-
-References:
-
-- `src/frothy_shell.c`
-- `tests/frothy_parser_test.c`
-- `tests/frothy_snapshot_test.c`
-- `docs/spec/Frothy_Language_Spec_vNext.md`
-- `docs/adr/112-next-stage-language-growth-and-recovery-boundary.md`
-
-### 2. Minimal docs front door and quick reference
-
-Goal:
-
-- publish a minimal documentation front door for install, first connect,
-  inspection, board API, persistence, and troubleshooting
-
-Held boundary:
-
-- do not try to mirror a whole site before the workshop
-- point everything at the maintained Frothy path and the sanctioned starter
-
-References:
-
-- `README.md`
-- `tools/vscode/README.md`
-- `docs/guide/Frothy_From_The_Ground_Up.md`
-- `docs/guide/Frothy_Workshop_Quick_Reference.md`
-
-### 3. Clean-machine validation on promised platforms
-
-Goal:
-
-- prove the attendee path on the platforms we actually promise before people
-  walk in with their laptops
-
-Held boundary:
-
-- promise only what has been exercised on clean machines
-- treat install failure as a top-level workshop blocker rather than a late bug
-
-References:
-
-- `.github/workflows/release.yml`
-- `README.md`
-- `tools/vscode/README.md`
-- `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`
-
-### 4. Classroom hardware and recovery kit
-
-Goal:
-
-- make the room-side hardware path resilient: preflashed boards, known-good
-  cables, spare parts, labels, and a written recovery procedure
-
-Held boundary:
-
-- do not let the software path depend on unplanned reflashing or ad hoc cable
-  triage
-- keep the fallback CLI path ready if the extension misbehaves on a given
-  machine
-
-References:
-
-- `tools/frothy/proof_m10_smoke.sh`
-- `docs/archive/proofs/m10_esp32_proof_transcript.txt`
-- `boards/`
-- `boards/esp32-devkit-v1/WORKSHOP.md`
-
-### 5. Workshop rehearsal plus measured performance/persistence closeout
-
-Goal:
-
-- run the actual lesson path end to end, verify loop cadence, sensor flow, and
-  `save` / `restore` / `dangerous.wipe`, and freeze the take-home path
-
-Held boundary:
-
-- no speculative rewrite
-- tie the proof surface to the actual workshop puzzle, blink, animation,
-  sensor, and small-game flow
-
-References:
-
-- `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md`
-- `docs/spec/Frothy_Language_Spec_v0_1.md`
-- `tools/frothy/`
-- `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`
-
-### 6. Later workspace/image-flow work
-
-Goal:
-
-- keep workspace/image flow deferred until the workshop path and
-  publishability-reset queue are solid again
-
-Held boundary:
-
-- the staged queue is owned in
-  `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`
-- keep this note at deferral/reference level only; do not restate the staged
-  workspace/image-flow queue here
-- do not let workspace/image flow displace the workshop-critical tranches above
-
-References:
-
-- `docs/adr/115-first-workspace-image-flow-tranche.md`
-- `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`
-
-## After-Workshop Publishability Reset
-
-Once the 2026-04-16 workshop gate is stable, the next disciplined cleanup is
-the publishability-reset stack frozen in
-`docs/audit/Frothy_Repo_Audit_2026-04.md`.
-
-Execute it in this order:
-
-1. immediate cuts for daemon-era editor residue, tracked repo pollution, and
-   proof artifacts that belong in docs/archive space rather than active tooling
-2. naming and packaging normalization, including the Go module/import path and
-   one explicit Frothy-versus-`froth` identity matrix
-3. proof and dependency collapse, removing Python from release glue first and
-   keeping Node extension-only/release-only
-4. runtime boundary tightening, making retained Froth substrate and temporary
-   compatibility shims explicit
-5. docs front door and archive pass
-
-Worktree guidance:
-
-- do not default to a worktree for the pre-workshop queue above unless parallel
-  owners force it
-- do use a dedicated worktree for the multi-day post-workshop cleanup tranches
-  that touch many files or subsystems
-- the best worktree candidates are naming/module-path normalization,
-  proof/dependency collapse, runtime-boundary tightening, and the docs/archive
-  pass
-- avoid a worktree for doc-only control-surface edits or one-file workshop
-  fixes that should land directly and quickly
+1. archived historical proof artifacts in `docs/archive/`
+2. one explicit Frothy-versus-`froth` publishability matrix
+3. a maintained core proof/dependency surface centered on `C`, `Go`, and
+   `Shell`, with `Node` and hardware-only `Python` kept explicit
+4. an explicit retained-substrate/runtime-boundary record in code and docs
+5. one maintained docs/archive front door instead of competing cleanup notes
 
 ## Workshop Gate For 2026-04-16
 
@@ -220,5 +103,6 @@ Before the 2026-04-16 workshop:
 
 ## Reordering Rule
 
-Items 1 through 5 may move as priorities change.
-When they move, preserve each item's goal, held boundary, and references.
+The remaining runtime closeout and workshop-operational items may move as
+priorities change.
+When they move, preserve the reasoning above instead of cloning another queue.

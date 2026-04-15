@@ -19,6 +19,15 @@ require_literal_in_each_file() {
   done
 }
 
+require_absent() {
+  pattern=$1
+  shift
+  if rg -n "$pattern" "$@" >/dev/null; then
+    echo "error: unexpected pattern '$pattern' found in control docs" >&2
+    exit 1
+  fi
+}
+
 queue_section=$(awk '
   $0 == "## Deferred Queue" { capture=1 }
   capture { print }
@@ -103,21 +112,29 @@ fi
 
 rg -n '^Current milestone: `evaluator execution-stack hardening`$' \
   docs/roadmap/Frothy_Development_Roadmap_v0_1.md
-rg -n 'Frothy ADR-118 plus the first evaluator-trampoline tranche for' \
+rg -n '^Next artifact:' docs/roadmap/Frothy_Development_Roadmap_v0_1.md
+rg -n 'bounded frame arena' docs/roadmap/Frothy_Development_Roadmap_v0_1.md
+rg -n 'non-recursive evaluator path' \
   docs/roadmap/Frothy_Development_Roadmap_v0_1.md
-rg -n '^Next proof command: `cmake -S \. -B build && cmake --build build && \./build/frothy_eval_tests && sh tools/frothy/proof_eval_stack_budget\.sh`$' \
+rg -n 'frothy_eval_tests && \./build/frothy_shell_tests && sh tools/frothy/proof_eval_stack_budget\.sh' \
   docs/roadmap/Frothy_Development_Roadmap_v0_1.md
 
-rg -n '^- Active milestone: `evaluator execution-stack hardening`$' PROGRESS.md TIMELINE.md
-rg -n 'Frothy ADR-118 plus the first evaluator-trampoline tranche' \
-  PROGRESS.md TIMELINE.md
-rg -n '^- Next proof command: `cmake -S \. -B build && cmake --build build && \./build/frothy_eval_tests && sh tools/frothy/proof_eval_stack_budget\.sh`$' \
-  PROGRESS.md TIMELINE.md
+require_absent '^## Current Control Snapshot$' PROGRESS.md TIMELINE.md
+rg -n '^## Remaining Gates$' PROGRESS.md
+require_literal '`TIMELINE.md` for the live movable queue' PROGRESS.md
+rg -n '^\- \[~\] Evaluator execution-stack hardening closeout$' TIMELINE.md
+rg -n '^\- \[ \] Clean-machine validation on promised platforms$' TIMELINE.md
+rg -n '^\- \[ \] Classroom hardware and recovery kit$' TIMELINE.md
+rg -n '^\- \[~\] Workshop rehearsal plus measured performance/persistence closeout$' TIMELINE.md
+rg -n '^\- \[ \] Deferred workspace/image-flow queue$' TIMELINE.md
 
-rg -n 'evaluator execution-stack hardening|Support matrix and release/install artifacts|Attendee-facing naming alignment|Attendee install email and quickstart|Workshop preflight and serial recovery path|Workshop starter project and frozen board/game surface|Minimal docs front door and quick reference|Clean-machine validation on promised platforms|Classroom hardware and recovery kit|Workshop rehearsal plus measured performance/persistence closeout|Later workspace/image-flow work|Workshop Gate For 2026-04-16' \
+rg -n '^## Why This Order$|^## Publishability Reset$|^## Workshop Gate For 2026-04-16$' \
+  docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md
+rg -n 'bounded frame-arena|operational|Workspace_Image_Flow_Tranche_1|Frothy_Repo_Audit_2026-04' \
+  docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md
+require_absent '^## Priority Stack$|^### [0-9]+\.' \
   docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md
 rg -n 'The queue below is intentionally movable' TIMELINE.md
-rg -n '^- \[~\] Evaluator execution-stack hardening$' TIMELINE.md
 rg -n 'For targeted work|Run the broader read pass when' AGENTS.md
 rg -n 'Before sign-off on any task in this repo, run at least one proof on a real' \
   AGENTS.md
@@ -135,7 +152,7 @@ require_literal_in_each_file 'Frothy_Workspace_Image_Flow_Tranche_1.md' \
   docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md \
   PROGRESS.md \
   TIMELINE.md
-rg -n '^\- [0-9]+\. .*workspace/image-flow' PROGRESS.md
+rg -n 'Workspace/image flow remains intentionally deferred' PROGRESS.md
 rg -n '^\- \[ \] .*workspace/image-flow' TIMELINE.md
 
 if rg -n 'Cut 2|Cut 3|host-only slot-bundle inspection/generation|later apply/load growth' \
@@ -146,3 +163,8 @@ if rg -n 'Cut 2|Cut 3|host-only slot-bundle inspection/generation|later apply/lo
   echo "error: deferred workspace/image-flow staging leaked back into secondary control docs" >&2
   exit 1
 fi
+
+require_absent 'worktree' \
+  PROGRESS.md \
+  TIMELINE.md \
+  docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md

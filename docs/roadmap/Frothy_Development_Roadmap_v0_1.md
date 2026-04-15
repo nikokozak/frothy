@@ -24,21 +24,22 @@ It is a sequencing and control document.
 This block is the live control surface for repo status.
 
 Current milestone: `evaluator execution-stack hardening`
-Today's goal: accept the explicit evaluator-frame-stack ADR, make it the
-immediate live priority, and prepare the first implementation tranche that
-removes recursive IR execution from the embedded runtime path
-Next artifact: Frothy ADR-118 plus the first evaluator-trampoline tranche for
-`CALL`, `IF`, `WHILE`, and `SEQ` over an explicit frame stack
+Today's goal: keep the landed explicit evaluator-frame-stack tranche
+authoritative on the maintained hardware path, settle the remaining
+frame-arena ownership/maintainability question, and close the runtime slice
+with refreshed focused proofs
+Next artifact: evaluator hardening closeout around the bounded frame arena plus
+refreshed host/device proofs for the non-recursive evaluator path
 Blocked by: none
-Next proof command: `cmake -S . -B build && cmake --build build && ./build/frothy_eval_tests && sh tools/frothy/proof_eval_stack_budget.sh`
-Slip against plan: the workshop-operational queue was intentionally preempted
-after an ESP32 `boot` loop exposed that ordinary embedded looping still
-depended on hidden C stack depth through the recursive evaluator; that runtime
-boundary now outranks attendee-polish follow-ons
-Cut candidate if slip persists: keep the workshop-facing install/docs queue
-narrow, land the explicit evaluator-frame-stack tranche first, and defer
-broader publishability cleanup plus extra surface work until ordinary looping
-is explicit, bounded, and re-proved on device
+Next proof command: `cmake -S . -B build && cmake --build build && ./build/frothy_eval_tests && ./build/frothy_shell_tests && sh tools/frothy/proof_eval_stack_budget.sh`
+Slip against plan: the explicit evaluator-frame-stack tranche, prompt-facing
+record repair, workshop-operational docs, and publishability-reset stack are
+now landed on `main`; the remaining pre-workshop risk is operational closeout
+on clean machines and real devices rather than more repo-shape churn
+Cut candidate if slip persists: treat frame-arena ownership as the last narrow
+runtime cleanup item, keep the workshop queue limited to clean-machine
+validation, room kit prep, and one recorded measured rehearsal, and continue
+to defer broader workspace/image-flow growth
 
 ## 3. Operating Rules
 

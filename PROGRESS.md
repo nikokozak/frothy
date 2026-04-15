@@ -9,13 +9,6 @@ remains the authoritative live control surface.
 If this file disagrees with the accepted Frothy spec, ADRs, or roadmap, this
 file is wrong.
 
-## Current Control Snapshot
-
-- Active milestone: `evaluator execution-stack hardening`
-- Blocked by: none
-- Next artifact: Frothy ADR-118 plus the first evaluator-trampoline tranche for `CALL`, `IF`, `WHILE`, and `SEQ` over an explicit frame stack
-- Next proof command: `cmake -S . -B build && cmake --build build && ./build/frothy_eval_tests && sh tools/frothy/proof_eval_stack_budget.sh`
-
 ## Landed And Still Relevant
 
 - Frothy `v0.1` is closed through M10; the dated ladder is done.
@@ -31,11 +24,12 @@ file is wrong.
   tranches are already landed and are no longer the unclear part of the repo
   story.
 - The publishability audit is now landed at
-  `docs/audit/Frothy_Repo_Audit_2026-04.md`; it now serves as the active
-  cleanup ledger for the publishability reset rather than a read-only plan.
-- Attendee-facing naming alignment is still active: the repo, product, and
-  editor are Frothy, while the installed CLI path is still transitional
-  `froth`, and the workshop queue now treats that mismatch as explicit work.
+  `docs/audit/Frothy_Repo_Audit_2026-04.md`; it now serves as the reference
+  record for the landed publishability reset rather than as a future cleanup
+  ledger.
+- The Frothy-versus-`froth` naming boundary is now explicit and frozen in the
+  maintained surface: repo, product, docs, and editor are Frothy, while the
+  installed CLI path remains intentionally transitional `froth`.
 - This control-surface repair tranche is landed: `PROGRESS.md` and
   `TIMELINE.md` are thin again, `AGENTS.md` supports targeted work, and the
   forward queue now lives in one short roadmap note plus Frothy ADR-116.
@@ -71,13 +65,17 @@ file is wrong.
   `docs/roadmap/Frothy_Workshop_Run_Spec_2026-04-17.md`; it freezes the lesson
   arc, `Get Home` inspection puzzle, `Get Home+` starter game, required helper
   surface, persistence teaching points, and rehearsal checklist.
+- The first explicit evaluator-frame-stack tranche is now landed on `main`:
+  `CALL`, `IF`, `WHILE`, `SEQ`, and required compound expression paths run
+  through a bounded explicit frame stack instead of recursive evaluator entry,
+  prompt-facing `record ...` forms now match the landed
+  parser/evaluator/snapshot record surface, and the focused host proof slice
+  now includes both the eval stack-budget tripwire and shell record coverage.
 - The evaluator stack-overflow regression found by a simple ESP32 `boot` loop
-  is fixed, and the Frothy proof ladder now includes a host compile
-  stack-budget check for recursive evaluator paths plus record-definition IR
-  allocation so large local arrays fail before they reach hardware.
-- That stack-budget proof is now explicitly treated as an interim tripwire, not
-  the permanent architecture answer; Frothy ADR-118 makes the explicit
-  evaluator-frame stack the immediate next runtime cut.
+  is therefore no longer defended only by compile-time frame-size hygiene; the
+  remaining runtime item is closeout around the current bounded frame-arena
+  ownership shape plus refreshed device proof, not reintroducing recursive IR
+  execution.
 - The ESP32 shell-path overflow on multiline `in` / `cond` / `case` definitions
   is fixed in the current tree by removing a 1KB rewrite buffer from
   `frothy_shell_run()`'s task stack, widening the stack-budget proof to cover
@@ -109,7 +107,7 @@ file is wrong.
   freezes the promised clean-machine checklist, `boards/esp32-devkit-v1/WORKSHOP.md`
   holds the room-side kit and reflash card, and
   `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md` carries the
-  branch-local rehearsal status note plus the required real-device proof
+  checked-in rehearsal status note plus the required real-device proof
   command.
 - The remaining manual workshop gates stay explicit: separate clean-machine
   passes on the promised platforms, physical room pack-out, and the final
@@ -118,37 +116,26 @@ file is wrong.
 - The full publishability reset is now landed on `main`: stale
   proof artifacts are archived under `docs/archive/`, Frothy-facing
   naming/packaging are normalized, release packaging no longer needs Python,
-  the default proof surface is back to `C` + `Go` + `Shell` with explicit
-  `Node` and hardware-only `Python` exceptions, and the retained Froth
-  substrate boundary is explicit in code and docs. References:
+  release CI uses the maintained VS Code host-smoke lane, firmware manifest
+  parsing/ordering/validation and artifact path checks are centralized under
+  the maintained Go surface, the default proof surface is back to `C` + `Go`
+  + `Shell` with explicit `Node` and hardware-only `Python` exceptions, and
+  the retained Froth substrate boundary is explicit in code and docs.
+  References:
   `docs/audit/Frothy_Repo_Audit_2026-04.md` and
   `docs/reference/Frothy_Retained_Substrate_Manifest.md`.
 
-## Near-Term Priority Stack
+## Remaining Gates
 
-- 1. Evaluator execution-stack hardening: replace recursive IR evaluation with
-  an explicit frame stack/trampoline so ordinary embedded loops and nested game
-  code are bounded by Frothy-managed depth rather than hidden C stack.
-- 2. Priority repair: live-shell records must match the landed record surface
-  so prompt behavior agrees with the landed parser/evaluator/snapshot record
-  path before more workshop-facing polish stacks on top.
-- 3. Minimal docs front door and quick reference: install, first connect,
-  inspection, board API, persistence, and troubleshooting.
-- 4. Clean-machine validation on promised platforms.
-- 5. Classroom hardware and recovery kit: preflashed boards, known-good data
-  cables, reflash path, spare hardware, and CLI fallback.
-- 6. Workshop rehearsal plus measured performance/persistence closeout on the
-  actual lesson path.
-- 7. Deferred workspace/image-flow queue after the workshop path is solid
-  again; keep it single-sourced in
+- Runtime closeout is still open: the explicit evaluator-frame-stack tranche is
+  landed, but the bounded frame-arena ownership shape still needs final
+  maintainability judgment plus refreshed focused proof on the maintained
+  host/device slice.
+- The remaining pre-workshop risk is operational rather than structural:
+  clean-machine validation, room-side hardware/recovery prep, and one recorded
+  measured real-device rehearsal still need to be executed.
+- Workspace/image flow remains intentionally deferred and single-sourced in
   `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`.
-- Reference: `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`
-  and `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`
-
-## Workshop Gate
-
-- Before 2026-04-16, the control docs, queue order, and deferrals must be
-  explicit enough that paused discussions do not lose context.
-- Worktree guidance is now explicit in `TIMELINE.md`: avoid worktrees for
-  small pre-workshop fixes, and reserve them for the larger multi-day
-  post-workshop cleanup tranches.
+- See `TIMELINE.md` for the live movable queue and
+  `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md` for the
+  rationale behind that order.

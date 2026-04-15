@@ -9,13 +9,6 @@ surface.
 
 If this file and the roadmap disagree, the roadmap wins.
 
-## Current Control Snapshot
-
-- Active milestone: `evaluator execution-stack hardening`
-- Blocked by: none
-- Next artifact: Frothy ADR-118 plus the first evaluator-trampoline tranche for `CALL`, `IF`, `WHILE`, and `SEQ` over an explicit frame stack
-- Next proof command: `cmake -S . -B build && cmake --build build && ./build/frothy_eval_tests && sh tools/frothy/proof_eval_stack_budget.sh`
-
 ## Closed v0.1 Ladder
 
 - [x] M0 Freeze direction
@@ -62,34 +55,26 @@ If this file and the roadmap disagree, the roadmap wins.
 The queue below is intentionally movable. Reorder it as priorities change, but
 keep each item's description and references so deferral does not erase context.
 
-- [~] Evaluator execution-stack hardening
-  Deliverable: accept the execution-stack ADR and land the first explicit
-  evaluator-frame tranche so `CALL`, `IF`, `WHILE`, `SEQ`, and nested
-  expression evaluation no longer depend on hidden C stack depth.
+- [~] Evaluator execution-stack hardening closeout
+  Deliverable: keep the explicit evaluator-frame-stack tranche authoritative,
+  settle the remaining bounded frame-arena ownership/maintainability question,
+  and rerun the focused host/device proof slice for the non-recursive
+  evaluator path.
+  Note: the first explicit-stack tranche for `CALL`, `IF`, `WHILE`, `SEQ`, and
+  required compound evaluation paths is landed on `main`; remaining work is
+  closeout and proof, not restoring recursive IR execution.
   References: Frothy ADR-118, Frothy ADR-105,
-  `docs/archive/adr/040-cs-trampoline-executor.md`, `src/frothy_eval.c`, and
-  `src/froth_vm.h`.
-- [ ] Evaluator frame-arena ownership cleanup
-  Deliverable: revisit the current file-local bounded explicit evaluator frame
-  arena and either replace it with a clearer caller-owned/local ownership path
-  or explicitly keep it with proof that the retained design is the narrowest
-  safe fit for the maintained single-runtime evaluator.
-  Note: review on the first explicit evaluator-frame tranche judged the current
-  `frothy_eval_frame_stack` plus base-depth cursor acceptable for now, but
-  still worth tracking as maintainability debt once the immediate hardening
-  path is stable.
-  References: Frothy ADR-118, `src/frothy_eval.c`,
-  `tests/frothy_eval_test.c`, and `tools/frothy/proof_eval_stack_budget.sh`.
-- [ ] Priority repair: live-shell records must match the landed record surface
-  Deliverable: make the prompt-facing shell accept the maintained `record ...`
-  forms and keep record definition, construction, field access, inspection,
+  `docs/archive/adr/040-cs-trampoline-executor.md`, `src/frothy_eval.c`,
+  `src/frothy_shell.c`, `tests/frothy_eval_test.c`,
+  `tests/frothy_shell_test.c`, and `tools/frothy/proof_eval_stack_budget.sh`.
+- [x] Prompt-facing record surface matches the landed implementation
+  Deliverable: the prompt-facing shell accepts the maintained `record ...`
+  forms and keeps record definition, construction, field access, inspection,
   and save/restore behavior aligned with the landed parser, evaluator, and
   snapshot record surface.
-  Note: current smoke found `record Point [ x, y ]` still failing at the prompt
-  with `parse error (108)` despite checked-in parser/eval/snapshot record
-  coverage.
   References: Frothy ADR-112, `src/frothy_shell.c`,
-  `tests/frothy_parser_test.c`, `tests/frothy_snapshot_test.c`, and
+  `tests/frothy_shell_test.c`, `tests/frothy_parser_test.c`,
+  `tests/frothy_snapshot_test.c`, and
   `docs/spec/Frothy_Language_Spec_vNext.md`.
 - [x] Control-surface repair and workshop-prep note
   Deliverable: thin `PROGRESS.md`, movable `TIMELINE.md`, targeted
@@ -192,9 +177,9 @@ keep each item's description and references so deferral does not erase context.
 - [~] Workshop rehearsal plus measured performance/persistence closeout
   Deliverable: run the real lesson path end to end, verify loop cadence,
   sensor flow, and `save` / `restore` / `dangerous.wipe`, and freeze the take-home path.
-  Note: the branch-local rehearsal status note and proof command are checked
-  in, but the measured real-device closeout itself remains open until one
-  complete pass is captured and recorded.
+  Note: the rehearsal status note and proof command are checked in, but the
+  measured real-device closeout itself remains open until one complete pass is
+  captured and recorded.
   References: `docs/roadmap/F1_Runtime_Hardening_Benchmark_Notes.md`,
   `docs/spec/Frothy_Language_Spec_v0_1.md`, `tools/frothy/`,
   `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`, and the
@@ -249,21 +234,3 @@ keep each item's description and references so deferral does not erase context.
   reference doc instead of expanding this file into narrative history.
 - The dated v0.1 ladder ends at M10. Do not invent fake dated milestones for
   post-`v0.1` work.
-
-## Worktree Guidance
-
-- Do not reach for a worktree by default for the pre-workshop queue. The
-  attendee install, naming-alignment, preflight, starter, and docs cuts should
-  normally land from the main checkout unless there are parallel owners making
-  conflicting edits.
-- Use a dedicated worktree for multi-day post-workshop publishability-reset
-  tranches that touch many files or many subsystems at once. The clearest
-  candidates are naming/module-path normalization, proof/dependency collapse,
-  runtime-boundary tightening, and the docs/archive pass.
-- Use a worktree when you need the workshop hotfix path to stay clean on the
-  main checkout while a larger cleanup tranche is in flight elsewhere.
-- Do not bother with a worktree for doc-only control-surface edits, one-file
-  fixes, or tightly scoped workshop-critical repairs that should land quickly.
-- Do not start the aggressive post-workshop tranches in a worktree before the
-  2026-04-16 workshop path is stable enough that churn on `main` is no longer
-  the higher risk.
