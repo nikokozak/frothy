@@ -32,10 +32,12 @@ tools/vscode/test/test.froth
 
 # CLI local binaries / captures
 tools/cli/cli
+tools/cli/froth-cli
 tools/cli/frothy-cli
 tools/cli/froth-debug
 tools/cli/test-runner
 tools/cli/minicom_capture
+tools/cli/tmp-froth-cli
 tools/cli/tmp-frothy-cli
 tools/frothy/__pycache__/
 tests/kernel/__pycache__/
