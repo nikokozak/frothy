@@ -1,0 +1,41 @@
+{
+  "name": "ESP32 DevKit V4 Game Board",
+  "vendor": "DoIt",
+  "platform": "esp-idf",
+  "chip": "esp32",
+  "description": "Workshop proto board built on an ESP32 DevKit V4 with a TM1629 12x8 matrix.",
+  "config": {
+    "cell_size_bits": 32,
+    "heap_size": 8192,
+    "ds_depth": 256,
+    "rs_depth": 256,
+    "slot_count": 256,
+    "frothy_payload_capacity": 32768,
+    "has_snapshots": true,
+    "snapshot_block_size": 2048
+  },
+  "peripherals": [
+    "gpio",
+    "adc"
+  ],
+  "pins": {
+    "LED_BUILTIN": 2,
+    "BOOT_BUTTON": 0,
+    "A0": 34,
+    "UART_TX": 17,
+    "UART_RX": 16,
+    "TM1629_STB": 18,
+    "TM1629_CLK": 19,
+    "TM1629_DIO": 23,
+    "POT_LEFT": 33,
+    "POT_RIGHT": 32,
+    "JOY_1": 13,
+    "JOY_2": 25,
+    "JOY_3": 16,
+    "JOY_4": 17,
+    "JOY_6": 14,
+    "BUTTON_1": 34,
+    "BUTTON_2": 35,
+    "BUTTON_3": 36
+  }
+}

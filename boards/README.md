@@ -20,7 +20,8 @@ boards/
     board.json      board metadata and build config (required)
     ffi.h           declares the board binding table (required)
     ffi.c           board-specific C bindings (required)
-    lib.froth       convenience words in Froth (optional)
+    lib/
+      base.frothy   convenience words seeded into the Frothy base image (optional)
 ```
 
 ## Adding a new board
@@ -28,7 +29,8 @@ boards/
 1. Copy an existing board directory (start with `boards/posix/`).
 2. Edit `board.json`: set your board name, platform, chip, pins, peripherals.
 3. Edit `ffi.c`: replace the bindings with your hardware-specific words.
-4. Optionally write `lib.froth` for higher-level convenience words.
+4. Optionally write `lib/base.frothy` for higher-level convenience words that
+   should ship in the board base image and survive `dangerous.wipe`.
 5. Build: `cmake .. -DFROTH_BOARD=<name> -DFROTH_PLATFORM=<platform>`
 
 ## board.json
@@ -92,6 +94,8 @@ size of internal data structures. Larger values use more RAM.
 | `slot_count` | `FROTH_SLOT_TABLE_SIZE` | 128 | Maximum number of named slots (words). Includes stdlib and board words. |
 | `has_snapshots` | `FROTH_HAS_SNAPSHOTS` | true | Enable save/restore/wipe. Requires the platform to implement snapshot storage. |
 | `snapshot_block_size` | `FROTH_SNAPSHOT_BLOCK_SIZE` | 2048 | Size of each snapshot storage slot in bytes. |
+| `frothy_object_capacity` | `FROTHY_OBJECT_CAPACITY` | 128 | Optional Frothy runtime object/free-span capacity for boards that ship a larger base library. |
+| `frothy_payload_capacity` | `FROTHY_PAYLOAD_CAPACITY` | 16384 | Optional Frothy runtime payload arena size in bytes for boards that ship a larger base library. |
 
 For resource-constrained targets, reduce `heap_size`, `ds_depth`,
 `rs_depth`, and `slot_count`. The POSIX board uses generous defaults
@@ -133,7 +137,7 @@ generates the equivalent of:
 21 'SDA def
 ```
 
-These words are available in `lib.froth` and in user code at the REPL.
+These words are available in `lib/base.frothy` and in user code at the REPL.
 This avoids hardcoding pin numbers in board Froth libraries and makes
 code readable: `LED_BUILTIN 1 gpio.write` instead of `2 1 gpio.write`.
 
@@ -250,37 +254,38 @@ FROTH_FFI(prim_adc_read, "adc.read", "( chan -- val )", "Read ADC") {
 Error codes 1-299 are reserved for the Froth kernel. Board-specific
 errors should use codes 300 and above.
 
-## lib.froth
+## lib/base.frothy
 
-Optional. Board-level words written in Froth rather than C.
+Optional. Board-level words written in Frothy rather than C.
 
 ### Boot order
 
-The Froth boot sequence loads code in this order:
+The maintained Frothy base-image path seeds code in this order:
 
-1. Kernel primitives (C)
-2. Board FFI bindings (C, from `ffi.c`)
-3. Snapshot primitives (C, if snapshots are enabled)
-4. Platform init
-5. Standard library (`core.froth`)
-6. Generated pin constants (from `board.json` `"pins"`)
-7. Board library (`lib.froth`, if present)
-8. Mark boot complete
-9. Restore snapshot (if one exists)
-10. Run `autorun` word (if defined by user, errors caught silently)
-11. Enter REPL
+1. Frothy builtins (`save`, `restore`, `dangerous.wipe`, `words`, `see`, `core`, `slotInfo`, `boot`)
+2. Generated board pin constants (from `board.json` `"pins"`)
+3. Board FFI bindings (from `ffi.c`)
+4. Board base library (`lib/base.frothy`, if present)
+5. Mark boot complete
+6. Restore snapshot (if one exists)
+7. Run `boot()`
+8. Enter REPL
 
-`lib.froth` runs at step 7. At that point, all stdlib words (`dup`,
-`swap`, `if`, `times`, etc.) and all pin constants (`LED_BUILTIN`, etc.)
-are available.
+`lib/base.frothy` runs during base-image seeding with board pins and board FFI
+already installed, and its definitions survive `dangerous.wipe`.
 
 ### Example
 
-```froth
-\ ESP32 DevKit V1 convenience words
-: led.on   LED_BUILTIN 1 gpio.write ;
-: led.off  LED_BUILTIN 0 gpio.write ;
-: led.blink  ( ms -- ) led.on dup ms led.off ms ;
+```frothy
+led.pin is LED_BUILTIN
+
+to led.on [ gpio.write: led.pin, 1 ]
+to led.off [ gpio.write: led.pin, 0 ]
+to led.blink with wait [
+  led.on:;
+  ms: wait;
+  led.off:
+]
 ```
 
 ### Guidelines

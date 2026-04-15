@@ -32,6 +32,11 @@ The first workshop base-image cut is:
 - add a Frothy-native preflashed workshop library loaded from
   `boards/<board>/lib/workshop.frothy`
 
+Note:
+the initial workshop cut used `workshop.frothy`; the maintained board path was
+later generalized by ADR-119 to `boards/<board>/lib/base.frothy` without
+changing the base-image rule.
+
 The shipped workshop base-library names are:
 
 - `blink(pin, count, wait)`

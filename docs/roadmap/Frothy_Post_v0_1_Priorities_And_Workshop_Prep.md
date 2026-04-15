@@ -26,6 +26,9 @@ What is already settled:
   docs-only boundary
 - the direct-control transport, helper/editor path, and measured runtime
   hardening slices are landed
+- the workshop release/install matrix, transitional Frothy-versus-`froth`
+  naming story, attendee quickstart, serial recovery path, and sanctioned
+  starter scaffold are now landed on `main`
 
 What still needs explicit surfacing is the order of the next follow-on work.
 The workshop implementation tranche is now landed on `main`, but the immediate
@@ -37,108 +40,7 @@ that runtime tranche lands.
 
 ## Priority Stack
 
-### 1. Support matrix and release/install artifacts
-
-Goal:
-
-- freeze the promised attendee platform matrix and ship a truthful CLI plus
-  VSIX install path
-
-Held boundary:
-
-- promise only the release targets that actually exist
-- keep the install story concrete and release-shaped rather than aspirational
-
-References:
-
-- `README.md`
-- `tools/package-release.sh`
-- `.github/workflows/release.yml`
-- `tools/vscode/README.md`
-
-### 2. Attendee-facing naming alignment
-
-Goal:
-
-- converge the workshop-facing product, CLI, extension, and docs story so
-  attendees do not bounce between Frothy, `froth`, and `froth-cli`
-
-Held boundary:
-
-- prefer one truthful transitional story over ambiguous mixed naming
-- do not break release/install compatibility late; if a full rename is risky,
-  use compatibility shims and explicit wording instead of half-renaming
-
-References:
-
-- `README.md`
-- `tools/vscode/README.md`
-- `tools/package-release.sh`
-- `tools/cli/Makefile`
-
-### 3. Attendee install email and quickstart
-
-Goal:
-
-- send one clear install note that tells attendees what to install, why the
-  CLI and extension are both needed, what platforms are supported, and what to
-  expect before they arrive
-
-Held boundary:
-
-- keep this note short, direct, and operational
-- explain the Frothy product name versus the transitional `froth` CLI name
-  truthfully instead of papering over it
-
-References:
-
-- `README.md`
-- `tools/vscode/README.md`
-- `docs/guide/Frothy_From_The_Ground_Up.md`
-
-### 4. Workshop preflight and serial recovery path
-
-Goal:
-
-- verify CLI presence, extension compatibility, serial visibility, board
-  handshake, and fallback recovery on the maintained Frothy path
-
-Held boundary:
-
-- do not require firmware build tooling just to confirm a preflashed attendee
-  board is workshop-ready
-- make the recovery story explicit before the workshop rather than discovering
-  it live at the tables
-
-References:
-
-- `tools/cli/cmd/doctor.go`
-- `tools/cli/internal/serial/discover.go`
-- `tools/vscode/src/control-session-client.ts`
-- `docs/adr/110-single-owner-control-session-transport.md`
-- `docs/adr/111-vscode-extension-owned-control-session.md`
-
-### 5. Workshop starter project and frozen board/game surface
-
-Goal:
-
-- give attendees one sanctioned folder shape and one sanctioned board/display
-  API for the puzzle, blink, animation, sensor, and small-game path
-
-Held boundary:
-
-- keep the starter narrow and teachable
-- use the maintained Frothy workshop surface rather than inventing a second
-  one-off demo stack
-
-References:
-
-- `tools/cli/cmd/new.go`
-- `tools/frothy/`
-- `boards/esp32-devkit-v1/`
-- `docs/adr/117-workshop-base-image-board-library-surface.md`
-
-### 6. Minimal docs front door and quick reference
+### 1. Minimal docs front door and quick reference
 
 Goal:
 
@@ -156,7 +58,7 @@ References:
 - `tools/vscode/README.md`
 - `docs/guide/Frothy_From_The_Ground_Up.md`
 
-### 7. Clean-machine validation on promised platforms
+### 2. Clean-machine validation on promised platforms
 
 Goal:
 
@@ -174,7 +76,7 @@ References:
 - `README.md`
 - `tools/vscode/README.md`
 
-### 8. Classroom hardware and recovery kit
+### 3. Classroom hardware and recovery kit
 
 Goal:
 
@@ -194,7 +96,7 @@ References:
 - `tools/frothy/m10_esp32_proof_transcript.txt`
 - `boards/`
 
-### 9. Workshop rehearsal plus measured performance/persistence closeout
+### 4. Workshop rehearsal plus measured performance/persistence closeout
 
 Goal:
 
@@ -213,7 +115,7 @@ References:
 - `docs/spec/Frothy_Language_Spec_v0_1.md`
 - `tools/frothy/`
 
-### 10. Later workspace/image-flow work
+### 5. Later workspace/image-flow work
 
 Goal:
 

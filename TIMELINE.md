@@ -116,34 +116,43 @@ keep each item's description and references so deferral does not erase context.
   only after repeated review passes stop surfacing major findings.
   References: `make test`, `make test-cli-local`, `make test-integration`, and
   `make test-all`.
-- [ ] Support matrix and release/install artifacts
-  Deliverable: freeze the promised platforms and publish a truthful CLI plus
-  VSIX install path for attendees.
+- [x] Support matrix and release/install artifacts
+  Deliverable: freeze the promised attendee matrix in-repo and keep the CLI
+  plus VSIX install path truthful.
   References: `.github/workflows/release.yml`, `tools/package-release.sh`,
-  `tools/vscode/README.md`, and `README.md`.
-- [ ] Attendee-facing naming alignment
-  Deliverable: converge the workshop-facing product, CLI, extension, and docs
-  story so attendees do not bounce between Frothy, `froth`, and `froth-cli`;
-  if a full rename is too risky, ship one explicit transitional story instead.
+  `tools/vscode/README.md`, `README.md`, and
+  `docs/guide/Frothy_Workshop_Install_Quickstart.md`.
+- [x] Attendee-facing naming alignment
+  Deliverable: ship one explicit transitional story for Frothy versus
+  `froth` / `froth-cli` so attendees do not bounce between names during the
+  workshop path.
   References: `README.md`, `tools/vscode/README.md`,
   `tools/package-release.sh`, and `tools/cli/Makefile`.
-- [ ] Attendee install email and quickstart
+- [x] Attendee install email and quickstart
   Deliverable: one sendable install note that explains the CLI/extension split,
   supported platforms, serial expectations, and the first-run path.
-  References: `README.md`, `tools/vscode/README.md`, and
-  `docs/guide/Frothy_From_The_Ground_Up.md`.
-- [ ] Workshop preflight and serial recovery path
+  References: `README.md`,
+  `docs/guide/Frothy_Workshop_Install_Quickstart.md`,
+  `tools/vscode/README.md`, and `docs/guide/Frothy_From_The_Ground_Up.md`.
+- [x] Workshop preflight and serial recovery path
   Deliverable: a clean preflight path for CLI presence, extension
-  compatibility, serial visibility, board handshake, and fallback recovery.
+  compatibility, serial visibility, board handshake, and fallback recovery on
+  the maintained Frothy path.
   References: `tools/cli/cmd/doctor.go`,
-  `tools/cli/internal/serial/discover.go`, and
-  `tools/vscode/src/control-session-client.ts`.
-- [ ] Workshop starter project and frozen board/game surface
-  Deliverable: one sanctioned project folder and one sanctioned board/display
-  API for the workshop lesson arc.
-  References: `tools/cli/cmd/new.go`, `tools/frothy/`,
-  `boards/esp32-devkit-v1/`, and
-  `docs/adr/117-workshop-base-image-board-library-surface.md`.
+  `tools/cli/internal/serial/discover.go`,
+  `tools/vscode/src/control-session-client.ts`,
+  `tools/frothy/proof_f1_control_smoke.sh`, and
+  `tools/frothy/proof_m10_smoke.sh`.
+- [x] Workshop starter project and frozen board/game surface
+  Deliverable: one sanctioned project folder and one sanctioned lesson/game
+  surface for the workshop path, proved through the maintained host and board
+  ladders.
+  References: `tools/cli/cmd/new.go`,
+  `tools/cli/internal/project/starter.go`,
+  `tools/frothy/proof_m10_smoke.sh`,
+  `tools/frothy/proof_m10_workshop_starter_checks.frothy`,
+  `docs/adr/117-workshop-base-image-board-library-surface.md`, and
+  `docs/guide/Frothy_Workshop_Install_Quickstart.md`.
 - [ ] Minimal docs front door and quick reference
   Deliverable: install, first connect, inspection, board API, persistence, and
   troubleshooting docs that point at the maintained Frothy path.

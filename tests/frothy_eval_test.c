@@ -557,6 +557,24 @@ static int test_spoken_ledger_surface_and_control_forms(void) {
   ok &= expect_int_value(value, 42, "inc: 41");
   release_value(&value);
 
+  ok &= expect_ok("to setFlag! with v [ v ]", &value);
+  release_value(&value);
+  ok &= expect_ok("setFlag!: 7", &value);
+  ok &= expect_int_value(value, 7, "setFlag!: 7");
+  release_value(&value);
+
+  ok &= expect_ok("to pixel@ [ 9 ]", &value);
+  release_value(&value);
+  ok &= expect_ok("pixel@:", &value);
+  ok &= expect_int_value(value, 9, "pixel@:");
+  release_value(&value);
+
+  ok &= expect_ok("to ready? [ true ]", &value);
+  release_value(&value);
+  ok &= expect_ok("ready?:", &value);
+  ok &= expect_bool_value(value, true, "ready?:");
+  release_value(&value);
+
   ok &= expect_ok("localDemo is fn [ here n is 5; n ]", &value);
   release_value(&value);
   ok &= expect_ok("localDemo:", &value);

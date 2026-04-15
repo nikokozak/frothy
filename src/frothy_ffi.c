@@ -15,21 +15,6 @@
 #include "frothy_board_pins.h"
 #endif
 
-static const char *const frothy_board_binding_names[] = {
-    "gpio.mode", "gpio.write", "gpio.read",
-    "ms",        "millis",     "adc.read",
-    "uart.init", "uart.write", "uart.read",
-    NULL,
-};
-
-static const char *const frothy_board_pin_names[] = {
-    "LED_BUILTIN",
-    "UART_TX",
-    "UART_RX",
-    "A0",
-    NULL,
-};
-
 typedef enum {
   FROTHY_FFI_SOURCE_FOREIGN = 0,
   FROTHY_FFI_SOURCE_BOARD = 1,
@@ -79,6 +64,7 @@ typedef struct {
  * without forcing a definition on targets that do not supply them.
  */
 const frothy_ffi_entry_t frothy_board_bindings[] FROTHY_WEAK_DEF = {{0}};
+const froth_ffi_entry_t froth_board_bindings[] FROTHY_WEAK_DEF = {{0}};
 #ifdef FROTH_HAS_PROJECT_FFI
 const frothy_ffi_entry_t frothy_project_bindings[] FROTHY_WEAK_DEF = {{0}};
 const froth_ffi_entry_t froth_project_bindings[] FROTHY_WEAK_DEF = {{0}};
@@ -87,22 +73,6 @@ const froth_ffi_entry_t froth_project_bindings[] FROTHY_WEAK_DEF = {{0}};
 
 froth_cell_t frothy_ffi_wrap_uptime_ms(uint32_t uptime_ms) {
   return froth_wrap_payload((froth_cell_u_t)uptime_ms);
-}
-
-static bool frothy_name_in_list(const char *name, const char *const *names) {
-  size_t i;
-
-  if (name == NULL) {
-    return false;
-  }
-
-  for (i = 0; names[i] != NULL; i++) {
-    if (strcmp(name, names[i]) == 0) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 static bool frothy_ffi_table_present(const frothy_ffi_entry_t *table) {
@@ -885,12 +855,9 @@ frothy_ffi_install_table_filtered(const frothy_ffi_entry_t *table,
   if (dispatch == NULL) {
     return FROTH_ERROR_SIGNATURE;
   }
+  (void)filter_board_surface;
 
   for (i = 0; table[i].name != NULL; i++) {
-    if (filter_board_surface &&
-        !frothy_name_in_list(table[i].name, frothy_board_binding_names)) {
-      continue;
-    }
     FROTH_TRY(frothy_ffi_validate_entry_shape(&table[i]));
     applicable_count++;
   }
@@ -909,11 +876,6 @@ frothy_ffi_install_table_filtered(const frothy_ffi_entry_t *table,
   }
 
   for (i = 0; table[i].name != NULL; i++) {
-    if (filter_board_surface &&
-        !frothy_name_in_list(table[i].name, frothy_board_binding_names)) {
-      continue;
-    }
-
     pending[staged_count].value = frothy_value_make_nil();
     pending[staged_count].in_arity = table[i].arity;
     pending[staged_count].out_arity = 1;
@@ -975,14 +937,11 @@ frothy_ffi_install_legacy_binding_table_filtered(const froth_ffi_entry_t *table,
   if (dispatch == NULL) {
     return FROTH_ERROR_SIGNATURE;
   }
+  (void)filter_board_surface;
 
   for (i = 0; table[i].name != NULL; i++) {
     if (table[i].word == NULL) {
       return FROTH_ERROR_SIGNATURE;
-    }
-    if (filter_board_surface &&
-        !frothy_name_in_list(table[i].name, frothy_board_binding_names)) {
-      continue;
     }
     if (table[i].in_arity == FROTH_FFI_ARITY_UNKNOWN ||
         table[i].out_arity == FROTH_FFI_ARITY_UNKNOWN) {
@@ -1008,10 +967,6 @@ frothy_ffi_install_legacy_binding_table_filtered(const froth_ffi_entry_t *table,
   }
 
   for (i = 0; table[i].name != NULL; i++) {
-    if (filter_board_surface &&
-        !frothy_name_in_list(table[i].name, frothy_board_binding_names)) {
-      continue;
-    }
     if (table[i].in_arity == FROTH_FFI_ARITY_UNKNOWN ||
         table[i].out_arity == FROTH_FFI_ARITY_UNKNOWN) {
       continue;
@@ -1072,12 +1027,9 @@ frothy_ffi_install_pin_table_filtered(const frothy_board_pin_t *pins,
   if (pins == NULL) {
     return FROTH_OK;
   }
+  (void)filter_board_surface;
 
   for (i = 0; pins[i].name != NULL; i++) {
-    if (filter_board_surface &&
-        !frothy_name_in_list(pins[i].name, frothy_board_pin_names)) {
-      continue;
-    }
     FROTH_TRY(frothy_ffi_bind_pin(&pins[i]));
   }
 
@@ -1144,14 +1096,16 @@ froth_error_t frothy_ffi_install_board_base_slots(void) {
             froth_board_bindings, true, FROTHY_FFI_SOURCE_BOARD));
   }
 #else
+#ifdef FROTHY_BOARD_FFI_USE_LEGACY_EXPORT
+  extern const froth_ffi_entry_t froth_board_bindings[];
   FROTH_TRY(
       frothy_ffi_install_legacy_binding_table_filtered(
           froth_board_bindings, true, FROTHY_FFI_SOURCE_BOARD));
+#else
+  extern const frothy_ffi_entry_t frothy_board_bindings[];
+  FROTH_TRY(frothy_ffi_install_table_filtered(
+      frothy_board_bindings, true, FROTHY_FFI_SOURCE_BOARD));
+#endif
 #endif
   return frothy_ffi_install_project_bindings();
-}
-
-bool frothy_ffi_is_base_slot_name(const char *name) {
-  return frothy_name_in_list(name, frothy_board_binding_names) ||
-         frothy_name_in_list(name, frothy_board_pin_names);
 }

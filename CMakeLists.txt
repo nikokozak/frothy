@@ -15,9 +15,89 @@ else()
   set(FROTHY_BUILD_HOST_DEFAULT OFF)
 endif()
 option(FROTHY_BUILD_HOST "Build the Frothy host runtime." ${FROTHY_BUILD_HOST_DEFAULT})
+
+set(FROTH_BOARD_CONFIG_CELL_SIZE_BITS_DEFAULT 32)
+set(FROTH_BOARD_CONFIG_HEAP_SIZE_DEFAULT 4096)
+set(FROTH_BOARD_CONFIG_DS_DEPTH_DEFAULT 256)
+set(FROTH_BOARD_CONFIG_RS_DEPTH_DEFAULT 256)
+set(FROTH_BOARD_CONFIG_SLOT_COUNT_DEFAULT 128)
+set(FROTH_BOARD_CONFIG_HAS_SNAPSHOTS_DEFAULT ON)
+set(FROTH_BOARD_CONFIG_SNAPSHOT_BLOCK_SIZE_DEFAULT 2048)
+set(FROTH_BOARD_CONFIG_FROTHY_OBJECT_CAPACITY_DEFAULT 128)
+set(FROTH_BOARD_CONFIG_FROTHY_PAYLOAD_CAPACITY_DEFAULT 16384)
+
+set(FROTH_BOARD_JSON_PATH "${CMAKE_SOURCE_DIR}/boards/${FROTH_BOARD}/board.json")
+if(EXISTS "${FROTH_BOARD_JSON_PATH}")
+  file(READ "${FROTH_BOARD_JSON_PATH}" FROTH_BOARD_JSON_CONTENT)
+
+  string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
+         GET "${FROTH_BOARD_JSON_CONTENT}" config cell_size_bits)
+  if(NOT FROTH_BOARD_CONFIG_ERROR)
+    set(FROTH_BOARD_CONFIG_CELL_SIZE_BITS_DEFAULT "${FROTH_BOARD_CONFIG_VALUE}")
+  endif()
+
+  string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
+         GET "${FROTH_BOARD_JSON_CONTENT}" config heap_size)
+  if(NOT FROTH_BOARD_CONFIG_ERROR)
+    set(FROTH_BOARD_CONFIG_HEAP_SIZE_DEFAULT "${FROTH_BOARD_CONFIG_VALUE}")
+  endif()
+
+  string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
+         GET "${FROTH_BOARD_JSON_CONTENT}" config ds_depth)
+  if(NOT FROTH_BOARD_CONFIG_ERROR)
+    set(FROTH_BOARD_CONFIG_DS_DEPTH_DEFAULT "${FROTH_BOARD_CONFIG_VALUE}")
+  endif()
+
+  string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
+         GET "${FROTH_BOARD_JSON_CONTENT}" config rs_depth)
+  if(NOT FROTH_BOARD_CONFIG_ERROR)
+    set(FROTH_BOARD_CONFIG_RS_DEPTH_DEFAULT "${FROTH_BOARD_CONFIG_VALUE}")
+  endif()
+
+  string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
+         GET "${FROTH_BOARD_JSON_CONTENT}" config slot_count)
+  if(NOT FROTH_BOARD_CONFIG_ERROR)
+    set(FROTH_BOARD_CONFIG_SLOT_COUNT_DEFAULT "${FROTH_BOARD_CONFIG_VALUE}")
+  endif()
+
+  string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
+         GET "${FROTH_BOARD_JSON_CONTENT}" config has_snapshots)
+  if(NOT FROTH_BOARD_CONFIG_ERROR)
+    if(FROTH_BOARD_CONFIG_VALUE STREQUAL "true" OR
+       FROTH_BOARD_CONFIG_VALUE STREQUAL "TRUE" OR
+       FROTH_BOARD_CONFIG_VALUE STREQUAL "ON" OR
+       FROTH_BOARD_CONFIG_VALUE STREQUAL "1")
+      set(FROTH_BOARD_CONFIG_HAS_SNAPSHOTS_DEFAULT ON)
+    else()
+      set(FROTH_BOARD_CONFIG_HAS_SNAPSHOTS_DEFAULT OFF)
+    endif()
+  endif()
+
+  string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
+         GET "${FROTH_BOARD_JSON_CONTENT}" config snapshot_block_size)
+  if(NOT FROTH_BOARD_CONFIG_ERROR)
+    set(FROTH_BOARD_CONFIG_SNAPSHOT_BLOCK_SIZE_DEFAULT
+        "${FROTH_BOARD_CONFIG_VALUE}")
+  endif()
+
+  string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
+         GET "${FROTH_BOARD_JSON_CONTENT}" config frothy_object_capacity)
+  if(NOT FROTH_BOARD_CONFIG_ERROR)
+    set(FROTH_BOARD_CONFIG_FROTHY_OBJECT_CAPACITY_DEFAULT
+        "${FROTH_BOARD_CONFIG_VALUE}")
+  endif()
+
+  string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
+         GET "${FROTH_BOARD_JSON_CONTENT}" config frothy_payload_capacity)
+  if(NOT FROTH_BOARD_CONFIG_ERROR)
+    set(FROTH_BOARD_CONFIG_FROTHY_PAYLOAD_CAPACITY_DEFAULT
+        "${FROTH_BOARD_CONFIG_VALUE}")
+  endif()
+endif()
+
 set(FROTHY_EVAL_VALUE_CAPACITY 256 CACHE STRING "Frothy evaluator scratch capacity in number of values.")
-set(FROTHY_OBJECT_CAPACITY 128 CACHE STRING "Frothy runtime object and free-span capacity.")
-set(FROTHY_PAYLOAD_CAPACITY 16384 CACHE STRING "Frothy runtime payload arena capacity in bytes.")
+set(FROTHY_OBJECT_CAPACITY ${FROTH_BOARD_CONFIG_FROTHY_OBJECT_CAPACITY_DEFAULT} CACHE STRING "Frothy runtime object and free-span capacity.")
+set(FROTHY_PAYLOAD_CAPACITY ${FROTH_BOARD_CONFIG_FROTHY_PAYLOAD_CAPACITY_DEFAULT} CACHE STRING "Frothy runtime payload arena capacity in bytes.")
 set(FROTHY_SHELL_SOURCE_CAPACITY 2048 CACHE STRING "Frothy multiline shell source capacity in bytes.")
 set(FROTHY_PARSER_BINDING_CAPACITY 128 CACHE STRING "Frothy parser binding capacity.")
 set(FROTHY_PARSER_SCOPE_CAPACITY 32 CACHE STRING "Frothy parser scope capacity.")
@@ -26,18 +106,18 @@ set(FROTHY_IR_LITERAL_CAPACITY 128 CACHE STRING "Frothy IR literal capacity.")
 set(FROTHY_IR_NODE_CAPACITY 512 CACHE STRING "Frothy IR node capacity.")
 set(FROTHY_IR_LINK_CAPACITY 512 CACHE STRING "Frothy IR link capacity.")
 
-set(FROTH_CELL_SIZE_BITS 32 CACHE STRING "Cell width in bits: 8, 16, 32 or 64")
-set(FROTH_DS_CAPACITY 256 CACHE STRING "Data Stack (DS) Capacity in number of cells.")
-set(FROTH_RS_CAPACITY 256 CACHE STRING "Return Stack (RS) Capacity in number of cells.")
+set(FROTH_CELL_SIZE_BITS ${FROTH_BOARD_CONFIG_CELL_SIZE_BITS_DEFAULT} CACHE STRING "Cell width in bits: 8, 16, 32 or 64")
+set(FROTH_DS_CAPACITY ${FROTH_BOARD_CONFIG_DS_DEPTH_DEFAULT} CACHE STRING "Data Stack (DS) Capacity in number of cells.")
+set(FROTH_RS_CAPACITY ${FROTH_BOARD_CONFIG_RS_DEPTH_DEFAULT} CACHE STRING "Return Stack (RS) Capacity in number of cells.")
 set(FROTH_CS_CAPACITY 256 CACHE STRING "Control Stack (CS) Capacity in number of cells.")
-set(FROTH_HEAP_SIZE 4096 CACHE STRING "Heap size in number of bytes.")
-set(FROTH_SLOT_TABLE_SIZE 128 CACHE STRING "Maximum number of slots.")
+set(FROTH_HEAP_SIZE ${FROTH_BOARD_CONFIG_HEAP_SIZE_DEFAULT} CACHE STRING "Heap size in number of bytes.")
+set(FROTH_SLOT_TABLE_SIZE ${FROTH_BOARD_CONFIG_SLOT_COUNT_DEFAULT} CACHE STRING "Maximum number of slots.")
 set(FROTH_DATA_SPACE_SIZE 256 CACHE STRING "Mutable memory size in number of cells.")
 set(FROTH_LINE_BUFFER_SIZE 1024 CACHE STRING "Input line buffer for REPL in number of bytes.")
 set(FROTH_MAX_PERM_SIZE 16 CACHE STRING "Maximum number of indices in a perm pattern.")
 set(FROTH_VERSION "0.1.0" CACHE STRING "Frothy version string")
-set(FROTH_HAS_SNAPSHOTS ON CACHE BOOL "Target supports Frothy snapshots")
-set(FROTH_SNAPSHOT_BLOCK_SIZE "2048" CACHE STRING "Snapshot size in target memory (bytes)")
+set(FROTH_HAS_SNAPSHOTS ${FROTH_BOARD_CONFIG_HAS_SNAPSHOTS_DEFAULT} CACHE BOOL "Target supports Frothy snapshots")
+set(FROTH_SNAPSHOT_BLOCK_SIZE "${FROTH_BOARD_CONFIG_SNAPSHOT_BLOCK_SIZE_DEFAULT}" CACHE STRING "Snapshot size in target memory (bytes)")
 set(FROTH_SNAPSHOT_PATH_A "froth_a.snap" CACHE STRING "Snapshot A file path (default froth_a.snap)")
 set(FROTH_SNAPSHOT_PATH_B "froth_b.snap" CACHE STRING "Snapshot B file path (default froth_b.snap)")
 set(FROTH_STRING_MAX_LEN 256 CACHE STRING "Maximum string length in bytes (all creation paths).")
@@ -53,6 +133,7 @@ set(FROTH_RUNTIME_SUPPORT_SRCS
   src/froth_ffi.c
   src/froth_tbuf.c
   src/frothy_ffi.c
+  src/frothy_tm1629.c
   boards/${FROTH_BOARD}/ffi.c
 )
 
@@ -151,7 +232,7 @@ function(frothy_add_project_ffi_test target_name test_name config_path)
   endif()
   frothy_configure_target(${target_name})
   frothy_generate_board_pin_seed(${target_name} ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
-  frothy_generate_board_workshop_lib(${target_name} ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+  frothy_generate_board_base_lib(${target_name} ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
   add_test(NAME ${test_name} COMMAND ${target_name})
   set_tests_properties(${test_name} PROPERTIES LABELS "frothy" TIMEOUT 30)
 endfunction()
@@ -188,7 +269,7 @@ if(FROTHY_BUILD_HOST)
   frothy_apply_project_ffi_config(Frothy "${FROTH_PROJECT_FFI_CONFIG}")
   frothy_configure_target(Frothy)
   frothy_generate_board_pin_seed(Frothy ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
-  frothy_generate_board_workshop_lib(Frothy ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+  frothy_generate_board_base_lib(Frothy ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
 
   if(EXISTS "${CMAKE_SOURCE_DIR}/tests/frothy_parser_test.c")
     add_executable(frothy_parser_tests
@@ -220,7 +301,7 @@ if(FROTHY_BUILD_HOST)
     )
     frothy_configure_target(frothy_eval_tests)
     frothy_generate_board_pin_seed(frothy_eval_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
-    frothy_generate_board_workshop_lib(frothy_eval_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+    frothy_generate_board_base_lib(frothy_eval_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
     add_test(NAME frothy_eval COMMAND frothy_eval_tests)
     set_tests_properties(frothy_eval PROPERTIES LABELS "frothy" TIMEOUT 30)
   endif()
@@ -252,7 +333,7 @@ if(FROTHY_BUILD_HOST)
     )
     frothy_configure_target(frothy_snapshot_tests)
     frothy_generate_board_pin_seed(frothy_snapshot_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
-    frothy_generate_board_workshop_lib(frothy_snapshot_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+    frothy_generate_board_base_lib(frothy_snapshot_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
     add_test(NAME frothy_snapshot COMMAND frothy_snapshot_tests)
     set_tests_properties(frothy_snapshot PROPERTIES LABELS "frothy" TIMEOUT 30)
   endif()
@@ -284,7 +365,7 @@ if(FROTHY_BUILD_HOST)
     frothy_configure_target(frothy_shell_tests)
     target_compile_definitions(frothy_shell_tests PRIVATE FROTHY_SHELL_TESTING)
     frothy_generate_board_pin_seed(frothy_shell_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
-    frothy_generate_board_workshop_lib(frothy_shell_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+    frothy_generate_board_base_lib(frothy_shell_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
     add_test(NAME frothy_shell COMMAND frothy_shell_tests)
     set_tests_properties(frothy_shell PROPERTIES LABELS "frothy" TIMEOUT 30)
   endif()
@@ -305,9 +386,49 @@ if(FROTHY_BUILD_HOST)
     )
     frothy_configure_target(frothy_ffi_tests)
     frothy_generate_board_pin_seed(frothy_ffi_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
-    frothy_generate_board_workshop_lib(frothy_ffi_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+    frothy_generate_board_base_lib(frothy_ffi_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
     add_test(NAME frothy_ffi COMMAND frothy_ffi_tests)
     set_tests_properties(frothy_ffi PROPERTIES LABELS "frothy" TIMEOUT 30)
+  endif()
+
+  if(EXISTS "${CMAKE_SOURCE_DIR}/tests/frothy_tm1629_runtime_test.c")
+    add_executable(frothy_tm1629_runtime_tests
+      tests/frothy_tm1629_runtime_test.c
+      src/frothy_tm1629.c
+    )
+    frothy_configure_target(frothy_tm1629_runtime_tests)
+    add_test(NAME frothy_tm1629_runtime COMMAND frothy_tm1629_runtime_tests)
+    set_tests_properties(frothy_tm1629_runtime PROPERTIES LABELS "frothy" TIMEOUT 30)
+  endif()
+
+  if(FROTH_BOARD STREQUAL "esp32-devkit-v4-game-board" AND
+     EXISTS "${CMAKE_SOURCE_DIR}/tests/frothy_tm1629_board_test.c")
+    add_executable(frothy_tm1629_board_tests
+      tests/frothy_tm1629_board_test.c
+      src/frothy_base_image.c
+      src/frothy_ir.c
+      src/frothy_parser.c
+      src/frothy_inspect.c
+      src/frothy_snapshot.c
+      src/frothy_snapshot_codec.c
+      src/frothy_value.c
+      src/frothy_eval.c
+      src/froth_vm.c
+      src/froth_heap.c
+      src/froth_cellspace.c
+      src/froth_slot_table.c
+      src/froth_transport.c
+      src/froth_crc32.c
+      src/frothy_link_stub.c
+      ${FROTH_RUNTIME_SUPPORT_SRCS}
+      src/froth_snapshot.c
+      platforms/${FROTH_PLATFORM}/platform.c
+    )
+    frothy_configure_target(frothy_tm1629_board_tests)
+    frothy_generate_board_pin_seed(frothy_tm1629_board_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+    frothy_generate_board_base_lib(frothy_tm1629_board_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+    add_test(NAME frothy_tm1629_board COMMAND frothy_tm1629_board_tests)
+    set_tests_properties(frothy_tm1629_board PROPERTIES LABELS "frothy" TIMEOUT 30)
   endif()
 
   if(EXISTS "${CMAKE_SOURCE_DIR}/tests/frothy_project_ffi_test.c")
@@ -373,6 +494,19 @@ if(FROTHY_BUILD_HOST)
     endif()
   endif()
 
+  set(FROTHY_TM1629_BOARD_SMOKE
+      "${CMAKE_SOURCE_DIR}/tests/tm1629_board_config_smoke.sh")
+  if(EXISTS "${FROTHY_TM1629_BOARD_SMOKE}")
+    add_test(NAME frothy_tm1629_board_smoke
+      COMMAND /bin/sh "${FROTHY_TM1629_BOARD_SMOKE}"
+              "${CMAKE_COMMAND}"
+              "${CMAKE_SOURCE_DIR}"
+              "esp32-devkit-v4-game-board"
+              "posix")
+    set_tests_properties(frothy_tm1629_board_smoke
+      PROPERTIES LABELS "frothy" TIMEOUT 60)
+  endif()
+
   if(EXISTS "${CMAKE_SOURCE_DIR}/benchmarks/frothy_runtime_bench.c")
     add_executable(frothy_runtime_bench
       benchmarks/frothy_runtime_bench.c
@@ -400,6 +534,6 @@ if(FROTHY_BUILD_HOST)
     )
     frothy_configure_target(frothy_runtime_bench)
     frothy_generate_board_pin_seed(frothy_runtime_bench ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
-    frothy_generate_board_workshop_lib(frothy_runtime_bench ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+    frothy_generate_board_base_lib(frothy_runtime_bench ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
   endif()
 endif()

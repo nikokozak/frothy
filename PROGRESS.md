@@ -49,6 +49,13 @@ file is wrong.
   library is seeded as base image and survives `dangerous.wipe`, and the M10 proof
   ladder now covers `blink`, `animate`, GPIO helpers, and `adc.percent`.
   Reference: `docs/adr/117-workshop-base-image-board-library-surface.md`.
+- The Frothy-native TM1629 workshop board cut is now landed:
+  `esp32-devkit-v4-game-board` ships a maintained TM1629 C runtime plus
+  baked-in `tm1629.raw.*`, `tm1629.*`, and `matrix.*` base-image surfaces;
+  board base ownership now comes from a captured install-time registry rather
+  than hard-coded slot-name allowlists; and the host proof ladder now includes
+  direct TM1629 runtime tests plus a POSIX sub-build smoke for the new board.
+  Reference: `docs/adr/119-tm1629-board-base-surface-and-registry.md`.
 - The workshop implementation tranche is now closed on `main`: the delivery,
   inspection, workshop base-image, readability-language, and records cuts have
   all survived the local proof ladder plus repeated review cycles.
@@ -69,43 +76,45 @@ file is wrong.
   termios path that actually survives ESP32 prompt/control handoff, and the
   Frothy local connect build cache no longer collides with inherited Froth's
   stale `local-build` directory.
+- The workshop release/install surface is now truthful in-repo: `README.md`,
+  `docs/guide/Frothy_Workshop_Install_Quickstart.md`,
+  `tools/package-release.sh`, and the VS Code docs all agree on the promised
+  attendee path of released CLI assets, matching VSIX, and preflashed
+  `esp32-devkit-v1` hardware.
+- The attendee-facing naming and recovery story is now explicit on the
+  maintained Frothy path: Frothy owns the product/docs/editor identity, the
+  installed release command remains transitional `froth`, whole-file editor
+  send blocks unsafe replay when control `reset` is unavailable, and the
+  control proof ladder now re-checks recovery on the real ESP32 path.
+- The workshop starter scaffold and its proof path are now landed: `froth new
+  --target esp32-devkit-v1` emits the sanctioned lesson/game starter, resolve
+  is warning-free, and the maintained M10 board proof now scaffolds, resolves,
+  runs, and checks that starter on the attached ESP32 path.
 
 ## Near-Term Priority Stack
 
 - 1. Evaluator execution-stack hardening: replace recursive IR evaluation with
   an explicit frame stack/trampoline so ordinary embedded loops and nested game
   code are bounded by Frothy-managed depth rather than hidden C stack.
-- 2. Support matrix and release/install artifacts: freeze the promised
-  platforms and ship the CLI plus VSIX install path truthfully.
-- 3. Attendee-facing naming alignment: converge the workshop-facing product,
-  CLI, extension, and docs story so people do not bounce between Frothy,
-  `froth`, and `froth-cli`.
-- 4. Attendee install email and quickstart: tell people exactly what to
-  install, why the CLI and extension are both needed, and what to expect.
-- 5. Workshop preflight and serial recovery path: verify CLI presence,
-  extension compatibility, serial visibility, board handshake, and fallback
-  recovery without requiring firmware build tooling.
-- 6. Workshop starter project and frozen board/game surface: give attendees
-  one sanctioned project and one sanctioned display/board API.
-- 7. Minimal docs front door and quick reference: install, first connect,
+- 2. Minimal docs front door and quick reference: install, first connect,
   inspection, board API, persistence, and troubleshooting.
-- 8. Clean-machine validation on promised platforms.
-- 9. Classroom hardware and recovery kit: preflashed boards, known-good data
+- 3. Clean-machine validation on promised platforms.
+- 4. Classroom hardware and recovery kit: preflashed boards, known-good data
   cables, reflash path, spare hardware, and CLI fallback.
-- 10. Workshop rehearsal plus measured performance/persistence closeout on the
+- 5. Workshop rehearsal plus measured performance/persistence closeout on the
   actual lesson path.
-- 11. Post-workshop publishability reset tranche 1: immediate cuts for
+- 6. Post-workshop publishability reset tranche 1: immediate cuts for
   daemon-era editor residue, tracked repo pollution, and archived proof
   artifacts.
-- 12. Post-workshop publishability reset tranche 2: naming and packaging
+- 7. Post-workshop publishability reset tranche 2: naming and packaging
   normalization.
-- 13. Post-workshop publishability reset tranche 3: proof and dependency
+- 8. Post-workshop publishability reset tranche 3: proof and dependency
   collapse.
-- 14. Post-workshop publishability reset tranche 4: runtime boundary
+- 9. Post-workshop publishability reset tranche 4: runtime boundary
   tightening.
-- 15. Post-workshop publishability reset tranche 5: docs front door and
+- 10. Post-workshop publishability reset tranche 5: docs front door and
   archive pass.
-- 16. Host-only slot-bundle inspection/generation after the workshop path and
+- 11. Host-only slot-bundle inspection/generation after the workshop path and
   publishability reset are solid again.
 - Reference: `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`
 

@@ -1,0 +1,135 @@
+tm1629.width is 12
+tm1629.height is 8
+tm1629.rowMask is 4095
+
+to tm1629.init with stb, clk, dio [
+  tm1629.raw.init: stb, clk, dio;
+  tm1629.clear:;
+  tm1629.nextClear:;
+  tm1629.show:
+]
+
+to tm1629.brightness! with level [ tm1629.raw.brightness!: level ]
+to tm1629.show [ tm1629.raw.show: ]
+to tm1629.clear [ tm1629.raw.clear: ]
+to tm1629.fill [ tm1629.raw.fill: ]
+to tm1629.row@ with y [ tm1629.raw.row@: y ]
+to tm1629.row! with mask, y [ tm1629.raw.row!: mask, y ]
+to tm1629.pixel@ with x, y [ tm1629.raw.pixel@: x, y ]
+to tm1629.pixel! with x, y, flag [ tm1629.raw.pixel!: x, y, flag ]
+tm1629.plot@ is tm1629.pixel@
+tm1629.plot! is tm1629.pixel!
+to tm1629.toggle! with x, y [ tm1629.pixel!: x, y, not tm1629.pixel@: x, y ]
+to tm1629.invert [ tm1629.raw.invert: ]
+to tm1629.shiftLeft [ tm1629.raw.shiftLeft: ]
+to tm1629.shiftRight [ tm1629.raw.shiftRight: ]
+to tm1629.shiftUp [ tm1629.raw.shiftUp: ]
+to tm1629.shiftDown [ tm1629.raw.shiftDown: ]
+to tm1629.nextClear [ tm1629.raw.nextClear: ]
+to tm1629.nextPixel! with x, y, flag [ tm1629.raw.nextPixel!: x, y, flag ]
+to tm1629.commitNext [ tm1629.raw.commitNext: ]
+
+to tm1629.hLine with x, y, len, flag [
+  when len > 0 [ tm1629.raw.line: x, y, x + len - 1, y, flag ]
+]
+
+to tm1629.vLine with x, y, len, flag [
+  when len > 0 [ tm1629.raw.line: x, y, x, y + len - 1, flag ]
+]
+
+to tm1629.rect with x, y, w, h, flag [
+  tm1629.raw.rect: x, y, w, h, flag
+]
+
+to tm1629.fillRect with x, y, w, h, flag [
+  tm1629.raw.fillRect: x, y, w, h, flag
+]
+
+to tm1629.eachXY with body [
+  repeat tm1629.height as y [
+    repeat tm1629.width as x [
+      body: x, y
+    ]
+  ]
+]
+
+to tm1629.populate with painter [
+  tm1629.clear:;
+  repeat tm1629.height as y [
+    repeat tm1629.width as x [
+      tm1629.pixel!: x, y, painter: x, y
+    ]
+  ]
+]
+
+to tm1629._pow2 with exp [
+  here value is 1;
+  repeat exp [
+    set value to value * 2
+  ];
+  value
+]
+
+to tm1629._rowBit? with row, x [
+  ((row / tm1629._pow2: x) % 2) == 1
+]
+
+to tm1629.blit with x0, y0, sprite [
+  repeat tm1629.height as y [
+    here row is sprite[y];
+    repeat tm1629.width as x [
+      when tm1629._rowBit?: row, x [
+        tm1629.pixel!: x0 + x, y0 + y, true
+      ]
+    ]
+  ]
+]
+
+to tm1629.neighbors with x, y [
+  here count is 0;
+  if tm1629.pixel@: x - 1, y - 1 [ set count to count + 1 ];
+  if tm1629.pixel@: x, y - 1 [ set count to count + 1 ];
+  if tm1629.pixel@: x + 1, y - 1 [ set count to count + 1 ];
+  if tm1629.pixel@: x - 1, y [ set count to count + 1 ];
+  if tm1629.pixel@: x + 1, y [ set count to count + 1 ];
+  if tm1629.pixel@: x - 1, y + 1 [ set count to count + 1 ];
+  if tm1629.pixel@: x, y + 1 [ set count to count + 1 ];
+  if tm1629.pixel@: x + 1, y + 1 [ set count to count + 1 ];
+  count
+]
+
+to tm1629._lifeRule with alive, neighbors [
+  cond [
+    when neighbors == 3 [ true ]
+    when (alive and (neighbors == 2)) [ true ]
+    else [ false ]
+  ]
+]
+
+to tm1629.lifeStep [
+  tm1629.nextClear:;
+  repeat tm1629.height as y [
+    repeat tm1629.width as x [
+      here alive is tm1629.pixel@: x, y;
+      here count is tm1629.neighbors: x, y;
+      tm1629.nextPixel!: x, y, tm1629._lifeRule: alive, count
+    ]
+  ];
+  tm1629.commitNext:
+]
+
+matrix.width is tm1629.width
+matrix.height is tm1629.height
+
+to matrix.init [ tm1629.init: TM1629_STB, TM1629_CLK, TM1629_DIO ]
+to matrix.brightness! with level [ tm1629.brightness!: level ]
+to matrix.show [ tm1629.show: ]
+to matrix.clear [ tm1629.clear: ]
+to matrix.fill [ tm1629.fill: ]
+to matrix.pixel@ with x, y [ tm1629.pixel@: x, y ]
+to matrix.pixel! with x, y, flag [ tm1629.pixel!: x, y, flag ]
+to matrix.line with x0, y0, x1, y1, flag [
+  tm1629.raw.line: x0, y0, x1, y1, flag
+]
+to matrix.rect with x, y, w, h, flag [ tm1629.rect: x, y, w, h, flag ]
+to matrix.fillRect with x, y, w, h, flag [ tm1629.fillRect: x, y, w, h, flag ]

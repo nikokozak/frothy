@@ -1,0 +1,16 @@
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/Frothy.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/frothy_parser_tests.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/frothy_eval_tests.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/frothy_snapshot_tests.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/frothy_shell_tests.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/frothy_ffi_tests.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/frothy_tm1629_runtime_tests.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/frothy_tm1629_board_tests.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/frothy_project_ffi_maintained_tests.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/frothy_project_ffi_maintained_no_weak_tests.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/frothy_project_ffi_legacy_tests.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/frothy_project_ffi_legacy_no_weak_tests.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/frothy_runtime_bench.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/test.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/edit_cache.dir
+/Users/niko/Developer/Frothy/build-review-v4/CMakeFiles/rebuild_cache.dir

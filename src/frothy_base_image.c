@@ -12,10 +12,11 @@
 #include "platform.h"
 
 #include <ctype.h>
+#include <stddef.h>
 #include <string.h>
 
-#ifdef FROTHY_HAS_BOARD_WORKSHOP_LIB
-#include "frothy_board_workshop_lib.h"
+#ifdef FROTHY_HAS_BOARD_BASE_LIB
+#include "frothy_board_base_lib.h"
 #endif
 
 typedef struct {
@@ -52,31 +53,11 @@ static const frothy_base_slot_t frothy_base_slots[] = {
     {"boot", NULL, 0, 0},
 };
 
-static const char *const frothy_workshop_slot_names[] = {
-    "led.pin",     "adc.max",     "gpio.input", "gpio.output",
-    "gpio.high",   "gpio.low",    "gpio.toggle","animate",
-    "blink",       "led.on",      "led.off",    "led.toggle",
-    "led.blink",   "adc.percent", NULL,
-};
+static const char *frothy_base_registry[FROTH_SLOT_TABLE_SIZE];
+static size_t frothy_base_registry_count = 0;
 
 static frothy_runtime_t *frothy_base_runtime(void) {
   return &froth_vm.frothy_runtime;
-}
-
-static bool frothy_name_in_list(const char *name, const char *const *names) {
-  size_t i;
-
-  if (name == NULL) {
-    return false;
-  }
-
-  for (i = 0; names[i] != NULL; i++) {
-    if (strcmp(name, names[i]) == 0) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 static const frothy_base_slot_t *
@@ -93,20 +74,66 @@ frothy_base_image_find_slot(const char *name) {
   return NULL;
 }
 
-bool frothy_base_image_has_slot(const char *name) {
-  if (frothy_ffi_is_base_slot_name(name)) {
-    return true;
+static void frothy_base_image_clear_registry(void) {
+  frothy_base_registry_count = 0;
+}
+
+static bool frothy_base_image_registry_has(const char *name) {
+  size_t i;
+
+  if (name == NULL) {
+    return false;
   }
 
-  if (frothy_name_in_list(name, frothy_workshop_slot_names)) {
-    return true;
-  }
-
-  if (frothy_base_image_find_slot(name) != NULL) {
-    return true;
+  for (i = 0; i < frothy_base_registry_count; i++) {
+    if (strcmp(frothy_base_registry[i], name) == 0) {
+      return true;
+    }
   }
 
   return false;
+}
+
+static froth_error_t frothy_base_image_register_name(const char *name) {
+  if (name == NULL || frothy_base_image_registry_has(name)) {
+    return FROTH_OK;
+  }
+  if (frothy_base_registry_count >=
+      sizeof(frothy_base_registry) / sizeof(frothy_base_registry[0])) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  frothy_base_registry[frothy_base_registry_count++] = name;
+  return FROTH_OK;
+}
+
+static froth_error_t frothy_base_image_capture_bound_slots(void) {
+  froth_cell_u_t slot_count = froth_slot_count();
+  froth_cell_u_t slot_index;
+
+  for (slot_index = 0; slot_index < slot_count; slot_index++) {
+    const char *name = NULL;
+    froth_cell_t impl = 0;
+    froth_native_word_t prim = NULL;
+
+    if (froth_slot_is_overlay(slot_index)) {
+      continue;
+    }
+    if (froth_slot_get_name(slot_index, &name) != FROTH_OK || name == NULL) {
+      continue;
+    }
+    if (froth_slot_get_impl(slot_index, &impl) != FROTH_OK &&
+        froth_slot_get_prim(slot_index, &prim) != FROTH_OK) {
+      continue;
+    }
+    FROTH_TRY(frothy_base_image_register_name(name));
+  }
+
+  return FROTH_OK;
+}
+
+bool frothy_base_image_has_slot(const char *name) {
+  return frothy_base_image_registry_has(name);
 }
 
 bool frothy_base_image_builtin_emits_output(const char *name) {
@@ -174,6 +201,7 @@ static froth_error_t frothy_base_image_eval_source_as_base(const char *source) {
 froth_error_t frothy_base_image_install(void) {
   size_t i;
 
+  frothy_base_image_clear_registry();
   for (i = 0; i < sizeof(frothy_base_slots) / sizeof(frothy_base_slots[0]);
        i++) {
     froth_cell_u_t slot_index;
@@ -195,31 +223,31 @@ froth_error_t frothy_base_image_install(void) {
       FROTH_TRY(
           froth_slot_set_arity(slot_index, (uint8_t)frothy_base_slots[i].arity, 1));
     }
+    FROTH_TRY(frothy_base_image_register_name(frothy_base_slots[i].name));
   }
 
   FROTH_TRY(frothy_ffi_install_board_base_slots());
 
-#ifdef FROTHY_HAS_BOARD_WORKSHOP_LIB
-  FROTH_TRY(frothy_base_image_eval_source_as_base(frothy_board_workshop_lib));
+#ifdef FROTHY_HAS_BOARD_BASE_LIB
+  FROTH_TRY(frothy_base_image_eval_source_as_base(frothy_board_base_lib));
 #endif
+
+  FROTH_TRY(frothy_base_image_capture_bound_slots());
 
   return FROTH_OK;
 }
 
 froth_error_t frothy_base_image_reset(void) {
-  froth_cell_u_t slot_count = froth_slot_count();
-  froth_cell_u_t slot_index;
+  size_t i;
 
   platform_reset_runtime_state();
   FROTH_TRY(frothy_runtime_clear_overlay_state(frothy_base_runtime()));
 
-  for (slot_index = 0; slot_index < slot_count; slot_index++) {
-    const char *name = NULL;
+  for (i = 0; i < frothy_base_registry_count; i++) {
+    froth_cell_u_t slot_index = 0;
+    const char *name = frothy_base_registry[i];
 
-    if (froth_slot_get_name(slot_index, &name) != FROTH_OK) {
-      continue;
-    }
-    if (!frothy_base_image_has_slot(name)) {
+    if (name == NULL || froth_slot_find_name(name, &slot_index) != FROTH_OK) {
       continue;
     }
 

@@ -784,7 +784,8 @@ static bool frothy_is_name_start(unsigned char byte) {
 }
 
 static bool frothy_is_name_continue(unsigned char byte) {
-  return isalnum(byte) || byte == '_' || byte == '.';
+  return isalnum(byte) || byte == '_' || byte == '.' || byte == '!' ||
+         byte == '?' || byte == '@';
 }
 
 static void frothy_lex_skip_space(frothy_parser_t *parser) {
