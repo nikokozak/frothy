@@ -17,6 +17,11 @@ Use the following files when Frothy intentionally reuses substrate behavior:
 - `src/froth_snapshot.c`
 - `src/froth_cellspace.h`
 
+For the current retained build surface and temporary compatibility seams, also
+see:
+
+- `docs/reference/Frothy_Retained_Substrate_Manifest.md`
+
 ## Limited Background Only
 
 - `PROGRESS.md`

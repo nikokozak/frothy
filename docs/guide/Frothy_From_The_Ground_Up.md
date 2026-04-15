@@ -2296,8 +2296,8 @@ includes = ["src/ffi"]
 defines = { MY_CONSTANT = "42" }
 ```
 
-And the expected C export is a null-terminated `froth_ffi_entry_t[]` named
-`froth_project_bindings`.
+And the expected C export is a null-terminated `frothy_ffi_entry_t[]` named
+`frothy_project_bindings`.
 
 ### Hands-on walkthrough
 
@@ -2313,16 +2313,32 @@ defines = { MY_CONSTANT = "42" }
 Then create `src/ffi/bindings.c`:
 
 ```c
-#include "froth_ffi.h"
+#include "frothy_ffi.h"
 
-FROTH_FFI_ARITY(project_magic, "project.magic", "( -- n )", 0, 1,
-                "Return a project-specific constant") {
-  FROTH_PUSH(MY_CONSTANT);
-  return FROTH_OK;
+static froth_error_t project_magic(frothy_runtime_t *runtime,
+                                   const void *context,
+                                   const frothy_value_t *args,
+                                   size_t arg_count,
+                                   frothy_value_t *out) {
+  (void)runtime;
+  (void)context;
+  (void)args;
+  (void)arg_count;
+  return frothy_ffi_return_int(MY_CONSTANT, out);
 }
 
-const froth_ffi_entry_t froth_project_bindings[] = {
-    FROTH_BIND(project_magic),
+const frothy_ffi_entry_t frothy_project_bindings[] = {
+    {
+        .name = "project.magic",
+        .params = NULL,
+        .param_count = 0,
+        .arity = 0,
+        .result_type = FROTHY_FFI_VALUE_INT,
+        .help = "Return a project-specific constant",
+        .flags = FROTHY_FFI_FLAG_NONE,
+        .callback = project_magic,
+        .stack_effect = "( -- n )",
+    },
     {0},
 };
 ```
@@ -2368,25 +2384,23 @@ staging, then gets out of the way.
 - include paths must be directories under the project root.
 - define keys must look like valid C identifiers.
 
-One important current-state note for maintainers:
+Current-state note for maintainers:
 
-As the code ships today, the build plumbing for project FFI is real, but the
-runtime auto-install step for `froth_project_bindings` is not wired into the
-Frothy boot path yet. In practice that means you can compile and link a
-project-local binding table today, but a name like `project.magic` will not
-appear in `words` until that install hook lands.
+The build plumbing and runtime auto-install path for
+`frothy_project_bindings` are both live in the maintained tree now. A
+project-local name such as `project.magic` should appear in `words()` once the
+project FFI table is compiled into the selected build.
 
-So this extension surface is best understood as:
-
-- a truthful build seam that already exists
-- plus one small runtime integration step that a maintainer can finish cleanly
+The retained legacy `froth_project_bindings` export is still accepted as a
+compatibility bridge, but new code should start on the maintained
+`frothy_ffi_entry_t` path instead.
 
 ### What to remember
 
 - Project FFI is configured in `froth.toml`.
 - The build path is strict and reproducible.
-- The current missing piece is runtime installation, not source validation or
-  build wiring.
+- Runtime installation is live; the maintainer job is to keep the exported
+  binding table, source validation, and boot-time install path aligned.
 
 ## Creating Board FFI in the Repo
 

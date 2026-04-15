@@ -126,15 +126,27 @@ set(FROTH_TDESC_MAX 32 CACHE STRING "Maximum concurrent transient string descrip
 set(FROTH_FFI_MAX_TABLES 8 CACHE STRING "Maximum number of FFI binding tables.")
 set(FROTH_PROJECT_FFI_CONFIG "" CACHE FILEPATH "Optional project FFI config fragment")
 
-set(FROTH_RUNTIME_SUPPORT_SRCS
+set(FROTHY_RETAINED_FROTH_SUBSTRATE_SRCS
   src/froth_console.c
   src/froth_stack.c
   src/froth_fmt.c
   src/froth_ffi.c
   src/froth_tbuf.c
+)
+
+set(FROTHY_PRODUCT_FFI_SRCS
   src/frothy_ffi.c
   src/frothy_tm1629.c
   boards/${FROTH_BOARD}/ffi.c
+)
+
+set(FROTHY_COMPAT_LAYER_SRCS
+  src/compat/frothy_link_stub.c
+)
+
+set(FROTH_RUNTIME_SUPPORT_SRCS
+  ${FROTHY_RETAINED_FROTH_SUBSTRATE_SRCS}
+  ${FROTHY_PRODUCT_FFI_SRCS}
 )
 
 set(FROTH_COMMON_INCLUDE_DIRS
@@ -259,7 +271,7 @@ if(FROTHY_BUILD_HOST)
       src/froth_slot_table.c
       src/froth_transport.c
       src/froth_crc32.c
-      src/frothy_link_stub.c
+      ${FROTHY_COMPAT_LAYER_SRCS}
       ${FROTH_RUNTIME_SUPPORT_SRCS}
       platforms/${FROTH_PLATFORM}/platform.c
   )
@@ -326,7 +338,7 @@ if(FROTHY_BUILD_HOST)
       src/froth_slot_table.c
       src/froth_transport.c
       src/froth_crc32.c
-      src/frothy_link_stub.c
+      ${FROTHY_COMPAT_LAYER_SRCS}
       ${FROTH_RUNTIME_SUPPORT_SRCS}
       src/froth_snapshot.c
       platforms/${FROTH_PLATFORM}/platform.c
@@ -357,7 +369,7 @@ if(FROTHY_BUILD_HOST)
       src/froth_slot_table.c
       src/froth_transport.c
       src/froth_crc32.c
-      src/frothy_link_stub.c
+      ${FROTHY_COMPAT_LAYER_SRCS}
       ${FROTH_RUNTIME_SUPPORT_SRCS}
       src/froth_snapshot.c
       platforms/${FROTH_PLATFORM}/platform.c
@@ -419,7 +431,7 @@ if(FROTHY_BUILD_HOST)
       src/froth_slot_table.c
       src/froth_transport.c
       src/froth_crc32.c
-      src/frothy_link_stub.c
+      ${FROTHY_COMPAT_LAYER_SRCS}
       ${FROTH_RUNTIME_SUPPORT_SRCS}
       src/froth_snapshot.c
       platforms/${FROTH_PLATFORM}/platform.c
@@ -539,7 +551,7 @@ if(FROTHY_BUILD_HOST)
       src/froth_slot_table.c
       src/froth_transport.c
       src/froth_crc32.c
-      src/frothy_link_stub.c
+      ${FROTHY_COMPAT_LAYER_SRCS}
       ${FROTH_RUNTIME_SUPPORT_SRCS}
       src/froth_snapshot.c
       platforms/${FROTH_PLATFORM}/platform.c

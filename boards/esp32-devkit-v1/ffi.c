@@ -1,4 +1,4 @@
-/* TODO: ESP32 DevKit V1 board FFI bindings */
+/* Maintained ESP32 DevKit V1 board FFI bindings. */
 
 #include "ffi.h"
 #include "driver/adc.h"

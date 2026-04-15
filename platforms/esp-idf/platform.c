@@ -1,4 +1,4 @@
-/* TODO: ESP-IDF platform implementation */
+/* ESP-IDF platform support for console routing, timing, interrupts, and snapshots. */
 #include "platform.h"
 #include "ffi.h"
 #include "driver/gpio.h"

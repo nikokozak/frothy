@@ -2,6 +2,7 @@
 
 #include "froth_ffi.h"
 
+/* Retained legacy export until this board surface is ported to frothy_ffi. */
 #define FROTHY_BOARD_FFI_USE_LEGACY_EXPORT
 
 #define FROTH_BOARD_BOOT_BUTTON_PIN 0

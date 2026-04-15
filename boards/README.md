@@ -155,70 +155,65 @@ code readable: `LED_BUILTIN 1 gpio.write` instead of `2 1 gpio.write`.
 ## ffi.h
 
 Declares the board binding table. Every board needs this file, and in
-most cases it contains exactly one line after the includes:
+new code should prefer the maintained Frothy-native export:
 
 ```c
 #pragma once
-#include "froth_ffi.h"
-FROTH_BOARD_DECLARE(froth_board_bindings);
+#include "frothy_ffi.h"
+FROTHY_FFI_DECLARE(frothy_board_bindings);
 ```
 
-`FROTH_BOARD_DECLARE` is a macro that forward-declares a
-null-terminated array of `froth_ffi_entry_t`. The boot sequence passes
-this array to `froth_ffi_register()`, which walks the table and creates
-a Froth word for each entry.
+`FROTHY_FFI_DECLARE` forward-declares a null-terminated array of
+`frothy_ffi_entry_t`. The Frothy boot path installs that table as base-image
+native slots.
+
+Retained boards such as `boards/posix/` and `boards/esp32-devkit-v1/` still
+ship a legacy `froth_ffi_entry_t` export while they are being ported. New
+board code should not start there.
 
 ## ffi.c
 
-Contains the C functions that expose hardware to Froth. Each word is
-defined using the `FROTH_FFI` macro, which creates both the C function
-and its metadata (name, stack effect, help text) in one declaration.
+Contains the C callbacks that expose hardware to Frothy.
 
 ### Writing a binding
 
 ```c
 #include "ffi.h"
-#include "froth_fmt.h"
+#include "frothy_ffi.h"
 #include <driver/gpio.h>  /* or whatever your platform SDK provides */
 
-FROTH_FFI(prim_led_on, "led.on", "( -- )", "Turn on the onboard LED") {
-  gpio_set_level(2, 1);
-  return FROTH_OK;
+static const frothy_ffi_param_t led_on_params[] = {
+  FROTHY_FFI_PARAM_INT("pin"),
+};
+
+static froth_error_t board_led_on(frothy_runtime_t *runtime,
+                                  const void *context,
+                                  const frothy_value_t *args,
+                                  size_t arg_count,
+                                  frothy_value_t *out) {
+  int32_t pin = 0;
+
+  (void)runtime;
+  (void)context;
+  (void)arg_count;
+  FROTH_TRY(frothy_ffi_expect_int(args, 0, &pin));
+  gpio_set_level(pin, 1);
+  return frothy_ffi_return_nil(out);
 }
 
-FROTH_FFI(prim_led_off, "led.off", "( -- )", "Turn off the onboard LED") {
-  gpio_set_level(2, 0);
-  return FROTH_OK;
-}
-```
-
-Arguments to `FROTH_FFI`:
-
-1. C function name (used internally, never seen by the user)
-2. Froth word name (what the user types at the REPL)
-3. Stack effect string (standard Forth notation)
-4. Help text (shown by the `info` word)
-
-### Reading and writing the stack
-
-Inside a `FROTH_FFI` function, a pointer called `froth_vm` is in scope.
-Use these macros to interact with the data stack:
-
-```c
-FROTH_POP(pin);      /* pop a number into a new local variable `pin` */
-FROTH_PUSH(42);      /* push a number onto the stack */
-```
-
-Both macros handle type checking and error propagation. If the stack is
-empty when you pop, or full when you push, the word returns an error
-automatically.
-
-For tagged values (quotations, strings, slots, etc.), use:
-
-```c
-froth_cell_t payload;
-froth_cell_tag_t tag;
-froth_pop_tagged(froth_vm, &payload, &tag);
+FROTHY_FFI_TABLE_BEGIN(frothy_board_bindings)
+  {
+    .name = "led.on",
+    .params = led_on_params,
+    .param_count = FROTHY_FFI_PARAM_COUNT(led_on_params),
+    .arity = 1,
+    .result_type = FROTHY_FFI_VALUE_NIL,
+    .help = "Turn on the onboard LED",
+    .flags = FROTHY_FFI_FLAG_NONE,
+    .callback = board_led_on,
+    .stack_effect = "( pin -- )",
+  },
+FROTHY_FFI_TABLE_END
 ```
 
 ### The binding table
@@ -226,39 +221,44 @@ froth_pop_tagged(froth_vm, &payload, &tag);
 Collect all bindings into a table at the bottom of `ffi.c`:
 
 ```c
-FROTH_BOARD_BEGIN(froth_board_bindings)
-  FROTH_BIND(prim_led_on),
-  FROTH_BIND(prim_led_off),
-FROTH_BOARD_END
+FROTHY_FFI_TABLE_BEGIN(frothy_board_bindings)
+  { ... },
+  { ... },
+FROTHY_FFI_TABLE_END
 ```
-
-`FROTH_BIND` references the metadata struct that `FROTH_FFI` created.
-The table must be null-terminated (the `FROTH_BOARD_END` macro handles
-this).
 
 If the board has no custom hardware and relies entirely on generic
 platform modules, the table can be empty:
 
 ```c
 #include "ffi.h"
-FROTH_BOARD_BEGIN(froth_board_bindings)
-FROTH_BOARD_END
+FROTHY_FFI_TABLE_BEGIN(frothy_board_bindings)
+FROTHY_FFI_TABLE_END
 ```
 
 ### Error handling
 
-Return `FROTH_OK` on success. To signal an error to the user, call
-`froth_throw`:
+Return a Frothy value on success. To signal an error to the user, return a
+regular Froth error code or raise a richer Frothy FFI error:
 
 ```c
-FROTH_FFI(prim_adc_read, "adc.read", "( chan -- val )", "Read ADC") {
-  FROTH_POP(chan);
-  int result = adc_read(chan);
+static froth_error_t board_adc_read(frothy_runtime_t *runtime,
+                                    const void *context,
+                                    const frothy_value_t *args,
+                                    size_t arg_count,
+                                    frothy_value_t *out) {
+  int32_t chan = 0;
+  int result;
+
+  (void)context;
+  (void)arg_count;
+  FROTH_TRY(frothy_ffi_expect_int(args, 0, &chan));
+  result = adc_read(chan);
   if (result < 0) {
-    return froth_throw(froth_vm, 300);  /* FFI error codes start at 300 */
+    return frothy_ffi_raise(runtime, FROTH_ERROR_IO,
+                            "adc", "adc.read", "adc_read failed");
   }
-  FROTH_PUSH(result);
-  return FROTH_OK;
+  return frothy_ffi_return_int(result, out);
 }
 ```
 

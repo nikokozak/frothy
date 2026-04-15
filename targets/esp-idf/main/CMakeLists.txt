@@ -80,13 +80,12 @@ if(EXISTS "${FROTH_BOARD_JSON_PATH}")
   endif()
 endif()
 
-set(FROTHY_KERNEL_SRCS
+set(FROTHY_KERNEL_PRODUCT_SRCS
     ${FROTH_ROOT}/src/frothy_boot.c
     ${FROTH_ROOT}/src/frothy_base_image.c
     ${FROTH_ROOT}/src/frothy_control.c
     ${FROTH_ROOT}/src/frothy_shell.c
     ${FROTH_ROOT}/src/frothy_ffi.c
-    ${FROTH_ROOT}/src/frothy_console_compat.c
     ${FROTH_ROOT}/src/frothy_inspect.c
     ${FROTH_ROOT}/src/frothy_ir.c
     ${FROTH_ROOT}/src/frothy_parser.c
@@ -95,6 +94,10 @@ set(FROTHY_KERNEL_SRCS
     ${FROTH_ROOT}/src/frothy_tm1629.c
     ${FROTH_ROOT}/src/frothy_value.c
     ${FROTH_ROOT}/src/frothy_eval.c
+    ${FROTH_ROOT}/boards/${FROTH_BOARD}/ffi.c
+)
+
+set(FROTHY_KERNEL_RETAINED_SUBSTRATE_SRCS
     ${FROTH_ROOT}/src/froth_stack.c
     ${FROTH_ROOT}/src/froth_fmt.c
     ${FROTH_ROOT}/src/froth_console.c
@@ -107,8 +110,17 @@ set(FROTHY_KERNEL_SRCS
     ${FROTH_ROOT}/src/froth_snapshot.c
     ${FROTH_ROOT}/src/froth_crc32.c
     ${FROTH_ROOT}/src/froth_transport.c
-    ${FROTH_ROOT}/src/frothy_link_stub.c
-    ${FROTH_ROOT}/boards/${FROTH_BOARD}/ffi.c
+)
+
+set(FROTHY_KERNEL_COMPAT_LAYER_SRCS
+    ${FROTH_ROOT}/src/compat/frothy_console_compat.c
+    ${FROTH_ROOT}/src/compat/frothy_link_stub.c
+)
+
+set(FROTHY_KERNEL_SRCS
+    ${FROTHY_KERNEL_PRODUCT_SRCS}
+    ${FROTHY_KERNEL_RETAINED_SUBSTRATE_SRCS}
+    ${FROTHY_KERNEL_COMPAT_LAYER_SRCS}
 )
 
 idf_component_register(
