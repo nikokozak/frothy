@@ -27,6 +27,7 @@ build-kernel: check-cmake check-make ## Build the Frothy host runtime
 
 build-cli: check-go ## Build CLI tool
 	@mkdir -p "$(GO_CACHE_DIR)"
+	@rm -f tools/cli/froth-cli
 	@echo "==> Building repo-local frothy-cli..."
 	@$(MAKE) --no-print-directory -C tools/cli build GOCACHE="$(GO_CACHE_DIR)"
 	@echo "==> Repo-local frothy-cli ready: tools/cli/frothy-cli"
@@ -43,8 +44,8 @@ clean: clean-kernel clean-cli ## Remove all build artifacts
 clean-kernel: ## Remove kernel build directory
 	@rm -rf build
 
-clean-cli: ## Remove repo-local frothy-cli binary (not SDK mirror)
-	@rm -f tools/cli/frothy-cli
+clean-cli: ## Remove repo-local Frothy CLI binaries (not SDK mirror)
+	@rm -f tools/cli/frothy-cli tools/cli/froth-cli
 
 ##@ Test
 test: version-check test-runner-bin ## Run the fast self-contained local test gate

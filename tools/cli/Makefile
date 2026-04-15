@@ -12,6 +12,7 @@ sdk-payload:
 	@go run ./internal/sdk/cmd/generate -repo $(REPO_ROOT) -out $(SDK_PAYLOAD_DIR)
 
 build: sdk-payload
+	@rm -f froth-cli
 	@echo "  Compiling repo-local $(OUTPUT)..."
 	@if [ -n "$(GOCACHE)" ]; then \
 		GOCACHE="$(GOCACHE)" go build -o $(OUTPUT) .; \
