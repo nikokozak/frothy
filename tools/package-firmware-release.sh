@@ -12,6 +12,12 @@ fi
 BUILD_DIR=$1
 VERSION=$(normalize_version "$2")
 OUTPUT=${3:-"$ROOT_DIR/dist/$(firmware_asset_name "$VERSION")"}
+
+case "$BUILD_DIR" in
+  /*) ;;
+  *) BUILD_DIR="$(pwd)/$BUILD_DIR" ;;
+esac
+
 MANIFEST_PATH="$BUILD_DIR/flasher_args.json"
 
 if [ ! -f "$MANIFEST_PATH" ]; then
@@ -33,14 +39,10 @@ if ! command -v go >/dev/null 2>&1; then
   exit 1
 fi
 
-go run "$ROOT_DIR/tools/firmware_manifest_files.go" "$MANIFEST_PATH" > "$FILE_LIST"
-
-while IFS= read -r relpath; do
-  if [ ! -f "$BUILD_DIR/$relpath" ]; then
-    printf 'missing firmware artifact referenced by flasher_args.json: %s\n' "$relpath" >&2
-    exit 1
-  fi
-done < "$FILE_LIST"
+(
+  cd "$ROOT_DIR/tools/cli"
+  go run ./cmd/firmware-manifest-files "$MANIFEST_PATH"
+) > "$FILE_LIST"
 
 (cd "$BUILD_DIR" && zip -r "$OUTPUT" -@ < "$FILE_LIST")
 

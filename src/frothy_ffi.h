@@ -1,5 +1,6 @@
 #pragma once
 
+#include "froth_ffi.h"
 #include "froth_types.h"
 #include "frothy_value.h"
 
@@ -92,6 +93,7 @@ void frothy_ffi_get_last_error(const frothy_runtime_t *runtime,
 
 /* Maintained Frothy-native installation surface. */
 froth_error_t frothy_ffi_install_table(const frothy_ffi_entry_t *table);
+froth_error_t frothy_ffi_install_binding_table(const froth_ffi_entry_t *table);
 froth_error_t frothy_ffi_install_pin_table(const frothy_board_pin_t *pins);
 froth_error_t frothy_ffi_install_board_base_slots(void);
 bool frothy_ffi_native_is_foreign(frothy_native_fn_t fn, const void *context);

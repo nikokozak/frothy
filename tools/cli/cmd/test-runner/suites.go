@@ -37,6 +37,13 @@ func runAll() error {
 	return runCLIIntegration()
 }
 
+func runPublishability() error {
+	if err := runAll(); err != nil {
+		return err
+	}
+	return runVSCode()
+}
+
 func runFrothy() error {
 	paths, err := detectPaths()
 	if err != nil {
@@ -212,6 +219,9 @@ func printList() {
 	fmt.Println("all")
 	fmt.Println("  extended local gate (C, Go, shell)")
 	fmt.Println("  includes: fast, cli-local, integration")
+	fmt.Println("publishability")
+	fmt.Println("  full shipped-surface local gate")
+	fmt.Println("  includes: all, vscode")
 	fmt.Println("frothy")
 	fmt.Println("  host ctest + core proof.sh host lane")
 	fmt.Println("cli")

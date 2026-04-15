@@ -1,4 +1,4 @@
-#include "frothy_ffi_legacy.h"
+#include "frothy_ffi.h"
 
 #include "ffi.h"
 #include "froth_slot_table.h"

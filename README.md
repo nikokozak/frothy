@@ -109,6 +109,7 @@ make build
 make run
 make test
 make test-all
+make test-publishability
 ```
 
 Optional extension lanes:
@@ -126,6 +127,7 @@ The maintained test contract is:
 
 - `make test`: fast self-contained local gate (`C`, `Go`, `Shell`)
 - `make test-all`: exhaustive local gate (`C`, `Go`, `Shell`)
+- `make test-publishability`: full shipped-surface local gate (`make test-all` plus `make test-vscode`)
 - `make test-vscode`: explicit extension-local `Node` lane
 - `make test-vscode-board PORT=/dev/...`: explicit real-device extension lane
 - `make test-list`: list maintained suites and profiles

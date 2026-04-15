@@ -86,24 +86,50 @@ func (s *Session) waitForRaw(needle []byte, timeout time.Duration) ([]byte, erro
 }
 
 func (s *Session) AcquirePrompt(timeout time.Duration) error {
-	if _, err := s.waitForRaw([]byte("frothy> "), timeout); err == nil {
+	type promptRecoveryStep struct {
+		label string
+		write []byte
+		wait  time.Duration
+	}
+
+	waitPrompt := func(limit time.Duration) error {
+		if limit <= 0 {
+			return rawWaitTimeoutError{needle: "frothy> "}
+		}
+		_, err := s.waitForRaw([]byte("frothy> "), limit)
+		return err
+	}
+
+	if err := waitPrompt(timeout); err == nil {
 		return nil
 	} else if !isRawWaitTimeout(err) {
 		return err
+	} else {
+		timeout = max(timeout/2, 500*time.Millisecond)
 	}
-	if err := s.writeBytes([]byte{0x03}); err != nil {
-		return fmt.Errorf("send ctrl-c: %w", err)
+
+	steps := []promptRecoveryStep{
+		{label: "ctrl-c", write: []byte{0x03}, wait: timeout},
+		{label: "newline", write: []byte{'\n'}, wait: timeout},
+		{label: "ctrl-c/newline", write: []byte{0x03, '\n'}, wait: timeout},
 	}
-	if _, err := s.waitForRaw([]byte("frothy> "), timeout/2); err == nil {
-		return nil
-	} else if !isRawWaitTimeout(err) {
-		return err
+
+	var lastErr error = rawWaitTimeoutError{needle: "frothy> "}
+
+	for _, step := range steps {
+		if err := s.writeBytes(step.write); err != nil {
+			return fmt.Errorf("send %s: %w", step.label, err)
+		}
+		if err := waitPrompt(step.wait); err == nil {
+			return nil
+		} else if !isRawWaitTimeout(err) {
+			return err
+		} else {
+			lastErr = err
+		}
 	}
-	if err := s.writeBytes([]byte{'\n'}); err != nil {
-		return fmt.Errorf("send newline: %w", err)
-	}
-	_, err := s.waitForRaw([]byte("frothy> "), timeout)
-	return err
+
+	return lastErr
 }
 
 func (s *Session) EnterControl(timeout time.Duration) error {

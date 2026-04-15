@@ -65,14 +65,12 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: tools/vscode/package-lock.json
-      - name: Install VS Code extension dependencies
-        working-directory: tools/vscode
-        run: npm ci
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/cli/go.mod
+          cache-dependency-path: tools/cli/go.sum
       - name: Test VS Code extension
-        working-directory: tools/vscode
-        run: |
-          npm test
-          npm run test:package
+        run: make test-vscode
       - name: Package VS Code extension
         working-directory: tools/vscode
         run: |

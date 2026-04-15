@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,11 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/nikokozak/frothy/tools/cli/internal/firmware"
 	"github.com/nikokozak/frothy/tools/cli/internal/frothycontrol"
 	"github.com/nikokozak/frothy/tools/cli/internal/project"
 	"github.com/nikokozak/frothy/tools/cli/internal/sdk"
@@ -31,22 +29,7 @@ var flashResolvePort = resolveFlashPort
 var flashESPIDFDirFn = flashESPIDFDir
 var flashApplyRuntime = applyRuntimeAfterFlash
 
-type firmwareManifest struct {
-	WriteFlashArgs   []string          `json:"write_flash_args"`
-	FlashFiles       map[string]string `json:"flash_files"`
-	ExtraEsptoolArgs struct {
-		After  string `json:"after"`
-		Before string `json:"before"`
-		Stub   *bool  `json:"stub"`
-		Chip   string `json:"chip"`
-	} `json:"extra_esptool_args"`
-}
-
-type flashFile struct {
-	Offset string
-	Path   string
-	Value  uint64
-}
+type firmwareManifest = firmware.Manifest
 
 func runFlash() error {
 	cwd, err := os.Getwd()
@@ -317,7 +300,7 @@ func extractFirmwareZip(archivePath string, destDir string) error {
 	}
 
 	for _, file := range reader.File {
-		destPath, err := safeJoin(destDir, file.Name)
+		destPath, err := firmware.SafeJoin(destDir, file.Name)
 		if err != nil {
 			return err
 		}
@@ -370,37 +353,15 @@ func extractFirmwareZip(archivePath string, destDir string) error {
 
 func validateFirmwareDir(dir string) (*firmwareManifest, error) {
 	manifestPath := filepath.Join(dir, "flasher_args.json")
-	data, err := os.ReadFile(manifestPath)
+	manifest, err := firmware.LoadManifest(manifestPath)
 	if err != nil {
-		return nil, fmt.Errorf("firmware cache invalid: read flasher_args.json: %w", err)
+		return nil, fmt.Errorf("firmware cache invalid: %w", err)
+	}
+	if err := firmware.ValidateFiles(dir, manifest); err != nil {
+		return nil, fmt.Errorf("firmware cache invalid: %w", err)
 	}
 
-	var manifest firmwareManifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		return nil, fmt.Errorf("firmware cache invalid: parse flasher_args.json: %w", err)
-	}
-	if manifest.ExtraEsptoolArgs.Chip == "" {
-		return nil, fmt.Errorf("firmware cache invalid: missing chip in flasher_args.json")
-	}
-	if len(manifest.FlashFiles) == 0 {
-		return nil, fmt.Errorf("firmware cache invalid: missing flash_files in flasher_args.json")
-	}
-
-	for _, relPath := range manifest.FlashFiles {
-		fullPath, err := safeJoin(dir, relPath)
-		if err != nil {
-			return nil, err
-		}
-		info, err := os.Stat(fullPath)
-		if err != nil {
-			return nil, fmt.Errorf("firmware cache invalid: missing %s: %w", relPath, err)
-		}
-		if !info.Mode().IsRegular() {
-			return nil, fmt.Errorf("firmware cache invalid: %s is not a regular file", relPath)
-		}
-	}
-
-	return &manifest, nil
+	return manifest, nil
 }
 
 func flashPrebuiltFirmware(root string, manifest *firmwareManifest, port string) error {
@@ -409,7 +370,7 @@ func flashPrebuiltFirmware(root string, manifest *firmwareManifest, port string)
 		return err
 	}
 
-	files, err := orderedFlashFiles(manifest)
+	files, err := firmware.OrderedFiles(manifest)
 	if err != nil {
 		return err
 	}
@@ -431,7 +392,7 @@ func flashPrebuiltFirmware(root string, manifest *firmwareManifest, port string)
 	args = append(args, "write_flash")
 	args = append(args, manifest.WriteFlashArgs...)
 	for _, file := range files {
-		fullPath, err := safeJoin(root, file.Path)
+		fullPath, err := firmware.RegularFilePath(root, file.Path)
 		if err != nil {
 			return err
 		}
@@ -447,24 +408,6 @@ func flashPrebuiltFirmware(root string, manifest *firmwareManifest, port string)
 
 	return nil
 }
-
-func orderedFlashFiles(manifest *firmwareManifest) ([]flashFile, error) {
-	files := make([]flashFile, 0, len(manifest.FlashFiles))
-	for offset, path := range manifest.FlashFiles {
-		value, err := strconv.ParseUint(offset, 0, 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid flash offset %s: %w", offset, err)
-		}
-		files = append(files, flashFile{Offset: offset, Path: path, Value: value})
-	}
-
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].Value < files[j].Value
-	})
-
-	return files, nil
-}
-
 func resolveEsptool() (string, error) {
 	for _, candidate := range []string{"esptool.py", "esptool"} {
 		path, err := flashLookPath(candidate)
@@ -514,28 +457,6 @@ func activateDirectory(targetDir string, sourceDir string) error {
 	}
 
 	return nil
-}
-
-func safeJoin(root string, rel string) (string, error) {
-	if filepath.IsAbs(rel) {
-		return "", fmt.Errorf("path escapes firmware root: %s", rel)
-	}
-
-	cleanRel := filepath.Clean(rel)
-	fullPath := filepath.Join(root, cleanRel)
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return "", fmt.Errorf("abs root: %w", err)
-	}
-	absPath, err := filepath.Abs(fullPath)
-	if err != nil {
-		return "", fmt.Errorf("abs path: %w", err)
-	}
-	if absPath != absRoot && !strings.HasPrefix(absPath, absRoot+string(filepath.Separator)) {
-		return "", fmt.Errorf("path escapes firmware root: %s", rel)
-	}
-
-	return absPath, nil
 }
 
 func flashESPIDF(root string) error {

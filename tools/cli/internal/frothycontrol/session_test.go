@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,11 +12,29 @@ import (
 )
 
 type stubTransport struct {
-	readBuf bytes.Buffer
-	writes  [][]byte
+	mu          sync.Mutex
+	readBuf     bytes.Buffer
+	writes      [][]byte
+	onWrite     func([]byte)
+	readTimeout time.Duration
 }
 
 func (t *stubTransport) Read(buf []byte) (int, error) {
+	t.mu.Lock()
+	if t.readBuf.Len() > 0 {
+		n, err := t.readBuf.Read(buf)
+		t.mu.Unlock()
+		return n, err
+	}
+	timeout := t.readTimeout
+	t.mu.Unlock()
+
+	if timeout > 0 {
+		time.Sleep(timeout)
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	if t.readBuf.Len() == 0 {
 		return 0, nil
 	}
@@ -23,7 +42,14 @@ func (t *stubTransport) Read(buf []byte) (int, error) {
 }
 
 func (t *stubTransport) Write(data []byte) error {
-	t.writes = append(t.writes, append([]byte(nil), data...))
+	writeCopy := append([]byte(nil), data...)
+	t.mu.Lock()
+	t.writes = append(t.writes, writeCopy)
+	onWrite := t.onWrite
+	t.mu.Unlock()
+	if onWrite != nil {
+		onWrite(writeCopy)
+	}
 	return nil
 }
 
@@ -31,11 +57,22 @@ func (t *stubTransport) Close() error { return nil }
 
 func (t *stubTransport) Path() string { return "stub" }
 
-func (t *stubTransport) SetReadTimeout(time.Duration) error { return nil }
+func (t *stubTransport) SetReadTimeout(timeout time.Duration) error {
+	t.mu.Lock()
+	t.readTimeout = timeout
+	t.mu.Unlock()
+	return nil
+}
 
 func (t *stubTransport) ResetInputBuffer() {}
 
 func (t *stubTransport) Drain(time.Duration) {}
+
+func (t *stubTransport) queueRaw(data string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.readBuf.WriteString(data)
+}
 
 func (t *stubTransport) queueFrame(tst *testing.T, sessionID uint64, msgType byte,
 	seq uint16, payload []byte) {
@@ -337,5 +374,71 @@ func TestManagerBuiltinFallbacksUseEvalOnUnknownRequest(t *testing.T) {
 				t.Fatalf("fallback source = %q, want %q", source, tc.wantEvalSource)
 			}
 		})
+	}
+}
+
+func TestSessionAcquirePromptRecoversAfterCtrlC(t *testing.T) {
+	transport := &stubTransport{}
+	transport.onWrite = func(data []byte) {
+		if bytes.Equal(data, []byte{0x03}) {
+			transport.readBuf.WriteString("boot noise\nfrothy> ")
+		}
+	}
+
+	session := NewSession(transport)
+	if err := session.AcquirePrompt(1200 * time.Millisecond); err != nil {
+		t.Fatalf("AcquirePrompt() error = %v", err)
+	}
+
+	if len(transport.writes) != 1 {
+		t.Fatalf("writes = %q, want ctrl-c-only recovery", transport.writes)
+	}
+	if !bytes.Equal(transport.writes[0], []byte{0x03}) {
+		t.Fatalf("first recovery write = %q, want ctrl-c", transport.writes[0])
+	}
+}
+
+func TestSessionAcquirePromptRecoversAfterCtrlCNewlineBurst(t *testing.T) {
+	transport := &stubTransport{}
+	transport.onWrite = func(data []byte) {
+		if bytes.Equal(data, []byte{0x03, '\n'}) {
+			transport.readBuf.WriteString("frothy> ")
+		}
+	}
+
+	session := NewSession(transport)
+	if err := session.AcquirePrompt(2500 * time.Millisecond); err != nil {
+		t.Fatalf("AcquirePrompt() error = %v", err)
+	}
+
+	if len(transport.writes) != 3 {
+		t.Fatalf("writes = %q, want recovery burst", transport.writes)
+	}
+	if !bytes.Equal(transport.writes[0], []byte{0x03}) {
+		t.Fatalf("first recovery write = %q, want ctrl-c", transport.writes[0])
+	}
+	if !bytes.Equal(transport.writes[1], []byte{'\n'}) {
+		t.Fatalf("second recovery write = %q, want newline", transport.writes[1])
+	}
+	lastWrite := transport.writes[len(transport.writes)-1]
+	if !bytes.Equal(lastWrite, []byte{0x03, '\n'}) {
+		t.Fatalf("last recovery write = %q, want ctrl-c/newline burst", lastWrite)
+	}
+}
+
+func TestSessionAcquirePromptWaitsForSlowPromptBeforeRecovery(t *testing.T) {
+	transport := &stubTransport{}
+	go func() {
+		time.Sleep(700 * time.Millisecond)
+		transport.queueRaw("boot noise\nfrothy> ")
+	}()
+
+	session := NewSession(transport)
+	if err := session.AcquirePrompt(1500 * time.Millisecond); err != nil {
+		t.Fatalf("AcquirePrompt() error = %v", err)
+	}
+
+	if len(transport.writes) != 0 {
+		t.Fatalf("writes = %q, want passive wait without recovery bytes", transport.writes)
 	}
 }

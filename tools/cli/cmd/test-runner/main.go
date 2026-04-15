@@ -12,6 +12,7 @@ type commandFunc func(args []string) error
 var commands = map[string]commandFunc{
 	"fast":             commandFast,
 	"all":              commandAll,
+	"publishability":   commandPublishability,
 	"frothy":           commandFrothy,
 	"cli":              commandCLIUnit,
 	"cli-local":        commandCLILocal,
@@ -45,6 +46,10 @@ func commandFast(_ []string) error {
 
 func commandAll(_ []string) error {
 	return runAll()
+}
+
+func commandPublishability(_ []string) error {
+	return runPublishability()
 }
 
 func commandFrothy(_ []string) error {

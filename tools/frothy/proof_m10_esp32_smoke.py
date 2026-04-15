@@ -499,6 +499,10 @@ def run_phase_four(session: IdfMonitorSession, starter_proof: str) -> None:
         workshop_transcript,
         r'"overlay\.blink\.check"\r?\n[\s\S]*?slot: overlay\r?\n[\s\S]*?owner: overlay image\r?\n[\s\S]*?99\r?\nfrothy> ',
     )
+    require_contains(
+        labeled_result_segment(workshop_transcript, "overlay.blink.check", "99"),
+        "blink: LED_BUILTIN, 1, 1",
+    )
     require_match(
         workshop_transcript,
         r'"restored\.blink\.check"\r?\n[\s\S]*?slot: base\r?\n[\s\S]*?owner: base image\r?\n',

@@ -4,7 +4,7 @@
 #include "froth_vm.h"
 #include "frothy_base_image.h"
 #include "frothy_eval.h"
-#include "frothy_ffi_legacy.h"
+#include "frothy_ffi.h"
 #include "frothy_parser.h"
 #include "frothy_snapshot.h"
 #include "frothy_value.h"
