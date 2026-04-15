@@ -548,10 +548,10 @@ func TestRunBuildLegacyCleanDeletesESPIDFBuildDir(t *testing.T) {
 	toolsDir := t.TempDir()
 	mustWriteExecutable(t, filepath.Join(toolsDir, "idf.py"), "#!/bin/sh\nprintf 'idf.py %s\\n' \"$*\" >> \""+logPath+"\"\nmkdir -p build\n: > build/rebuilt.txt\n")
 
-	frothHome := t.TempDir()
-	exportPath := filepath.Join(frothHome, "sdk", "esp-idf", "export.sh")
+	frothyHome := t.TempDir()
+	exportPath := filepath.Join(frothyHome, "sdk", "esp-idf", "export.sh")
 	mustWriteFile(t, exportPath, "export PATH=\""+toolsDir+":$PATH\"\n")
-	t.Setenv("FROTH_HOME", frothHome)
+	t.Setenv("FROTHY_HOME", frothyHome)
 
 	withChdir(t, root)
 

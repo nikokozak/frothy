@@ -102,10 +102,11 @@ file is wrong.
   `esp32-devkit-v4-game-board` hardware.
 - The attendee-facing naming and recovery story is now explicit on the
   maintained Frothy path: Frothy owns the product/docs/editor/install identity,
-  the default CLI home is `~/.frothy` with `FROTHY_HOME` precedence and legacy
-  `FROTH_HOME` fallback, whole-file editor send blocks unsafe replay when
-  control `reset` is unavailable, and the control proof ladder now re-checks
-  recovery on the real ESP32 path.
+  the default CLI home is `~/.frothy` with `FROTHY_HOME` override, Frothy now
+  creates that home on demand instead of consulting legacy `~/.froth`,
+  whole-file editor send blocks unsafe replay when control `reset` is
+  unavailable, and the control proof ladder now re-checks recovery on the real
+  ESP32 path.
 - The earlier lesson/game starter scaffold and its proof path are still
   available on `frothy new --target esp32-devkit-v1`, but that is now a
   retained v1 path rather than the maintained Friday workshop hardware target;

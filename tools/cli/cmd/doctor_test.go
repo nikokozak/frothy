@@ -141,7 +141,7 @@ func TestRunDoctorReportsGMakeAndOptionalTooling(t *testing.T) {
 	}
 	t.Cleanup(func() { doctorLookPath = oldDoctorLookPath })
 
-	t.Setenv("FROTH_HOME", filepath.Join(t.TempDir(), "froth-home"))
+	t.Setenv("FROTHY_HOME", filepath.Join(t.TempDir(), "frothy-home"))
 	withChdir(t, t.TempDir())
 	portFlag = "/dev/definitely-not-a-froth-device"
 

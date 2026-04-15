@@ -122,8 +122,8 @@ func TestRunFlashManifestAppliesRuntimeImageAfterESPIDFFlash(t *testing.T) {
 func TestRunFlashPrebuiltUsesValidCache(t *testing.T) {
 	resetCommandGlobals(t)
 
-	home := filepath.Join(t.TempDir(), "froth-home")
-	t.Setenv("FROTH_HOME", home)
+	home := filepath.Join(t.TempDir(), "frothy-home")
+	t.Setenv("FROTHY_HOME", home)
 	version := frothVersion(t)
 	withChdir(t, t.TempDir())
 	portFlag = "/dev/cu.usbserial-test"
@@ -174,8 +174,8 @@ func TestRunFlashPrebuiltUsesValidCache(t *testing.T) {
 func TestRunFlashPrebuiltReDownloadsWhenCacheIsInvalid(t *testing.T) {
 	resetCommandGlobals(t)
 
-	home := filepath.Join(t.TempDir(), "froth-home")
-	t.Setenv("FROTH_HOME", home)
+	home := filepath.Join(t.TempDir(), "frothy-home")
+	t.Setenv("FROTHY_HOME", home)
 	version := frothVersion(t)
 	withChdir(t, t.TempDir())
 	portFlag = "/dev/cu.usbserial-test"
@@ -225,8 +225,8 @@ func TestRunFlashPrebuiltReDownloadsWhenCacheIsInvalid(t *testing.T) {
 func TestRunFlashPrebuiltRejectsChecksumMismatch(t *testing.T) {
 	resetCommandGlobals(t)
 
-	home := filepath.Join(t.TempDir(), "froth-home")
-	t.Setenv("FROTH_HOME", home)
+	home := filepath.Join(t.TempDir(), "frothy-home")
+	t.Setenv("FROTHY_HOME", home)
 	version := frothVersion(t)
 	withChdir(t, t.TempDir())
 	portFlag = "/dev/cu.usbserial-test"
@@ -254,8 +254,8 @@ func TestRunFlashPrebuiltRejectsChecksumMismatch(t *testing.T) {
 func TestRunFlashPrebuiltRequiresEsptool(t *testing.T) {
 	resetCommandGlobals(t)
 
-	home := filepath.Join(t.TempDir(), "froth-home")
-	t.Setenv("FROTH_HOME", home)
+	home := filepath.Join(t.TempDir(), "frothy-home")
+	t.Setenv("FROTHY_HOME", home)
 	version := frothVersion(t)
 	withChdir(t, t.TempDir())
 	portFlag = "/dev/cu.usbserial-test"
@@ -292,7 +292,7 @@ func TestRunFlashPrefersLocalCheckout(t *testing.T) {
 	withChdir(t, filepath.Join(repoRoot, "nested"))
 	targetFlag = "esp-idf"
 	portFlag = "/dev/cu.usbserial-test"
-	t.Setenv("FROTH_HOME", filepath.Join(t.TempDir(), "froth-home"))
+	t.Setenv("FROTHY_HOME", filepath.Join(t.TempDir(), "frothy-home"))
 
 	err := runFlash()
 	if err == nil {

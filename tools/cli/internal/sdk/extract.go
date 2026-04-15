@@ -28,11 +28,7 @@ func VersionFromFS(fsys fs.FS) (string, error) {
 
 func FrothyHome() (string, error) {
 	if home := os.Getenv("FROTHY_HOME"); home != "" {
-		return home, nil
-	}
-
-	if home := os.Getenv("FROTH_HOME"); home != "" {
-		return home, nil
+		return ensureFrothyHome(home)
 	}
 
 	home, err := os.UserHomeDir()
@@ -40,11 +36,18 @@ func FrothyHome() (string, error) {
 		return "", fmt.Errorf("home dir: %w", err)
 	}
 
-	return filepath.Join(home, ".frothy"), nil
+	return ensureFrothyHome(filepath.Join(home, ".frothy"))
 }
 
 func FrothHome() (string, error) {
 	return FrothyHome()
+}
+
+func ensureFrothyHome(home string) (string, error) {
+	if err := os.MkdirAll(home, 0755); err != nil {
+		return "", fmt.Errorf("create Frothy home %s: %w", home, err)
+	}
+	return home, nil
 }
 
 func SDKPath(version string) (string, error) {

@@ -15,41 +15,52 @@ import (
 )
 
 func TestFrothyHomeUsesEnvironmentOverride(t *testing.T) {
-	t.Setenv("FROTHY_HOME", "/tmp/frothy-home")
+	t.Setenv("FROTHY_HOME", filepath.Join(t.TempDir(), "frothy-home"))
 
 	home, err := FrothyHome()
 	if err != nil {
 		t.Fatalf("FrothyHome: %v", err)
 	}
-	if home != "/tmp/frothy-home" {
-		t.Fatalf("home = %q, want %q", home, "/tmp/frothy-home")
+	if home != os.Getenv("FROTHY_HOME") {
+		t.Fatalf("home = %q, want %q", home, os.Getenv("FROTHY_HOME"))
+	}
+	if info, err := os.Stat(home); err != nil || !info.IsDir() {
+		t.Fatalf("home dir missing: info=%v err=%v", info, err)
 	}
 }
 
-func TestFrothyHomePrefersFROTHYHOMEOverLegacyFROTHHOME(t *testing.T) {
-	t.Setenv("FROTHY_HOME", "/tmp/frothy-home")
-	t.Setenv("FROTH_HOME", "/tmp/froth-home")
+func TestFrothyHomeIgnoresLegacyFROTHHOME(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("FROTHY_HOME", "")
+	t.Setenv("FROTH_HOME", filepath.Join(tmpHome, ".froth"))
+	t.Setenv("HOME", tmpHome)
 
 	home, err := FrothyHome()
 	if err != nil {
 		t.Fatalf("FrothyHome: %v", err)
 	}
-	if home != "/tmp/frothy-home" {
-		t.Fatalf("home = %q, want %q", home, "/tmp/frothy-home")
+	want := filepath.Join(tmpHome, ".frothy")
+	if home != want {
+		t.Fatalf("home = %q, want %q", home, want)
 	}
 }
 
 func TestFrothyHomeDefaultsToDotFrothy(t *testing.T) {
+	tmpHome := t.TempDir()
 	t.Setenv("FROTHY_HOME", "")
 	t.Setenv("FROTH_HOME", "")
-	t.Setenv("HOME", "/tmp/frothy-user")
+	t.Setenv("HOME", tmpHome)
 
 	home, err := FrothyHome()
 	if err != nil {
 		t.Fatalf("FrothyHome: %v", err)
 	}
-	if home != "/tmp/frothy-user/.frothy" {
-		t.Fatalf("home = %q, want %q", home, "/tmp/frothy-user/.frothy")
+	want := filepath.Join(tmpHome, ".frothy")
+	if home != want {
+		t.Fatalf("home = %q, want %q", home, want)
+	}
+	if info, err := os.Stat(home); err != nil || !info.IsDir() {
+		t.Fatalf("home dir missing: info=%v err=%v", info, err)
 	}
 }
 

@@ -40,11 +40,11 @@ Trade-offs:
 - Con: keeps side-by-side install collisions on both `PATH` and default state.
 - Con: keeps workshop/install docs teaching a knowingly ambiguous command.
 
-### Option B: Rename the user-facing CLI and default home now, keep explicit legacy fallback
+### Option B: Rename the user-facing CLI and default home now, keep Frothy home resolution simple
 
 Ship `frothy` as the installed and repo-local CLI, move the default home to
-`~/.frothy`, add `FROTHY_HOME`, and keep legacy `froth` discovery only where
-compatibility is still needed during the transition.
+`~/.frothy`, add `FROTHY_HOME`, and make home resolution strictly Frothy-owned
+instead of consulting legacy `~/.froth` state.
 
 Trade-offs:
 
@@ -73,10 +73,10 @@ Frothy now adopts the Frothy-owned CLI/install identity:
 - the repo-local checkout build is `tools/cli/frothy-cli`
 - CLI help, usage, and version text print `frothy`
 - release packaging, release workflow, and Homebrew install `frothy`
-- `FROTHY_HOME` is the primary environment override
+- `FROTHY_HOME` is the CLI home override
 - the default Frothy state directory is `~/.frothy`
-- legacy `FROTH_HOME` remains a compatibility fallback only when
-  `FROTHY_HOME` is unset
+- when the selected Frothy home does not exist, Frothy creates it
+- Frothy home resolution does not consult legacy `FROTH_HOME` or `~/.froth`
 - VS Code discovery prefers `frothy` first and keeps legacy `froth` fallback
   during the transition
 
@@ -89,8 +89,14 @@ or source extensions.
 
 - Frothy and Froth no longer collide by default on the installed command name.
 - Frothy and Froth no longer share the same default home/state directory.
-- Compatibility remains explicit instead of silent: legacy `froth` discovery
-  and `FROTH_HOME` fallback are transitional, not equal primary surfaces.
+- Frothy home resolution is simple and deterministic: `FROTHY_HOME` or
+  `~/.frothy`, created on demand.
+- Legacy `~/.froth` state is not imported implicitly; if an older Frothy
+  checkout still has useful SDK, build, or firmware-cache state there, moving
+  it into `~/.frothy` is an explicit user action.
+- Compatibility remains explicit instead of silent: legacy `froth` CLI
+  discovery may still exist at transition points, but the home directory
+  policy itself is Frothy-only.
 - A later tranche may still revisit `froth.toml`, `.froth-build`, or source
   extension naming, but that is now a separate decision.
 

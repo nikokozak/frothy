@@ -17,7 +17,7 @@ func TestRunSetupESPIDFUsesLocalScriptInsideRepo(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "setup.log")
 	mustWriteFile(t, filepath.Join(repoRoot, "CMakeLists.txt"), "project(Froth)\n")
 	mustWriteFile(t, filepath.Join(repoRoot, "src", "froth_vm.h"), "/* vm */\n")
-	mustWriteExecutable(t, filepath.Join(repoRoot, "tools", "setup-esp-idf.sh"), "#!/bin/sh\nprintf 'args=%s\\nFROTHY_HOME=%s\\nFROTH_HOME=%s\\n' \"$*\" \"$FROTHY_HOME\" \"$FROTH_HOME\" > \""+logPath+"\"\n")
+	mustWriteExecutable(t, filepath.Join(repoRoot, "tools", "setup-esp-idf.sh"), "#!/bin/sh\nprintf 'args=%s\\nFROTHY_HOME=%s\\n' \"$*\" \"$FROTHY_HOME\" > \""+logPath+"\"\n")
 
 	if err := os.MkdirAll(filepath.Join(repoRoot, "nested"), 0755); err != nil {
 		t.Fatalf("mkdir nested: %v", err)
@@ -49,7 +49,7 @@ func TestRunSetupESPIDFDownloadsTaggedRawScriptOutsideRepo(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		fmt.Fprintf(w, "#!/bin/sh\nprintf 'args=%%s\\nFROTHY_HOME=%%s\\nFROTH_HOME=%%s\\n' \"$*\" \"$FROTHY_HOME\" \"$FROTH_HOME\" > %q\n", logPath)
+		fmt.Fprintf(w, "#!/bin/sh\nprintf 'args=%%s\\nFROTHY_HOME=%%s\\n' \"$*\" \"$FROTHY_HOME\" > %q\n", logPath)
 	}))
 	defer server.Close()
 
