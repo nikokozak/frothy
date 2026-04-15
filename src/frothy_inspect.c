@@ -39,6 +39,17 @@ typedef struct {
   const char *native_name;
 } frothy_inspect_binding_t;
 
+typedef enum {
+  FROTHY_WORDS_GROUP_OVERLAY = 0,
+  FROTHY_WORDS_GROUP_BUILTIN = 1,
+  FROTHY_WORDS_GROUP_BASE = 2,
+} frothy_words_group_t;
+
+typedef struct {
+  const char *name;
+  frothy_words_group_t group;
+} frothy_words_entry_t;
+
 static const frothy_inspect_builtin_doc_t frothy_inspect_builtin_docs[] = {
     {"save", "Save the current overlay snapshot."},
     {"restore", "Restore the most recently saved snapshot."},
@@ -54,6 +65,9 @@ frothy_inspect_render_binding(frothy_runtime_t *runtime,
                               const char *name,
                               const frothy_inspect_binding_t *binding,
                               char **out_text);
+
+static froth_error_t
+frothy_inspect_render_words_text(frothy_runtime_t *runtime, char **out_text);
 
 static froth_error_t frothy_emit_text(const char *text) {
   while (*text != '\0') {
@@ -520,6 +534,207 @@ frothy_inspect_render_binding(frothy_runtime_t *runtime,
   return frothy_value_render(runtime, binding->value, out_text);
 }
 
+static frothy_words_group_t
+frothy_inspect_words_group(const frothy_inspect_binding_t *binding) {
+  if (binding->is_overlay) {
+    return FROTHY_WORDS_GROUP_OVERLAY;
+  }
+  if (binding->value_class == FROTHY_VALUE_CLASS_NATIVE &&
+      frothy_inspect_lookup_builtin_doc(binding->native_name) != NULL) {
+    return FROTHY_WORDS_GROUP_BUILTIN;
+  }
+
+  return FROTHY_WORDS_GROUP_BASE;
+}
+
+static const char *
+frothy_inspect_words_group_label(frothy_words_group_t group) {
+  switch (group) {
+  case FROTHY_WORDS_GROUP_OVERLAY:
+    return "overlay";
+  case FROTHY_WORDS_GROUP_BUILTIN:
+    return "runtime builtins";
+  case FROTHY_WORDS_GROUP_BASE:
+    return "base image";
+  }
+
+  return "bindings";
+}
+
+static int frothy_inspect_words_entry_compare(const void *lhs,
+                                              const void *rhs) {
+  const frothy_words_entry_t *left = (const frothy_words_entry_t *)lhs;
+  const frothy_words_entry_t *right = (const frothy_words_entry_t *)rhs;
+
+  if (left->group != right->group) {
+    return (int)left->group - (int)right->group;
+  }
+
+  return strcmp(left->name, right->name);
+}
+
+static size_t
+frothy_inspect_words_section_columns(const frothy_words_entry_t *entries,
+                                     size_t start, size_t end,
+                                     size_t *column_width_out) {
+  const size_t target_width = 80;
+  const size_t indent_width = 2;
+  const size_t column_gap = 2;
+  size_t max_name_length = 0;
+  size_t i;
+  size_t available = 0;
+  size_t column_width = 0;
+  size_t columns = 0;
+
+  *column_width_out = 0;
+  if (start >= end) {
+    return 0;
+  }
+
+  for (i = start; i < end; i++) {
+    size_t name_length = strlen(entries[i].name);
+
+    if (name_length > max_name_length) {
+      max_name_length = name_length;
+    }
+  }
+
+  if (max_name_length == 0) {
+    return 1;
+  }
+
+  available = target_width > indent_width ? target_width - indent_width : 1;
+  column_width = max_name_length + column_gap;
+  if (column_width == 0) {
+    column_width = 1;
+  }
+
+  columns = available / column_width;
+  if (columns == 0) {
+    columns = 1;
+  }
+
+  *column_width_out = column_width;
+  return columns;
+}
+
+static froth_error_t
+frothy_inspect_append_words_section(frothy_inspect_text_builder_t *builder,
+                                    const frothy_words_entry_t *entries,
+                                    size_t start, size_t end) {
+  size_t column_width = 0;
+  size_t columns = 0;
+  size_t row_start;
+
+  if (start >= end) {
+    return FROTH_OK;
+  }
+
+  FROTH_TRY(frothy_inspect_text_builder_appendf(
+      builder, "%s (%zu)\n",
+      frothy_inspect_words_group_label(entries[start].group), end - start));
+
+  columns = frothy_inspect_words_section_columns(entries, start, end,
+                                                 &column_width);
+  if (columns == 0) {
+    columns = 1;
+  }
+
+  for (row_start = start; row_start < end; row_start += columns) {
+    size_t row_end = row_start + columns;
+    size_t i;
+
+    if (row_end > end) {
+      row_end = end;
+    }
+    FROTH_TRY(frothy_inspect_text_builder_append(builder, "  "));
+    for (i = row_start; i < row_end; i++) {
+      if (i + 1 == row_end) {
+        FROTH_TRY(frothy_inspect_text_builder_appendf(builder, "%s\n",
+                                                      entries[i].name));
+      } else {
+        FROTH_TRY(frothy_inspect_text_builder_appendf(
+            builder, "%-*s", (int)column_width, entries[i].name));
+      }
+    }
+  }
+
+  return FROTH_OK;
+}
+
+static froth_error_t
+frothy_inspect_render_words_text(frothy_runtime_t *runtime, char **out_text) {
+  frothy_inspect_text_builder_t builder = {0};
+  const char **names = NULL;
+  frothy_words_entry_t *entries = NULL;
+  size_t count = 0;
+  size_t i;
+  size_t section_start = 0;
+  froth_error_t err = FROTH_OK;
+
+  *out_text = NULL;
+
+  err = frothy_inspect_collect_words(&names, &count);
+  if (err != FROTH_OK) {
+    return err;
+  }
+  if (count == 0) {
+    err = frothy_inspect_text_builder_append(&builder, "no bindings");
+    goto done;
+  }
+
+  entries = (frothy_words_entry_t *)calloc(count, sizeof(*entries));
+  if (entries == NULL) {
+    err = FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+    goto done;
+  }
+
+  for (i = 0; i < count; i++) {
+    frothy_inspect_binding_t binding;
+
+    err = frothy_inspect_resolve_binding(runtime, names[i], &binding);
+    if (err != FROTH_OK) {
+      goto done;
+    }
+    entries[i].name = names[i];
+    entries[i].group = frothy_inspect_words_group(&binding);
+  }
+
+  qsort(entries, count, sizeof(*entries), frothy_inspect_words_entry_compare);
+  section_start = 0;
+  while (section_start < count) {
+    size_t section_end = section_start + 1;
+
+    while (section_end < count &&
+           entries[section_end].group == entries[section_start].group) {
+      section_end++;
+    }
+    if (section_start != 0) {
+      err = frothy_inspect_text_builder_append(&builder, "\n");
+      if (err != FROTH_OK) {
+        goto done;
+      }
+    }
+    err = frothy_inspect_append_words_section(&builder, entries, section_start,
+                                              section_end);
+    if (err != FROTH_OK) {
+      goto done;
+    }
+    section_start = section_end;
+  }
+
+done:
+  free(entries);
+  frothy_inspect_free_words(names);
+  if (err != FROTH_OK) {
+    frothy_inspect_text_builder_free(&builder);
+    return err;
+  }
+
+  *out_text = frothy_inspect_text_builder_take(&builder);
+  return FROTH_OK;
+}
+
 froth_error_t frothy_inspect_collect_words(const char ***names_out,
                                            size_t *count_out) {
   froth_cell_u_t slot_count = froth_slot_count();
@@ -611,29 +826,22 @@ froth_error_t frothy_builtin_words(frothy_runtime_t *runtime,
                                    const void *context,
                                    const frothy_value_t *args,
                                    size_t arg_count, frothy_value_t *out) {
-  const char **names = NULL;
-  size_t count = 0;
-  size_t i;
+  char *listing = NULL;
   froth_error_t err;
 
-  (void)runtime;
   (void)context;
   (void)args;
   if (arg_count != 0) {
     return FROTH_ERROR_SIGNATURE;
   }
 
-  err = frothy_inspect_collect_words(&names, &count);
+  err = frothy_inspect_render_words_text(runtime, &listing);
   if (err != FROTH_OK) {
     return err;
   }
-  for (i = 0; i < count; i++) {
-    err = frothy_emit_line(names[i]);
-    if (err != FROTH_OK) {
-      break;
-    }
-  }
-  frothy_inspect_free_words(names);
+
+  err = frothy_emit_line(listing);
+  free(listing);
   if (err != FROTH_OK) {
     return err;
   }
