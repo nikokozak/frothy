@@ -29,6 +29,7 @@ froth_error_t frothy_shell_eval_source(const char *source,
 void frothy_shell_eval_result_free(frothy_shell_eval_result_t *result);
 
 #ifdef FROTHY_SHELL_TESTING
+froth_error_t frothy_shell_test_accept_line(const char *line);
 void frothy_shell_test_reset_pending_source(void);
 froth_error_t frothy_shell_test_append_pending_line(const char *line);
 const char *frothy_shell_test_pending_source(void);

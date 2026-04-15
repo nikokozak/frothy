@@ -1,7 +1,7 @@
 # Frothy Workspace/Image-Flow Tranche 1
 
 Status: doc-only closeout on 2026-04-13
-Primary proof command: `make test && rg -n 'slot bundle|IR capsule|no daemon|no PTY|no shared-owner|no registry' docs/adr/115-first-workspace-image-flow-tranche.md && rg -n 'slot bundle|IR capsule|no daemon|no PTY|no shared-owner|no registry' docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md && rg -n 'Workspace/image-flow tranche 1|slot bundle|CLI naming alignment' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'Workspace/image-flow tranche 1|slot bundle|CLI naming alignment' PROGRESS.md && rg -n 'Workspace/image-flow tranche 1|slot bundle|CLI naming alignment' TIMELINE.md`
+Primary proof command: `sh tools/frothy/proof_control_surface_docs.sh`
 Authority: `docs/spec/Frothy_Language_Spec_v0_1.md`, `docs/adr/101-stable-top-level-slot-model.md`, `docs/adr/105-canonical-ir-as-persisted-code-form.md`, `docs/adr/106-snapshot-format-and-overlay-walk-rules.md`, `docs/adr/110-single-owner-control-session-transport.md`, `docs/adr/111-vscode-extension-owned-control-session.md`, `docs/adr/113-manifest-owned-project-target-selection.md`, `docs/adr/114-next-stage-structural-surface-and-recovery-shape.md`, `docs/adr/115-first-workspace-image-flow-tranche.md`
 
 ## Purpose
@@ -18,6 +18,24 @@ The tranche is intentionally narrow:
 - host local
 
 No code, protocol, helper, editor, manifest, or kernel surface widens here.
+
+## Deferred Queue Owner
+
+This note owns the deferred workspace/image-flow queue after tranche 1 closeout.
+
+`PROGRESS.md`, `TIMELINE.md`, the workshop-prep note, and the main roadmap may
+record placement and deferral, but they should point back here instead of
+carrying separate Cut 2 / Cut 3 descriptions.
+
+Other control docs should stay at deferral/reference level only.
+Do not restate the staged queue or its held boundary outside this note.
+
+Prefer the smallest useful implementation cut or design-tightening doc that
+makes the next decision clearer.
+If a resumed cut needs extra machinery to justify itself, stop and tighten the
+design instead of widening the surface.
+The deferred future-queue block below is proof-owned; keep its boundary record
+and staged Cut 2 / Cut 3 bullets literal when editing.
 
 ## Tranche Boundary
 
@@ -166,30 +184,43 @@ This tranche intentionally avoids collision zones:
 - `src/frothy_control*`
 - `src/frothy_snapshot*`
 
-## Cut Points
+## Deferred Queue
 
-Cut 1 is the only landing in this tranche:
+Cut 1 is the only landed cut in tranche 1:
 
 - docs and ADR only
-- proof: `make test && rg -n 'slot bundle|IR capsule|no daemon|no PTY|no shared-owner|no registry' docs/adr/115-first-workspace-image-flow-tranche.md && rg -n 'slot bundle|IR capsule|no daemon|no PTY|no shared-owner|no registry' docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md && rg -n 'Workspace/image-flow tranche 1|slot bundle|CLI naming alignment' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'Workspace/image-flow tranche 1|slot bundle|CLI naming alignment' PROGRESS.md && rg -n 'Workspace/image-flow tranche 1|slot bundle|CLI naming alignment' TIMELINE.md`
+- proof: `sh tools/frothy/proof_control_surface_docs.sh`
 
-Future only, if later approved:
+Deferred future queue, only if later reprioritized:
 
-1. host-only slot-bundle inspection or generation in the CLI project layer
-2. live apply through the existing helper/control path as `reset + replay`
-
-Future proof bars:
-
-- Cut 2 proof: `make test-cli && make test-cli-local && make test-integration`
-- Cut 3 proof: `make test-all && sh tools/frothy/proof_f1_control_smoke.sh --host-only`
-
-Those later cuts must still avoid:
-
-- IR capsule transport first
-- helper protocol expansion first
-- VS Code UI growth first
-- manifest growth first
-- on-device loader or registry work first
+Stable boundary record:
+<!-- workspace-image-flow-boundary-record:start -->
+boundary.slot_bundle=first
+boundary.host_side=first
+boundary.loader_first=no
+boundary.helper_control_growth_first=no
+boundary.manifest_growth_first=no
+boundary.vscode_ui_growth_first=no
+boundary.registry_daemon_pty_shared_owner_return=no
+boundary.on_device_artifact_story=no
+boundary.real_device_proof_before_signoff=yes
+<!-- workspace-image-flow-boundary-record:end -->
+- Cut 2: host-only slot-bundle inspection or generation in the CLI project
+  layer
+- Cut 2 held boundary: respect the stable boundary record above; keep the
+  work on top of resolved source plus existing derived `.froth-build` outputs
+- Cut 2 host-side proof bar: `make test-cli && make test-cli-local && make test-integration`
+- Cut 2 promotion gate: move past Cut 2 only if inspection/generation proves
+  useful by making later workspace/image-flow work smaller or clearer
+- Cut 2 promotion gate: if Cut 2 does not buy that clarity, stop and tighten
+  the design docs instead of widening the implementation
+- Cut 3: later apply/load growth only after Cut 2 proves useful
+- Cut 3 held boundary: respect the stable boundary record above
+- Cut 3 held boundary: any live apply composes with the existing helper/control
+  path as `reset + replay`
+- Cut 3 host-side proof bar: `make test-all && sh tools/frothy/proof_f1_control_smoke.sh --host-only`
+- Cut 2/3 sign-off bar: host-side proof bar plus a real-device sanity proof on
+  a connected ESP32-class target before sign-off
 
 ## Review Standard
 

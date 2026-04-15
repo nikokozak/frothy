@@ -28,6 +28,11 @@ static uint8_t frothy_tm1629_clamp_brightness(int32_t level) {
   return (uint8_t)level;
 }
 
+static bool frothy_tm1629_pins_distinct(int32_t stb_pin, int32_t clk_pin,
+                                        int32_t dio_pin) {
+  return stb_pin != clk_pin && stb_pin != dio_pin && clk_pin != dio_pin;
+}
+
 static void frothy_tm1629_delay_tick(const frothy_tm1629_t *display) {
   if (display == NULL || display->hal.delay_us == NULL) {
     return;
@@ -36,13 +41,16 @@ static void frothy_tm1629_delay_tick(const frothy_tm1629_t *display) {
   display->hal.delay_us(display->hal.context, 1);
 }
 
-static void frothy_tm1629_pin_mode(const frothy_tm1629_t *display, int32_t pin,
+static bool frothy_tm1629_pin_mode(const frothy_tm1629_t *display, int32_t pin,
                                    bool output) {
-  if (display == NULL || display->hal.pin_mode == NULL) {
-    return;
+  if (display == NULL) {
+    return false;
+  }
+  if (display->hal.pin_mode == NULL) {
+    return true;
   }
 
-  display->hal.pin_mode(display->hal.context, pin, output);
+  return display->hal.pin_mode(display->hal.context, pin, output);
 }
 
 static void frothy_tm1629_pin_write(const frothy_tm1629_t *display, int32_t pin,
@@ -94,6 +102,66 @@ static void frothy_tm1629_apply_brightness(const frothy_tm1629_t *display) {
                          (display->brightness & 0x07u)));
 }
 
+static void frothy_tm1629_release_pin(const frothy_tm1629_t *display,
+                                      int32_t pin) {
+  (void)frothy_tm1629_pin_mode(display, pin, false);
+}
+
+static bool frothy_tm1629_pin_matches_any(int32_t pin, int32_t a, int32_t b,
+                                          int32_t c) {
+  return pin == a || pin == b || pin == c;
+}
+
+static void frothy_tm1629_release_replaced_pins(const frothy_tm1629_t *display,
+                                                int32_t stb_pin,
+                                                int32_t clk_pin,
+                                                int32_t dio_pin) {
+  if (display == NULL || !display->configured) {
+    return;
+  }
+
+  if (!frothy_tm1629_pin_matches_any(display->stb_pin, stb_pin, clk_pin,
+                                     dio_pin)) {
+    frothy_tm1629_release_pin(display, display->stb_pin);
+  }
+  if (!frothy_tm1629_pin_matches_any(display->clk_pin, stb_pin, clk_pin,
+                                     dio_pin)) {
+    frothy_tm1629_release_pin(display, display->clk_pin);
+  }
+  if (!frothy_tm1629_pin_matches_any(display->dio_pin, stb_pin, clk_pin,
+                                     dio_pin)) {
+    frothy_tm1629_release_pin(display, display->dio_pin);
+  }
+}
+
+static void frothy_tm1629_rollback_configure(frothy_tm1629_t *display,
+                                             const frothy_tm1629_t *previous,
+                                             const int32_t *touched_pins,
+                                             size_t touched_count) {
+  size_t i;
+
+  if (display == NULL || previous == NULL) {
+    return;
+  }
+
+  for (i = 0; i < touched_count; i++) {
+    frothy_tm1629_release_pin(display, touched_pins[i]);
+  }
+
+  *display = *previous;
+  if (!display->configured) {
+    return;
+  }
+
+  if (!frothy_tm1629_pin_mode(display, display->stb_pin, true) ||
+      !frothy_tm1629_pin_mode(display, display->clk_pin, true) ||
+      !frothy_tm1629_pin_mode(display, display->dio_pin, true)) {
+    return;
+  }
+
+  frothy_tm1629_show(display);
+}
+
 static void frothy_tm1629_write_point(uint16_t *rows, int32_t x, int32_t y,
                                       bool on) {
   uint16_t bit;
@@ -128,16 +196,18 @@ static void frothy_tm1629_draw_line(uint16_t *rows, int32_t x0, int32_t y0,
   int32_t err = dx + dy;
 
   while (1) {
+    int64_t doubled_err = (int64_t)err * 2;
+
     frothy_tm1629_write_point(rows, x0, y0, on);
     if (x0 == x1 && y0 == y1) {
       break;
     }
 
-    if ((err << 1) >= dy) {
+    if (doubled_err >= dy) {
       err += dy;
       x0 += sx;
     }
-    if ((err << 1) <= dx) {
+    if (doubled_err <= dx) {
       err += dx;
       y0 += sy;
     }
@@ -224,25 +294,49 @@ void frothy_tm1629_factory_reset(frothy_tm1629_t *display) {
   frothy_tm1629_reset(display);
 }
 
-void frothy_tm1629_configure(frothy_tm1629_t *display, int32_t stb_pin,
+bool frothy_tm1629_configure(frothy_tm1629_t *display, int32_t stb_pin,
                              int32_t clk_pin, int32_t dio_pin) {
+  frothy_tm1629_t previous;
+  int32_t touched_pins[3];
+  size_t touched_count = 0;
+
   if (display == NULL) {
-    return;
+    return false;
   }
+  if (!frothy_tm1629_pins_distinct(stb_pin, clk_pin, dio_pin)) {
+    return false;
+  }
+
+  previous = *display;
+  if (!frothy_tm1629_pin_mode(display, stb_pin, true)) {
+    frothy_tm1629_rollback_configure(display, &previous, touched_pins,
+                                     touched_count);
+    return false;
+  }
+  touched_pins[touched_count++] = stb_pin;
+  if (!frothy_tm1629_pin_mode(display, clk_pin, true)) {
+    frothy_tm1629_rollback_configure(display, &previous, touched_pins,
+                                     touched_count);
+    return false;
+  }
+  touched_pins[touched_count++] = clk_pin;
+  if (!frothy_tm1629_pin_mode(display, dio_pin, true)) {
+    frothy_tm1629_rollback_configure(display, &previous, touched_pins,
+                                     touched_count);
+    return false;
+  }
+  touched_pins[touched_count++] = dio_pin;
 
   display->stb_pin = stb_pin;
   display->clk_pin = clk_pin;
   display->dio_pin = dio_pin;
   display->configured = true;
-
-  frothy_tm1629_pin_mode(display, stb_pin, true);
-  frothy_tm1629_pin_mode(display, clk_pin, true);
-  frothy_tm1629_pin_mode(display, dio_pin, true);
-
   frothy_tm1629_pin_write(display, stb_pin, true);
   frothy_tm1629_pin_write(display, clk_pin, true);
   frothy_tm1629_pin_write(display, dio_pin, false);
   frothy_tm1629_apply_brightness(display);
+  frothy_tm1629_release_replaced_pins(&previous, stb_pin, clk_pin, dio_pin);
+  return true;
 }
 
 void frothy_tm1629_set_brightness(frothy_tm1629_t *display, int32_t level) {

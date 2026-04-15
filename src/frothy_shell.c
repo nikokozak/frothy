@@ -52,6 +52,12 @@ typedef struct {
   const char *name_arg;
 } frothy_shell_command_t;
 
+static froth_error_t frothy_shell_prepare_input_line(
+    frothy_input_state_t *input, const char *line, char *command_buffer,
+    size_t command_capacity, char *rewritten_buffer, size_t rewritten_capacity,
+    const char **command_out, const char **line_for_input_out,
+    frothy_shell_command_t *shell_command_out);
+
 static const char *prompt_normal = "frothy> ";
 static const char *prompt_cont = ".. ";
 /* Keep large line buffers off the ESP32 main task stack. Frothy runs one
@@ -400,6 +406,7 @@ static bool frothy_source_ends_with_block_header(const char *text,
       !frothy_word_equals(word_start, word_length, "case") &&
       !frothy_word_equals(word_start, word_length, "in") &&
       !frothy_word_equals(word_start, word_length, "if") &&
+      !frothy_word_equals(word_start, word_length, "record") &&
       !frothy_word_equals(word_start, word_length, "when") &&
       !frothy_word_equals(word_start, word_length, "unless") &&
       !frothy_word_equals(word_start, word_length, "repeat") &&
@@ -460,7 +467,7 @@ static bool frothy_shell_is_reserved_leader(const char *start, size_t length) {
       "and",      "as",       "boot",  "call",   "case", "cond", "core",
       "else",     "exit",     "false", "fn",     "help", "here", "if",
       "in",       "info",     "is",    "nil",    "not",  "or",   "quit",
-      "remember",
+      "record",   "remember",
       "repeat",   "restore",  "save",  "see",    "set",  "show",
       "to",       "true",     "unless","when",   "while","dangerous.wipe",
       "with",     "words",
@@ -830,6 +837,32 @@ static frothy_input_state_t *frothy_shell_test_input_state(void) {
   return &state;
 }
 
+froth_error_t frothy_shell_test_accept_line(const char *line) {
+  frothy_input_state_t *input = frothy_shell_test_input_state();
+  char command_buffer[FROTH_LINE_BUFFER_SIZE];
+  char rewritten_buffer[FROTH_LINE_BUFFER_SIZE];
+  const char *command = NULL;
+  const char *line_for_input = line;
+  frothy_shell_command_t shell_command;
+  froth_error_t err;
+
+  err = frothy_shell_prepare_input_line(
+      input, line, command_buffer, sizeof(command_buffer), rewritten_buffer,
+      sizeof(rewritten_buffer), &command, &line_for_input, &shell_command);
+  if (err != FROTH_OK) {
+    return err;
+  }
+  if (!frothy_input_state_has_pending(input) &&
+      shell_command.kind != FROTHY_SHELL_COMMAND_NONE) {
+    return FROTH_ERROR_SIGNATURE;
+  }
+  if (!frothy_input_state_has_pending(input) && *command == '\0') {
+    return FROTH_OK;
+  }
+
+  return frothy_input_state_append_line(input, line_for_input);
+}
+
 void frothy_shell_test_reset_pending_source(void) {
   frothy_input_state_reset(frothy_shell_test_input_state());
 }
@@ -1130,6 +1163,38 @@ static frothy_shell_command_t frothy_shell_parse_command(const char *command) {
   return result;
 }
 
+static froth_error_t frothy_shell_prepare_input_line(
+    frothy_input_state_t *input, const char *line, char *command_buffer,
+    size_t command_capacity, char *rewritten_buffer, size_t rewritten_capacity,
+    const char **command_out, const char **line_for_input_out,
+    frothy_shell_command_t *shell_command_out) {
+  int written;
+
+  *command_out = "";
+  *line_for_input_out = line;
+  memset(shell_command_out, 0, sizeof(*shell_command_out));
+
+  written = snprintf(command_buffer, command_capacity, "%s", line);
+  if (written < 0 || (size_t)written >= command_capacity) {
+    return FROTH_ERROR_HEAP_OUT_OF_MEMORY;
+  }
+
+  *command_out = frothy_trim_command(command_buffer);
+  if (frothy_input_state_has_pending(input)) {
+    return FROTH_OK;
+  }
+
+  *shell_command_out = frothy_shell_parse_command(*command_out);
+  if (shell_command_out->kind == FROTHY_SHELL_COMMAND_NONE &&
+      frothy_shell_rewrite_simple_call(*command_out, rewritten_buffer,
+                                       rewritten_capacity)) {
+    *command_out = rewritten_buffer;
+    *line_for_input_out = rewritten_buffer;
+  }
+
+  return FROTH_OK;
+}
+
 static froth_error_t
 frothy_shell_command_source(const frothy_shell_command_t *command,
                             char **source_out) {
@@ -1286,8 +1351,9 @@ froth_error_t frothy_shell_run(void) {
   shell_at_primary_prompt = false;
 
   while (1) {
-    char *command = NULL;
+    const char *command = NULL;
     const char *line_for_input = shell_line;
+    frothy_shell_command_t shell_command;
     bool saw_eof;
     bool saw_interrupt;
     froth_error_t err;
@@ -1330,17 +1396,19 @@ froth_error_t frothy_shell_run(void) {
       continue;
     }
 
-    snprintf(shell_command_buffer, sizeof(shell_command_buffer), "%s",
-             shell_line);
-    command = frothy_trim_command(shell_command_buffer);
+    err = frothy_shell_prepare_input_line(
+        &input, shell_line, shell_command_buffer, sizeof(shell_command_buffer),
+        shell_rewritten_command_buffer, sizeof(shell_rewritten_command_buffer),
+        &command, &line_for_input, &shell_command);
+    if (err != FROTH_OK) {
+      result = err;
+      goto cleanup;
+    }
     if (*command == '\\' && !input.in_string) {
       continue;
     }
 
     if (!frothy_input_state_has_pending(&input)) {
-      frothy_shell_command_t shell_command;
-
-      shell_command = frothy_shell_parse_command(command);
       switch (shell_command.kind) {
       case FROTHY_SHELL_COMMAND_NONE:
         break;
@@ -1374,12 +1442,6 @@ froth_error_t frothy_shell_run(void) {
           goto cleanup;
         }
         continue;
-      }
-
-      if (frothy_shell_rewrite_simple_call(command, shell_rewritten_command_buffer,
-                                           sizeof(shell_rewritten_command_buffer))) {
-        command = shell_rewritten_command_buffer;
-        line_for_input = shell_rewritten_command_buffer;
       }
     }
 

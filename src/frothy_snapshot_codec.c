@@ -5,9 +5,9 @@
 #include "froth_vm.h"
 #include "frothy_ir.h"
 #include "frothy_ir_internal.h"
+#include "frothy_name_rules.h"
 #include "frothy_value.h"
 
-#include <ctype.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -134,50 +134,12 @@ static froth_error_t frothy_snapshot_strdup(const char *text, size_t length,
 
 static bool frothy_snapshot_name_bytes_are_simple(const uint8_t *bytes,
                                                   size_t length) {
-  size_t i;
-
-  if (length == 0) {
-    return false;
-  }
-  for (i = 0; i < length; i++) {
-    if (bytes[i] == '.' || bytes[i] == '\0') {
-      return false;
-    }
-  }
-  return true;
+  return frothy_simple_name_bytes_are_valid(bytes, length);
 }
 
 static bool frothy_snapshot_name_bytes_are_slot_name(const uint8_t *bytes,
                                                      size_t length) {
-  size_t i;
-  bool expect_segment_start = true;
-
-  if (length == 0) {
-    return false;
-  }
-  for (i = 0; i < length; i++) {
-    if (bytes[i] == '\0') {
-      return false;
-    }
-    if (bytes[i] == '.') {
-      if (expect_segment_start) {
-        return false;
-      }
-      expect_segment_start = true;
-      continue;
-    }
-    if (expect_segment_start) {
-      if (!isalpha(bytes[i]) && bytes[i] != '_') {
-        return false;
-      }
-      expect_segment_start = false;
-      continue;
-    }
-    if (!isalnum(bytes[i]) && bytes[i] != '_') {
-      return false;
-    }
-  }
-  return !expect_segment_start;
+  return frothy_slot_name_bytes_are_valid(bytes, length);
 }
 
 
@@ -338,6 +300,9 @@ static froth_error_t frothy_snapshot_symbols_find_or_add(
 
   length = strlen(name);
   if (length > UINT16_MAX) {
+    return FROTH_ERROR_SNAPSHOT_BAD_NAME;
+  }
+  if (!frothy_snapshot_name_bytes_are_slot_name((const uint8_t *)name, length)) {
     return FROTH_ERROR_SNAPSHOT_BAD_NAME;
   }
 
@@ -1509,17 +1474,14 @@ static froth_error_t frothy_snapshot_validate(
   for (i = 0; i < layout_out->symbol_count; i++) {
     uint16_t length = 0;
     const uint8_t *name_bytes = NULL;
-    size_t name_index;
 
     FROTH_TRY(frothy_snapshot_reader_read_u16(&reader, &length));
     if (length == 0) {
       return FROTH_ERROR_SNAPSHOT_BAD_NAME;
     }
     FROTH_TRY(frothy_snapshot_reader_read_bytes(&reader, length, &name_bytes));
-    for (name_index = 0; name_index < length; name_index++) {
-      if (name_bytes[name_index] == '\0') {
-        return FROTH_ERROR_SNAPSHOT_BAD_NAME;
-      }
+    if (!frothy_snapshot_name_bytes_are_slot_name(name_bytes, length)) {
+      return FROTH_ERROR_SNAPSHOT_BAD_NAME;
     }
   }
 

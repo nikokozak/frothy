@@ -204,6 +204,12 @@ Real-device validation policy:
 
 - Before sign-off on any task in this repo, run at least one proof on a real
   connected ESP32-class target.
+- Always assume multiple worktrees may try to use the same physical device.
+  Before connecting, flashing, or starting a proof, check whether the device
+  line is busy and wait until it is free instead of interrupting the active
+  session.
+- Treat a busy device or serial line as occupied by another test, proof, or
+  interactive session unless you have explicit reason to conclude otherwise.
 - For device-facing work, that proof must exercise the changed surface
   directly.
 - For host-only, docs, control-surface, or refactor work, a real-device sanity

@@ -23,8 +23,10 @@ trap cleanup EXIT INT TERM
   -DFROTHY_BUILD_HOST=ON
 
 "$CMAKE_BIN" --build "$BUILD_DIR" --target \
+  frothy_eval_tests \
+  frothy_snapshot_tests \
   frothy_tm1629_runtime_tests \
   frothy_tm1629_board_tests
 
 ctest --test-dir "$BUILD_DIR" --output-on-failure \
-  -R '^frothy_tm1629_(runtime|board)$'
+  -R '^(frothy_eval|frothy_snapshot|frothy_tm1629_(runtime|board))$'

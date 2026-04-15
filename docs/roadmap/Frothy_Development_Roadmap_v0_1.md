@@ -603,20 +603,19 @@ Operational label:
 
 - `queued follow-on only`
 
-Pending priority order:
+Pending follow-on categories:
 
-1. host-only slot-bundle inspection/generation in the CLI project layer
-2. FFI boundary quality and porting discipline
-3. small useful core library growth
-4. robust string support
-5. measured performance tightening
-6. direct-control tooling improvements
-7. later workspace/image-flow apply/load growth only after the host-only cut
-   proves itself
+1. FFI boundary quality and porting discipline
+2. small useful core library growth
+3. robust string support
+4. measured performance tightening
+5. direct-control tooling improvements
+6. deferred workspace/image-flow queue
 
-Detailed queue and workshop gate:
+Detailed queue, workshop gate, and deferred workspace/image-flow staging:
 
 - `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`
+- `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`
 
 Already landed in this follow-on tranche:
 
@@ -761,13 +760,14 @@ Closeout:
 
 - Frothy ADR-115 records the slot-bundle-first, docs-only tranche decision
 - `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md` freezes the artifact
-  shape, current constraints, collision zones, and future cut points
+  shape, current constraints, collision zones, and deferred queue ownership for
+  any later resumed cuts
 - no parser, evaluator, snapshot, helper, editor, manifest, or control-session
   semantics widen in this closeout
 
 Proof:
 
-- `make test && rg -n 'slot bundle|IR capsule|no daemon|no PTY|no shared-owner|no registry' docs/adr/115-first-workspace-image-flow-tranche.md && rg -n 'slot bundle|IR capsule|no daemon|no PTY|no shared-owner|no registry' docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md && rg -n 'Workspace/image-flow tranche 1|slot bundle|CLI naming alignment' docs/roadmap/Frothy_Development_Roadmap_v0_1.md && rg -n 'Workspace/image-flow tranche 1|slot bundle|CLI naming alignment' PROGRESS.md && rg -n 'Workspace/image-flow tranche 1|slot bundle|CLI naming alignment' TIMELINE.md`
+- `sh tools/frothy/proof_control_surface_docs.sh`
 
 Did not widen in this slice:
 
@@ -1025,9 +1025,9 @@ The critical path is:
 12. follow-on queue: urgent transport slice 1, runtime hardening, syntax
     tranche 1, VS Code plugin merge/alignment, immediate control hardening
     plus `RESET`, local helper broadening, and workspace/image-flow tranche 1
-    are landed; CLI naming alignment is now also landed, so the next queued
-    artifact is host-only slot-bundle inspection/generation in the CLI
-    project layer before any later apply/load growth
+    are landed; CLI naming alignment is now also landed, and the deferred
+    workspace/image-flow queue is single-sourced in
+    `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`
 
 Do not swap M7 and M9 unless forced.
 Persistence is too central to Frothy’s identity to leave until the end.

@@ -151,20 +151,24 @@ static void board_gpio_write_fast(int32_t pin, bool high) {
   }
 }
 
-static void board_tm1629_pin_mode(void *context, int32_t pin, bool output) {
+static bool board_tm1629_pin_mode(void *context, int32_t pin, bool output) {
   (void)context;
   if (!board_gpio_pin_valid(pin)) {
-    return;
+    return false;
   }
 
-  (void)gpio_set_direction((gpio_num_t)pin,
-                           output ? GPIO_MODE_OUTPUT : GPIO_MODE_INPUT);
+  if (gpio_set_direction((gpio_num_t)pin,
+                         output ? GPIO_MODE_OUTPUT : GPIO_MODE_INPUT) !=
+      ESP_OK) {
+    return false;
+  }
   if (output) {
     board_gpio_output_shadow_valid[pin] = 1;
     board_gpio_output_shadow_levels[pin] = gpio_get_level((gpio_num_t)pin) ? 1 : 0;
   } else {
     board_gpio_output_shadow_valid[pin] = 0;
   }
+  return true;
 }
 
 static void board_tm1629_pin_write(void *context, int32_t pin, bool high) {
@@ -201,14 +205,15 @@ static bool board_adc_pin_valid(int32_t pin) {
          pin == BOARD_PIN_BUTTON_2 || pin == BOARD_PIN_BUTTON_3;
 }
 
-static void board_tm1629_pin_mode(void *context, int32_t pin, bool output) {
+static bool board_tm1629_pin_mode(void *context, int32_t pin, bool output) {
   (void)context;
   (void)output;
   if (!board_gpio_pin_valid(pin) || pin >= BOARD_POSIX_GPIO_MAX) {
-    return;
+    return false;
   }
 
   board_gpio_known[pin] = 1;
+  return true;
 }
 
 static void board_tm1629_pin_write(void *context, int32_t pin, bool high) {
@@ -226,6 +231,11 @@ static void board_tm1629_delay_us(void *context, uint32_t usec) {
   (void)usec;
 }
 #endif
+
+static bool board_tm1629_pins_distinct(int32_t stb_pin, int32_t clk_pin,
+                                       int32_t dio_pin) {
+  return stb_pin != clk_pin && stb_pin != dio_pin && clk_pin != dio_pin;
+}
 
 static void board_init_runtime_state(void) {
   frothy_tm1629_hal_t hal = {
@@ -466,7 +476,14 @@ static froth_error_t board_tm1629_raw_init_cb(frothy_runtime_t *runtime,
   FROTH_TRY(frothy_ffi_expect_int(args, 0, &stb_pin));
   FROTH_TRY(frothy_ffi_expect_int(args, 1, &clk_pin));
   FROTH_TRY(frothy_ffi_expect_int(args, 2, &dio_pin));
-  frothy_tm1629_configure(&board_tm1629, stb_pin, clk_pin, dio_pin);
+  if (!board_gpio_pin_valid(stb_pin) || !board_gpio_pin_valid(clk_pin) ||
+      !board_gpio_pin_valid(dio_pin) ||
+      !board_tm1629_pins_distinct(stb_pin, clk_pin, dio_pin)) {
+    return FROTH_ERROR_BOUNDS;
+  }
+  if (!frothy_tm1629_configure(&board_tm1629, stb_pin, clk_pin, dio_pin)) {
+    return FROTH_ERROR_IO;
+  }
   return frothy_ffi_return_nil(out);
 }
 

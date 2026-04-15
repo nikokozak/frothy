@@ -74,6 +74,103 @@ static int expect_error(const char *source, froth_error_t expected) {
   return 1;
 }
 
+static int bind_native_slot(const char *name, frothy_native_fn_t fn,
+                            size_t arity) {
+  frothy_value_t value = frothy_value_make_nil();
+  froth_cell_u_t slot_index = 0;
+
+  if (frothy_runtime_alloc_native(runtime(), fn, name, arity, NULL, &value) !=
+      FROTH_OK) {
+    fprintf(stderr, "failed to allocate native `%s`\n", name);
+    return 0;
+  }
+  if (froth_slot_find_name_or_create(&froth_vm.heap, name, &slot_index) !=
+          FROTH_OK ||
+      froth_slot_set_overlay(slot_index, 1) != FROTH_OK) {
+    fprintf(stderr, "failed to bind native `%s`\n", name);
+    release_value(&value);
+    return 0;
+  }
+  if (froth_slot_set_impl(slot_index, frothy_value_to_cell(value)) != FROTH_OK) {
+    fprintf(stderr, "failed to bind native `%s`\n", name);
+    release_value(&value);
+    return 0;
+  }
+  if (froth_slot_set_arity(slot_index, (uint8_t)arity, 1) != FROTH_OK) {
+    fprintf(stderr, "failed to bind native `%s`\n", name);
+    return 0;
+  }
+  return 1;
+}
+
+static int find_call_depth_limit(const char *name, size_t max_probe,
+                                 size_t *limit_out) {
+  frothy_value_t value = frothy_value_make_nil();
+  char source[64];
+  size_t low = 0;
+  size_t high = 0;
+  size_t probe = 1;
+  froth_error_t err = FROTH_OK;
+
+  while (probe <= max_probe) {
+    snprintf(source, sizeof(source), "%s: %zu", name, probe);
+    if (eval_source(source, &value, &err)) {
+      release_value(&value);
+      low = probe;
+      probe *= 2;
+      continue;
+    }
+    if (err != FROTH_ERROR_CALL_DEPTH) {
+      fprintf(stderr, "unexpected error %d probing `%s` at %zu\n", (int)err,
+              name, probe);
+      return 0;
+    }
+    high = probe;
+    break;
+  }
+  if (high == 0 || low == 0) {
+    fprintf(stderr, "failed to discover call-depth limit for `%s`\n", name);
+    return 0;
+  }
+
+  while (low + 1 < high) {
+    size_t mid = low + ((high - low) / 2);
+
+    snprintf(source, sizeof(source), "%s: %zu", name, mid);
+    if (eval_source(source, &value, &err)) {
+      release_value(&value);
+      low = mid;
+      continue;
+    }
+    if (err != FROTH_ERROR_CALL_DEPTH) {
+      fprintf(stderr, "unexpected error %d probing `%s` at %zu\n", (int)err,
+              name, mid);
+      return 0;
+    }
+    high = mid;
+  }
+
+  *limit_out = high;
+  return 1;
+}
+
+static froth_error_t test_native_interrupt(frothy_runtime_t *runtime,
+                                           const void *context,
+                                           const frothy_value_t *args,
+                                           size_t arg_count,
+                                           frothy_value_t *out) {
+  (void)runtime;
+  (void)context;
+  (void)args;
+  if (arg_count != 0) {
+    return FROTH_ERROR_SIGNATURE;
+  }
+
+  froth_vm.interrupted = 1;
+  *out = frothy_value_make_nil();
+  return FROTH_OK;
+}
+
 static int expect_int_value(frothy_value_t value, int32_t expected,
                             const char *label) {
   if (!frothy_value_is_int(value)) {
@@ -282,6 +379,61 @@ static int test_eval_scratch_limits_and_nested_calls(void) {
   frothy_runtime_test_set_eval_value_limit(runtime(), 1);
   ok &= expect_error("pair: 13, 14", FROTH_ERROR_HEAP_OUT_OF_MEMORY);
   frothy_runtime_test_set_eval_value_limit(runtime(), FROTHY_EVAL_VALUE_CAPACITY);
+
+  return ok;
+}
+
+static int test_explicit_eval_frame_stack_tranche(void) {
+  frothy_value_t value = frothy_value_make_nil();
+  char source[64];
+  size_t depth_limit = 0;
+  size_t near_limit = 0;
+  int ok = 1;
+
+  reset_frothy_state();
+
+  ok &= expect_ok(
+      "countDown is fn with n [ if n == 0 [ 0 ] else [ countDown: n - 1 ] ]",
+      &value);
+  release_value(&value);
+
+  ok &= find_call_depth_limit("countDown", 4096, &depth_limit);
+  if (!ok || depth_limit < 2) {
+    fprintf(stderr, "discovered call-depth limit too small: %zu\n", depth_limit);
+    return 0;
+  }
+  near_limit = depth_limit - 1;
+
+  snprintf(source, sizeof(source), "countDown: %zu", near_limit);
+  ok &= expect_ok(source, &value);
+  ok &= expect_int_value(value, 0, "countDown near call-depth limit");
+  release_value(&value);
+
+  snprintf(source, sizeof(source), "countDown: %zu", depth_limit);
+  ok &= expect_error(source, FROTH_ERROR_CALL_DEPTH);
+
+  ok &= expect_ok(
+      "spin is fn with limit [ here i is 0; while i < limit [ set i to i + 1 ]; i ]",
+      &value);
+  release_value(&value);
+
+  snprintf(source, sizeof(source), "spin: %zu", depth_limit * 4);
+  ok &= expect_ok(source, &value);
+  ok &= expect_int_value(value, (int32_t)(depth_limit * 4),
+                         "while explicit frame reuse");
+  release_value(&value);
+
+  ok &= bind_native_slot("interruptNow", test_native_interrupt, 0);
+  ok &= expect_ok(
+      "interruptAtDepth is fn with n [ if n == 0 [ while true [ interruptNow: ] ] else [ interruptAtDepth: n - 1 ] ]",
+      &value);
+  release_value(&value);
+
+  snprintf(source, sizeof(source), "interruptAtDepth: %zu", near_limit / 2);
+  ok &= expect_error(source, FROTH_ERROR_PROGRAM_INTERRUPTED);
+  ok &= expect_ok("1 + 1", &value);
+  ok &= expect_int_value(value, 2, "eval after interrupt unwind");
+  release_value(&value);
 
   return ok;
 }
@@ -1020,6 +1172,7 @@ int main(void) {
 
   ok &= test_function_calls_and_blocks();
   ok &= test_eval_scratch_limits_and_nested_calls();
+  ok &= test_explicit_eval_frame_stack_tranche();
   ok &= test_stable_rebinding_and_reclamation();
   ok &= test_cells_store_rules_and_overwrite_reclamation();
   ok &= test_cells_sample_program();

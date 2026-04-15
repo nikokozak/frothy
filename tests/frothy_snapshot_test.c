@@ -1300,6 +1300,7 @@ static int test_inspect_report_formatting(void) {
   char *native_slot_info_text = NULL;
   char *builtin_alias_info_text = NULL;
   char *cells_info_text = NULL;
+  char ffi_expected[256];
   int ok = 1;
 
   if (!enter_temp_workspace(&workspace)) {
@@ -1364,6 +1365,16 @@ static int test_inspect_report_formatting(void) {
   }
 
   if (ok) {
+    snprintf(ffi_expected, sizeof(ffi_expected),
+             "gpio.mode\n"
+             "  slot: base\n"
+             "  kind: native\n"
+             "  call: 2 -> 1\n"
+             "  owner: board ffi\n"
+             "  persistence: not saved\n"
+             "  effect: ( pin mode -- )\n"
+             "  help: Set pin mode (1=output)%s",
+             frothy_base_image_has_slot("matrix.init") ? "." : "");
     ok &= expect_text_equal(
         see_text,
         "alias\n"
@@ -1394,16 +1405,7 @@ static int test_inspect_report_formatting(void) {
         "  persistence: saved in snapshot",
         "formatted slotInfo report");
     ok &= expect_text_equal(
-        ffi_info_text,
-        "gpio.mode\n"
-        "  slot: base\n"
-        "  kind: native\n"
-        "  call: 2 -> 1\n"
-        "  owner: board ffi\n"
-        "  persistence: not saved\n"
-        "  effect: ( pin mode -- )\n"
-        "  help: Set pin mode (1=output)",
-        "formatted FFI slotInfo report");
+        ffi_info_text, ffi_expected, "formatted FFI slotInfo report");
     ok &= expect_text_equal(
         base_info_text,
         "A0\n"
@@ -1527,7 +1529,7 @@ static int test_startup_without_snapshot(void) {
   return ok;
 }
 
-static int test_workshop_base_library_wipe_restore(void) {
+static int test_board_base_library_wipe_restore(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
   char *see_before = NULL;
@@ -1542,66 +1544,125 @@ static int test_workshop_base_library_wipe_restore(void) {
 
   ok &= expect_binding_view("millis", false, FROTHY_VALUE_CLASS_NATIVE,
                             "base millis view");
-  ok &= expect_binding_view("blink", false, FROTHY_VALUE_CLASS_CODE,
-                            "base blink view");
-  ok &= expect_binding_view("adc.percent", false, FROTHY_VALUE_CLASS_CODE,
-                            "base adc.percent view");
-  ok &= capture_code_renders("blink", &see_before, &core_before);
-  ok &= expect_ok("adc.percent: A0", &value);
-  ok &= expect_int_value(value, 50, "base adc.percent: A0");
-  release_value(&value);
-  ok &= expect_ok("led.off:", &value);
-  ok &= expect_nil_value(value, "led.off:");
-  release_value(&value);
-  ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
-  ok &= expect_int_value(value, 0, "gpio.read after led.off:");
-  release_value(&value);
-  ok &= expect_ok("led.on:", &value);
-  ok &= expect_nil_value(value, "led.on:");
-  release_value(&value);
-  ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
-  ok &= expect_int_value(value, 1, "gpio.read after led.on:");
-  release_value(&value);
-  ok &= expect_ok("led.toggle:", &value);
-  ok &= expect_nil_value(value, "led.toggle:");
-  release_value(&value);
-  ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
-  ok &= expect_int_value(value, 0, "gpio.read after led.toggle:");
-  release_value(&value);
+  if (frothy_base_image_has_slot("matrix.init")) {
+    ok &= expect_binding_view("matrix.init", false, FROTHY_VALUE_CLASS_CODE,
+                              "base matrix.init view");
+    ok &= capture_code_renders("matrix.init", &see_before, &core_before);
+    ok &= expect_ok("matrix.width", &value);
+    ok &= expect_int_value(value, 12, "base matrix.width");
+    release_value(&value);
+    ok &= expect_ok("matrix.init:", &value);
+    ok &= expect_nil_value(value, "base matrix.init:");
+    release_value(&value);
+    ok &= expect_ok("matrix.fill:", &value);
+    ok &= expect_nil_value(value, "base matrix.fill:");
+    release_value(&value);
+    ok &= expect_ok("tm1629.row@: 0", &value);
+    ok &= expect_int_value(value, 4095, "base tm1629.row@: 0");
+    release_value(&value);
 
-  ok &= expect_ok("to blink with pin, count, wait [ 99 ]", &value);
-  release_value(&value);
-  ok &= expect_ok("to adc.percent with pin [ 99 ]", &value);
-  release_value(&value);
-  ok &= expect_binding_view("blink", true, FROTHY_VALUE_CLASS_CODE,
-                            "overlay blink view");
-  ok &= expect_binding_view("adc.percent", true, FROTHY_VALUE_CLASS_CODE,
-                            "overlay adc.percent view");
-  ok &= expect_ok("adc.percent: A0", &value);
-  ok &= expect_int_value(value, 99, "overlay adc.percent: A0");
-  release_value(&value);
-  ok &= expect_ok("led.on:", &value);
-  ok &= expect_nil_value(value, "led.on: before wipe");
-  release_value(&value);
+    ok &= expect_ok("to matrix.init [ 99 ]", &value);
+    release_value(&value);
+    ok &= expect_ok("matrix.width is 99", &value);
+    release_value(&value);
+    ok &= expect_binding_view("matrix.init", true, FROTHY_VALUE_CLASS_CODE,
+                              "overlay matrix.init view");
+    ok &= expect_ok("matrix.init:", &value);
+    ok &= expect_int_value(value, 99, "overlay matrix.init:");
+    release_value(&value);
+    ok &= expect_ok("matrix.width", &value);
+    ok &= expect_int_value(value, 99, "overlay matrix.width");
+    release_value(&value);
 
-  ok &= expect_ok("dangerous.wipe:", &value);
-  ok &= expect_nil_value(value, "dangerous.wipe:");
-  release_value(&value);
-  ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
-  ok &= expect_int_value(value, 0, "gpio.read after wipe reset");
-  release_value(&value);
-  ok &= expect_binding_view("blink", false, FROTHY_VALUE_CLASS_CODE,
-                            "restored blink view");
-  ok &= expect_binding_view("adc.percent", false, FROTHY_VALUE_CLASS_CODE,
-                            "restored adc.percent view");
-  ok &= capture_code_renders("blink", &see_after, &core_after);
-  if (ok) {
-    ok &= expect_text_equal(see_after, see_before, "blink see after wipe");
-    ok &= expect_text_equal(core_after, core_before, "blink core after wipe");
+    ok &= expect_ok("dangerous.wipe:", &value);
+    ok &= expect_nil_value(value, "dangerous.wipe:");
+    release_value(&value);
+    ok &= expect_ok("tm1629.row@: 0", &value);
+    ok &= expect_int_value(value, 0, "tm1629 row resets after wipe");
+    release_value(&value);
+    ok &= expect_binding_view("matrix.init", false, FROTHY_VALUE_CLASS_CODE,
+                              "restored matrix.init view");
+    ok &= capture_code_renders("matrix.init", &see_after, &core_after);
+    if (ok) {
+      ok &= expect_text_equal(see_after, see_before,
+                              "matrix.init see after wipe");
+      ok &= expect_text_equal(core_after, core_before,
+                              "matrix.init core after wipe");
+    }
+    ok &= expect_ok("matrix.width", &value);
+    ok &= expect_int_value(value, 12, "restored matrix.width");
+    release_value(&value);
+    ok &= expect_ok("matrix.init:", &value);
+    ok &= expect_nil_value(value, "restored matrix.init:");
+    release_value(&value);
+    ok &= expect_ok("matrix.fill:", &value);
+    ok &= expect_nil_value(value, "restored matrix.fill:");
+    release_value(&value);
+    ok &= expect_ok("tm1629.row@: 0", &value);
+    ok &= expect_int_value(value, 4095, "restored tm1629.row@: 0");
+    release_value(&value);
+  } else {
+    ok &= expect_binding_view("blink", false, FROTHY_VALUE_CLASS_CODE,
+                              "base blink view");
+    ok &= expect_binding_view("adc.percent", false, FROTHY_VALUE_CLASS_CODE,
+                              "base adc.percent view");
+    ok &= capture_code_renders("blink", &see_before, &core_before);
+    ok &= expect_ok("adc.percent: A0", &value);
+    ok &= expect_int_value(value, 50, "base adc.percent: A0");
+    release_value(&value);
+    ok &= expect_ok("led.off:", &value);
+    ok &= expect_nil_value(value, "led.off:");
+    release_value(&value);
+    ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
+    ok &= expect_int_value(value, 0, "gpio.read after led.off:");
+    release_value(&value);
+    ok &= expect_ok("led.on:", &value);
+    ok &= expect_nil_value(value, "led.on:");
+    release_value(&value);
+    ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
+    ok &= expect_int_value(value, 1, "gpio.read after led.on:");
+    release_value(&value);
+    ok &= expect_ok("led.toggle:", &value);
+    ok &= expect_nil_value(value, "led.toggle:");
+    release_value(&value);
+    ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
+    ok &= expect_int_value(value, 0, "gpio.read after led.toggle:");
+    release_value(&value);
+
+    ok &= expect_ok("to blink with pin, count, wait [ 99 ]", &value);
+    release_value(&value);
+    ok &= expect_ok("to adc.percent with pin [ 99 ]", &value);
+    release_value(&value);
+    ok &= expect_binding_view("blink", true, FROTHY_VALUE_CLASS_CODE,
+                              "overlay blink view");
+    ok &= expect_binding_view("adc.percent", true, FROTHY_VALUE_CLASS_CODE,
+                              "overlay adc.percent view");
+    ok &= expect_ok("adc.percent: A0", &value);
+    ok &= expect_int_value(value, 99, "overlay adc.percent: A0");
+    release_value(&value);
+    ok &= expect_ok("led.on:", &value);
+    ok &= expect_nil_value(value, "led.on: before wipe");
+    release_value(&value);
+
+    ok &= expect_ok("dangerous.wipe:", &value);
+    ok &= expect_nil_value(value, "dangerous.wipe:");
+    release_value(&value);
+    ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
+    ok &= expect_int_value(value, 0, "gpio.read after wipe reset");
+    release_value(&value);
+    ok &= expect_binding_view("blink", false, FROTHY_VALUE_CLASS_CODE,
+                              "restored blink view");
+    ok &= expect_binding_view("adc.percent", false, FROTHY_VALUE_CLASS_CODE,
+                              "restored adc.percent view");
+    ok &= capture_code_renders("blink", &see_after, &core_after);
+    if (ok) {
+      ok &= expect_text_equal(see_after, see_before, "blink see after wipe");
+      ok &= expect_text_equal(core_after, core_before, "blink core after wipe");
+    }
+    ok &= expect_ok("adc.percent: A0", &value);
+    ok &= expect_int_value(value, 50, "restored adc.percent: A0");
+    release_value(&value);
   }
-  ok &= expect_ok("adc.percent: A0", &value);
-  ok &= expect_int_value(value, 50, "restored adc.percent: A0");
-  release_value(&value);
 
   free(see_before);
   free(core_before);
@@ -2004,6 +2065,49 @@ static int test_prefixed_record_roundtrip(void) {
   return ok;
 }
 
+static int test_punctuated_names_roundtrip(void) {
+  temp_workspace_t workspace = {{0}};
+  frothy_value_t value = frothy_value_make_nil();
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+
+  ok &= expect_ok(
+      "in demo [ brightness! is 3; record Glyph! [ x?, y@ ]; current is Glyph!: 7, 9 ]",
+      &value);
+  release_value(&value);
+  ok &= expect_ok("save:", &value);
+  ok &= expect_nil_value(value, "save: punctuated names roundtrip");
+  release_value(&value);
+
+  ok &= expect_ok(
+      "in demo [ brightness! is 99; record Glyph! [ z ]; current is Glyph!: 1 ]",
+      &value);
+  release_value(&value);
+  ok &= expect_ok("restore:", &value);
+  ok &= expect_nil_value(value, "restore: punctuated names roundtrip");
+  release_value(&value);
+
+  ok &= expect_ok("demo.brightness!", &value);
+  ok &= expect_int_value(value, 3, "demo.brightness! after restore");
+  release_value(&value);
+  ok &= expect_binding_render_view("demo.Glyph!", FROTHY_VALUE_CLASS_RECORD_DEF,
+                                   "record-def",
+                                   "record demo.Glyph! [ x?, y@ ]",
+                                   "punctuated record def after restore");
+  ok &= expect_ok("demo.current->x?", &value);
+  ok &= expect_int_value(value, 7, "demo.current->x? after restore");
+  release_value(&value);
+  ok &= expect_ok("demo.current->y@", &value);
+  ok &= expect_int_value(value, 9, "demo.current->y@ after restore");
+  release_value(&value);
+
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
 static int test_record_cycle_save_rejection(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
@@ -2136,6 +2240,7 @@ int main(void) {
   ok &= test_wipe_inside_nested_call_unwinds_cleanly();
   ok &= test_record_roundtrip_and_truthful_inspection();
   ok &= test_prefixed_record_roundtrip();
+  ok &= test_punctuated_names_roundtrip();
   ok &= test_record_cycle_save_rejection();
   ok &= test_record_snapshot_rejects_mismatched_record_def_name();
   ok &= test_record_snapshot_rejects_record_arity_mismatch();
@@ -2144,7 +2249,7 @@ int main(void) {
   ok &= test_inspect_report_formatting();
   ok &= test_length_aware_slot_lookup();
   ok &= test_startup_without_snapshot();
-  ok &= test_workshop_base_library_wipe_restore();
+  ok &= test_board_base_library_wipe_restore();
   ok &= test_startup_snapshot_discovery_failure();
   ok &= test_startup_restore_without_boot();
   ok &= test_startup_with_non_code_boot();

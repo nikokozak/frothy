@@ -68,6 +68,17 @@ keep each item's description and references so deferral does not erase context.
   References: Frothy ADR-118, Frothy ADR-105,
   `docs/archive/adr/040-cs-trampoline-executor.md`, `src/frothy_eval.c`, and
   `src/froth_vm.h`.
+- [ ] Evaluator frame-arena ownership cleanup
+  Deliverable: revisit the current file-local bounded explicit evaluator frame
+  arena and either replace it with a clearer caller-owned/local ownership path
+  or explicitly keep it with proof that the retained design is the narrowest
+  safe fit for the maintained single-runtime evaluator.
+  Note: review on the first explicit evaluator-frame tranche judged the current
+  `frothy_eval_frame_stack` plus base-depth cursor acceptable for now, but
+  still worth tracking as maintainability debt once the immediate hardening
+  path is stable.
+  References: Frothy ADR-118, `src/frothy_eval.c`,
+  `tests/frothy_eval_test.c`, and `tools/frothy/proof_eval_stack_budget.sh`.
 - [ ] Priority repair: live-shell records must match the landed record surface
   Deliverable: make the prompt-facing shell accept the maintained `record ...`
   forms and keep record definition, construction, field access, inspection,
@@ -209,14 +220,10 @@ keep each item's description and references so deferral does not erase context.
   out of active tooling.
   References: `docs/audit/Frothy_Repo_Audit_2026-04.md`, `README.md`,
   `tools/vscode/README.md`, and `docs/archive/`.
-- [ ] Host-only slot-bundle inspection/generation in the CLI project layer
-  Deliverable: the first workspace/image-flow implementation cut only, after
-  the workshop-critical tranches above are stable.
-  References: Frothy ADR-115 and
-  `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`.
-- [ ] Later workspace/image-flow apply/load growth
-  Deliverable: only after host-only inspection/generation proves useful; still
-  no registry, daemon, or loader-first detour.
+- [ ] Deferred workspace/image-flow queue
+  Deliverable: keep workspace/image flow deferred and single-sourced in
+  `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md` until it is
+  intentionally reprioritized.
   References: Frothy ADR-115 and
   `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`.
 

@@ -229,11 +229,18 @@ static int test_surface_metadata_and_smoke(void) {
   ok &= expect_ok("matrix.init:", &value);
   ok &= expect_nil_value(value, "matrix.init:");
   release_value(&value);
+  ok &= expect_error("tm1629.raw.init: -1, 19, 23", FROTH_ERROR_BOUNDS);
+  ok &= expect_error("tm1629.raw.init: 18, 18, 23", FROTH_ERROR_BOUNDS);
   ok &= expect_ok("matrix.fill:", &value);
   ok &= expect_nil_value(value, "matrix.fill:");
   release_value(&value);
   ok &= expect_ok("tm1629.row@: 0", &value);
   ok &= expect_int_value(value, 4095, "matrix.fill affects tm1629 buffer");
+  release_value(&value);
+  ok &= expect_error("tm1629.raw.init: 18, 18, 23", FROTH_ERROR_BOUNDS);
+  ok &= expect_ok("tm1629.row@: 0", &value);
+  ok &= expect_int_value(value, 4095,
+                         "failed duplicate-pin init preserves buffer");
   release_value(&value);
   ok &= expect_ok("matrix.clear:", &value);
   ok &= expect_nil_value(value, "matrix.clear:");

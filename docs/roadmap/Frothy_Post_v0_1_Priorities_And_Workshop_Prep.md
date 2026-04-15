@@ -40,7 +40,30 @@ that runtime tranche lands.
 
 ## Priority Stack
 
-### 1. Minimal docs front door and quick reference
+### 1. Priority repair: live-shell records must match the landed record surface
+
+Goal:
+
+- make the prompt-facing shell accept the maintained `record ...` forms and
+  keep record definition, construction, field access, inspection, and
+  save/restore behavior aligned with the landed parser, evaluator, and snapshot
+  record surface
+
+Held boundary:
+
+- do not widen records beyond the already accepted fixed-layout surface
+- fix prompt-path drift before more workshop-facing polish assumes the shell is
+  truthful
+
+References:
+
+- `src/frothy_shell.c`
+- `tests/frothy_parser_test.c`
+- `tests/frothy_snapshot_test.c`
+- `docs/spec/Frothy_Language_Spec_vNext.md`
+- `docs/adr/112-next-stage-language-growth-and-recovery-boundary.md`
+
+### 2. Minimal docs front door and quick reference
 
 Goal:
 
@@ -58,7 +81,7 @@ References:
 - `tools/vscode/README.md`
 - `docs/guide/Frothy_From_The_Ground_Up.md`
 
-### 2. Clean-machine validation on promised platforms
+### 3. Clean-machine validation on promised platforms
 
 Goal:
 
@@ -76,7 +99,7 @@ References:
 - `README.md`
 - `tools/vscode/README.md`
 
-### 3. Classroom hardware and recovery kit
+### 4. Classroom hardware and recovery kit
 
 Goal:
 
@@ -96,7 +119,7 @@ References:
 - `tools/frothy/m10_esp32_proof_transcript.txt`
 - `boards/`
 
-### 4. Workshop rehearsal plus measured performance/persistence closeout
+### 5. Workshop rehearsal plus measured performance/persistence closeout
 
 Goal:
 
@@ -115,16 +138,19 @@ References:
 - `docs/spec/Frothy_Language_Spec_v0_1.md`
 - `tools/frothy/`
 
-### 5. Later workspace/image-flow work
+### 6. Later workspace/image-flow work
 
 Goal:
 
-- defer host-only slot-bundle implementation and any later apply/load growth
-  until the workshop path is solid
+- keep workspace/image flow deferred until the workshop path and
+  publishability-reset queue are solid again
 
 Held boundary:
 
-- do not skip straight to loader, registry, or on-device artifact work
+- the staged queue is owned in
+  `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`
+- keep this note at deferral/reference level only; do not restate the staged
+  workspace/image-flow queue here
 - do not let workspace/image flow displace the workshop-critical tranches above
 
 References:
@@ -177,5 +203,5 @@ Before the 2026-04-16 workshop:
 
 ## Reordering Rule
 
-Items 1 through 8 may move as priorities change.
+Items 1 through 5 may move as priorities change.
 When they move, preserve each item's goal, held boundary, and references.

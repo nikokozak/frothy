@@ -163,6 +163,34 @@ static int test_readability_multiline_headers(void) {
   ok &= frothy_shell_test_append_pending_line("[ pin is 13 ]") == FROTH_OK;
   ok &= frothy_shell_test_pending_is_complete();
 
+  frothy_shell_test_reset_pending_source();
+  ok &= frothy_shell_test_append_pending_line("record Point") == FROTH_OK;
+  ok &= !frothy_shell_test_pending_is_complete();
+  ok &= frothy_shell_test_append_pending_line("[ x, y ]") == FROTH_OK;
+  ok &= frothy_shell_test_pending_is_complete();
+
+  return ok;
+}
+
+static int test_live_prompt_record_paths(void) {
+  int ok = 1;
+
+  frothy_shell_test_reset_pending_source();
+  ok &= frothy_shell_test_accept_line("record Point [ x, y ]") == FROTH_OK;
+  ok &= frothy_shell_test_pending_is_complete();
+  ok &= expect_text(frothy_shell_test_pending_source(),
+                    "record Point [ x, y ]\n",
+                    "live prompt record single line");
+
+  frothy_shell_test_reset_pending_source();
+  ok &= frothy_shell_test_accept_line("record Point") == FROTH_OK;
+  ok &= !frothy_shell_test_pending_is_complete();
+  ok &= frothy_shell_test_accept_line("[ x, y ]") == FROTH_OK;
+  ok &= frothy_shell_test_pending_is_complete();
+  ok &= expect_text(frothy_shell_test_pending_source(),
+                    "record Point\n[ x, y ]\n",
+                    "live prompt record multiline");
+
   return ok;
 }
 
@@ -176,6 +204,8 @@ static int test_readability_heads_do_not_rewrite(void) {
                                                sizeof(rewritten));
   ok &= !frothy_shell_test_rewrite_simple_call("in led", rewritten,
                                                sizeof(rewritten));
+  ok &= !frothy_shell_test_rewrite_simple_call("record Point [ x, y ]",
+                                               rewritten, sizeof(rewritten));
   ok &= !frothy_shell_test_rewrite_simple_call("to boot", rewritten,
                                                sizeof(rewritten));
   ok &= !frothy_shell_test_rewrite_simple_call("call makeInc", rewritten,
@@ -193,6 +223,7 @@ int main(void) {
   ok &= test_pending_source_capacity();
   ok &= test_simple_call_rewrite_stays_bounded();
   ok &= test_readability_multiline_headers();
+  ok &= test_live_prompt_record_paths();
   ok &= test_readability_heads_do_not_rewrite();
   return ok ? 0 : 1;
 }

@@ -1,4 +1,5 @@
 #include "frothy_parser.h"
+#include "frothy_name_rules.h"
 
 #include <ctype.h>
 #include <stdint.h>
@@ -780,12 +781,11 @@ static froth_error_t frothy_make_top_level_write_slot_token(
 }
 
 static bool frothy_is_name_start(unsigned char byte) {
-  return isalpha(byte) || byte == '_';
+  return frothy_name_byte_is_start(byte);
 }
 
 static bool frothy_is_name_continue(unsigned char byte) {
-  return isalnum(byte) || byte == '_' || byte == '.' || byte == '!' ||
-         byte == '?' || byte == '@';
+  return frothy_name_byte_is_slot_continue(byte);
 }
 
 static void frothy_lex_skip_space(frothy_parser_t *parser) {

@@ -12,7 +12,7 @@
 
 typedef struct {
   void *context;
-  void (*pin_mode)(void *context, int32_t pin, bool output);
+  bool (*pin_mode)(void *context, int32_t pin, bool output);
   void (*pin_write)(void *context, int32_t pin, bool high);
   void (*delay_us)(void *context, uint32_t usec);
 } frothy_tm1629_hal_t;
@@ -33,7 +33,7 @@ void frothy_tm1629_init(frothy_tm1629_t *display,
 void frothy_tm1629_reset(frothy_tm1629_t *display);
 void frothy_tm1629_factory_reset(frothy_tm1629_t *display);
 
-void frothy_tm1629_configure(frothy_tm1629_t *display, int32_t stb_pin,
+bool frothy_tm1629_configure(frothy_tm1629_t *display, int32_t stb_pin,
                              int32_t clk_pin, int32_t dio_pin);
 void frothy_tm1629_set_brightness(frothy_tm1629_t *display, int32_t level);
 void frothy_tm1629_show(frothy_tm1629_t *display);

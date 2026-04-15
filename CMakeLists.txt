@@ -507,6 +507,18 @@ if(FROTHY_BUILD_HOST)
       PROPERTIES LABELS "frothy" TIMEOUT 60)
   endif()
 
+  set(FROTHY_ESP_IDF_BOARD_CONFIG_SMOKE
+      "${CMAKE_SOURCE_DIR}/tests/esp_idf_board_config_smoke.sh")
+  if(EXISTS "${FROTHY_ESP_IDF_BOARD_CONFIG_SMOKE}")
+    add_test(NAME frothy_esp_idf_board_config_smoke
+      COMMAND /bin/sh "${FROTHY_ESP_IDF_BOARD_CONFIG_SMOKE}"
+              "${CMAKE_COMMAND}"
+              "${CMAKE_SOURCE_DIR}"
+              "esp32-devkit-v4-game-board")
+    set_tests_properties(frothy_esp_idf_board_config_smoke
+      PROPERTIES LABELS "frothy" TIMEOUT 60)
+  endif()
+
   if(EXISTS "${CMAKE_SOURCE_DIR}/benchmarks/frothy_runtime_bench.c")
     add_executable(frothy_runtime_bench
       benchmarks/frothy_runtime_bench.c

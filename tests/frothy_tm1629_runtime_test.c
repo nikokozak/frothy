@@ -14,6 +14,7 @@ typedef struct {
   int32_t stb_pin;
   int32_t clk_pin;
   int32_t dio_pin;
+  int32_t fail_pin_mode_pin;
   bool levels[TEST_PIN_MAX];
   uint8_t modes[TEST_PIN_MAX];
   uint8_t bytes[64];
@@ -28,14 +29,18 @@ static void fake_hal_reset_capture(fake_tm1629_hal_t *hal) {
   hal->bit_count = 0;
 }
 
-static void fake_hal_pin_mode(void *context, int32_t pin, bool output) {
+static bool fake_hal_pin_mode(void *context, int32_t pin, bool output) {
   fake_tm1629_hal_t *hal = (fake_tm1629_hal_t *)context;
 
   if (hal == NULL || pin < 0 || pin >= TEST_PIN_MAX) {
-    return;
+    return false;
+  }
+  if (pin == hal->fail_pin_mode_pin) {
+    return false;
   }
 
   hal->modes[pin] = output ? 1u : 2u;
+  return true;
 }
 
 static void fake_hal_pin_write(void *context, int32_t pin, bool high) {
@@ -125,6 +130,14 @@ static int expect_bytes(const fake_tm1629_hal_t *hal, const uint8_t *expected,
   return 1;
 }
 
+static int expect_nonzero_size(size_t actual, const char *label) {
+  if (actual == 0) {
+    fprintf(stderr, "%s expected nonzero size\n", label);
+    return 0;
+  }
+  return 1;
+}
+
 static void make_display(frothy_tm1629_t *display, fake_tm1629_hal_t *hal) {
   frothy_tm1629_hal_t hooks = {
       .context = hal,
@@ -137,6 +150,7 @@ static void make_display(frothy_tm1629_t *display, fake_tm1629_hal_t *hal) {
   hal->stb_pin = TEST_PIN_STB;
   hal->clk_pin = TEST_PIN_CLK;
   hal->dio_pin = TEST_PIN_DIO;
+  hal->fail_pin_mode_pin = -1;
   frothy_tm1629_init(display, &hooks);
 }
 
@@ -154,7 +168,9 @@ static int test_configure_and_show_sequence(void) {
   ok &= expect_u8(display.brightness, FROTHY_TM1629_BRIGHTNESS_DEFAULT,
                   "default brightness");
 
-  frothy_tm1629_configure(&display, TEST_PIN_STB, TEST_PIN_CLK, TEST_PIN_DIO);
+  ok &= expect_true(
+      frothy_tm1629_configure(&display, TEST_PIN_STB, TEST_PIN_CLK, TEST_PIN_DIO),
+      "display configure succeeds");
   ok &= expect_true(display.configured, "display configured");
   ok &= expect_u8(hal.modes[TEST_PIN_STB], 1, "stb configured as output");
   ok &= expect_u8(hal.modes[TEST_PIN_CLK], 1, "clk configured as output");
@@ -198,6 +214,79 @@ static int test_raw_storage_and_bounds(void) {
   ok &= expect_u8(display.brightness, 0, "brightness clamps low");
   frothy_tm1629_set_brightness(&display, 99);
   ok &= expect_u8(display.brightness, 7, "brightness clamps high");
+  return ok;
+}
+
+static int test_configure_failure_leaves_fresh_display_unconfigured(void) {
+  frothy_tm1629_t display;
+  fake_tm1629_hal_t hal;
+  int ok = 1;
+
+  make_display(&display, &hal);
+  hal.fail_pin_mode_pin = TEST_PIN_CLK;
+  ok &= expect_false(
+      frothy_tm1629_configure(&display, TEST_PIN_STB, TEST_PIN_CLK, TEST_PIN_DIO),
+      "display configure fails when pin mode hook fails");
+  ok &= expect_false(display.configured, "failed configure leaves display unconfigured");
+  ok &= expect_u8(display.brightness, FROTHY_TM1629_BRIGHTNESS_DEFAULT,
+                  "failed configure preserves default brightness");
+  fake_hal_reset_capture(&hal);
+  frothy_tm1629_show(&display);
+  ok &= expect_bytes(&hal, NULL, 0, "show after failed configure emits nothing");
+  return ok;
+}
+
+static int test_duplicate_pins_are_rejected(void) {
+  frothy_tm1629_t display;
+  fake_tm1629_hal_t hal;
+  int ok = 1;
+
+  make_display(&display, &hal);
+  ok &= expect_false(
+      frothy_tm1629_configure(&display, TEST_PIN_STB, TEST_PIN_STB, TEST_PIN_DIO),
+      "duplicate pins are rejected");
+  ok &= expect_false(display.configured,
+                     "duplicate-pin configure leaves display unconfigured");
+  ok &= expect_u8(hal.modes[TEST_PIN_STB], 0,
+                  "duplicate-pin configure does not touch pin modes");
+  ok &= expect_u8(hal.modes[TEST_PIN_DIO], 0,
+                  "duplicate-pin configure leaves dio untouched");
+  return ok;
+}
+
+static int test_failed_reconfigure_preserves_working_display(void) {
+  frothy_tm1629_t display;
+  fake_tm1629_hal_t hal;
+  int ok = 1;
+
+  make_display(&display, &hal);
+  ok &= expect_true(
+      frothy_tm1629_configure(&display, TEST_PIN_STB, TEST_PIN_CLK, TEST_PIN_DIO),
+      "initial configure succeeds");
+  frothy_tm1629_fill(&display);
+  frothy_tm1629_set_brightness(&display, 2);
+
+  hal.fail_pin_mode_pin = 25;
+  ok &= expect_false(frothy_tm1629_configure(&display, 24, 25, 26),
+                     "reconfigure fails when new clk pin mode fails");
+  ok &= expect_true(display.configured,
+                    "failed reconfigure preserves configured state");
+  ok &= expect_u16(frothy_tm1629_row_get(&display, 0), 0x0FFF,
+                   "failed reconfigure preserves framebuffer");
+  ok &= expect_u8(display.brightness, 2,
+                  "failed reconfigure preserves brightness");
+  ok &= expect_u8(hal.modes[24], 2, "failed reconfigure releases staged pin");
+  ok &= expect_u8(hal.modes[TEST_PIN_STB], 1,
+                  "failed reconfigure restores original stb mode");
+  ok &= expect_u8(hal.modes[TEST_PIN_CLK], 1,
+                  "failed reconfigure restores original clk mode");
+  ok &= expect_u8(hal.modes[TEST_PIN_DIO], 1,
+                  "failed reconfigure restores original dio mode");
+
+  fake_hal_reset_capture(&hal);
+  frothy_tm1629_show(&display);
+  ok &= expect_nonzero_size(hal.byte_count,
+                            "show after failed reconfigure still emits bytes");
   return ok;
 }
 
@@ -246,6 +335,9 @@ int main(void) {
   int ok = 1;
 
   ok &= test_configure_and_show_sequence();
+  ok &= test_configure_failure_leaves_fresh_display_unconfigured();
+  ok &= test_duplicate_pins_are_rejected();
+  ok &= test_failed_reconfigure_preserves_working_display();
   ok &= test_raw_storage_and_bounds();
   ok &= test_next_buffer_and_transforms();
   return ok ? 0 : 1;

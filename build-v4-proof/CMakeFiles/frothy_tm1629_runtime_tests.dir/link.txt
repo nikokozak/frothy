@@ -1,0 +1,1 @@
+/usr/bin/cc  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/frothy_tm1629_runtime_tests.dir/tests/frothy_tm1629_runtime_test.c.o CMakeFiles/frothy_tm1629_runtime_tests.dir/src/frothy_tm1629.c.o -o frothy_tm1629_runtime_tests

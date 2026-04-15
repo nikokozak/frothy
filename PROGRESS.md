@@ -56,6 +56,15 @@ file is wrong.
   than hard-coded slot-name allowlists; and the host proof ladder now includes
   direct TM1629 runtime tests plus a POSIX sub-build smoke for the new board.
   Reference: `docs/adr/119-tm1629-board-base-surface-and-registry.md`.
+- The post-review TM1629 cleanup tranche is now landed: parser, shell, and
+  snapshot name validation share one Frothy grammar for `!`, `@`, and `?`;
+  `tm1629.raw.init` now fails on invalid pins or failed pin-mode setup instead
+  of silently succeeding; the payload-fragmentation proof scales with
+  board-configured arena size; the ESP-IDF v4 board target now carries its
+  required console defaults, links the TM1629 runtime, honors board.json
+  runtime capacities, builds from the current repo, flashes on
+  `/dev/cu.usbserial-0001`, and answers direct `matrix.*` / `tm1629.raw.*`
+  control smoke on hardware.
 - The workshop implementation tranche is now closed on `main`: the delivery,
   inspection, workshop base-image, readability-language, and records cuts have
   all survived the local proof ladder plus repeated review cycles.
@@ -96,27 +105,32 @@ file is wrong.
 - 1. Evaluator execution-stack hardening: replace recursive IR evaluation with
   an explicit frame stack/trampoline so ordinary embedded loops and nested game
   code are bounded by Frothy-managed depth rather than hidden C stack.
-- 2. Minimal docs front door and quick reference: install, first connect,
+- 2. Priority repair: live-shell records must match the landed record surface
+  so prompt behavior agrees with the landed parser/evaluator/snapshot record
+  path before more workshop-facing polish stacks on top.
+- 3. Minimal docs front door and quick reference: install, first connect,
   inspection, board API, persistence, and troubleshooting.
-- 3. Clean-machine validation on promised platforms.
-- 4. Classroom hardware and recovery kit: preflashed boards, known-good data
+- 4. Clean-machine validation on promised platforms.
+- 5. Classroom hardware and recovery kit: preflashed boards, known-good data
   cables, reflash path, spare hardware, and CLI fallback.
-- 5. Workshop rehearsal plus measured performance/persistence closeout on the
+- 6. Workshop rehearsal plus measured performance/persistence closeout on the
   actual lesson path.
-- 6. Post-workshop publishability reset tranche 1: immediate cuts for
+- 7. Post-workshop publishability reset tranche 1: immediate cuts for
   daemon-era editor residue, tracked repo pollution, and archived proof
   artifacts.
-- 7. Post-workshop publishability reset tranche 2: naming and packaging
+- 8. Post-workshop publishability reset tranche 2: naming and packaging
   normalization.
-- 8. Post-workshop publishability reset tranche 3: proof and dependency
+- 9. Post-workshop publishability reset tranche 3: proof and dependency
   collapse.
-- 9. Post-workshop publishability reset tranche 4: runtime boundary
+- 10. Post-workshop publishability reset tranche 4: runtime boundary
   tightening.
-- 10. Post-workshop publishability reset tranche 5: docs front door and
+- 11. Post-workshop publishability reset tranche 5: docs front door and
   archive pass.
-- 11. Host-only slot-bundle inspection/generation after the workshop path and
-  publishability reset are solid again.
+- 12. Deferred workspace/image-flow queue after the workshop path and
+  publishability reset are solid again; keep it single-sourced in
+  `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`.
 - Reference: `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`
+  and `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`
 
 ## Workshop Gate
 
