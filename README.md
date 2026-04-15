@@ -4,9 +4,10 @@ Frothy is a small live lexical language for programmable devices.
 
 Frothy `v0.1` is functionally closed.
 
-The live roadmap milestone is `evaluator execution-stack hardening`. The
-workshop-facing release/install surface stays intentionally narrow and
-truthful while that runtime tranche lands.
+The live roadmap milestone is `workshop operational closeout`. The remaining
+work is operational rather than architectural: execute the promised
+clean-machine validation, finish the room-side hardware/recovery pack-out, and
+record one complete workshop-board rehearsal on the maintained path.
 
 The forward queue after that is explicit:
 
@@ -44,9 +45,11 @@ Use the smallest maintained doc set for the workshop path:
 
 ## Workshop Support Matrix
 
-The promised attendee path is smaller than the repo surface:
+The promised attendee path is smaller than the repo surface.
+These are the assets and listings the current manual release path is set up to
+publish:
 
-| Surface | Published now | Workshop promise |
+| Surface | Release surface | Workshop promise |
 | --- | --- | --- |
 | CLI release | `frothy-v<version>-darwin-arm64.tar.gz`, `frothy-v<version>-darwin-amd64.tar.gz`, `frothy-v<version>-linux-amd64.tar.gz` | macOS via Homebrew is the preferred attendee path; Linux x86_64 can use the release tarball directly |
 | VS Code | Marketplace listing `frothy.frothy`, with matching `frothy-vscode-v<extension-version>.vsix` fallback | supported on the same machines that can already run the installed CLI |

@@ -59,7 +59,7 @@ Not promised here:
 macOS:
 
 ```sh
-brew tap nikokozak/frothy
+brew tap nikokozak/homebrew-frothy
 brew install frothy
 frothy doctor
 ```
