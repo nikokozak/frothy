@@ -108,9 +108,11 @@ file is wrong.
   unavailable, and the control proof ladder now re-checks recovery on the real
   ESP32 path.
 - The earlier lesson/game starter scaffold and its proof path are still
-  available on `frothy new --target esp32-devkit-v1`, but that is now a
-  retained v1 path rather than the maintained Friday workshop hardware target;
-  the current workshop board/base-image surface is the v4 helper path.
+  available on `frothy new --target esp32-devkit-v1`; that board target
+  remains valid, and `esp32-devkit-v1` versus
+  `esp32-devkit-v4-game-board` names board revisions rather than protocol
+  generations. The current workshop board/base-image surface is the v4 helper
+  path.
 - The workshop-operational slice is now concrete in-repo without widening the
   product surface: `README.md` points at one minimal front door,
   `docs/guide/Frothy_Workshop_Quick_Reference.md` keeps the in-room prompt and

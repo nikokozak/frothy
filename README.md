@@ -54,6 +54,11 @@ The promised attendee path is smaller than the repo surface:
 Windows, extra boards, and custom toolchain setups are not part of the
 maintained attendee promise for this tranche.
 
+Board targets such as `esp32-devkit-v1` and `esp32-devkit-v4-game-board`
+refer to specific hardware revisions. They are not Frothy protocol or repo
+generation markers. A workshop note may prefer one board for one event, but
+that narrower promise does not invalidate the other checked-in board targets.
+
 ## Naming Matrix
 
 The published naming split is explicit for now:

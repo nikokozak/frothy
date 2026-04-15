@@ -12,6 +12,11 @@ what convenience words to expose to the user. If a platform already exists
 for your chip, writing a board is straightforward. If not, see
 `platforms/README.md` for how to write one.
 
+Board names such as `esp32-devkit-v1` and `esp32-devkit-v4-game-board`
+identify specific hardware or carrier revisions. The `v1` and `v4` labels are
+not Frothy protocol or runtime generations, and a narrower workshop promise
+around one board does not invalidate the other checked-in board targets.
+
 ## Maintained workshop board
 
 The current workshop promise is narrower than the repo's total board surface:
