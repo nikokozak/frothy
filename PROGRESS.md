@@ -31,9 +31,8 @@ file is wrong.
   tranches are already landed and are no longer the unclear part of the repo
   story.
 - The publishability audit is now landed at
-  `docs/audit/Frothy_Repo_Audit_2026-04.md`; it freezes the aggressive cleanup
-  plan, but the queue still keeps that work behind the 2026-04-16
-  workshop-critical path.
+  `docs/audit/Frothy_Repo_Audit_2026-04.md`; it now serves as the active
+  cleanup ledger for the publishability reset rather than a read-only plan.
 - Attendee-facing naming alignment is still active: the repo, product, and
   editor are Frothy, while the installed CLI path is still transitional
   `froth`, and the workshop queue now treats that mismatch as explicit work.
@@ -116,6 +115,14 @@ file is wrong.
   passes on the promised platforms, physical room pack-out, and the final
   measured real-device rehearsal closeout are still exit steps, not work that
   prose can claim complete.
+- The full publishability reset is now landed on `main`: stale
+  proof artifacts are archived under `docs/archive/`, Frothy-facing
+  naming/packaging are normalized, release packaging no longer needs Python,
+  the default proof surface is back to `C` + `Go` + `Shell` with explicit
+  `Node` and hardware-only `Python` exceptions, and the retained Froth
+  substrate boundary is explicit in code and docs. References:
+  `docs/audit/Frothy_Repo_Audit_2026-04.md` and
+  `docs/reference/Frothy_Retained_Substrate_Manifest.md`.
 
 ## Near-Term Priority Stack
 
@@ -132,19 +139,8 @@ file is wrong.
   cables, reflash path, spare hardware, and CLI fallback.
 - 6. Workshop rehearsal plus measured performance/persistence closeout on the
   actual lesson path.
-- 7. Post-workshop publishability reset tranche 1: immediate cuts for
-  daemon-era editor residue, tracked repo pollution, and archived proof
-  artifacts.
-- 8. Post-workshop publishability reset tranche 2: naming and packaging
-  normalization.
-- 9. Post-workshop publishability reset tranche 3: proof and dependency
-  collapse.
-- 10. Post-workshop publishability reset tranche 4: runtime boundary
-  tightening.
-- 11. Post-workshop publishability reset tranche 5: docs front door and
-  archive pass.
-- 12. Deferred workspace/image-flow queue after the workshop path and
-  publishability reset are solid again; keep it single-sourced in
+- 7. Deferred workspace/image-flow queue after the workshop path is solid
+  again; keep it single-sourced in
   `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`.
 - Reference: `docs/roadmap/Frothy_Post_v0_1_Priorities_And_Workshop_Prep.md`
   and `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`

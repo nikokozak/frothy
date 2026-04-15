@@ -199,26 +199,26 @@ keep each item's description and references so deferral does not erase context.
   `docs/spec/Frothy_Language_Spec_v0_1.md`, `tools/frothy/`,
   `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`, and the
   starter project above.
-- [ ] Publishability reset tranche 1: immediate cuts
+- [x] Publishability reset tranche 1: immediate cuts
   Deliverable: after the 2026-04-16 workshop gate is stable, remove tracked
   repo pollution, archive historical proof artifacts out of active tooling,
   and delete daemon-era VS Code residue that is already outside the packaged
   extension path.
   References: `docs/audit/Frothy_Repo_Audit_2026-04.md`,
   `tools/vscode/test/package-smoke.js`, and `Makefile`.
-- [ ] Publishability reset tranche 2: naming and packaging normalization
+- [x] Publishability reset tranche 2: naming and packaging normalization
   Deliverable: freeze one publishable identity matrix for Frothy versus
   transitional `froth` / `froth-cli`, normalize the Go module/import path, and
   keep any installed-binary rename separate if it is still too risky.
   References: `docs/audit/Frothy_Repo_Audit_2026-04.md`, `README.md`,
   `tools/cli/go.mod`, and `tools/package-release.sh`.
-- [ ] Publishability reset tranche 3: proof and dependency collapse
+- [x] Publishability reset tranche 3: proof and dependency collapse
   Deliverable: reduce proofs to core local, extended local, hardware-only, and
   release-only tiers; keep Node extension-only; remove Python from release glue
   first; and quarantine any remaining hardware-only Python.
   References: `docs/audit/Frothy_Repo_Audit_2026-04.md`, `Makefile`,
   `tools/frothy/proof.sh`, and `tools/package-firmware-release.sh`.
-- [ ] Publishability reset tranche 4: runtime boundary tightening
+- [x] Publishability reset tranche 4: runtime boundary tightening
   Deliverable: make the retained Froth substrate set explicit, quarantine
   compatibility shims, and remove false placeholder labeling from kept runtime
   files without starting a speculative rewrite.
@@ -228,7 +228,7 @@ keep each item's description and references so deferral does not erase context.
   `froth_ffi_entry_t` / `froth_project_bindings` compatibility path, then
   delete the legacy dispatch/install surface once the maintained
   `frothy_ffi_entry_t` path is the only live ABI.
-- [ ] Publishability reset tranche 5: docs front door and archive pass
+- [x] Publishability reset tranche 5: docs front door and archive pass
   Deliverable: keep one front door, shorten extension docs to extension-owned
   behavior, and archive historical proof evidence and duplicated release prose
   out of active tooling.
