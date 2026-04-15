@@ -200,6 +200,16 @@ Default validation paths:
 - `cmake -S . -B build && cmake --build build`
 - `make test`
 
+Validation scope policy:
+
+- Validation should be selective and matched to the area of work.
+- Default to the smallest build, test, grep, sanity script, and real-device
+  proof surface that directly exercises the changed behavior.
+- Do not default to massive local or hardware test sweeps for every change.
+- Run the broader proof ladder after merges, tranche closeout, release work,
+  workshop rehearsal, or any other larger integration event where multiple
+  surfaces have converged.
+
 Real-device validation policy:
 
 - Before sign-off on any task in this repo, run at least one proof on a real
@@ -215,6 +225,10 @@ Real-device validation policy:
 - For host-only, docs, control-surface, or refactor work, a real-device sanity
   proof is still mandatory before sign-off so the maintained hardware path is
   never left unexercised.
+- Choose the smallest real-device proof that still exercises the changed area
+  honestly.
+- Reserve broad hardware sweeps and full end-to-end proof ladders for merges
+  and other larger integration events, not every small targeted change.
 - Local POSIX or `connect --local` runs are supplementary only. They do not
   count as final validation and must not be presented as if they prove
   real-device behavior.
