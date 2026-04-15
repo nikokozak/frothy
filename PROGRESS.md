@@ -1,6 +1,6 @@
 # Frothy Progress
 
-*Last updated: 2026-04-14*
+*Last updated: 2026-04-15*
 
 This file is the thin operational note for Frothy.
 The current-state block in `docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
@@ -65,6 +65,14 @@ file is wrong.
   `docs/roadmap/Frothy_Workshop_Run_Spec_2026-04-17.md`; it freezes the lesson
   arc, `Get Home` inspection puzzle, `Get Home+` starter game, required helper
   surface, persistence teaching points, and rehearsal checklist.
+- The v4 workshop-helper tranche is now landed on the maintained proto-board
+  path: `esp32-devkit-v4-game-board` base now carries the generic workshop
+  helpers plus `grid.*`, `joy.*`, and `knob.*`; board-configured Frothy
+  capacities are driven from `board.json` on both host and ESP-IDF builds; the
+  Friday workshop docs now describe the real v4 matrix/knob/joystick surface;
+  and real-device proof on the mounted board froze the semantic joystick map to
+  `left=JOY_1`, `click=JOY_2`, `down=JOY_3`, `up=JOY_4`, `right=JOY_6`, with
+  `dangerous.wipe` restoring those base-owned pin slots on hardware.
 - The first explicit evaluator-frame-stack tranche is now landed on `main`:
   `CALL`, `IF`, `WHILE`, `SEQ`, and required compound expression paths run
   through a bounded explicit frame stack instead of recursive evaluator entry,
@@ -90,29 +98,31 @@ file is wrong.
   `docs/guide/Frothy_Workshop_Install_Quickstart.md`,
   `tools/package-release.sh`, and the VS Code docs all agree on the promised
   attendee path of released CLI assets, matching VSIX, and preflashed
-  `esp32-devkit-v1` hardware.
+  `esp32-devkit-v4-game-board` hardware.
 - The attendee-facing naming and recovery story is now explicit on the
   maintained Frothy path: Frothy owns the product/docs/editor identity, the
   installed release command remains transitional `froth`, whole-file editor
   send blocks unsafe replay when control `reset` is unavailable, and the
   control proof ladder now re-checks recovery on the real ESP32 path.
-- The workshop starter scaffold and its proof path are now landed: `froth new
-  --target esp32-devkit-v1` emits the sanctioned lesson/game starter, resolve
-  is warning-free, and the maintained M10 board proof now scaffolds, resolves,
-  runs, and checks that starter on the attached ESP32 path.
+- The earlier lesson/game starter scaffold and its proof path are still
+  available on `froth new --target esp32-devkit-v1`, but that is now a
+  retained v1 path rather than the maintained Friday workshop hardware target;
+  the current workshop board/base-image surface is the v4 helper path.
 - The workshop-operational slice is now concrete in-repo without widening the
   product surface: `README.md` points at one minimal front door,
   `docs/guide/Frothy_Workshop_Quick_Reference.md` keeps the in-room prompt and
   recovery path short, `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`
-  freezes the promised clean-machine checklist, `boards/esp32-devkit-v1/WORKSHOP.md`
-  holds the room-side kit and reflash card, and
+  freezes the promised clean-machine checklist,
+  `boards/esp32-devkit-v4-game-board/WORKSHOP.md` holds the room-side kit and
+  reflash card, and
   `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md` carries the
-  checked-in rehearsal status note plus the required real-device proof
-  command.
+  checked-in rehearsal status note plus the focused
+  `sh tools/frothy/proof.sh workshop-v4 --live-controls <PORT>` real-device
+  proof command.
 - The remaining manual workshop gates stay explicit: separate clean-machine
-  passes on the promised platforms, physical room pack-out, and the final
-  measured real-device rehearsal closeout are still exit steps, not work that
-  prose can claim complete.
+  passes on the promised platforms and physical room pack-out are still exit
+  steps, not work that prose can claim complete; the focused v4 mounted-board
+  smoke is now recorded separately from any broader room rehearsal.
 - The full publishability reset is now landed on `main`: stale
   proof artifacts are archived under `docs/archive/`, Frothy-facing
   naming/packaging are normalized, release packaging no longer needs Python,
@@ -132,8 +142,8 @@ file is wrong.
   maintainability judgment plus refreshed focused proof on the maintained
   host/device slice.
 - The remaining pre-workshop risk is operational rather than structural:
-  clean-machine validation, room-side hardware/recovery prep, and one recorded
-  measured real-device rehearsal still need to be executed.
+  clean-machine validation and room-side hardware/recovery prep still need to
+  be executed; the focused v4 workshop-board hardware smoke is now recorded.
 - Workspace/image flow remains intentionally deferred and single-sourced in
   `docs/roadmap/Frothy_Workspace_Image_Flow_Tranche_1.md`.
 - See `TIMELINE.md` for the live movable queue and

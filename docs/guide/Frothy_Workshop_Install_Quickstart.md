@@ -31,7 +31,8 @@ Supported attendee path:
 Install steps:
 1. Install the CLI and run `froth doctor`
 2. Install the matching `frothy-vscode-v<extension-version>.vsix`
-3. Bring a known-good USB data cable for the preflashed `esp32-devkit-v1`
+3. Bring a known-good USB data cable for the preflashed `esp32-devkit-v4-game-board`
+   proto board
 
 You do not need a repo checkout, ESP-IDF, or a source build before arriving.
 ```
@@ -42,7 +43,7 @@ You do not need a repo checkout, ESP-IDF, or a source build before arriving.
 | --- | --- |
 | CLI | macOS via Homebrew; Linux x86_64 via release tarball |
 | VS Code | matching `frothy-vscode-v<extension-version>.vsix` on a machine that can already run `froth` |
-| Hardware | preflashed `esp32-devkit-v1` |
+| Hardware | preflashed `esp32-devkit-v4-game-board` proto board |
 
 Not promised here:
 
@@ -81,11 +82,12 @@ path of the installed binary.
 
 ## First Connect
 
-1. Plug in the preflashed `esp32-devkit-v1`.
+1. Plug in the preflashed `esp32-devkit-v4-game-board` proto board.
 2. Open VS Code.
 3. Open a `.frothy` or `.froth` file.
 4. Run `Frothy: Connect Device`.
 5. Run `Frothy: Send Selection / Line` on a small expression.
+6. Run `matrix.init:` and `grid.show:` for the first visible hardware check.
 
 ## Preflight
 
@@ -94,6 +96,7 @@ Before class, confirm:
 - `froth doctor` completes without CLI-path or serial-visibility surprises
 - VS Code installs the VSIX successfully
 - your laptop can see the board over USB
+- `matrix.init:` and `grid.show:` work on the attached proto board
 
 If you cannot complete those steps, stop there and bring that exact failure to
 the workshop instead of installing extra toolchains ad hoc.

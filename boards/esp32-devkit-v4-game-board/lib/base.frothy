@@ -199,11 +199,11 @@ to grid.fill with flag [
   ]
 ]
 
-joy.up.pin is JOY_1
-joy.down.pin is JOY_2
-joy.left.pin is JOY_3
-joy.right.pin is JOY_4
-joy.click.pin is JOY_6
+joy.up.pin is JOY_4
+joy.down.pin is JOY_3
+joy.left.pin is JOY_1
+joy.right.pin is JOY_6
+joy.click.pin is JOY_2
 
 to joy.up? [
   gpio.input: joy.up.pin;

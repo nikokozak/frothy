@@ -4,35 +4,36 @@ Status: branch-local status note
 Date: 2026-04-14
 
 This note is the workshop rehearsal closeout surface for the current branch.
-It does not claim that a successful measured real-device rehearsal has already
-been captured here.
+It records the current focused workshop-board proof state on the maintained
+`esp32-devkit-v4-game-board` path.
 
 ## Required Proof Command
 
 ```sh
-sh tools/frothy/proof_m10_smoke.sh \
-  --assume-blink-confirmed \
-  --transcript-out /tmp/frothy-m10.txt \
-  <PORT>
+sh tools/frothy/proof.sh workshop-v4 --live-controls <PORT>
 ```
 
 ## Current Branch Status
 
-- The docs/front-door, clean-machine checklist, and room-side recovery card
-  are checked in on this branch.
-- The measured rehearsal closeout stays open until the maintained real-device
-  path finishes cleanly and this file records the successful run.
+- The docs/front-door, clean-machine checklist, room-side recovery card, and
+  focused v4 workshop proof are checked in on this branch.
+- The maintained classroom hardware path is now the attached
+  `esp32-devkit-v4-game-board`, not the older v1 board.
 
 ## Measured Notes
 
-- No successful measured real-device rehearsal is recorded in this file yet.
-- A 2026-04-14 attempt reached the ESP32 proof path but did not finish cleanly
-  after `dangerous.wipe`; the flash/monitor session lost the device on
-  `/dev/cu.usbserial-0001`, so no timings are claimed here.
+- A successful focused real-device proof was recorded on 2026-04-15 against
+  the mounted `esp32-devkit-v4-game-board` on `/dev/cu.usbserial-0001`.
+- Command run:
+  `sh tools/frothy/proof.sh workshop-v4 --live-controls /dev/cu.usbserial-0001`
+- Observed behavior matched the frozen workshop helper surface:
+  `matrix.init`, `grid.clear`, `grid.fill`, `grid.set`, `grid.rect`,
+  `knob.left/right`, idle `joy.*?`, and `dangerous.wipe` restoring
+  `joy.*.pin` base slots.
+- No timings are claimed here; this note records behavior, not performance.
 
 ## Remaining Manual Gate
 
-- rerun the real-device lesson path to completion on the maintained
-  `esp32-devkit-v1`
-- record the successful transcript and any measurement output from that run
-- keep the remaining note limited to exact observed behavior
+- rerun the focused v4 proof if the workshop base image, helper surface, or
+  board wiring changes before Friday 2026-04-17
+- keep any future additions to this note limited to exact observed behavior

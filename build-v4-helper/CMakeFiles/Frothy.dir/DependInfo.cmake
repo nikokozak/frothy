@@ -1,0 +1,51 @@
+
+# Consider dependencies only in project.
+set(CMAKE_DEPENDS_IN_PROJECT_ONLY OFF)
+
+# The set of languages for which implicit dependencies are needed:
+set(CMAKE_DEPENDS_LANGUAGES
+  )
+
+# The set of dependency files which are needed:
+set(CMAKE_DEPENDS_DEPENDENCY_FILES
+  "/Users/niko/Developer/Frothy/boards/esp32-devkit-v4-game-board/ffi.c" "CMakeFiles/Frothy.dir/boards/esp32-devkit-v4-game-board/ffi.c.o" "gcc" "CMakeFiles/Frothy.dir/boards/esp32-devkit-v4-game-board/ffi.c.o.d"
+  "/Users/niko/Developer/Frothy/platforms/posix/platform.c" "CMakeFiles/Frothy.dir/platforms/posix/platform.c.o" "gcc" "CMakeFiles/Frothy.dir/platforms/posix/platform.c.o.d"
+  "/Users/niko/Developer/Frothy/src/compat/frothy_link_stub.c" "CMakeFiles/Frothy.dir/src/compat/frothy_link_stub.c.o" "gcc" "CMakeFiles/Frothy.dir/src/compat/frothy_link_stub.c.o.d"
+  "/Users/niko/Developer/Frothy/src/froth_cellspace.c" "CMakeFiles/Frothy.dir/src/froth_cellspace.c.o" "gcc" "CMakeFiles/Frothy.dir/src/froth_cellspace.c.o.d"
+  "/Users/niko/Developer/Frothy/src/froth_console.c" "CMakeFiles/Frothy.dir/src/froth_console.c.o" "gcc" "CMakeFiles/Frothy.dir/src/froth_console.c.o.d"
+  "/Users/niko/Developer/Frothy/src/froth_crc32.c" "CMakeFiles/Frothy.dir/src/froth_crc32.c.o" "gcc" "CMakeFiles/Frothy.dir/src/froth_crc32.c.o.d"
+  "/Users/niko/Developer/Frothy/src/froth_ffi.c" "CMakeFiles/Frothy.dir/src/froth_ffi.c.o" "gcc" "CMakeFiles/Frothy.dir/src/froth_ffi.c.o.d"
+  "/Users/niko/Developer/Frothy/src/froth_fmt.c" "CMakeFiles/Frothy.dir/src/froth_fmt.c.o" "gcc" "CMakeFiles/Frothy.dir/src/froth_fmt.c.o.d"
+  "/Users/niko/Developer/Frothy/src/froth_heap.c" "CMakeFiles/Frothy.dir/src/froth_heap.c.o" "gcc" "CMakeFiles/Frothy.dir/src/froth_heap.c.o.d"
+  "/Users/niko/Developer/Frothy/src/froth_slot_table.c" "CMakeFiles/Frothy.dir/src/froth_slot_table.c.o" "gcc" "CMakeFiles/Frothy.dir/src/froth_slot_table.c.o.d"
+  "/Users/niko/Developer/Frothy/src/froth_snapshot.c" "CMakeFiles/Frothy.dir/src/froth_snapshot.c.o" "gcc" "CMakeFiles/Frothy.dir/src/froth_snapshot.c.o.d"
+  "/Users/niko/Developer/Frothy/src/froth_stack.c" "CMakeFiles/Frothy.dir/src/froth_stack.c.o" "gcc" "CMakeFiles/Frothy.dir/src/froth_stack.c.o.d"
+  "/Users/niko/Developer/Frothy/src/froth_tbuf.c" "CMakeFiles/Frothy.dir/src/froth_tbuf.c.o" "gcc" "CMakeFiles/Frothy.dir/src/froth_tbuf.c.o.d"
+  "/Users/niko/Developer/Frothy/src/froth_transport.c" "CMakeFiles/Frothy.dir/src/froth_transport.c.o" "gcc" "CMakeFiles/Frothy.dir/src/froth_transport.c.o.d"
+  "/Users/niko/Developer/Frothy/src/froth_vm.c" "CMakeFiles/Frothy.dir/src/froth_vm.c.o" "gcc" "CMakeFiles/Frothy.dir/src/froth_vm.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_base_image.c" "CMakeFiles/Frothy.dir/src/frothy_base_image.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_base_image.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_boot.c" "CMakeFiles/Frothy.dir/src/frothy_boot.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_boot.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_control.c" "CMakeFiles/Frothy.dir/src/frothy_control.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_control.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_eval.c" "CMakeFiles/Frothy.dir/src/frothy_eval.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_eval.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_ffi.c" "CMakeFiles/Frothy.dir/src/frothy_ffi.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_ffi.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_inspect.c" "CMakeFiles/Frothy.dir/src/frothy_inspect.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_inspect.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_ir.c" "CMakeFiles/Frothy.dir/src/frothy_ir.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_ir.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_main.c" "CMakeFiles/Frothy.dir/src/frothy_main.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_main.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_parser.c" "CMakeFiles/Frothy.dir/src/frothy_parser.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_parser.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_shell.c" "CMakeFiles/Frothy.dir/src/frothy_shell.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_shell.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_snapshot.c" "CMakeFiles/Frothy.dir/src/frothy_snapshot.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_snapshot.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_snapshot_codec.c" "CMakeFiles/Frothy.dir/src/frothy_snapshot_codec.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_snapshot_codec.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_tm1629.c" "CMakeFiles/Frothy.dir/src/frothy_tm1629.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_tm1629.c.o.d"
+  "/Users/niko/Developer/Frothy/src/frothy_value.c" "CMakeFiles/Frothy.dir/src/frothy_value.c.o" "gcc" "CMakeFiles/Frothy.dir/src/frothy_value.c.o.d"
+  )
+
+# Targets to which this target links which contain Fortran sources.
+set(CMAKE_Fortran_TARGET_LINKED_INFO_FILES
+  )
+
+# Targets to which this target links which contain Fortran sources.
+set(CMAKE_Fortran_TARGET_FORWARD_LINKED_INFO_FILES
+  )
+
+# Fortran module output directory.
+set(CMAKE_Fortran_TARGET_MODULE_DIR "")

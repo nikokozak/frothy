@@ -5,7 +5,7 @@ It covers only the promised attendee surface:
 
 - released `froth` CLI
 - matching `frothy-vscode-v<extension-version>.vsix`
-- preflashed `esp32-devkit-v1`
+- preflashed `esp32-devkit-v4-game-board` proto board
 
 Start elsewhere when needed:
 
@@ -14,17 +14,19 @@ Start elsewhere when needed:
 - promised-platform validation and recording:
   `Frothy_Workshop_Clean_Machine_Validation.md`
 - room-side hardware and recovery card:
-  `../../boards/esp32-devkit-v1/WORKSHOP.md`
+  `../../boards/esp32-devkit-v4-game-board/WORKSHOP.md`
 
 ## First Connect
 
-1. Plug in the preflashed `esp32-devkit-v1`.
+1. Plug in the preflashed `esp32-devkit-v4-game-board` proto board.
 2. Run `froth doctor`.
 3. If several serial ports are visible, rerun `froth --port <path> doctor`.
 4. Open a `.froth` or `.frothy` file in VS Code.
 5. Run `Frothy: Connect Device`.
 6. Run `Frothy: Send Selection / Line` on `1 + 1`.
-7. If the extension path is blocked, fall back to
+7. Run `matrix.init:`, `grid.clear:`, `grid.set: 1, 1, true`, and `grid.show:`
+   for the first visible matrix proof.
+8. If the extension path is blocked, fall back to
    `froth --port <path> connect`.
 
 ## Prompt Checks
@@ -33,54 +35,57 @@ Use these first when the room state is unclear:
 
 ```frothy
 words
-info @millis
-info @blink
-info @adc.percent
-info @boot
-show @boot
+info @matrix.init
+info @grid.clear
+info @joy.up?
+info @knob.left
+show @matrix.init
 ```
 
 What they tell you:
 
 - `words`: which names are currently live
-- `info @millis`: the board-native uptime slot is present
-- `info @blink` and `info @adc.percent`: the workshop base image is installed
-- `info @boot` or `show @boot`: what startup code is currently bound
+- `info @matrix.init` and `info @grid.clear`: the matrix workshop base image is installed
+- `info @joy.up?` and `info @knob.left`: the semantic input helper layer is installed
+- `show @matrix.init`: the baked-in board init path is currently bound
 
 ## Maintained Board Surface
 
-Stable workshop pins:
+Stable workshop helper surface:
 
-- `LED_BUILTIN`
-- `A0`
-- `BOOT_BUTTON`
+- `matrix.*`: explicit hardware-facing display setup and drawing
+- `grid.*`: workshop-facing display helpers
+- `joy.*`: semantic active-low joystick readers
+- `knob.*`: semantic analog helpers
+- `dangerous.wipe`: base-image factory reset for the live overlay
 
 Most-used board and base-image calls:
 
 ```frothy
-millis:
-gpio.output: LED_BUILTIN
-gpio.high: LED_BUILTIN
-gpio.low: LED_BUILTIN
-gpio.toggle: LED_BUILTIN
-gpio.read: LED_BUILTIN
-led.on:
-led.off:
-led.toggle:
-led.blink: 3, 75
-adc.percent: A0
+matrix.init:
+grid.clear:
+grid.set: 1, 1, true
+grid.rect: 2, 2, 4, 3, true
+grid.fill: true
+grid.fill: false
+grid.show:
+joy.up?:
+joy.down?:
+joy.left?:
+joy.right?:
+joy.click?:
+knob.left:
+knob.right:
 ```
 
-The sanctioned starter project adds the lesson and game names used in the
-classroom path:
+Advanced/raw slots still exist for inspection and remapping:
 
-- `lesson.ready`
-- `lesson.blink`
-- `lesson.sample`
-- `lesson.animate`
-- `game.reset`
-- `game.step`
-- `game.capture`
+- raw display pins: `TM1629_STB`, `TM1629_CLK`, `TM1629_DIO`
+- raw joystick pins: `JOY_1`, `JOY_2`, `JOY_3`, `JOY_4`, `JOY_6`
+- raw knob pins: `POT_LEFT`, `POT_RIGHT`
+- semantic pin slots you can redefine live: `joy.up.pin`, `joy.down.pin`,
+  `joy.left.pin`, `joy.right.pin`, `joy.click.pin`, `knob.left.pin`,
+  `knob.right.pin`
 
 ## Persistence And Recovery
 
@@ -107,6 +112,7 @@ Remember:
   binary path.
 - Several USB serial devices are visible: use
   `froth --port <path> doctor` and `froth --port <path> connect`.
+- The matrix stays dark: run `matrix.init:`, then `grid.clear:` and `grid.show:`.
 - Whole-file send is blocked as unsafe: the firmware is too old for reset-safe
   send; reflash instead of replaying the file additively.
 - The board boots into bad saved state: use safe boot, inspect `boot`, then

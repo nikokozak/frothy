@@ -43,7 +43,7 @@ The workshop-operational artifacts are now concrete in-repo:
 
 - `docs/guide/Frothy_Workshop_Quick_Reference.md`
 - `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`
-- `boards/esp32-devkit-v1/WORKSHOP.md`
+- `boards/esp32-devkit-v4-game-board/WORKSHOP.md`
 - `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`
 
 Those files freeze the front door, the clean-machine checklist, the room-side
@@ -67,7 +67,7 @@ still have to be run and recorded.
   surface and the room-side recovery artifacts are already checked in; what is
   left is to execute and record the real passes. References:
   `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`,
-  `boards/esp32-devkit-v1/WORKSHOP.md`, and
+  `boards/esp32-devkit-v4-game-board/WORKSHOP.md`, and
   `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`.
 - Workspace/image flow stays deferred because the staged queue is already
   single-sourced in

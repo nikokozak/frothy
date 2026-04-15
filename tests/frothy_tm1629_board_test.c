@@ -205,6 +205,16 @@ static int test_surface_metadata_and_smoke(void) {
   frothy_value_t value = frothy_value_make_nil();
   char *slot_info = NULL;
   int ok = 1;
+  const int32_t adc_max = 4095;
+  const int32_t board_pin_a0 = 34;
+  const int32_t board_pin_pot_left = 33;
+  const int32_t board_pin_pot_right = 32;
+  const int32_t expected_a0_raw = 2048 + (board_pin_a0 & 0xff);
+  const int32_t expected_left_raw = 2048 + (board_pin_pot_left & 0xff);
+  const int32_t expected_right_raw = 2048 + (board_pin_pot_right & 0xff);
+  const int32_t expected_a0_percent = (expected_a0_raw * 100) / adc_max;
+  const int32_t expected_left_percent = (expected_left_raw * 100) / adc_max;
+  const int32_t expected_right_percent = (expected_right_raw * 100) / adc_max;
 
   if (!prepare_runtime()) {
     return 0;
@@ -232,19 +242,19 @@ static int test_surface_metadata_and_smoke(void) {
   ok &= expect_int_value(value, 8, "grid.height");
   release_value(&value);
   ok &= expect_ok("adc.percent: A0", &value);
-  ok &= expect_int_value(value, 50, "adc.percent: A0");
+  ok &= expect_int_value(value, expected_a0_percent, "adc.percent: A0");
   release_value(&value);
   ok &= expect_ok("knob.left.raw:", &value);
-  ok &= expect_int_value(value, 2081, "knob.left.raw");
+  ok &= expect_int_value(value, expected_left_raw, "knob.left.raw");
   release_value(&value);
   ok &= expect_ok("knob.right.raw:", &value);
-  ok &= expect_int_value(value, 2080, "knob.right.raw");
+  ok &= expect_int_value(value, expected_right_raw, "knob.right.raw");
   release_value(&value);
   ok &= expect_ok("knob.left:", &value);
-  ok &= expect_int_value(value, 50, "knob.left");
+  ok &= expect_int_value(value, expected_left_percent, "knob.left");
   release_value(&value);
   ok &= expect_ok("knob.right:", &value);
-  ok &= expect_int_value(value, 50, "knob.right");
+  ok &= expect_int_value(value, expected_right_percent, "knob.right");
   release_value(&value);
 
   ok &= expect_ok("joy.up.pin is LED_BUILTIN", &value);
@@ -256,13 +266,13 @@ static int test_surface_metadata_and_smoke(void) {
   ok &= expect_ok("gpio.low: LED_BUILTIN", &value);
   ok &= expect_nil_value(value, "gpio.low LED_BUILTIN");
   release_value(&value);
-  ok &= expect_ok("joy.up:", &value);
+  ok &= expect_ok("joy.up?:", &value);
   ok &= expect_bool_value(value, true, "joy.up? active low true");
   release_value(&value);
   ok &= expect_ok("gpio.high: LED_BUILTIN", &value);
   ok &= expect_nil_value(value, "gpio.high LED_BUILTIN");
   release_value(&value);
-  ok &= expect_ok("joy.up:", &value);
+  ok &= expect_ok("joy.up?:", &value);
   ok &= expect_bool_value(value, false, "joy.up? active low false");
   release_value(&value);
 
@@ -578,7 +588,7 @@ static int test_wipe_restores_base_surface(void) {
   ok &= expect_ok("grid.clear:", &value);
   ok &= expect_int_value(value, 88, "overlay grid.clear");
   release_value(&value);
-  ok &= expect_ok("joy.up:", &value);
+  ok &= expect_ok("joy.up?:", &value);
   ok &= expect_bool_value(value, true, "overlay joy.up?");
   release_value(&value);
   ok &= expect_ok("knob.left:", &value);

@@ -1658,7 +1658,7 @@ static int test_board_base_library_wipe_restore(void) {
     ok &= expect_ok("grid.clear:", &value);
     ok &= expect_int_value(value, 88, "overlay grid.clear:");
     release_value(&value);
-    ok &= expect_ok("joy.up:", &value);
+    ok &= expect_ok("joy.up?:", &value);
     ok &= expect_bool_value(value, true, "overlay joy.up?");
     release_value(&value);
     ok &= expect_ok("knob.left:", &value);

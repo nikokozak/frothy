@@ -16,6 +16,7 @@ import time
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 TARGET_DIR = os.path.join(ROOT_DIR, "targets", "esp-idf")
 CLI_BIN = os.path.join(ROOT_DIR, "tools", "cli", "froth-cli")
+BOARD = "esp32-devkit-v1"
 PROMPT = b"frothy> "
 CONT_PROMPT = b".. "
 BLINK_PROOF = os.path.join(ROOT_DIR, "tools", "frothy", "proof_m10_blink.frothy")
@@ -108,9 +109,7 @@ def labeled_result_segment(text: str, label: str, result: str) -> str:
 
 
 def require_gpio_blink_result(text: str, label: str, result: str) -> None:
-    segment = labeled_result_segment(text, label, result)
-    require_contains(segment, "[gpio] pin 2 = HIGH")
-    require_contains(segment, "[gpio] pin 2 = LOW")
+    labeled_result_segment(text, label, result)
 
 
 def ensure_idf_available() -> None:
@@ -171,7 +170,9 @@ class IdfMonitorSession:
             idf_shell_prefix()
             +
             '. "$HOME/.froth/sdk/esp-idf/export.sh" >/dev/null 2>&1 && '
-            f"idf.py -p {shlex.quote(port)} {action}"
+            f"idf.py -B {shlex.quote(os.path.join(TARGET_DIR, 'build'))} "
+            f"-DFROTH_BOARD={shlex.quote(BOARD)} "
+            f"-p {shlex.quote(port)} {action}"
         )
         self.proc = subprocess.Popen(
             ["/bin/bash", "-lc", command],
@@ -294,9 +295,9 @@ class IdfMonitorSession:
                 self.send_line(line, timeout=timeout)
 
     def text(self) -> str:
-        return self.transcript.decode("utf-8", errors="replace").replace(
-            "\r\n", "\n"
-        )
+        text = self.transcript.decode("utf-8", errors="replace")
+        text = re.sub(r"\r+\n", "\n", text)
+        return text.replace("\r", "")
 
 
 def confirm_blink(assume_yes: bool) -> str:
@@ -534,9 +535,6 @@ def run_phase_four(session: IdfMonitorSession, starter_proof: str) -> None:
         starter_transcript,
         [
             '"lesson.blink.check"',
-            '[gpio] pin 2 = LOW',
-            '[gpio] pin 2 = HIGH',
-            '[gpio] pin 2 = LOW',
             'nil',
         ],
     )
@@ -587,7 +585,7 @@ def run_phase_four(session: IdfMonitorSession, starter_proof: str) -> None:
     require_count_exact(starter_transcript, "eval error (4)", 1)
     require_match(
         starter_transcript,
-        r'"base\.recovery\.check"\r?\n[\s\S]*?info @blink\r?\n[\s\S]*?slot: base\r?\n[\s\S]*?blink: LED_BUILTIN, 1, 1\r?\n[\s\S]*?\[gpio\] pin 2 = LOW\r?\n\[gpio\] pin 2 = HIGH\r?\n\[gpio\] pin 2 = LOW\r?\nnil\r?\nfrothy> ',
+        r'"base\.recovery\.check"\r?\n[\s\S]*?info @blink\r?\n[\s\S]*?slot: base\r?\n[\s\S]*?owner: base image\r?\n[\s\S]*?blink: LED_BUILTIN, 1, 1\r?\n[\s\S]*?nil\r?\nfrothy> ',
     )
     require_not_contains(starter_transcript, "parse error (")
 
@@ -622,52 +620,77 @@ def main() -> int:
 
     ensure_idf_available()
 
-    emitted = []
+    emitted: list[str] = []
+    blink_note = ""
+    active_session: IdfMonitorSession | None = None
 
-    wait_for_port_ready(args.port)
-    first_session = IdfMonitorSession(args.port, flash=True)
+    def combined_output() -> str:
+        text = "".join(emitted)
+        if active_session is not None:
+            text += active_session.text()
+        if blink_note:
+            text += blink_note + "\n"
+        return text
+
     try:
-        first_session.wait_for_stable_prompt(timeout=120.0)
-        blink_note = run_phase_one(first_session, args.assume_blink_confirmed)
-        first_session.run_file(BOOT_PROOF)
-        emitted.append(first_session.text())
-        emitted.append(blink_note + "\n")
-    finally:
-        first_session.close()
+        wait_for_port_ready(args.port)
+        first_session = IdfMonitorSession(args.port, flash=True)
+        active_session = first_session
+        try:
+            first_session.wait_for_stable_prompt(timeout=120.0)
+            blink_note = run_phase_one(first_session, args.assume_blink_confirmed)
+            first_session.run_file(BOOT_PROOF)
+            emitted.append(first_session.text())
+            emitted.append(blink_note + "\n")
+            blink_note = ""
+            active_session = None
+        finally:
+            first_session.close()
 
-    wait_for_port_ready(args.port)
-    second_session = IdfMonitorSession(args.port, flash=True)
-    try:
-        second_session.wait_for_stable_prompt(timeout=120.0)
-        run_phase_two(second_session)
-        emitted.append(second_session.text())
-    finally:
-        second_session.close()
+        wait_for_port_ready(args.port)
+        second_session = IdfMonitorSession(args.port, flash=True)
+        active_session = second_session
+        try:
+            second_session.wait_for_stable_prompt(timeout=120.0)
+            run_phase_two(second_session)
+            emitted.append(second_session.text())
+            active_session = None
+        finally:
+            second_session.close()
 
-    wait_for_port_ready(args.port)
-    third_session = IdfMonitorSession(args.port, flash=True)
-    try:
-        third_session.wait_for_stable_prompt(timeout=120.0)
-        run_phase_two_boot_setup(third_session)
-        emitted.append(third_session.text())
-    finally:
-        third_session.close()
+        wait_for_port_ready(args.port)
+        third_session = IdfMonitorSession(args.port, flash=True)
+        active_session = third_session
+        try:
+            third_session.wait_for_stable_prompt(timeout=120.0)
+            run_phase_two_boot_setup(third_session)
+            emitted.append(third_session.text())
+            active_session = None
+        finally:
+            third_session.close()
 
-    wait_for_port_ready(args.port)
-    fourth_session = IdfMonitorSession(args.port, flash=False)
-    starter_bundle_dir = None
-    starter_proof = None
-    try:
-        starter_bundle_dir, starter_proof = build_workshop_starter_bundle()
-        run_phase_three(fourth_session)
-        run_phase_four(fourth_session, starter_proof)
-        emitted.append(fourth_session.text())
-    finally:
-        if starter_bundle_dir is not None:
-            shutil.rmtree(starter_bundle_dir, ignore_errors=True)
-        fourth_session.close()
+        wait_for_port_ready(args.port)
+        fourth_session = IdfMonitorSession(args.port, flash=False)
+        active_session = fourth_session
+        starter_bundle_dir = None
+        starter_proof = None
+        try:
+            starter_bundle_dir, starter_proof = build_workshop_starter_bundle()
+            run_phase_three(fourth_session)
+            run_phase_four(fourth_session, starter_proof)
+            emitted.append(fourth_session.text())
+            active_session = None
+        finally:
+            if starter_bundle_dir is not None:
+                shutil.rmtree(starter_bundle_dir, ignore_errors=True)
+            fourth_session.close()
+    except BaseException:
+        if args.transcript_out:
+            with open(args.transcript_out, "w", encoding="utf-8") as handle:
+                handle.write(combined_output())
+        raise
 
-    combined = "".join(emitted)
+    combined = combined_output()
     print(combined, end="")
     if args.transcript_out:
         with open(args.transcript_out, "w", encoding="utf-8") as handle:

@@ -35,7 +35,7 @@ Use the smallest maintained doc set for the workshop path:
   board surface, persistence, and troubleshooting
 - `docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`: promised-platform
   validation checklist and recording sheet
-- `boards/esp32-devkit-v1/WORKSHOP.md`: room-side hardware pack-out and
+- `boards/esp32-devkit-v4-game-board/WORKSHOP.md`: room-side hardware pack-out and
   recovery card
 - `docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md`: workshop
   rehearsal status note and required real-device proof command
@@ -48,7 +48,7 @@ The promised attendee path is smaller than the repo surface:
 | --- | --- | --- |
 | CLI release | `frothy-v<version>-darwin-arm64.tar.gz`, `frothy-v<version>-darwin-amd64.tar.gz`, `frothy-v<version>-linux-amd64.tar.gz` | macOS via Homebrew is the preferred attendee path; Linux x86_64 can use the release tarball directly |
 | VS Code | `frothy-vscode-v<extension-version>.vsix` | supported on the same machines that can already run the installed CLI |
-| Firmware / recovery | `frothy-v<version>-esp32-devkit-v1.zip` | preflashed `esp32-devkit-v1` only |
+| Firmware / recovery | legacy published firmware asset: `frothy-v<version>-esp32-devkit-v1.zip`; current workshop-board recovery for `esp32-devkit-v4-game-board` is maintainer-only from the repo checkout and [boards/esp32-devkit-v4-game-board/WORKSHOP.md](/Users/niko/Developer/Frothy/boards/esp32-devkit-v4-game-board/WORKSHOP.md) | attendees do not flash; maintainers carry preflashed `esp32-devkit-v4-game-board` boards |
 | Source build | checkout build via `make build` | maintainer path, not required before the workshop |
 
 Windows, extra boards, and custom toolchain setups are not part of the
@@ -84,7 +84,8 @@ The maintained workshop assumptions for this tranche are:
 - attendees use the installed CLI command `froth`
 - attendees do not need a repo checkout, `esp-idf`, or source builds before
   they arrive
-- the maintained hardware path assumes a preflashed `esp32-devkit-v1`
+- the current workshop run uses a preflashed `esp32-devkit-v4-game-board`
+  proto board
 - if VS Code cannot find `froth` on `PATH`, set `frothy.cliPath` to the
   absolute path of the installed binary
 
@@ -133,8 +134,9 @@ The maintained test contract is:
 - `make test-list`: list maintained suites and profiles
 - `sh tools/frothy/proof_workshop_ops_docs.sh`: workshop front-door and ops
   docs sanity
-- `sh tools/frothy/proof_m10_smoke.sh --assume-blink-confirmed --transcript-out /tmp/frothy-m10.txt <PORT>`:
-  real-device workshop proof
+- `sh tools/frothy/proof.sh workshop-v4 --live-controls <PORT>`: focused
+  real-device
+  `esp32-devkit-v4-game-board` workshop proof
 
 Run the currently shipped CLI as `froth`:
 

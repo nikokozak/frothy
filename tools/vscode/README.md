@@ -13,7 +13,7 @@ Keep the rest of the workshop path in the small shared docs set:
 - `../../docs/guide/Frothy_Workshop_Install_Quickstart.md`
 - `../../docs/guide/Frothy_Workshop_Quick_Reference.md`
 - `../../docs/guide/Frothy_Workshop_Clean_Machine_Validation.md`
-- `../../boards/esp32-devkit-v1/WORKSHOP.md`
+- `../../boards/esp32-devkit-v4-game-board/WORKSHOP.md`
 
 ## Install
 

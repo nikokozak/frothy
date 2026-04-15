@@ -16,12 +16,13 @@ for your chip, writing a board is straightforward. If not, see
 
 The current workshop promise is narrower than the repo's total board surface:
 
-- preflashed `esp32-devkit-v1` only
+- preflashed `esp32-devkit-v4-game-board` proto board in the room
 - released CLI plus matching VSIX only
+- the published recovery zip still targets `esp32-devkit-v1`
 - no extra-board guarantee before the workshop
 
 The room-side hardware checklist and recovery card for that board live in
-`boards/esp32-devkit-v1/WORKSHOP.md`.
+`boards/esp32-devkit-v4-game-board/WORKSHOP.md`.
 
 ## Directory layout
 

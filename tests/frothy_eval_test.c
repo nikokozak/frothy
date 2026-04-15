@@ -972,19 +972,28 @@ static size_t test_payload_align_up(size_t value) {
 }
 
 static int test_payload_capacity_and_fragmentation(void) {
-  frothy_payload_span_t spans[256];
+  frothy_payload_span_t *spans = NULL;
   frothy_payload_span_t reused = {0};
   void *data = NULL;
   size_t count = 0;
   size_t i;
   size_t chunk = test_payload_align_up(_Alignof(max_align_t) * 8);
+  size_t baseline_used = 0;
   size_t expected_used = 0;
+  size_t max_spans = 0;
   int ok = 1;
 
   reset_frothy_state();
-  memset(spans, 0, sizeof(spans));
+  baseline_used = frothy_runtime_payload_used(runtime());
+  expected_used = baseline_used;
+  max_spans = (FROTHY_PAYLOAD_CAPACITY / (chunk == 0 ? 1 : chunk)) + 4;
+  spans = calloc(max_spans, sizeof(*spans));
+  if (spans == NULL) {
+    fprintf(stderr, "payload fragmentation test failed to allocate spans\n");
+    return 0;
+  }
 
-  while (count < (sizeof(spans) / sizeof(spans[0])) &&
+  while (count < max_spans &&
          frothy_runtime_alloc_payload(runtime(), chunk, &spans[count], &data) ==
              FROTH_OK) {
     memset(data, 0, chunk);
@@ -1040,7 +1049,8 @@ cleanup:
   for (i = 0; i < count; i++) {
     frothy_runtime_release_payload(runtime(), spans[i]);
   }
-  ok &= expect_payload_used(0, "payload cleanup");
+  ok &= expect_payload_used(baseline_used, "payload cleanup");
+  free(spans);
   return ok;
 }
 
