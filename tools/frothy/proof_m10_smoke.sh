@@ -188,7 +188,7 @@ require_sequence() {
 }
 
 STARTER_DIR="$WORK_DIR/workshop-starter"
-STARTER_OUTPUT="$("$CLI_BIN" new --target esp32-devkit-v1 "$STARTER_DIR")"
+STARTER_OUTPUT="$("$CLI_BIN" new --board esp32-devkit-v1 "$STARTER_DIR")"
 printf '%s\n' "$STARTER_OUTPUT"
 require_contains "$STARTER_OUTPUT" 'Created project workshop-starter'
 require_contains "$STARTER_OUTPUT" 'target: esp32-devkit-v1 (esp-idf)'

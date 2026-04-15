@@ -30,13 +30,7 @@ func runBuild() error {
 		// Fall back to legacy project detection (kernel repo)
 		return runBuildLegacy()
 	}
-	if targetFlag != "" {
-		return fmt.Errorf("`%s build` does not accept --target inside a project; edit [target] in froth.toml", cliCommandName)
-	}
-
-	if err := cleanBuildDirIfRequested(filepath.Join(root, ".froth-build")); err != nil {
-		return err
-	}
+	noteManifestSelectionOverride(manifest)
 
 	return runBuildManifest(manifest, root)
 }
@@ -210,16 +204,12 @@ func buildESPIDFManifest(manifest *project.Manifest, root string, runtimeSourceP
 	if !isShellSafe(manifest.Target.Board) {
 		return fmt.Errorf("invalid board name: %s", manifest.Target.Board)
 	}
-	if !isShellSafe(manifest.Target.Platform) {
-		return fmt.Errorf("invalid platform name: %s", manifest.Target.Platform)
-	}
 
 	args := []string{
 		"-c",
 		`. "$IDF_EXPORT" && exec idf.py "$@"`,
 		"bash",
 		fmt.Sprintf("-DFROTH_BOARD=%s", manifest.Target.Board),
-		fmt.Sprintf("-DFROTH_PLATFORM=%s", manifest.Target.Platform),
 	}
 	args = append(args, manifest.Build.CMakeArgs()...)
 	if ffiConfigPath != "" {
@@ -445,19 +435,24 @@ func runBuildLegacy() error {
 		return err
 	}
 
-	switch targetFlag {
-	case "", "posix":
-		if err := cleanBuildDirIfRequested(filepath.Join(root, "build")); err != nil {
+	selection, err := resolveLegacyCLISelection(root)
+	if err != nil {
+		return err
+	}
+
+	switch selection.Platform {
+	case "posix":
+		if err := cleanBuildDirForExplicitSelection(filepath.Join(root, "build"), selection); err != nil {
 			return err
 		}
-		return buildPosix(root)
+		return buildPosix(root, selection.Board)
 	case "esp-idf":
-		if err := cleanBuildDirIfRequested(filepath.Join(root, "targets", "esp-idf", "build")); err != nil {
+		if err := cleanBuildDirForExplicitSelection(filepath.Join(root, "targets", "esp-idf", "build"), selection); err != nil {
 			return err
 		}
-		return buildESPIDF(root)
+		return buildESPIDF(root, selection.Board)
 	default:
-		return fmt.Errorf("unknown target: %s", targetFlag)
+		return fmt.Errorf("unknown target: %s", selection.Platform)
 	}
 }
 
@@ -465,29 +460,39 @@ func cleanBuildDirIfRequested(dir string) error {
 	if !cleanFlag {
 		return nil
 	}
-
-	if _, err := os.Stat(dir); err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("check build dir: %w", err)
+	cleaned, err := removeBuildDirIfPresent(dir)
+	if err != nil {
+		return err
 	}
-
-	if err := os.RemoveAll(dir); err != nil {
-		return fmt.Errorf("remove build dir: %w", err)
+	if cleaned {
+		fmt.Println("Cleaned build directory")
 	}
-
-	fmt.Println("Cleaned build directory")
 	return nil
 }
 
-func buildPosix(root string) error {
+func buildPosix(root string, board string) error {
 	buildDir := filepath.Join(root, "build")
 	if err := os.MkdirAll(buildDir, 0755); err != nil {
 		return fmt.Errorf("create build dir: %w", err)
 	}
 
-	cmake := exec.Command("cmake", "..", "-U", "FROTH_*", "-DFROTH_CELL_SIZE_BITS=32", "-DFROTHY_BUILD_HOST=ON")
+	if board == "" {
+		board = "posix"
+	}
+	if !isShellSafe(board) {
+		return fmt.Errorf("invalid board name: %s", board)
+	}
+
+	cmake := exec.Command(
+		"cmake",
+		"..",
+		"-U",
+		"FROTH_*",
+		"-DFROTH_CELL_SIZE_BITS=32",
+		fmt.Sprintf("-DFROTH_BOARD=%s", board),
+		"-DFROTH_PLATFORM=posix",
+		"-DFROTHY_BUILD_HOST=ON",
+	)
 	cmake.Dir = buildDir
 	cmake.Stdout = os.Stdout
 	cmake.Stderr = os.Stderr
@@ -512,7 +517,7 @@ func buildPosix(root string) error {
 	return nil
 }
 
-func buildESPIDF(root string) error {
+func buildESPIDF(root string, board string) error {
 	exportPath, err := espIDFExportPath()
 	if err != nil {
 		return err
@@ -523,7 +528,20 @@ func buildESPIDF(root string) error {
 		return fmt.Errorf("target dir not found: %s", targetDir)
 	}
 
-	cmd := exec.Command("bash", "-c", ". \"$IDF_EXPORT\" && idf.py build")
+	args := []string{
+		"-c",
+		`. "$IDF_EXPORT" && exec idf.py "$@"`,
+		"bash",
+	}
+	if board != "" {
+		if !isShellSafe(board) {
+			return fmt.Errorf("invalid board name: %s", board)
+		}
+		args = append(args, fmt.Sprintf("-DFROTH_BOARD=%s", board))
+	}
+	args = append(args, "build")
+
+	cmd := exec.Command("bash", args...)
 	cmd.Dir = targetDir
 	cmd.Env = append(os.Environ(), "IDF_EXPORT="+exportPath)
 	cmd.Stdout = os.Stdout

@@ -11,6 +11,7 @@ import (
 var (
 	portFlag   string
 	targetFlag string
+	boardFlag  string
 	cleanFlag  bool
 )
 
@@ -35,6 +36,11 @@ func Execute() error {
 		case "--target":
 			if i+1 < len(args) {
 				targetFlag = args[i+1]
+				i++
+			}
+		case "--board":
+			if i+1 < len(args) {
+				boardFlag = args[i+1]
 				i++
 			}
 		case "--clean":
@@ -102,7 +108,8 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Flags:")
 	fmt.Println("  --port <path>    Serial port (auto-detect if omitted)")
-	fmt.Println("  --target <name>  Scaffold target for `new`; legacy selector for non-project build/flash paths")
+	fmt.Println("  --target <name>  Target platform (`posix` or `esp-idf`)")
+	fmt.Println("  --board <name>   Board name from `boards/` (for example `esp32-devkit-v1`)")
 	fmt.Println("  --clean          Delete the build directory before building")
 	fmt.Println("  --version        Print Frothy version and exit")
 }

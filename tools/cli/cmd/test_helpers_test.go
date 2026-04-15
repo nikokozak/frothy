@@ -14,17 +14,20 @@ func resetCommandGlobals(t *testing.T) {
 
 	oldPort := portFlag
 	oldTarget := targetFlag
+	oldBoard := boardFlag
 	oldClean := cleanFlag
 	oldRunSetup := runSetupCommand
 
 	portFlag = ""
 	targetFlag = ""
+	boardFlag = ""
 	cleanFlag = false
 	runSetupCommand = runSetup
 
 	t.Cleanup(func() {
 		portFlag = oldPort
 		targetFlag = oldTarget
+		boardFlag = oldBoard
 		cleanFlag = oldClean
 		runSetupCommand = oldRunSetup
 	})

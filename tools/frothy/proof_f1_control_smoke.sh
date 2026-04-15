@@ -98,7 +98,7 @@ run_flash_apply_smoke() {
   trap cleanup EXIT HUP INT TERM
 
   build_cli_binary "$cli_bin"
-  "$cli_bin" new --target esp32-devkit-v1 "$project_dir"
+  "$cli_bin" new --board esp32-devkit-v1 "$project_dir"
   cat >"$project_dir/src/main.froth" <<'EOF'
 counter is cells(1)
 set counter[0] to 0

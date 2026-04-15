@@ -26,6 +26,9 @@ func TestExecutePrintsUsageWithNoCommand(t *testing.T) {
 	if !strings.Contains(stdout, "Usage: frothy [flags] <command>") {
 		t.Fatalf("stdout = %q, want usage", stdout)
 	}
+	if !strings.Contains(stdout, "--board <name>") {
+		t.Fatalf("stdout = %q, want board flag help", stdout)
+	}
 }
 
 func TestExecuteRejectsUnknownCommand(t *testing.T) {

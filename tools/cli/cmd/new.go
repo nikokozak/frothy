@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,7 +24,7 @@ func runNew(args []string) error {
 		return fmt.Errorf("project name %q contains invalid characters", name)
 	}
 
-	board, platform, err := scaffoldTargetConfig(targetFlag)
+	board, platform, err := scaffoldTargetConfig()
 	if err != nil {
 		return err
 	}
@@ -55,7 +54,7 @@ platform = "%s"
 
 # This [target] block is the project authority after scaffolding.
 # frothy new defaults to posix.
-# frothy new --target <board> can prefill a non-posix target.
+# frothy new --board <board> can prefill a non-posix target.
 # You can also edit these values later.
 
 # Project FFI: compile your own C bindings alongside the kernel.
@@ -123,39 +122,22 @@ froth_b.snap
 	return nil
 }
 
-func scaffoldTargetConfig(flag string) (board string, platform string, err error) {
-	name := strings.TrimSpace(flag)
-	if name == "" {
-		return "posix", "posix", nil
-	}
-
-	if !isShellSafe(name) {
-		return "", "", fmt.Errorf("invalid board target: %s", name)
-	}
-
+func scaffoldTargetConfig() (board string, platform string, err error) {
 	kernelRoot, err := findKernelRoot()
 	if err != nil {
-		return "", "", fmt.Errorf("resolve board target %q: %w", name, err)
+		return "", "", fmt.Errorf("resolve scaffold target: %w", err)
 	}
 
-	boardPath := filepath.Join(kernelRoot, "boards", name, "board.json")
-	data, err := os.ReadFile(boardPath)
+	selection, err := resolveNewCLISelection(kernelRoot)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "", "", fmt.Errorf("unknown board target: %s", name)
+		return "", "", err
+	}
+
+	if selection.Platform == "" || selection.Platform == "posix" {
+		if selection.Board == "" {
+			return "posix", "posix", nil
 		}
-		return "", "", fmt.Errorf("read board target %q: %w", name, err)
 	}
 
-	var meta struct {
-		Platform string `json:"platform"`
-	}
-	if err := json.Unmarshal(data, &meta); err != nil {
-		return "", "", fmt.Errorf("parse board target %q: %w", name, err)
-	}
-	if strings.TrimSpace(meta.Platform) == "" {
-		return "", "", fmt.Errorf("board target %q missing platform", name)
-	}
-
-	return name, meta.Platform, nil
+	return selection.Board, selection.Platform, nil
 }

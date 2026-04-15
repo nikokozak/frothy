@@ -1290,7 +1290,7 @@ binary: /path/to/project/.froth-build/firmware/Frothy
 For an ESP32 project:
 
 ```sh
-frothy new --target esp32-devkit-v1 blink
+frothy new --board esp32-devkit-v1 blink
 cd blink
 frothy doctor
 frothy build

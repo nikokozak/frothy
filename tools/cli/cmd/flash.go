@@ -27,9 +27,7 @@ func runFlash() error {
 
 	manifest, root, err := project.Load(cwd)
 	if err == nil {
-		if targetFlag != "" {
-			return fmt.Errorf("`%s flash` does not accept --target inside a project; edit [target] in froth.toml", cliCommandName)
-		}
+		noteManifestSelectionOverride(manifest)
 		return runFlashManifest(manifest, root)
 	}
 	if _, rootErr := project.FindProjectRoot(cwd); rootErr == nil {
@@ -118,15 +116,32 @@ func runFlashLegacy() error {
 		return err
 	}
 
-	switch targetFlag {
-	case "", "posix":
+	selection, err := resolveLegacyCLISelection(root)
+	if err != nil {
+		return err
+	}
+
+	switch selection.Platform {
+	case "posix":
+		if err := cleanBuildDirForExplicitSelection(filepath.Join(root, "build"), selection); err != nil {
+			return err
+		}
+		if err := buildPosix(root, selection.Board); err != nil {
+			return err
+		}
 		fmt.Println("no flash step for POSIX target")
 		fmt.Printf("binary: %s\n", filepath.Join(root, "build", "Frothy"))
 		return nil
 	case "esp-idf":
+		if err := cleanBuildDirForExplicitSelection(filepath.Join(root, "targets", "esp-idf", "build"), selection); err != nil {
+			return err
+		}
+		if err := buildESPIDF(root, selection.Board); err != nil {
+			return err
+		}
 		return flashESPIDF(root)
 	default:
-		return fmt.Errorf("unknown target: %s", targetFlag)
+		return fmt.Errorf("unknown target: %s", selection.Platform)
 	}
 }
 

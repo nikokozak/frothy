@@ -22,13 +22,14 @@ Target selection now appears in three different contexts:
 - optional platform toolchains such as ESP-IDF should still stay out of the
   default flow unless a project or legacy path explicitly asks for them
 
-The real authority problem is not "never accept `--target`".
-The real problem is letting `--target` compete with `froth.toml` after a
-manifest project already exists.
+The real authority problem is not "never accept CLI selection flags".
+The real problem is letting CLI selection compete with `froth.toml` after a
+manifest project already exists, while also confusing platform choice with
+board choice outside a project checkout.
 
 ## Options Considered
 
-### Option A: Ban `--target` for all manifest-oriented flows
+### Option A: Ban CLI selection flags for all manifest-oriented flows
 
 How it works:
 
@@ -42,22 +43,25 @@ Trade-offs:
 - Con: removes a useful scaffold convenience even though `new` is not yet
   building anything or resolving a toolchain.
 
-### Option B: Keep manifest projects authoritative, but allow `frothy new --target` as scaffold-time sugar
+### Option B: Keep manifest projects authoritative, but separate `--target`
+and `--board`
 
 How it works:
 
 - `frothy new` defaults to the posix scaffold
-- `frothy new --target <board>` may prefill `[target]` in the new manifest
-- once a manifest project exists, `frothy build` and `frothy flash` reject
-  `--target` and require the project target to come from `froth.toml`
+- `frothy new --board <board>` may prefill `[target]` in the new manifest
+- once a manifest project exists, `frothy build` and `frothy flash` keep
+  reading `froth.toml`, and any CLI `--target` / `--board` selection is
+  ignored with an explicit note
 - outside a manifest project, legacy build and flash paths may still use
-  `--target`
+  `--target <platform>` plus optional `--board <board>`
 - optional toolchains are resolved only when the chosen manifest or legacy path
   explicitly names that platform
 
 Trade-offs:
 
 - Pro: one clear authority for existing manifest projects.
+- Pro: restores an explicit board selector for legacy repo build and flash.
 - Pro: preserves a short scaffold command for hardware projects.
 - Pro: keeps ESP-IDF opt-in instead of default.
 - Con: keeps a small amount of board-to-platform inference at scaffold time.
@@ -71,22 +75,28 @@ authority for project platform selection after scaffolding.
 
 Policy:
 
-- `frothy new` scaffolds the default posix project when `--target` is omitted
-- `frothy new --target <board>` may prefill the new manifest with a non-posix
+- `frothy new` scaffolds the default posix project when target and board are
+  omitted
+- `frothy new --board <board>` may prefill the new manifest with a non-posix
   target, but this is only scaffold-time sugar; it does not resolve or install
   any platform toolchain by itself
 - optional platform toolchains are resolved only when the manifest explicitly
   names that platform
-- once a manifest project exists, `frothy build` and `frothy flash` do not accept
-  `--target`; users must edit `[target]` in `froth.toml` instead
-- legacy non-project build and flash paths may continue to use target flags
-  until they are retired, but that flag is not the authority for manifest
-  projects
+- once a manifest project exists, `frothy build` and `frothy flash` keep the
+  manifest authoritative; CLI `--target` / `--board` selection prints an
+  explicit override note and does not change the project build
+- legacy non-project build and flash paths may continue to use
+  `--target <platform>` and `--board <board>` until they are retired, but
+  those flags are not the authority for manifest projects
+- on the legacy repo-checkout path, explicit `--target` / `--board` selection
+  must clean stale build directories before reconfiguring so sticky cache state
+  cannot silently preserve the wrong board
 
 The deciding factor is clarity of authority:
 project target choice should live in one explicit file once the project exists,
-while scaffold-time convenience remains acceptable because it only initializes
-that file.
+while scaffold-time convenience and legacy checkout selection remain acceptable
+so long as `target` still means platform, `board` still means board, and the
+manifest remains the single authority once the project exists.
 
 ## Consequences
 
@@ -95,7 +105,9 @@ that file.
   of every new project.
 - Proofs and tooling become easier to reason about because project platform
   selection is visible in `froth.toml`.
-- Hardware-oriented scaffolds keep a short `new --target` path without creating
+- Legacy repo build and flash regain an explicit board selector instead of
+  relying on sticky CMake cache state.
+- Hardware-oriented scaffolds keep a short `new --board` path without creating
   a second authority for project builds.
 
 ## References

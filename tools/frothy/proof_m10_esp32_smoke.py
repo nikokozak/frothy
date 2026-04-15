@@ -380,7 +380,7 @@ def build_workshop_starter_bundle() -> tuple[str, str]:
         starter_dir = os.path.join(temp_dir, "workshop-starter")
         starter_proof = os.path.join(temp_dir, "workshop-starter-proof.frothy")
         scaffold = subprocess.run(
-            [CLI_BIN, "new", "--target", "esp32-devkit-v1", starter_dir],
+            [CLI_BIN, "new", "--board", "esp32-devkit-v1", starter_dir],
             cwd=ROOT_DIR,
             env=idf_env(),
             capture_output=True,

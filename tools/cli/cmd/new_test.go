@@ -63,7 +63,7 @@ func TestRunNewCreatesProjectSkeletonWithDefaultPosixTarget(t *testing.T) {
 
 func TestRunNewSetsESP32PlatformFromTargetFlag(t *testing.T) {
 	resetCommandGlobals(t)
-	targetFlag = "esp32-devkit-v1"
+	boardFlag = "esp32-devkit-v1"
 
 	projectDir := filepath.Join(t.TempDir(), "blink")
 	stdout, stderr := captureOutput(t, func() {
@@ -110,15 +110,45 @@ func TestRunNewSetsESP32PlatformFromTargetFlag(t *testing.T) {
 
 func TestRunNewRejectsUnknownTargetFlag(t *testing.T) {
 	resetCommandGlobals(t)
-	targetFlag = "esp32-devkit-v1x"
+	boardFlag = "esp32-devkit-v1x"
 
 	projectDir := filepath.Join(t.TempDir(), "blink")
 	err := runNew([]string{projectDir})
 	if err == nil {
 		t.Fatal("runNew succeeded, want error")
 	}
-	if !strings.Contains(err.Error(), "unknown board target") {
-		t.Fatalf("runNew error = %v, want unknown board target", err)
+	if !strings.Contains(err.Error(), "unknown board") {
+		t.Fatalf("runNew error = %v, want unknown board error", err)
+	}
+}
+
+func TestRunNewRequiresBoardForESPIDFTarget(t *testing.T) {
+	resetCommandGlobals(t)
+	targetFlag = "esp-idf"
+
+	projectDir := filepath.Join(t.TempDir(), "blink")
+	err := runNew([]string{projectDir})
+	if err == nil {
+		t.Fatal("runNew succeeded, want error")
+	}
+	if !strings.Contains(err.Error(), "requires --board") {
+		t.Fatalf("runNew error = %v, want board requirement", err)
+	}
+}
+
+func TestRunNewAcceptsDeprecatedTargetBoardAliasWithNote(t *testing.T) {
+	resetCommandGlobals(t)
+	targetFlag = "esp32-devkit-v1"
+
+	projectDir := filepath.Join(t.TempDir(), "blink")
+	_, stderr := captureOutput(t, func() {
+		if err := runNew([]string{projectDir}); err != nil {
+			t.Fatalf("runNew: %v", err)
+		}
+	})
+
+	if !strings.Contains(stderr, "frothy new --target <board>` is deprecated") {
+		t.Fatalf("stderr = %q, want deprecation note", stderr)
 	}
 }
 

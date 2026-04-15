@@ -54,7 +54,7 @@ Starter-project recovery when you need the sanctioned lesson path back on the
 board:
 
 ```sh
-frothy new --target esp32-devkit-v1 recover-board
+frothy new --board esp32-devkit-v1 recover-board
 cd recover-board
 frothy --port <path> doctor
 frothy --port <path> flash

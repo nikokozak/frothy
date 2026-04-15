@@ -136,11 +136,23 @@ platform = "posix"
 	}
 }
 
-func TestRunBuildRejectsLegacyTargetFlagInsideManifestProject(t *testing.T) {
+func TestRunBuildManifestOverridesCLISelectionWithNote(t *testing.T) {
 	resetCommandGlobals(t)
 	targetFlag = "esp-idf"
+	boardFlag = "esp32-devkit-v4-game-board"
+	stubSeedBuiltImage(t)
 
 	projectRoot := t.TempDir()
+	kernelRoot := makeFakeKernelRoot(t)
+	logPath := filepath.Join(t.TempDir(), "build.log")
+	toolsDir := t.TempDir()
+	writeFakeBuildTools(t, toolsDir, logPath)
+	prependPath(t, toolsDir)
+
+	oldEnsureSDKRoot := ensureSDKRoot
+	ensureSDKRoot = func() (string, error) { return kernelRoot, nil }
+	t.Cleanup(func() { ensureSDKRoot = oldEnsureSDKRoot })
+
 	withChdir(t, projectRoot)
 	writeManifestProject(t, projectRoot, `[project]
 name = "demo"
@@ -152,12 +164,17 @@ platform = "posix"
 `)
 	mustWriteFile(t, filepath.Join(projectRoot, "src", "main.froth"), "boot { nil }\n")
 
-	err := runBuild()
-	if err == nil {
-		t.Fatal("runBuild succeeded, want error")
+	stdout, stderr := captureOutput(t, func() {
+		if err := runBuild(); err != nil {
+			t.Fatalf("runBuild: %v", err)
+		}
+	})
+
+	if !strings.Contains(stderr, "ignoring --target esp-idf --board esp32-devkit-v4-game-board because froth.toml selects posix (posix)") {
+		t.Fatalf("stderr = %q, want manifest override note", stderr)
 	}
-	if !strings.Contains(err.Error(), "does not accept --target inside a project") {
-		t.Fatalf("runBuild error = %v, want manifest target guidance", err)
+	if !strings.Contains(stdout, "Firmware ready:") {
+		t.Fatalf("stdout = %q, want build output", stdout)
 	}
 }
 
@@ -575,7 +592,56 @@ func TestRunBuildLegacyCleanDeletesESPIDFBuildDir(t *testing.T) {
 
 	log := mustReadFile(t, logPath)
 	if !strings.Contains(log, "idf.py build") {
-		t.Fatalf("idf log = %q, want idf.py build", log)
+		t.Fatalf("idf log = %q, want esp-idf build invocation", log)
+	}
+}
+
+func TestRunBuildLegacyBoardFlagPassesBoardToESPIDFAndCleansCache(t *testing.T) {
+	resetCommandGlobals(t)
+	targetFlag = "esp-idf"
+	boardFlag = "esp32-devkit-v4-game-board"
+
+	root := makeFakeKernelRoot(t)
+	targetDir := filepath.Join(root, "targets", "esp-idf")
+	mustWriteFile(t, filepath.Join(targetDir, "CMakeLists.txt"), "cmake_minimum_required(VERSION 3.16)\nproject(froth)\n")
+	mustWriteFile(t, filepath.Join(targetDir, "build", "stale.txt"), "stale")
+
+	logPath := filepath.Join(t.TempDir(), "idf.log")
+	toolsDir := t.TempDir()
+	mustWriteExecutable(t, filepath.Join(toolsDir, "idf.py"), "#!/bin/sh\nprintf 'idf.py %s\\n' \"$*\" >> \""+logPath+"\"\nmkdir -p build\n: > build/rebuilt.txt\n")
+
+	frothyHome := t.TempDir()
+	exportPath := filepath.Join(frothyHome, "sdk", "esp-idf", "export.sh")
+	mustWriteFile(t, exportPath, "export PATH=\""+toolsDir+":$PATH\"\n")
+	t.Setenv("FROTHY_HOME", frothyHome)
+
+	withChdir(t, root)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := runBuildLegacy(); err != nil {
+			t.Fatalf("runBuildLegacy: %v", err)
+		}
+	})
+
+	if _, err := os.Stat(filepath.Join(targetDir, "build", "stale.txt")); !os.IsNotExist(err) {
+		t.Fatalf("stale file still exists after explicit board build: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(targetDir, "build", "rebuilt.txt")); err != nil {
+		t.Fatalf("rebuilt marker missing after idf.py build: %v", err)
+	}
+	if !strings.Contains(stderr, "cleaned build directory to avoid sticky target/board cache for --target esp-idf --board esp32-devkit-v4-game-board") {
+		t.Fatalf("stderr = %q, want explicit-selection cache note", stderr)
+	}
+
+	log := mustReadFile(t, logPath)
+	if !strings.Contains(log, "-DFROTH_BOARD=esp32-devkit-v4-game-board") {
+		t.Fatalf("idf log = %q, want board definition", log)
+	}
+	if !strings.Contains(log, "build") {
+		t.Fatalf("idf log = %q, want build invocation", log)
+	}
+	if stdout != "" && !strings.Contains(stdout, "\n") {
+		t.Fatalf("stdout = %q, want normal command output shape", stdout)
 	}
 }
 
@@ -607,7 +673,11 @@ func makeFakeKernelRoot(t *testing.T) string {
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, "CMakeLists.txt"), "cmake_minimum_required(VERSION 3.23)\nproject(Froth)\n")
 	mustWriteFile(t, filepath.Join(root, "boards", "posix", "ffi.c"), "/* board */\n")
+	mustWriteFile(t, filepath.Join(root, "boards", "posix", "board.json"), `{"platform":"posix"}`+"\n")
 	mustWriteFile(t, filepath.Join(root, "boards", "esp32-devkit-v1", "ffi.c"), "/* board */\n")
+	mustWriteFile(t, filepath.Join(root, "boards", "esp32-devkit-v1", "board.json"), `{"platform":"esp-idf"}`+"\n")
+	mustWriteFile(t, filepath.Join(root, "boards", "esp32-devkit-v4-game-board", "ffi.c"), "/* board */\n")
+	mustWriteFile(t, filepath.Join(root, "boards", "esp32-devkit-v4-game-board", "board.json"), `{"platform":"esp-idf"}`+"\n")
 	mustWriteFile(t, filepath.Join(root, "src", "froth_vm.h"), "/* vm */\n")
 	return root
 }

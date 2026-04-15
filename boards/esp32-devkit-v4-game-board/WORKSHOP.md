@@ -73,9 +73,8 @@ Direct maintainer reflash from this repo when you need the current checked-in
 base image and shipped Pong demo:
 
 ```sh
-cd targets/esp-idf
-. "${FROTHY_HOME:-${FROTH_HOME:-$HOME/.frothy}}/sdk/esp-idf/export.sh"
-idf.py -DFROTH_BOARD=esp32-devkit-v4-game-board -p <path> flash
+cd /path/to/Frothy
+frothy --target esp-idf --board esp32-devkit-v4-game-board --port <path> flash
 ```
 
 After reflashing, reconnect, confirm the board boots back into Pong, and

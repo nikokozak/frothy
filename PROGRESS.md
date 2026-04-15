@@ -111,6 +111,12 @@ file is wrong.
   instead of carrying hardcoded TM1629 linkage in the global build lists, so
   the default v1 board path stays a plain base Frothy image unless a board
   explicitly declares more.
+- The repo-checkout CLI selection path is now explicit again: `--target`
+  means platform, `--board` means board, manifest projects ignore those flags
+  with an explicit note instead of a hard error, legacy repo build/flash
+  force-clean sticky target/board caches when selection flags are passed, and
+  real-device proof now goes back through `frothy flash` rather than raw
+  `idf.py` for the maintained repo-side flash path.
 - The attendee-facing naming and recovery story is now explicit on the
   maintained Frothy path: Frothy owns the product/docs/editor/install identity,
   the default CLI home is `~/.frothy` with `FROTHY_HOME` override, Frothy now
