@@ -1,3 +1,52 @@
+led.pin is LED_BUILTIN
+adc.max is 4095
+
+to gpio.input with pin [ gpio.mode: pin, 0 ]
+to gpio.output with pin [ gpio.mode: pin, 1 ]
+to gpio.high with pin [ gpio.write: pin, 1 ]
+to gpio.low with pin [ gpio.write: pin, 0 ]
+to gpio.toggle with pin [
+  here state is gpio.read: pin;
+  gpio.write: pin, 1 - state
+]
+
+to animate with count, wait, step [
+  repeat count as i [ step: i; ms: wait ]
+]
+
+to blink with pin, count, wait [
+  gpio.output: pin;
+  gpio.low: pin;
+  repeat count [
+    gpio.high: pin;
+    ms: wait;
+    gpio.low: pin;
+    ms: wait
+  ]
+]
+
+to led.on [
+  gpio.output: led.pin;
+  gpio.high: led.pin
+]
+
+to led.off [
+  gpio.output: led.pin;
+  gpio.low: led.pin
+]
+
+to led.toggle [
+  gpio.output: led.pin;
+  gpio.toggle: led.pin
+]
+
+to led.blink with count, wait [ blink: led.pin, count, wait ]
+
+to adc.percent with pin [
+  here raw is adc.read: pin;
+  raw * 100 / adc.max
+]
+
 tm1629.width is 12
 tm1629.height is 8
 tm1629.rowMask is 4095
@@ -133,3 +182,58 @@ to matrix.line with x0, y0, x1, y1, flag [
 ]
 to matrix.rect with x, y, w, h, flag [ tm1629.rect: x, y, w, h, flag ]
 to matrix.fillRect with x, y, w, h, flag [ tm1629.fillRect: x, y, w, h, flag ]
+
+grid.width is matrix.width
+grid.height is matrix.height
+grid.show is matrix.show
+grid.clear is matrix.clear
+grid.get is matrix.pixel@
+
+to grid.set with x, y, flag [ matrix.pixel!: x, y, flag ]
+to grid.toggle with x, y [ matrix.pixel!: x, y, not matrix.pixel@: x, y ]
+to grid.rect with x, y, w, h, flag [ matrix.rect: x, y, w, h, flag ]
+to grid.fill with flag [
+  cond [
+    when flag [ matrix.fill: ]
+    else [ matrix.clear: ]
+  ]
+]
+
+joy.up.pin is JOY_1
+joy.down.pin is JOY_2
+joy.left.pin is JOY_3
+joy.right.pin is JOY_4
+joy.click.pin is JOY_6
+
+to joy.up? [
+  gpio.input: joy.up.pin;
+  (gpio.read: joy.up.pin) == 0
+]
+
+to joy.down? [
+  gpio.input: joy.down.pin;
+  (gpio.read: joy.down.pin) == 0
+]
+
+to joy.left? [
+  gpio.input: joy.left.pin;
+  (gpio.read: joy.left.pin) == 0
+]
+
+to joy.right? [
+  gpio.input: joy.right.pin;
+  (gpio.read: joy.right.pin) == 0
+]
+
+to joy.click? [
+  gpio.input: joy.click.pin;
+  (gpio.read: joy.click.pin) == 0
+]
+
+knob.left.pin is POT_LEFT
+knob.right.pin is POT_RIGHT
+
+to knob.left.raw [ adc.read: knob.left.pin ]
+to knob.right.raw [ adc.read: knob.right.pin ]
+to knob.left [ adc.percent: knob.left.pin ]
+to knob.right [ adc.percent: knob.right.pin ]

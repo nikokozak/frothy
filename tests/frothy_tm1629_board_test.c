@@ -225,6 +225,46 @@ static int test_surface_metadata_and_smoke(void) {
   ok &= expect_ok("matrix.height", &value);
   ok &= expect_int_value(value, 8, "matrix.height");
   release_value(&value);
+  ok &= expect_ok("grid.width", &value);
+  ok &= expect_int_value(value, 12, "grid.width");
+  release_value(&value);
+  ok &= expect_ok("grid.height", &value);
+  ok &= expect_int_value(value, 8, "grid.height");
+  release_value(&value);
+  ok &= expect_ok("adc.percent: A0", &value);
+  ok &= expect_int_value(value, 50, "adc.percent: A0");
+  release_value(&value);
+  ok &= expect_ok("knob.left.raw:", &value);
+  ok &= expect_int_value(value, 2081, "knob.left.raw");
+  release_value(&value);
+  ok &= expect_ok("knob.right.raw:", &value);
+  ok &= expect_int_value(value, 2080, "knob.right.raw");
+  release_value(&value);
+  ok &= expect_ok("knob.left:", &value);
+  ok &= expect_int_value(value, 50, "knob.left");
+  release_value(&value);
+  ok &= expect_ok("knob.right:", &value);
+  ok &= expect_int_value(value, 50, "knob.right");
+  release_value(&value);
+
+  ok &= expect_ok("joy.up.pin is LED_BUILTIN", &value);
+  ok &= expect_nil_value(value, "overlay joy.up.pin");
+  release_value(&value);
+  ok &= expect_ok("gpio.output: LED_BUILTIN", &value);
+  ok &= expect_nil_value(value, "gpio.output LED_BUILTIN");
+  release_value(&value);
+  ok &= expect_ok("gpio.low: LED_BUILTIN", &value);
+  ok &= expect_nil_value(value, "gpio.low LED_BUILTIN");
+  release_value(&value);
+  ok &= expect_ok("joy.up:", &value);
+  ok &= expect_bool_value(value, true, "joy.up? active low true");
+  release_value(&value);
+  ok &= expect_ok("gpio.high: LED_BUILTIN", &value);
+  ok &= expect_nil_value(value, "gpio.high LED_BUILTIN");
+  release_value(&value);
+  ok &= expect_ok("joy.up:", &value);
+  ok &= expect_bool_value(value, false, "joy.up? active low false");
+  release_value(&value);
 
   ok &= expect_ok("matrix.init:", &value);
   ok &= expect_nil_value(value, "matrix.init:");
@@ -260,6 +300,30 @@ static int test_surface_metadata_and_smoke(void) {
   ok &= capture_slot_info_text("matrix.init", &slot_info);
   ok &= expect_contains(slot_info, "owner: base image", "matrix.init owner");
   ok &= expect_contains(slot_info, "kind: code", "matrix.init kind");
+  free(slot_info);
+  slot_info = NULL;
+
+  ok &= capture_slot_info_text("blink", &slot_info);
+  ok &= expect_contains(slot_info, "owner: base image", "blink owner");
+  ok &= expect_contains(slot_info, "kind: code", "blink kind");
+  free(slot_info);
+  slot_info = NULL;
+
+  ok &= capture_slot_info_text("grid.clear", &slot_info);
+  ok &= expect_contains(slot_info, "owner: base image", "grid.clear owner");
+  ok &= expect_contains(slot_info, "kind: code", "grid.clear kind");
+  free(slot_info);
+  slot_info = NULL;
+
+  ok &= capture_slot_info_text("joy.up?", &slot_info);
+  ok &= expect_contains(slot_info, "owner: base image", "joy.up? owner");
+  ok &= expect_contains(slot_info, "kind: code", "joy.up? kind");
+  free(slot_info);
+  slot_info = NULL;
+
+  ok &= capture_slot_info_text("knob.left", &slot_info);
+  ok &= expect_contains(slot_info, "owner: base image", "knob.left owner");
+  ok &= expect_contains(slot_info, "kind: code", "knob.left kind");
   free(slot_info);
   slot_info = NULL;
 
@@ -397,12 +461,50 @@ static int test_language_vectors(void) {
   ok &= expect_ok("tm1629.row@: 3", &value);
   ok &= expect_int_value(value, 2049, "matrix.rect");
   release_value(&value);
+
+  ok &= expect_ok("grid.clear:", &value);
+  ok &= expect_nil_value(value, "grid.clear before grid.fill");
+  release_value(&value);
+  ok &= expect_ok("grid.fill: true", &value);
+  ok &= expect_nil_value(value, "grid.fill true");
+  release_value(&value);
+  ok &= expect_ok("tm1629.row@: 0", &value);
+  ok &= expect_int_value(value, 4095, "grid.fill true");
+  release_value(&value);
+  ok &= expect_ok("grid.fill: false", &value);
+  ok &= expect_nil_value(value, "grid.fill false");
+  release_value(&value);
+  ok &= expect_ok("tm1629.row@: 0", &value);
+  ok &= expect_int_value(value, 0, "grid.fill false");
+  release_value(&value);
+
+  ok &= expect_ok("grid.set: 1, 2, true", &value);
+  ok &= expect_nil_value(value, "grid.set");
+  release_value(&value);
+  ok &= expect_ok("grid.get: 1, 2", &value);
+  ok &= expect_bool_value(value, true, "grid.get after grid.set");
+  release_value(&value);
+  ok &= expect_ok("grid.toggle: 1, 2", &value);
+  ok &= expect_nil_value(value, "grid.toggle");
+  release_value(&value);
+  ok &= expect_ok("grid.get: 1, 2", &value);
+  ok &= expect_bool_value(value, false, "grid.get after grid.toggle");
+  release_value(&value);
+
+  ok &= expect_ok("grid.rect: 1, 1, 4, 3, true", &value);
+  ok &= expect_nil_value(value, "grid.rect");
+  release_value(&value);
+  ok &= expect_ok("tm1629.row@: 2", &value);
+  ok &= expect_int_value(value, 18, "grid.rect row 2");
+  release_value(&value);
   return ok;
 }
 
 static int test_wipe_restores_base_surface(void) {
   frothy_value_t value = frothy_value_make_nil();
   char *slot_info = NULL;
+  int32_t base_joy_up_pin = 0;
+  int32_t base_knob_left_pin = 0;
   int ok = 1;
 
   if (!prepare_runtime()) {
@@ -415,6 +517,18 @@ static int test_wipe_restores_base_surface(void) {
   ok &= expect_ok("tm1629.raw.row!: 255, 0", &value);
   ok &= expect_nil_value(value, "tm1629.raw.row! before wipe");
   release_value(&value);
+  ok &= expect_ok("joy.up.pin", &value);
+  if (ok) {
+    base_joy_up_pin = frothy_value_as_int(value);
+  }
+  ok &= expect_int_value(value, base_joy_up_pin, "base joy.up.pin");
+  release_value(&value);
+  ok &= expect_ok("knob.left.pin", &value);
+  if (ok) {
+    base_knob_left_pin = frothy_value_as_int(value);
+  }
+  ok &= expect_int_value(value, base_knob_left_pin, "base knob.left.pin");
+  release_value(&value);
   ok &= expect_ok("matrix.width is 1", &value);
   ok &= expect_nil_value(value, "overlay matrix.width");
   release_value(&value);
@@ -423,6 +537,27 @@ static int test_wipe_restores_base_surface(void) {
   release_value(&value);
   ok &= expect_ok("to tm1629.show [ 77 ]", &value);
   ok &= expect_nil_value(value, "overlay tm1629.show");
+  release_value(&value);
+  ok &= expect_ok("to blink with pin, count, wait [ 55 ]", &value);
+  ok &= expect_nil_value(value, "overlay blink");
+  release_value(&value);
+  ok &= expect_ok("to adc.percent with pin [ 44 ]", &value);
+  ok &= expect_nil_value(value, "overlay adc.percent");
+  release_value(&value);
+  ok &= expect_ok("to grid.clear [ 88 ]", &value);
+  ok &= expect_nil_value(value, "overlay grid.clear");
+  release_value(&value);
+  ok &= expect_ok("joy.up.pin is LED_BUILTIN", &value);
+  ok &= expect_nil_value(value, "overlay joy.up.pin");
+  release_value(&value);
+  ok &= expect_ok("to joy.up? [ true ]", &value);
+  ok &= expect_nil_value(value, "overlay joy.up?");
+  release_value(&value);
+  ok &= expect_ok("knob.left.pin is A0", &value);
+  ok &= expect_nil_value(value, "overlay knob.left.pin");
+  release_value(&value);
+  ok &= expect_ok("to knob.left [ 33 ]", &value);
+  ok &= expect_nil_value(value, "overlay knob.left");
   release_value(&value);
 
   ok &= expect_ok("matrix.width", &value);
@@ -433,6 +568,21 @@ static int test_wipe_restores_base_surface(void) {
   release_value(&value);
   ok &= expect_ok("tm1629.show:", &value);
   ok &= expect_int_value(value, 77, "overlay tm1629.show");
+  release_value(&value);
+  ok &= expect_ok("blink: LED_BUILTIN, 1, 0", &value);
+  ok &= expect_int_value(value, 55, "overlay blink");
+  release_value(&value);
+  ok &= expect_ok("adc.percent: A0", &value);
+  ok &= expect_int_value(value, 44, "overlay adc.percent");
+  release_value(&value);
+  ok &= expect_ok("grid.clear:", &value);
+  ok &= expect_int_value(value, 88, "overlay grid.clear");
+  release_value(&value);
+  ok &= expect_ok("joy.up:", &value);
+  ok &= expect_bool_value(value, true, "overlay joy.up?");
+  release_value(&value);
+  ok &= expect_ok("knob.left:", &value);
+  ok &= expect_int_value(value, 33, "overlay knob.left");
   release_value(&value);
 
   ok &= expect_ok("dangerous.wipe:", &value);
@@ -447,6 +597,25 @@ static int test_wipe_restores_base_surface(void) {
   release_value(&value);
   ok &= expect_ok("tm1629.show:", &value);
   ok &= expect_nil_value(value, "restored tm1629.show");
+  release_value(&value);
+  ok &= expect_ok("blink: LED_BUILTIN, 1, 0", &value);
+  ok &= expect_nil_value(value, "restored blink");
+  release_value(&value);
+  ok &= expect_ok("adc.percent: A0", &value);
+  ok &= expect_int_value(value, 50, "restored adc.percent");
+  release_value(&value);
+  ok &= expect_ok("grid.clear:", &value);
+  ok &= expect_nil_value(value, "restored grid.clear");
+  release_value(&value);
+  ok &= expect_ok("joy.up.pin", &value);
+  ok &= expect_int_value(value, base_joy_up_pin, "restored joy.up.pin");
+  release_value(&value);
+  ok &= expect_ok("knob.left.pin", &value);
+  ok &= expect_int_value(value, base_knob_left_pin,
+                         "restored knob.left.pin");
+  release_value(&value);
+  ok &= expect_ok("knob.left:", &value);
+  ok &= expect_int_value(value, 50, "restored knob.left");
   release_value(&value);
   ok &= expect_ok("tm1629.raw.row@: 0", &value);
   ok &= expect_int_value(value, 0, "runtime state reset after wipe");
@@ -463,6 +632,16 @@ static int test_wipe_restores_base_surface(void) {
   ok &= capture_slot_info_text("matrix.clear", &slot_info);
   ok &= expect_contains(slot_info, "owner: base image",
                         "matrix.clear restored owner");
+  free(slot_info);
+  slot_info = NULL;
+  ok &= capture_slot_info_text("joy.up?", &slot_info);
+  ok &= expect_contains(slot_info, "owner: base image",
+                        "joy.up? restored owner");
+  free(slot_info);
+  slot_info = NULL;
+  ok &= capture_slot_info_text("knob.left", &slot_info);
+  ok &= expect_contains(slot_info, "owner: base image",
+                        "knob.left restored owner");
   free(slot_info);
 
   ok &= expect_error("undefined.tm1629.word", FROTH_ERROR_UNDEFINED_WORD);

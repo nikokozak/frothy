@@ -1,30 +1,46 @@
 # Learn Frothy in 30 Minutes
 
 This is the fast tour. The rest of the guide turns you into a maintainer, but
-this opening section is meant to get you reading and writing Frothy right now.
+this opening section is meant to get you reading and writing the current live
+Frothy surface immediately.
 
 Scope note:
 
-- The language contract in this guide follows accepted Frothy `v0.1`
-  semantics.
-- Most interactive examples use the current spoken-ledger surface that the
-  shipped parser and shell accept today, because that is what you will
-  actually type at the prompt.
-- Frothy is not teaching a user-visible data stack first. If you know old
-  Froth or Forth, treat that as background substrate knowledge, not as the
-  product model you should teach from.
+- The accepted `v0.1` semantics still matter, but this guide teaches the
+  current prompt-facing surface that the shipped shell, tests, and starter
+  materials accept today.
+- Compatibility spellings such as `name(args)`, `=`, and `{ ... }` still show
+  up in parts of the toolchain and parser fixtures. This guide does not use
+  them as the primary teaching surface.
+- Frothy is not a stack-first teaching language. If you know old Froth or
+  Forth, treat that as substrate background, not as the user-facing product
+  model.
 
-One quick orientation before the examples:
+One orientation before the examples:
 
-- A **value** is a thing like `7`, `true`, `"tea"`, some `Code`, or some
-  `Cells`.
+- A **value** is a thing like `7`, `true`, `"tea"`, `nil`, a `Code` value,
+  some `Cells`, or a current live record value.
 - A **slot** is a stable top-level named place. The slot named `count` stays
   `count`; the value inside it can change.
 - A **block** is code inside `[` and `]`.
-- The REPL prints the value an expression returns. A mutation usually returns
+- The REPL prints the value an expression returns. Mutations usually return
   `nil`.
 
-## Literals and values
+## Quick Syntax Map
+
+These are the spellings to learn first:
+
+- bind or rebind a top-level slot: `name is expr`
+- mutate an existing place: `set place to expr`
+- define named code: `to name [ ... ]` or `to name with a, b [ ... ]`
+- create anonymous code: `fn [ ... ]` or `fn with a, b [ ... ]`
+- call a named thing: `name: arg1, arg2`
+- call computed code: `call expr with arg1, arg2`
+- create local state: `here name is expr`
+- define a fixed-layout record: `record Name [ field, ... ]`
+- group names under a prefix: `in prefix [ ... ]`
+
+## Literals and direct values
 
 ```frothy
 42
@@ -45,7 +61,7 @@ Result:
 Frothy starts from values you can see directly. There is no stack juggling to
 understand before you can read a line of code.
 
-## Top-level names are stable slots
+## Stable top-level slots
 
 ```frothy
 count is 7
@@ -57,28 +73,30 @@ Result:
 - `count is 7` creates or rebinds the top-level slot named `count`
 - `count` evaluates to `7`
 
-Think of `count` as a named box in the live image. You are not creating a
-temporary variable that disappears at the end of the line.
+Think of `count` as a stable named box in the live image. You are not creating
+an ephemeral local that disappears at the end of the line.
 
-## Simple rebinding
+## Rebinding is central
 
 ```frothy
-count is 7
-count is 8
-count
+message is "first"
+to sayMessage [ message ]
+sayMessage:
+message is "second"
+sayMessage:
 ```
 
 Result:
 
-- the slot named `count` still exists
-- the value inside it is now `8`
+- the first `sayMessage:` returns `"first"`
+- the second `sayMessage:` returns `"second"`
 
-That distinction matters all through Frothy: slot identity is stable, but the
-value inside the slot can be replaced.
+That is one of Frothy's core ideas. Old callers observe the current value in
+the stable top-level slot. They do not capture a frozen copy.
 
-## Calling code
+## Functions, anonymous code, and computed calls
 
-The `to` form defines top-level code directly:
+Use `to` when you want to define a named top-level function directly:
 
 ```frothy
 to inc with x [ x + 1 ]
@@ -90,7 +108,7 @@ Result:
 - `inc` is now bound to a `Code` value
 - `inc: 41` returns `42`
 
-You can also build `Code` as a value with `fn`:
+Use `fn` when code is just another value:
 
 ```frothy
 double is fn with x [ x * 2 ]
@@ -99,7 +117,6 @@ double: 21
 
 Result:
 
-- `double` holds a `Code` value
 - `double: 21` returns `42`
 
 If the thing you are calling is itself produced by code, use `call`:
@@ -111,50 +128,31 @@ call makeInc: with 41
 
 Result:
 
-- `makeInc:` returns a `Code` value
-- `call ... with ...` invokes that returned code
-- the whole expression returns `42`
+- `call makeInc: with 41` returns `42`
 
-## Locals and block structure
+This is the common Frothy split:
 
-Blocks use `[` and `]`.
+- `name: ...` for a normal named call
+- `call expr with ...` for a computed callee
 
-Inside a block, `name is value` creates a local when that name is not already a
-top-level slot in play, and `here` makes the intent especially obvious:
+## Locals, mutation, and block results
 
-```frothy
-localDemo is fn [
-  here n is 5
-  n
-]
-
-localDemo:
-```
-
-Result:
-
-- `localDemo:` returns `5`
-- `n` exists only while `localDemo` is running
-
-Blocks can hold several expressions. The last one is the block's result.
+Blocks use `[` and `]`. The last expression in the block is the result.
 
 ```frothy
 mathDemo is fn [
-  here a is 20
-  here b is 22
+  here a is 20;
+  here b is 22;
   a + b
 ]
-
 mathDemo:
 ```
 
 Result:
 
-- `42`
+- `mathDemo:` returns `42`
 
-## `set` and mutation
-
-Use `set` when the place already exists and you want to change it.
+Use `set` when the place already exists and you want to change it:
 
 ```frothy
 count is 7
@@ -167,23 +165,22 @@ Result:
 - `set count to 8` returns `nil`
 - `count` now returns `8`
 
-`set` also works on locals:
+Locals work the same way:
 
 ```frothy
 bump is fn [
-  here n is 10
-  set n to n + 1
+  here n is 10;
+  set n to n + 1;
   n
 ]
-
 bump:
 ```
 
 Result:
 
-- `11`
+- `bump:` returns `11`
 
-## `if`, `when`, and `unless`
+## Conditionals
 
 Use `if` when you want both branches:
 
@@ -191,7 +188,6 @@ Use `if` when you want both branches:
 choose is fn with flag [
   if flag [ "yes" ] else [ "no" ]
 ]
-
 choose: true
 choose: false
 ```
@@ -201,7 +197,7 @@ Result:
 - `"yes"`
 - `"no"`
 
-Use `when` when there is only a then-branch:
+Use `when` for a one-branch conditional:
 
 ```frothy
 when true [ 42 ]
@@ -225,66 +221,117 @@ Result:
 - `42`
 - `nil`
 
+Use `cond` when you want an ordered chain of conditions:
+
+```frothy
+temperature is 72
+threshold is 50
+status is fn [
+  cond [
+    when temperature < 20 [ "cold" ];
+    when temperature < threshold [ "ok" ];
+    else [ "high" ]
+  ]
+]
+status:
+```
+
+Result:
+
+- `status:` returns `"high"`
+
+Use `case` when you want a switch-style dispatch over literal cases:
+
+```frothy
+route is fn with mode [
+  case mode [
+    "off" [ 0 ];
+    "on" [ 1 ];
+    else [ 2 ]
+  ]
+]
+route: "on"
+```
+
+Result:
+
+- `route: "on"` returns `1`
+
+Important edge case:
+
+```frothy
+flag is 1
+if flag [ 1 ] else [ 2 ]
+```
+
+Result:
+
+- `flag is 1` succeeds
+- the `if` fails with `eval error (3)`
+
+Frothy does not use general truthiness. Conditions must evaluate to `Bool`.
+
+## Boolean short-circuiting
+
+```frothy
+false and missingName
+true or missingName
+```
+
+Result:
+
+- `false`
+- `true`
+
+This matters because it shows that the dangerous branch was not evaluated.
+
 ## `repeat` and `while`
 
-`repeat` is the friendly counted loop:
+Use `repeat` for counted loops:
 
 ```frothy
 counter is cells(1)
 set counter[0] to 0
-repeat 3 as i [ set counter[0] to counter[0] + i ]
+repeat 5 as i [ set counter[0] to counter[0] + i ]
 counter[0]
 ```
 
 Result:
 
-- after the loop, `counter[0]` is `3`
-- the loop index `i` takes the values `0`, `1`, and `2`
+- `counter[0]` is `10`
 
-`while` is the lower-level loop:
+Use `while` when you want the lower-level loop:
 
 ```frothy
-loopDemo is fn [
-  here i is 0
-  while i < 3 [
+sumTo is fn with limit [
+  here total is 0;
+  here i is 0;
+  while i < limit [
+    set total to total + i;
     set i to i + 1
-  ]
-  i
+  ];
+  total
 ]
-
-loopDemo:
+sumTo: 5
 ```
 
 Result:
 
-- `3`
+- `sumTo: 5` returns `10`
 
-## `fn` and `to`
-
-Use `to` when you are defining a named top-level function:
+That same pattern scales to larger checks:
 
 ```frothy
-to square with x [ x * x ]
-square: 9
-```
-
-Use `fn` when code is just another value:
-
-```frothy
-squareToo is fn with x [ x * x ]
-squareToo: 9
+sumTo: 100
 ```
 
 Result:
 
-- both return `81`
+- `4950`
 
-The difference is not "one is real code and the other is not". Both produce
-`Code`. The difference is where the binding happens.
+## `Cells`: Frothy's narrow array value
 
-## `cells(n)` creation, indexing, and mutation
-
-`Cells` are Frothy's small, narrow array value in `v0.1`.
+`Cells` are the small mutable indexed store in Frothy's current core.
 
 ```frothy
 frame is cells(2)
@@ -299,16 +346,109 @@ Result:
 - `"left"`
 - `99`
 
-In `v0.1`, `Cells` can store:
+Today `Cells` are intentionally narrow. In the current live surface they are a
+good fit for:
 
-- `Int`
-- `Bool`
-- `Nil`
-- `Text`
+- integers
+- booleans
+- `nil`
+- text
 
-They do not store other `Cells`, `Code`, or native bindings.
+Important edge cases:
 
-## `words`, `show`, `core`, and `info`
+```frothy
+set frame[0] to fn [ 1 ]
+frame[9]
+```
+
+Result:
+
+- storing `Code` fails with `eval error (3)`
+- out-of-bounds access fails with `eval error (13)`
+
+That narrow policy is deliberate. `Cells` are Frothy's small mutable array, not
+its general "store anything" object bag.
+
+## Records
+
+Records are now part of the live prompt-facing surface.
+
+Define a record:
+
+```frothy
+record Point [ x, y ]
+```
+
+Construct and read one:
+
+```frothy
+point is Point: 10, 20
+point->x
+point->y
+```
+
+Result:
+
+- `10`
+- `20`
+
+Mutate a field:
+
+```frothy
+set point->x to 11
+point->x
+```
+
+Result:
+
+- `11`
+
+Records also work under prefixes:
+
+```frothy
+in sprite [ record State [ x, y ]; current is State: 3, 4 ]
+sprite.current->y
+```
+
+Result:
+
+- `4`
+
+Important edge case:
+
+```frothy
+path is cells(2)
+set path[0] to Point: 1, 2
+```
+
+Result:
+
+- storing a record inside `Cells` fails with `eval error (3)`
+
+Records are for shaped data. `Cells` remain the narrow array.
+
+## Prefix groups with `in`
+
+Use `in prefix [ ... ]` to group related names under a shared prefix:
+
+```frothy
+in math [
+  to square with x [ x * x ];
+  to cube with x [ x * x * x ]
+]
+math.square: 6
+math.cube: 3
+```
+
+Result:
+
+- `math.square: 6` returns `36`
+- `math.cube: 3` returns `27`
+
+This is the usual Frothy answer to "how do I make a tiny module or service
+namespace?".
+
+## Inspection is part of normal work
 
 First define something worth inspecting:
 
@@ -316,72 +456,30 @@ First define something worth inspecting:
 demo is fn [ when true [ 42 ] ]
 ```
 
-List the names that currently exist:
+Now inspect it:
 
 ```frothy
 words
-```
-
-Typical result includes names such as:
-
-- `save`
-- `restore`
-- `dangerous.wipe`
-- `words`
-- `see`
-- `core`
-- `slotInfo`
-- board names like `LED_BUILTIN` and `gpio.write`
-- your own names like `demo`
-
-Show the normalized surface form of a binding:
-
-```frothy
 show @demo
-```
-
-Result:
-
-```text
-demo | overlay | code
-to demo [ when true [ 42 ] ]
-```
-
-Show the canonical core form that the evaluator actually runs:
-
-```frothy
+see @demo
 core @demo
-```
-
-Result:
-
-```text
-(fn arity=0 locals=0 (seq (if (lit true) (seq (lit 42)))))
-```
-
-Ask what kind of thing a slot is:
-
-```frothy
 info @demo
 info @save
 ```
 
-Result:
+What you should notice:
 
-```text
-demo | overlay | code | persistable | user
-save | base | native | non-persistable | foreign
-```
+- `words` lists bound top-level names
+- `show` and `see` print the normalized surface form
+- `core` prints the canonical evaluator form
+- `info @demo` shows an overlay, user-owned, persistable binding
+- `info @save` shows a base, native, non-persistable binding
 
-That one pair of lines already teaches a lot:
+Inspection is not a last resort in Frothy. It is part of the normal workflow.
 
-- `demo` lives in the overlay image, stores `Code`, and can be persisted
-- `save` is part of the base image, is a native binding, and is not
-  persistable
+## Persistence: `save`, `restore`, and `dangerous.wipe`
 
-## `save`, `restore`, and `dangerous.wipe`
-
-These are the image controls.
+These are the image controls:
 
 ```frothy
 note is "draft"
@@ -395,17 +493,58 @@ note
 
 Result:
 
-- `save` returns `nil`
-- `restore` returns `nil`
 - after `restore`, `note` is back to `"draft"`
-- `dangerous.wipe` returns `nil`
-- after `dangerous.wipe`, `note` is gone and reading it raises `eval error (4)`
+- after `dangerous.wipe`, reading `note` raises `eval error (4)`
 
-What they mean:
+Records persist cleanly too:
+
+```frothy
+record Counter [ value ]
+counter is Counter: 0
+to counter.bump [ set counter->value to counter->value + 1 ]
+counter.bump:
+counter->value
+save
+set counter->value to 9
+restore
+counter->value
+```
+
+Result:
+
+- after `counter.bump:`, `counter->value` is `1`
+- after `restore`, `counter->value` is back to `1`
+
+What these commands mean:
 
 - `save` snapshots the current overlay image
-- `restore` replaces the current overlay with the saved one
-- `dangerous.wipe` clears both the live overlay and the saved snapshot
+- `restore` replaces the live overlay with the saved one
+- `dangerous.wipe` clears the live overlay and the saved snapshot
+
+## Boot hooks and safe boot
+
+If a top-level slot named `boot` holds code, the runtime can run it at startup
+after restore.
+
+One useful pattern is:
+
+```frothy
+bootCount is 0
+to boot [ set bootCount to bootCount + 1 ]
+save
+```
+
+Then:
+
+1. reset normally and check `bootCount`
+2. reset again, but press `Ctrl-C` during the safe-boot window
+3. check `bootCount` again
+
+Expected:
+
+- after a normal reset, `bootCount` is incremented
+- after safe boot, the saved overlay is skipped and `bootCount` is undefined
+  until you explicitly restore
 
 ## One small board and FFI example
 
@@ -416,55 +555,171 @@ On the POSIX board, GPIO calls print traces so you can see what would happen on
 hardware. On a real ESP32 target, the same names hit the board driver.
 
 ```frothy
-gpio.mode: LED_BUILTIN, 1
-gpio.write: LED_BUILTIN, 1
-ms: 50
-gpio.write: LED_BUILTIN, 0
+led.on:
+gpio.read: LED_BUILTIN
+led.toggle:
+gpio.read: LED_BUILTIN
+adc.read: A0
+adc.percent: A0
 ```
 
 Typical POSIX result:
 
-```text
-[gpio] pin 2 -> OUTPUT
-nil
-[gpio] pin 2 = HIGH
-nil
-nil
-[gpio] pin 2 = LOW
-nil
-```
+- LED helpers return `nil`
+- `gpio.read: LED_BUILTIN` tracks the last written level
+- `adc.read: A0` returns a deterministic integer such as `2048`
+- `adc.percent: A0` returns a deterministic percentage such as `50`
 
-And a read-style call:
+Current board profiles may also expose:
 
-```frothy
-adc.read: A0
-```
+- UART bindings such as `uart.init`, `uart.write`, `uart.read`
+- I2C bindings such as `i2c.init`, `i2c.probe`, `i2c.write-reg`, `i2c.read-reg`
+- constants such as `SDA` and `SCL`
 
-Result on POSIX:
+If a binding appears in `words`, inspect it with `info @name` before using it.
 
-- a deterministic integer such as `2048`
+## Common patterns from other languages
 
-## Redefining a top-level slot changes what old callers observe
+Here are the Frothy equivalents of things people often look for first.
 
-This is one of the central Frothy ideas.
+**A small configuration service**
 
 ```frothy
-message is "first"
-to sayMessage [ message ]
-sayMessage:
-message is "second"
-sayMessage:
+sample.window is 16
+sample.delay is 20
+to sample.wait [ ms: sample.delay ]
+```
+
+Use stable top-level slots for configuration you expect to rebind live.
+
+**A switch statement**
+
+```frothy
+route is fn with mode [
+  case mode [
+    "idle" [ 0 ];
+    "run" [ 1 ];
+    "fault" [ 2 ];
+    else [ -1 ]
+  ]
+]
+```
+
+Use `case` for literal-branch dispatch.
+
+**An if / else-if / else chain**
+
+```frothy
+classify is fn with n [
+  cond [
+    when n < 0 [ "negative" ];
+    when n == 0 [ "zero" ];
+    else [ "positive" ]
+  ]
+]
+```
+
+Use `cond` for ordered condition checks.
+
+**A struct with methods**
+
+```frothy
+record Counter [ value ]
+counter is Counter: 0
+to counter.bump [ set counter->value to counter->value + 1 ]
+to counter.reset [ set counter->value to 0 ]
+```
+
+Use records for shaped data and prefixed helpers for behavior.
+
+**A namespace or module**
+
+```frothy
+in math [
+  to square with x [ x * x ];
+  to cube with x [ x * x * x ]
+]
+```
+
+Use `in prefix [ ... ]` for grouped names.
+
+**A computed callback or dispatcher**
+
+```frothy
+apply is fn with f, x [ call f with x ]
+apply: (fn with x [ x + 2 ]), 7
+```
+
+Use `call expr with ...` when the callee is computed.
+
+**A counter or accumulator**
+
+```frothy
+accumulate is fn with n [
+  here total is 0;
+  repeat n as i [ set total to total + i ];
+  total
+]
+```
+
+Use locals plus `repeat` or `while`.
+
+## Edge cases worth learning early
+
+These are not obscure trivia. They are the rules that most often shape real
+Frothy code.
+
+**No truthiness**
+
+```frothy
+if 1 [ 1 ] else [ 2 ]
 ```
 
 Result:
 
-- first call returns `"first"`
-- second call returns `"second"`
+- `eval error (3)`
 
-Why? Because `sayMessage` does not capture a frozen copy of `message`. It reads
-the stable top-level slot each time it runs.
+**No outer-local capture from nested `fn`**
 
-Now that you can read and write basic Frothy, here is how Frothy is actually built.
+```frothy
+makeAdder is fn with bump [ fn with x [ x + bump ] ]
+```
+
+Result:
+
+- `parse error (108)`
+
+If you want changing shared state, put it in top-level slots, records, or
+top-level-owned `Cells`.
+
+**Duplicate local bindings in one scope are rejected**
+
+```frothy
+bad is fn [ here x is 1; here x is 2 ]
+```
+
+Result:
+
+- `parse error (108)`
+
+**`set` only works on existing places**
+
+```frothy
+set missing to 1
+```
+
+Result:
+
+- `eval error (4)`
+
+**The prompt should stay healthy after errors**
+
+When you are unsure whether a failure is expected, the first question is:
+"Did the prompt recover cleanly?" If the answer is no, that is usually more
+serious than the original error.
+
+Now that you can read and write current Frothy, here is how Frothy is actually
+built.
 
 # How to Read This Guide in Two Days
 
@@ -834,24 +1089,24 @@ Now do a clean local session:
 ```frothy
 dangerous.wipe
 count is 7
+record Point [ x, y ]
+point is Point: 10, 20
 to inc with x [ x + 1 ]
 inc: 41
-demo is fn [ when true [ 42 ] ]
-show @demo
-core @demo
+show @point
+info @point
 save
-set count to 99
+set point->x to 99
 restore
-count
+point->x
 ```
 
 What you should notice:
 
 - `dangerous.wipe` gives you a known base-only image
-- `show @demo` prints normalized surface code, not whatever source formatting
-  you originally typed
-- `core @demo` prints the evaluator's core tree
-- `restore` brings back the saved overlay
+- records are part of the current live prompt-facing surface
+- inspection works on user-defined values, not just functions
+- `restore` brings back the saved overlay exactly, not "something close"
 
 Shell conveniences:
 
@@ -892,7 +1147,7 @@ packaged release, the user-facing command is `froth`.
 
 **Lab 2: your first Frothy project**
 
-Create a project:
+Create the default POSIX project:
 
 ```sh
 tools/cli/froth-cli new hello
@@ -926,7 +1181,8 @@ platform = "posix"
 # defines = { MY_CONSTANT = "42" }
 ```
 
-The project source starts with a tiny boot example:
+The current default POSIX scaffold still starts with a tiny compatibility-sugar
+boot example:
 
 ```frothy
 note = nil
@@ -936,24 +1192,79 @@ boot {
 }
 ```
 
-That file still uses the older surface style in the scaffold, but the runtime
-it generates is the same Frothy image model you have been reading about.
+That is still valid today, but it is not the primary teaching surface in this
+guide. The runtime meaning is the same Frothy image model you have been reading
+about.
+
+The normalized equivalent, and the form to prefer in hand-written examples, is:
+
+```frothy
+note is nil
+
+to boot [
+  set note to "Hello from Frothy!"
+]
+```
+
+For the current workshop and hardware path, prefer the board-target starter:
+
+```sh
+tools/cli/froth-cli new --target esp32-devkit-v1 workshop
+```
+
+The generated `src/main.froth` is already on the current spoken surface:
+
+```frothy
+\ #use "./workshop/lesson.froth"
+\ #use "./workshop/game.froth"
+
+to boot [
+  lesson.ready:;
+  game.reset:
+]
+```
+
+And the starter helper files are normal Frothy source, not opaque magic:
+
+```frothy
+\ #allow-toplevel
+status is "booting"
+sensor.pin is A0
+
+to lesson.ready [
+  led.off:
+  set status to "Workshop starter ready"
+]
+```
+
+```frothy
+\ #allow-toplevel
+player is cells(2)
+score is 0
+
+to game.reset [
+  set player[0] to 0
+  set player[1] to 0
+  set score to 0
+]
+```
 
 Typical project loop:
 
 ```sh
-cd hello
+cd workshop
+tools/cli/froth-cli tooling resolve-source src/main.froth > /tmp/workshop-resolved.frothy
 tools/cli/froth-cli send
 tools/cli/froth-cli build
-./.froth-build/firmware/Frothy
+tools/cli/froth-cli --port /dev/cu.usbserial-0001 flash
 ```
 
 `froth send` does three important things for project source:
 
 1. resolves includes
 2. strips boundary markers
-3. wipes the live overlay before loading the project and then runs `boot()` or
-   `autorun()` if present
+3. uses reset-plus-eval for whole-project load and then runs `boot:` or
+   `autorun:` if present
 
 Dependencies are source-level includes. A named dependency entry in
 `froth.toml` lets `\ #use "name"` resolve cleanly, but direct relative includes
@@ -966,14 +1277,21 @@ Useful project commands:
 - `froth connect`
 - `froth connect --local`
 - `froth doctor`
+- `froth tooling resolve-source`
 
 ### What can go wrong
 
+- The default POSIX scaffold still shows compatibility sugar. That does not
+  mean the spoken surface is unsupported; it means the generated examples are
+  not yet fully normalized.
 - `froth send` talks to a real device or runtime. If no device is connected,
   use `froth connect --local` or the host binary directly.
 - `froth doctor` is the first thing to run when board setup feels uncertain.
 - Include resolution errors usually mean the manifest dependency path or a
   relative `#use` path is wrong.
+- Whole-file or project send is intentionally reset-plus-eval. If the connected
+  firmware is too old to support control reset, fix the firmware instead of
+  expecting additive replay to be safe.
 
 ### What to remember
 
@@ -1672,7 +1990,7 @@ What each line tells you:
 - Inspection reflects the canonical runtime truth.
 - `see` is not a source file viewer.
 - `core` is the fastest way to check what sugar lowered into.
-- `slotInfo` is how you tell base/native from overlay/user state.
+- `info` is how you tell base/native from overlay/user state.
 
 ### Common confusions
 
@@ -1703,7 +2021,7 @@ main
      -> print banner
      -> offer safe boot window
      -> maybe restore snapshot
-     -> maybe run boot()
+     -> maybe run boot
      -> enter shell loop
 ```
 
@@ -1713,12 +2031,12 @@ Read `src/frothy_boot.c`.
 
 `frothy_boot()` initializes platform and runtime state, installs the base
 image, prints the startup banner, offers a short `Ctrl-C` safe-boot window,
-restores a snapshot if one exists, runs `boot()` if it is currently bound to
+restores a snapshot if one exists, runs `boot` if it is currently bound to
 `Code`, then enters `frothy_shell_run()`.
 
 Two design choices are worth noticing.
 
-First, safe boot happens before snapshot restore and `boot()` execution. That
+First, safe boot happens before snapshot restore and `boot` execution. That
 means the recovery path is available even when user code or persisted state is
 broken.
 
@@ -2056,7 +2374,7 @@ As the code ships today, the build plumbing for project FFI is real, but the
 runtime auto-install step for `froth_project_bindings` is not wired into the
 Frothy boot path yet. In practice that means you can compile and link a
 project-local binding table today, but a name like `project.magic` will not
-appear in `words()` until that install hook lands.
+appear in `words` until that install hook lands.
 
 So this extension surface is best understood as:
 
@@ -2093,7 +2411,7 @@ A maintainer adding a new board-level capability goes through this flow:
 2. export it in the board's binding table
 3. decide whether it belongs in the Frothy base-image surface
 4. if yes, add its public name to the Frothy filter list in `src/frothy_ffi.c`
-5. rebuild and check `words()` plus a real call on POSIX or hardware
+5. rebuild and check `words` plus a real call on POSIX or hardware
 
 The filter step matters. Frothy deliberately ships a narrower board surface than
 the raw board substrate can expose.
@@ -2212,7 +2530,7 @@ What it does not magically prove:
 - Every recovery path worth trusting should be exercised somewhere.
 - Proof surfaces must stay aligned with the shipped CLI and runtime.
 
-## Current Follow-On Queue: What Has Landed, What Is Queued Next, and What Is Still Only Draft Work
+## Current Follow-On Queue: What Has Landed, What Is Active Now, and What Is Deliberately Deferred
 
 The fastest way to stay honest as a maintainer is to separate three buckets in
 your head.
@@ -2221,32 +2539,39 @@ your head.
 
 - lexical named evaluation model
 - stable top-level slots
-- base image plus overlay persistence
+- overlay-only persistence with `save`, `restore`, and `dangerous.wipe`
 - canonical IR rendering and persistence
 - REPL, safe boot, shell sugar, and `.control` mode
-- filtered board FFI surface
-- project scaffolding, build, flash, and doctor workflows
+- records, prefix groups, `cond`, `case`, and `@` designators on the current
+  live surface
+- filtered board FFI surface, including GPIO, ADC, UART, and current board
+  extras such as I2C where the profile exposes them
+- project scaffolding, build, flash, doctor, and workshop starter workflows
 
-**Queued next**
+**Active now**
 
-- the first concrete workspace/image-loading artifact around named slot bundles
-  and IR capsules
+- evaluator execution-stack hardening
 
-That next step matters because Frothy already has the live image and snapshot
-story. What it still needs is a small, truthful way to move structured image
-pieces around without pretending whole-file replay is the final answer.
+That is the immediate live priority because ordinary embedded looping and
+nested game code still need to be bounded by Frothy-managed evaluator depth
+rather than hidden C stack depth. The roadmap current-state block and
+`PROGRESS.md` are the authoritative control surface for that work.
 
-**Still draft or follow-on**
+**Queued after the active runtime cut**
 
-- broader workspace tooling beyond the first slot-bundle/image-flow cut
-- wider language surface beyond the accepted `v0.1` core
-- richer runtime data models that would complicate persistence and inspection
-- any attempt to widen Frothy casually just because the substrate could do it
+- clean-machine validation on the promised attendee platforms
+- classroom hardware and recovery kit closeout
+- final measured workshop rehearsal
+- post-workshop publishability reset tranches
 
-The healthiest maintainer posture is this:
+**Still deliberately deferred**
+
+- wider workspace/image-flow work beyond the first frozen doc tranche
+- broader language widening beyond the landed surface
+- runtime data models that would weaken persistence or inspection clarity
+
+The healthiest maintainer posture is still this:
 
 - ship the small system completely
-- only widen it when the invariants still feel stronger afterward
-
-Frothy is small on purpose. Many omissions are deliberate design choices, not
-missing polish.
+- keep the invariants obvious
+- only widen Frothy when the system feels stronger afterward, not merely larger
