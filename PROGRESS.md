@@ -68,6 +68,10 @@ file is wrong.
 - The workshop implementation tranche is now closed on `main`: the delivery,
   inspection, workshop base-image, readability-language, and records cuts have
   all survived the local proof ladder plus repeated review cycles.
+- The first detailed Friday workshop run spec is now checked in at
+  `docs/roadmap/Frothy_Workshop_Run_Spec_2026-04-17.md`; it freezes the lesson
+  arc, `Get Home` inspection puzzle, `Get Home+` starter game, required helper
+  surface, persistence teaching points, and rehearsal checklist.
 - The evaluator stack-overflow regression found by a simple ESP32 `boot` loop
   is fixed, and the Frothy proof ladder now includes a host compile
   stack-budget check for recursive evaluator paths plus record-definition IR
