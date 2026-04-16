@@ -196,6 +196,7 @@ typedef struct {
 static frothy_eval_frame_state_t
     frothy_eval_frame_stack[FROTHY_EVAL_FRAME_CAPACITY];
 static size_t frothy_eval_frame_stack_used = 0;
+static size_t frothy_eval_frame_stack_high_water = 0;
 
 static froth_error_t frothy_eval_node(const frothy_ir_program_t *program,
                                       frothy_value_t *locals,
@@ -265,6 +266,9 @@ frothy_eval_push_frame(frothy_eval_exec_t *exec,
                                local_count, node_id, out);
   exec->depth++;
   frothy_eval_frame_stack_used = exec->base_depth + exec->depth;
+  if (frothy_eval_frame_stack_used > frothy_eval_frame_stack_high_water) {
+    frothy_eval_frame_stack_high_water = frothy_eval_frame_stack_used;
+  }
   return FROTH_OK;
 }
 
@@ -1126,4 +1130,12 @@ froth_error_t frothy_eval_program(const frothy_ir_program_t *program,
     return FROTH_OK;
   }
   return err;
+}
+
+size_t frothy_eval_frame_high_water(void) {
+  return frothy_eval_frame_stack_high_water;
+}
+
+void frothy_eval_debug_reset_frame_high_water(void) {
+  frothy_eval_frame_stack_high_water = frothy_eval_frame_stack_used;
 }

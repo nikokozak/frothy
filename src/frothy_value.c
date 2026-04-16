@@ -916,9 +916,9 @@ size_t frothy_runtime_payload_high_water(const frothy_runtime_t *runtime) {
 }
 
 void frothy_runtime_debug_reset_high_water(frothy_runtime_t *runtime) {
-  runtime->object_high_water = 0;
-  runtime->eval_value_high_water = 0;
-  runtime->payload_bytes_high_water = 0;
+  runtime->object_high_water = runtime->live_object_count;
+  runtime->eval_value_high_water = runtime->eval_value_used;
+  runtime->payload_bytes_high_water = runtime->payload_bytes_used;
 }
 
 void frothy_runtime_test_set_object_limit(frothy_runtime_t *runtime,

@@ -1574,9 +1574,29 @@ static int test_board_base_library_wipe_restore(void) {
                             "base millis view");
   ok &= expect_binding_view("blink", false, FROTHY_VALUE_CLASS_CODE,
                             "base blink view");
+  ok &= expect_binding_view("map", false, FROTHY_VALUE_CLASS_CODE,
+                            "base map view");
+  ok &= expect_binding_view("random.next", false, FROTHY_VALUE_CLASS_NATIVE,
+                            "base random.next view");
   ok &= expect_binding_view("adc.percent", false, FROTHY_VALUE_CLASS_CODE,
                             "base adc.percent view");
   ok &= capture_code_renders("blink", &see_before, &core_before);
+  ok &= expect_ok("map: 5, 0, 10, 0, 100", &value);
+  ok &= expect_int_value(value, 50, "base map");
+  release_value(&value);
+  ok &= expect_ok("mod: -1, 8", &value);
+  ok &= expect_int_value(value, 7, "base mod");
+  release_value(&value);
+  ok &= expect_ok("rand.seed!: 1234", &value);
+  ok &= expect_nil_value(value, "base rand.seed!");
+  release_value(&value);
+  ok &= expect_ok("rand.range: 3, 7", &value);
+  ok &= frothy_value_is_int(value);
+  if (ok && (frothy_value_as_int(value) < 3 || frothy_value_as_int(value) > 7)) {
+    fprintf(stderr, "base rand.range should stay within [3, 7]\n");
+    ok = 0;
+  }
+  release_value(&value);
   ok &= expect_ok("adc.percent: A0", &value);
   ok &= expect_int_value(value, 50, "base adc.percent: A0");
   release_value(&value);
@@ -1631,6 +1651,8 @@ static int test_board_base_library_wipe_restore(void) {
 
     ok &= expect_ok("to blink with pin, count, wait [ 99 ]", &value);
     release_value(&value);
+    ok &= expect_ok("to map with value, inLo, inHi, outLo, outHi [ 99 ]", &value);
+    release_value(&value);
     ok &= expect_ok("to adc.percent with pin [ 99 ]", &value);
     release_value(&value);
     ok &= expect_ok("to matrix.init [ 99 ]", &value);
@@ -1643,6 +1665,8 @@ static int test_board_base_library_wipe_restore(void) {
     release_value(&value);
     ok &= expect_binding_view("blink", true, FROTHY_VALUE_CLASS_CODE,
                               "overlay blink view");
+    ok &= expect_binding_view("map", true, FROTHY_VALUE_CLASS_CODE,
+                              "overlay map view");
     ok &= expect_binding_view("adc.percent", true, FROTHY_VALUE_CLASS_CODE,
                               "overlay adc.percent view");
     ok &= expect_ok("matrix.width is 99", &value);
@@ -1657,6 +1681,9 @@ static int test_board_base_library_wipe_restore(void) {
                               "overlay knob.left view");
     ok &= expect_ok("adc.percent: A0", &value);
     ok &= expect_int_value(value, 99, "overlay adc.percent: A0");
+    release_value(&value);
+    ok &= expect_ok("map: 5, 0, 10, 0, 100", &value);
+    ok &= expect_int_value(value, 99, "overlay map");
     release_value(&value);
     ok &= expect_ok("matrix.init:", &value);
     ok &= expect_int_value(value, 99, "overlay matrix.init:");
@@ -1688,6 +1715,8 @@ static int test_board_base_library_wipe_restore(void) {
     release_value(&value);
     ok &= expect_binding_view("blink", false, FROTHY_VALUE_CLASS_CODE,
                               "restored blink view");
+    ok &= expect_binding_view("map", false, FROTHY_VALUE_CLASS_CODE,
+                              "restored map view");
     ok &= expect_binding_view("adc.percent", false, FROTHY_VALUE_CLASS_CODE,
                               "restored adc.percent view");
     ok &= capture_code_renders("blink", &see_after, &core_after);
@@ -1714,6 +1743,9 @@ static int test_board_base_library_wipe_restore(void) {
     ok &= expect_ok("adc.percent: A0", &value);
     ok &= expect_int_value(value, 50, "restored adc.percent: A0");
     release_value(&value);
+    ok &= expect_ok("map: 5, 0, 10, 0, 100", &value);
+    ok &= expect_int_value(value, 50, "restored map");
+    release_value(&value);
     ok &= expect_ok("matrix.width", &value);
     ok &= expect_int_value(value, 12, "restored matrix.width");
     release_value(&value);
@@ -1729,12 +1761,19 @@ static int test_board_base_library_wipe_restore(void) {
   } else {
     ok &= expect_ok("to blink with pin, count, wait [ 99 ]", &value);
     release_value(&value);
+    ok &= expect_ok("to map with value, inLo, inHi, outLo, outHi [ 99 ]", &value);
+    release_value(&value);
     ok &= expect_ok("to adc.percent with pin [ 99 ]", &value);
     release_value(&value);
     ok &= expect_binding_view("blink", true, FROTHY_VALUE_CLASS_CODE,
                               "overlay blink view");
+    ok &= expect_binding_view("map", true, FROTHY_VALUE_CLASS_CODE,
+                              "overlay map view");
     ok &= expect_binding_view("adc.percent", true, FROTHY_VALUE_CLASS_CODE,
                               "overlay adc.percent view");
+    ok &= expect_ok("map: 5, 0, 10, 0, 100", &value);
+    ok &= expect_int_value(value, 99, "overlay map");
+    release_value(&value);
     ok &= expect_ok("adc.percent: A0", &value);
     ok &= expect_int_value(value, 99, "overlay adc.percent: A0");
     release_value(&value);
@@ -1750,6 +1789,8 @@ static int test_board_base_library_wipe_restore(void) {
     release_value(&value);
     ok &= expect_binding_view("blink", false, FROTHY_VALUE_CLASS_CODE,
                               "restored blink view");
+    ok &= expect_binding_view("map", false, FROTHY_VALUE_CLASS_CODE,
+                              "restored map view");
     ok &= expect_binding_view("adc.percent", false, FROTHY_VALUE_CLASS_CODE,
                               "restored adc.percent view");
     ok &= capture_code_renders("blink", &see_after, &core_after);
@@ -1759,6 +1800,9 @@ static int test_board_base_library_wipe_restore(void) {
     }
     ok &= expect_ok("adc.percent: A0", &value);
     ok &= expect_int_value(value, 50, "restored adc.percent: A0");
+    release_value(&value);
+    ok &= expect_ok("map: 5, 0, 10, 0, 100", &value);
+    ok &= expect_int_value(value, 50, "restored map");
     release_value(&value);
   }
 

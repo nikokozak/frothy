@@ -1052,6 +1052,53 @@ static int test_board_workshop_parity_guards(void) {
   return ok;
 }
 
+static int test_board_embedded_tool_surface(void) {
+  frothy_value_t first = frothy_value_make_nil();
+  frothy_value_t second = frothy_value_make_nil();
+  int ok = 1;
+
+  reset_frothy_state();
+  ok &= install_board_base_slots();
+
+  ok &= expect_ok("random.seed!: 1234", &first);
+  ok &= expect_nil_value(first, "random.seed!");
+  release_value(&first);
+  ok &= expect_ok("random.next:", &first);
+  ok &= frothy_value_is_int(first);
+  ok &= expect_ok("random.seed!: 1234", &second);
+  ok &= expect_nil_value(second, "random.seed! reset");
+  release_value(&second);
+  ok &= expect_ok("random.next:", &second);
+  ok &= frothy_value_is_int(second);
+  if (ok && frothy_value_as_int(first) != frothy_value_as_int(second)) {
+    fprintf(stderr, "random.next should repeat after reseeding with the same value\n");
+    ok = 0;
+  }
+  release_value(&first);
+  release_value(&second);
+
+  ok &= expect_ok("random.seed!: 99", &first);
+  ok &= expect_nil_value(first, "random.seed!: 99");
+  release_value(&first);
+  ok &= expect_ok("random.below: 10", &first);
+  ok &= frothy_value_is_int(first);
+  if (ok && (frothy_value_as_int(first) < 0 || frothy_value_as_int(first) >= 10)) {
+    fprintf(stderr, "random.below should stay within [0, 10)\n");
+    ok = 0;
+  }
+  release_value(&first);
+  ok &= expect_ok("random.range: 7, 3", &second);
+  ok &= frothy_value_is_int(second);
+  if (ok && (frothy_value_as_int(second) < 3 ||
+             frothy_value_as_int(second) > 7)) {
+    fprintf(stderr, "random.range should stay within [3, 7]\n");
+    ok = 0;
+  }
+  release_value(&second);
+  ok &= expect_error("random.below: 0", FROTH_ERROR_BOUNDS);
+  return ok;
+}
+
 static int test_wrap_uptime_ms_payload(void) {
   froth_cell_t wrapped = frothy_ffi_wrap_uptime_ms(UINT32_C(0xffffffff));
   froth_cell_t round_trip = 0;
@@ -1105,6 +1152,7 @@ int main(void) {
   ok &= test_board_millis_monotonic();
   ok &= test_board_gpio_read_round_trip();
   ok &= test_board_workshop_parity_guards();
+  ok &= test_board_embedded_tool_surface();
   ok &= test_wrap_uptime_ms_payload();
 
   frothy_runtime_free(runtime());

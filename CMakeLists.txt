@@ -18,22 +18,35 @@ option(FROTHY_BUILD_HOST "Build the Frothy host runtime." ${FROTHY_BUILD_HOST_DE
 
 set(FROTH_BOARD_CONFIG_CELL_SIZE_BITS_DEFAULT 32)
 set(FROTH_BOARD_CONFIG_HEAP_SIZE_DEFAULT 4096)
+set(FROTH_BOARD_CONFIG_DATA_SPACE_SIZE_DEFAULT 256)
 set(FROTH_BOARD_CONFIG_DS_DEPTH_DEFAULT 256)
 set(FROTH_BOARD_CONFIG_RS_DEPTH_DEFAULT 256)
 set(FROTH_BOARD_CONFIG_SLOT_COUNT_DEFAULT 128)
 set(FROTH_BOARD_CONFIG_HAS_SNAPSHOTS_DEFAULT ON)
 set(FROTH_BOARD_CONFIG_SNAPSHOT_BLOCK_SIZE_DEFAULT 2048)
 set(FROTH_BOARD_CONFIG_FROTHY_EVAL_VALUE_CAPACITY_DEFAULT 256)
+set(FROTH_BOARD_CONFIG_FROTHY_EVAL_FRAME_CAPACITY_DEFAULT 128)
 set(FROTH_BOARD_CONFIG_FROTHY_OBJECT_CAPACITY_DEFAULT 128)
 set(FROTH_BOARD_CONFIG_FROTHY_PAYLOAD_CAPACITY_DEFAULT 16384)
 set(FROTH_BOARD_CONFIG_FROTHY_PARSER_BINDING_CAPACITY_DEFAULT 128)
 set(FROTH_BOARD_CONFIG_FROTHY_IR_LITERAL_CAPACITY_DEFAULT 128)
 set(FROTH_BOARD_CONFIG_FROTHY_IR_NODE_CAPACITY_DEFAULT 512)
 set(FROTH_BOARD_CONFIG_FROTHY_IR_LINK_CAPACITY_DEFAULT 512)
+set(FROTH_BOARD_CONFIG_PLATFORM_DEFAULT "${FROTH_PLATFORM}")
 
 set(FROTH_BOARD_JSON_PATH "${CMAKE_SOURCE_DIR}/boards/${FROTH_BOARD}/board.json")
 if(EXISTS "${FROTH_BOARD_JSON_PATH}")
   file(READ "${FROTH_BOARD_JSON_PATH}" FROTH_BOARD_JSON_CONTENT)
+
+  string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
+         GET "${FROTH_BOARD_JSON_CONTENT}" platform)
+  if(NOT FROTH_BOARD_CONFIG_ERROR)
+    set(FROTH_BOARD_CONFIG_PLATFORM_DEFAULT "${FROTH_BOARD_CONFIG_VALUE}")
+  endif()
+
+  if(FROTH_BOARD_CONFIG_PLATFORM_DEFAULT STREQUAL "esp-idf")
+    set(FROTH_BOARD_CONFIG_FROTHY_PAYLOAD_CAPACITY_DEFAULT 90112)
+  endif()
 
   string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
          GET "${FROTH_BOARD_JSON_CONTENT}" config cell_size_bits)
@@ -45,6 +58,13 @@ if(EXISTS "${FROTH_BOARD_JSON_PATH}")
          GET "${FROTH_BOARD_JSON_CONTENT}" config heap_size)
   if(NOT FROTH_BOARD_CONFIG_ERROR)
     set(FROTH_BOARD_CONFIG_HEAP_SIZE_DEFAULT "${FROTH_BOARD_CONFIG_VALUE}")
+  endif()
+
+  string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
+         GET "${FROTH_BOARD_JSON_CONTENT}" config data_space_size)
+  if(NOT FROTH_BOARD_CONFIG_ERROR)
+    set(FROTH_BOARD_CONFIG_DATA_SPACE_SIZE_DEFAULT
+        "${FROTH_BOARD_CONFIG_VALUE}")
   endif()
 
   string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
@@ -107,6 +127,13 @@ if(EXISTS "${FROTH_BOARD_JSON_PATH}")
   endif()
 
   string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
+         GET "${FROTH_BOARD_JSON_CONTENT}" config frothy_eval_frame_capacity)
+  if(NOT FROTH_BOARD_CONFIG_ERROR)
+    set(FROTH_BOARD_CONFIG_FROTHY_EVAL_FRAME_CAPACITY_DEFAULT
+        "${FROTH_BOARD_CONFIG_VALUE}")
+  endif()
+
+  string(JSON FROTH_BOARD_CONFIG_VALUE ERROR_VARIABLE FROTH_BOARD_CONFIG_ERROR
          GET "${FROTH_BOARD_JSON_CONTENT}" config frothy_parser_binding_capacity)
   if(NOT FROTH_BOARD_CONFIG_ERROR)
     set(FROTH_BOARD_CONFIG_FROTHY_PARSER_BINDING_CAPACITY_DEFAULT
@@ -136,6 +163,7 @@ if(EXISTS "${FROTH_BOARD_JSON_PATH}")
 endif()
 
 set(FROTHY_EVAL_VALUE_CAPACITY ${FROTH_BOARD_CONFIG_FROTHY_EVAL_VALUE_CAPACITY_DEFAULT} CACHE STRING "Frothy evaluator scratch capacity in number of values.")
+set(FROTHY_EVAL_FRAME_CAPACITY ${FROTH_BOARD_CONFIG_FROTHY_EVAL_FRAME_CAPACITY_DEFAULT} CACHE STRING "Frothy explicit evaluator frame capacity.")
 set(FROTHY_OBJECT_CAPACITY ${FROTH_BOARD_CONFIG_FROTHY_OBJECT_CAPACITY_DEFAULT} CACHE STRING "Frothy runtime object and free-span capacity.")
 set(FROTHY_PAYLOAD_CAPACITY ${FROTH_BOARD_CONFIG_FROTHY_PAYLOAD_CAPACITY_DEFAULT} CACHE STRING "Frothy runtime payload arena capacity in bytes.")
 set(FROTHY_SHELL_SOURCE_CAPACITY 2048 CACHE STRING "Frothy multiline shell source capacity in bytes.")
@@ -152,7 +180,7 @@ set(FROTH_RS_CAPACITY ${FROTH_BOARD_CONFIG_RS_DEPTH_DEFAULT} CACHE STRING "Retur
 set(FROTH_CS_CAPACITY 256 CACHE STRING "Control Stack (CS) Capacity in number of cells.")
 set(FROTH_HEAP_SIZE ${FROTH_BOARD_CONFIG_HEAP_SIZE_DEFAULT} CACHE STRING "Heap size in number of bytes.")
 set(FROTH_SLOT_TABLE_SIZE ${FROTH_BOARD_CONFIG_SLOT_COUNT_DEFAULT} CACHE STRING "Maximum number of slots.")
-set(FROTH_DATA_SPACE_SIZE 256 CACHE STRING "Mutable memory size in number of cells.")
+set(FROTH_DATA_SPACE_SIZE ${FROTH_BOARD_CONFIG_DATA_SPACE_SIZE_DEFAULT} CACHE STRING "Mutable memory size in number of cells.")
 set(FROTH_LINE_BUFFER_SIZE 1024 CACHE STRING "Input line buffer for REPL in number of bytes.")
 set(FROTH_MAX_PERM_SIZE 16 CACHE STRING "Maximum number of indices in a perm pattern.")
 set(FROTH_VERSION "0.1.0" CACHE STRING "Frothy version string")
@@ -230,6 +258,7 @@ function(frothy_configure_target target)
   froth_configure_common_target(${target})
   target_compile_definitions(${target} PRIVATE
     FROTHY_EVAL_VALUE_CAPACITY=${FROTHY_EVAL_VALUE_CAPACITY}
+    FROTHY_EVAL_FRAME_CAPACITY=${FROTHY_EVAL_FRAME_CAPACITY}
     FROTHY_OBJECT_CAPACITY=${FROTHY_OBJECT_CAPACITY}
     FROTHY_PAYLOAD_CAPACITY=${FROTHY_PAYLOAD_CAPACITY}
     FROTHY_SHELL_SOURCE_CAPACITY=${FROTHY_SHELL_SOURCE_CAPACITY}
@@ -482,6 +511,39 @@ if(FROTHY_BUILD_HOST)
     frothy_generate_board_base_lib(frothy_tm1629_board_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
     add_test(NAME frothy_tm1629_board COMMAND frothy_tm1629_board_tests)
     set_tests_properties(frothy_tm1629_board PROPERTIES LABELS "frothy" TIMEOUT 30)
+  endif()
+
+  if(FROTH_BOARD STREQUAL "esp32-devkit-v4-game-board" AND
+     EXISTS "${CMAKE_SOURCE_DIR}/tests/frothy_workshop_memory_test.c")
+    add_executable(frothy_workshop_memory_tests
+      tests/frothy_workshop_memory_test.c
+      src/frothy_base_image.c
+      src/frothy_boot.c
+      src/frothy_control.c
+      src/frothy_shell.c
+      src/frothy_inspect.c
+      src/frothy_ir.c
+      src/frothy_parser.c
+      src/frothy_snapshot.c
+      src/frothy_snapshot_codec.c
+      src/frothy_value.c
+      src/frothy_eval.c
+      src/froth_vm.c
+      src/froth_heap.c
+      src/froth_cellspace.c
+      src/froth_slot_table.c
+      src/froth_transport.c
+      src/froth_crc32.c
+      ${FROTHY_COMPAT_LAYER_SRCS}
+      ${FROTH_RUNTIME_SUPPORT_SRCS}
+      src/froth_snapshot.c
+      platforms/${FROTH_PLATFORM}/platform.c
+    )
+    frothy_configure_target(frothy_workshop_memory_tests)
+    frothy_generate_board_pin_seed(frothy_workshop_memory_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+    frothy_generate_board_base_lib(frothy_workshop_memory_tests ${CMAKE_SOURCE_DIR} ${FROTH_BOARD})
+    add_test(NAME frothy_workshop_memory COMMAND frothy_workshop_memory_tests)
+    set_tests_properties(frothy_workshop_memory PROPERTIES LABELS "frothy" TIMEOUT 30)
   endif()
 
   if(EXISTS "${CMAKE_SOURCE_DIR}/tests/frothy_project_ffi_test.c")

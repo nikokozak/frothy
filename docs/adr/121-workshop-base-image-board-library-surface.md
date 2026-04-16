@@ -4,7 +4,7 @@
 **Status**: Accepted
 **Spec sections**: `docs/spec/Frothy_Language_Spec_v0_1.md`, sections 4, 8, 10 and Appendix C
 **Roadmap queue item**: `Workshop base-image library and board surface`
-**Related ADRs**: `docs/adr/108-frothy-ffi-boundary.md`, `docs/adr/107-interactive-profile-boot-and-interrupt.md`, `docs/adr/119-tm1629-board-base-surface-and-registry.md`
+**Related ADRs**: `docs/adr/108-frothy-ffi-boundary.md`, `docs/adr/107-interactive-profile-boot-and-interrupt.md`, `docs/adr/119-tm1629-board-base-surface-and-registry.md`, `docs/adr/123-post-v0_1-embedded-tool-surface.md`
 
 ## Context
 
@@ -43,12 +43,30 @@ The shipped workshop base-library names are:
   `gpio.toggle(pin)`
 - `adc.max`
 - `adc.percent(pin)`
+- `math.abs`, `math.min`, `math.max`, `math.clamp`, `math.mod`, `math.wrap`,
+  `math.map`, `math.mapClamped`
+- `abs`, `min`, `max`, `clamp`, `mod`, `wrap`, `map`, `mapClamped`
+- `random.seed!`, `random.seedFromMillis!`, `random.next`,
+  `random.below`, `random.range`
+- `rand`, `rand.below`, `rand.range`, `rand.seed!`,
+  `rand.seedFromMillis!`
 - `tm1629.raw.*`, `tm1629.*`, `matrix.*`, `grid.*`, `joy.*`, `knob.*`
 
 The shipped demo-board namespace is:
 
 - `demo.pong.*`
 - `boot`
+
+Naming rule for this shipped base-library surface:
+
+- Frothy still has one namespace of stable slots; dotted names are grouping
+  conventions, not module objects
+- board and capability surfaces stay prefixed so the domain stays visible:
+  `gpio.*`, `led.*`, `adc.*`, `tm1629.*`, `matrix.*`, `joy.*`, `knob.*`
+- pure ubiquitous integer helpers may also expose bare aliases, which is why
+  `math.*` ships `map`, `mod`, `clamp`, `wrap`, `min`, `max`, and `abs`
+- random keeps a short family alias `rand.*` instead of bare generic names so
+  sketches stay short without losing the stateful-domain cue
 
 The tiny public workshop repo is exported from that same canonical
 `base.frothy` source. It is not an independently authored second demo source.

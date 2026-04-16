@@ -25,7 +25,7 @@ Start elsewhere when needed:
 4. Confirm the board is already running the shipped Pong demo.
 5. Open `pong.frothy` or another `.frothy` file in VS Code.
 6. Run `Frothy: Connect Device`.
-7. Run `Frothy: Send Selection / Line` on `1 + 1`.
+7. Run `Frothy: Send Selection / Form` on `1 + 1`.
 8. Run `matrix.init:`, `grid.clear:`, `grid.set: 1, 1, true`, and `grid.show:`
    for the first visible matrix proof.
 9. If the extension path is blocked, fall back to

@@ -187,6 +187,9 @@ Meaning:
 - nested `in` forms concatenate dotted prefixes
 - unqualified top-level references inside the body resolve through the active
   prefix first, then fall back to ordinary top-level lookup
+- this matches the already-shipped helper naming style such as `math.*`,
+  `random.*`, `gpio.*`, and `adc.*`; the draft form would only make that
+  prefix grouping writable in source
 - locals and parameters still obey ordinary lexical rules
 
 This is why `in prefix [ ... ]` is draft-only: it needs a precise slot-level

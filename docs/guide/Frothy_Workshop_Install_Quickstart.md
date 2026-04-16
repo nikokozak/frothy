@@ -96,7 +96,7 @@ available during the transition.
 3. Clone or open [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) and open `pong.frothy`.
 4. Open VS Code.
 5. Run `Frothy: Connect Device`.
-6. Run `Frothy: Send Selection / Line` on a small expression.
+6. Run `Frothy: Send Selection / Form` on a small expression.
 7. Run `matrix.init:`, `grid.clear:`, `grid.show:`, or edit `pong.frothy` for the first visible hardware check.
 
 ## Preflight

@@ -8,6 +8,7 @@
 typedef struct {
   uint8_t *data;
   froth_cell_u_t pointer;
+  froth_cell_u_t high_water;
 } froth_heap_t;
 
 
@@ -16,6 +17,14 @@ typedef struct {
  * and need to read cell-sized data. */
 static inline froth_cell_t* froth_heap_cell_ptr(froth_heap_t* heap, froth_cell_u_t byte_offset) {
   return (froth_cell_t*)&heap->data[byte_offset];
+}
+
+static inline froth_cell_u_t froth_heap_high_water(const froth_heap_t *heap) {
+  return heap->high_water;
+}
+
+static inline void froth_heap_debug_reset_high_water(froth_heap_t *heap) {
+  heap->high_water = heap->pointer;
 }
 
 froth_error_t froth_heap_allocate_bytes(froth_cell_u_t size, froth_heap_t* froth_heap, froth_cell_u_t* assigned_heap_location);

@@ -71,13 +71,20 @@ typedef struct {
 
 typedef struct {
   uint8_t payload[FROTH_SNAPSHOT_MAX_PAYLOAD_BYTES];
-  frothy_snapshot_symbol_t symbol_items[FROTH_SLOT_TABLE_SIZE];
-  frothy_snapshot_object_t object_items[FROTHY_OBJECT_CAPACITY];
-  size_t object_index_by_runtime_id[FROTHY_OBJECT_CAPACITY];
-  uint8_t layout_object_kinds[FROTHY_OBJECT_CAPACITY];
-  uint32_t layout_record_def_field_counts[FROTHY_OBJECT_CAPACITY];
-  frothy_snapshot_symbol_t decoded_symbols[FROTH_SLOT_TABLE_SIZE];
-  frothy_value_t decoded_objects[FROTHY_OBJECT_CAPACITY];
+  union {
+    struct {
+      frothy_snapshot_symbol_t symbol_items[FROTH_SLOT_TABLE_SIZE];
+      frothy_snapshot_object_t object_items[FROTHY_OBJECT_CAPACITY];
+      size_t object_index_by_runtime_id[FROTHY_OBJECT_CAPACITY];
+    } encode;
+    struct {
+      frothy_snapshot_symbol_t decoded_symbols[FROTH_SLOT_TABLE_SIZE];
+      frothy_value_t decoded_objects[FROTHY_OBJECT_CAPACITY];
+      uint8_t layout_object_kinds[FROTHY_OBJECT_CAPACITY];
+      uint32_t layout_record_def_field_counts[FROTHY_OBJECT_CAPACITY];
+    } decode;
+  } phase;
+  frothy_snapshot_codec_usage_t usage;
 } frothy_snapshot_codec_workspace_t;
 
 static froth_error_t frothy_snapshot_test_error_after_objects = FROTH_OK;
@@ -95,18 +102,26 @@ static frothy_snapshot_codec_workspace_t *frothy_snapshot_workspace(void) {
   return &frothy_snapshot_codec_workspace;
 }
 
+static void frothy_snapshot_workspace_record_usage(
+    frothy_snapshot_codec_workspace_t *workspace, size_t payload_length,
+    size_t symbol_count, size_t object_count, size_t binding_count) {
+  if (payload_length > workspace->usage.payload_length_high_water) {
+    workspace->usage.payload_length_high_water = payload_length;
+  }
+  if (symbol_count > workspace->usage.symbol_count_high_water) {
+    workspace->usage.symbol_count_high_water = symbol_count;
+  }
+  if (object_count > workspace->usage.object_count_high_water) {
+    workspace->usage.object_count_high_water = object_count;
+  }
+  if (binding_count > workspace->usage.binding_count_high_water) {
+    workspace->usage.binding_count_high_water = binding_count;
+  }
+}
+
 static void frothy_snapshot_workspace_reset(
     frothy_snapshot_codec_workspace_t *workspace) {
-  memset(workspace->symbol_items, 0, sizeof(workspace->symbol_items));
-  memset(workspace->object_items, 0, sizeof(workspace->object_items));
-  memset(workspace->object_index_by_runtime_id, 0,
-         sizeof(workspace->object_index_by_runtime_id));
-  memset(workspace->layout_object_kinds, 0,
-         sizeof(workspace->layout_object_kinds));
-  memset(workspace->layout_record_def_field_counts, 0,
-         sizeof(workspace->layout_record_def_field_counts));
-  memset(workspace->decoded_symbols, 0, sizeof(workspace->decoded_symbols));
-  memset(workspace->decoded_objects, 0, sizeof(workspace->decoded_objects));
+  memset(&workspace->phase, 0, sizeof(workspace->phase));
 }
 
 uint8_t *frothy_snapshot_codec_payload_buffer(size_t *capacity_out) {
@@ -282,7 +297,7 @@ static void frothy_snapshot_symbols_init(
     frothy_snapshot_symbol_table_t *symbols,
     frothy_snapshot_codec_workspace_t *workspace) {
   memset(symbols, 0, sizeof(*symbols));
-  symbols->items = workspace->symbol_items;
+  symbols->items = workspace->phase.encode.symbol_items;
   symbols->capacity = FROTH_SLOT_TABLE_SIZE;
 }
 
@@ -329,9 +344,9 @@ static froth_error_t frothy_snapshot_objects_init(
   }
 
   memset(objects, 0, sizeof(*objects));
-  objects->items = workspace->object_items;
+  objects->items = workspace->phase.encode.object_items;
   objects->capacity = FROTHY_OBJECT_CAPACITY;
-  objects->index_by_runtime_id = workspace->object_index_by_runtime_id;
+  objects->index_by_runtime_id = workspace->phase.encode.object_index_by_runtime_id;
 
   for (i = 0; i < runtime_object_count; i++) {
     objects->index_by_runtime_id[i] = SIZE_MAX;
@@ -1578,8 +1593,9 @@ static void frothy_snapshot_layout_init(
     frothy_snapshot_layout_t *layout,
     frothy_snapshot_codec_workspace_t *workspace) {
   memset(layout, 0, sizeof(*layout));
-  layout->object_kinds = workspace->layout_object_kinds;
-  layout->record_def_field_counts = workspace->layout_record_def_field_counts;
+  layout->object_kinds = workspace->phase.decode.layout_object_kinds;
+  layout->record_def_field_counts =
+      workspace->phase.decode.layout_record_def_field_counts;
 }
 
 static void frothy_snapshot_layout_free(frothy_snapshot_layout_t *layout) {
@@ -2722,7 +2738,7 @@ static froth_error_t frothy_snapshot_decode_payload(
   }
 
   err = frothy_snapshot_decode_symbols(&reader, layout->symbol_count,
-                                       workspace->decoded_symbols);
+                                       workspace->phase.decode.decoded_symbols);
   if (err != FROTH_OK) {
     return err;
   }
@@ -2733,10 +2749,11 @@ static froth_error_t frothy_snapshot_decode_payload(
   if (section_count != layout->object_count) {
     return FROTH_ERROR_SNAPSHOT_FORMAT;
   }
-  err = frothy_snapshot_decode_objects(&reader, workspace->decoded_symbols,
+  err = frothy_snapshot_decode_objects(
+      &reader, workspace->phase.decode.decoded_symbols,
                                        layout->symbol_count,
                                        layout->object_count,
-                                       workspace->decoded_objects);
+                                       workspace->phase.decode.decoded_objects);
   if (err != FROTH_OK) {
     goto fail;
   }
@@ -2753,9 +2770,10 @@ static froth_error_t frothy_snapshot_decode_payload(
     err = FROTH_ERROR_SNAPSHOT_FORMAT;
     goto fail;
   }
-  err = frothy_snapshot_decode_bindings(&reader, workspace->decoded_symbols,
+  err = frothy_snapshot_decode_bindings(
+      &reader, workspace->phase.decode.decoded_symbols,
                                         layout->symbol_count,
-                                        workspace->decoded_objects,
+                                        workspace->phase.decode.decoded_objects,
                                         layout->object_count,
                                         layout->binding_count);
   if (err != FROTH_OK) {
@@ -2765,12 +2783,14 @@ static froth_error_t frothy_snapshot_decode_payload(
   (void)magic;
   (void)snapshot_version;
   (void)ir_version;
-  frothy_snapshot_release_anchors(frothy_runtime(), workspace->decoded_objects,
+  frothy_snapshot_release_anchors(frothy_runtime(),
+                                  workspace->phase.decode.decoded_objects,
                                   layout->object_count);
   return FROTH_OK;
 
 fail:
-  frothy_snapshot_release_anchors(frothy_runtime(), workspace->decoded_objects,
+  frothy_snapshot_release_anchors(frothy_runtime(),
+                                  workspace->phase.decode.decoded_objects,
                                   layout->object_count);
   return err;
 }
@@ -2782,6 +2802,7 @@ froth_error_t frothy_snapshot_codec_write_payload(
   frothy_snapshot_object_table_t objects;
   frothy_snapshot_writer_t writer;
   frothy_snapshot_codec_workspace_t *workspace = frothy_snapshot_workspace();
+  uint32_t binding_count = 0;
   froth_error_t err = FROTH_OK;
 
   frothy_snapshot_workspace_reset(workspace);
@@ -2800,7 +2821,13 @@ froth_error_t frothy_snapshot_codec_write_payload(
 
   err = frothy_snapshot_collect_overlay(runtime, &symbols, &objects);
   if (err == FROTH_OK) {
+    binding_count = frothy_snapshot_binding_count();
     err = frothy_snapshot_write_payload(&writer, runtime, &symbols, &objects);
+  }
+
+  if (err == FROTH_OK) {
+    frothy_snapshot_workspace_record_usage(workspace, writer.length, symbols.count,
+                                           objects.count, binding_count);
   }
 
   frothy_snapshot_symbols_free(&symbols);
@@ -2823,6 +2850,12 @@ froth_error_t frothy_snapshot_codec_validate_payload(const uint8_t *payload,
   frothy_snapshot_workspace_reset(workspace);
   frothy_snapshot_layout_init(&layout, workspace);
   err = frothy_snapshot_validate(payload, payload_length, &layout);
+  if (err == FROTH_OK) {
+    frothy_snapshot_workspace_record_usage(workspace, payload_length,
+                                           layout.symbol_count,
+                                           layout.object_count,
+                                           layout.binding_count);
+  }
   frothy_snapshot_layout_free(&layout);
   return err;
 }
@@ -2841,8 +2874,27 @@ froth_error_t frothy_snapshot_codec_restore_payload(const uint8_t *payload,
     return err;
   }
 
+  frothy_snapshot_workspace_record_usage(workspace, payload_length,
+                                         layout.symbol_count,
+                                         layout.object_count,
+                                         layout.binding_count);
+
   err = frothy_snapshot_decode_payload(payload, payload_length, &layout,
                                        workspace);
   frothy_snapshot_layout_free(&layout);
   return err;
+}
+
+void frothy_snapshot_codec_get_usage(frothy_snapshot_codec_usage_t *out) {
+  if (out == NULL) {
+    return;
+  }
+
+  *out = frothy_snapshot_workspace()->usage;
+}
+
+void frothy_snapshot_codec_debug_reset_usage(void) {
+  frothy_snapshot_codec_workspace_t *workspace = frothy_snapshot_workspace();
+
+  memset(&workspace->usage, 0, sizeof(workspace->usage));
 }

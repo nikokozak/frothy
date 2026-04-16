@@ -52,6 +52,7 @@
 
 static frothy_tm1629_t board_tm1629;
 static bool board_runtime_initialized = false;
+static uint32_t board_random_state = 1;
 
 #ifdef ESP_PLATFORM
 static uint8_t board_gpio_output_shadow_valid[GPIO_NUM_MAX];
@@ -253,6 +254,7 @@ static void board_init_runtime_state(void) {
   memset(board_gpio_known, 0, sizeof(board_gpio_known));
   memset(board_gpio_levels, 0, sizeof(board_gpio_levels));
 #endif
+  board_random_state = frothy_ffi_random_seed(1);
   frothy_tm1629_init(&board_tm1629, &hal);
   board_runtime_initialized = true;
 }
@@ -457,6 +459,105 @@ static froth_error_t board_adc_read_cb(frothy_runtime_t *runtime,
 #else
   return frothy_ffi_return_int(2048 + (pin & 0xff), out);
 #endif
+}
+
+static froth_error_t board_random_seed_cb(frothy_runtime_t *runtime,
+                                          const void *context,
+                                          const frothy_value_t *args,
+                                          size_t arg_count,
+                                          frothy_value_t *out) {
+  int32_t seed = 0;
+
+  (void)runtime;
+  (void)context;
+  (void)arg_count;
+
+  board_ensure_runtime_state();
+  FROTH_TRY(frothy_ffi_expect_int(args, 0, &seed));
+  board_random_state = frothy_ffi_random_seed((uint32_t)seed);
+  return frothy_ffi_return_nil(out);
+}
+
+static froth_error_t board_random_seed_from_millis_cb(
+    frothy_runtime_t *runtime, const void *context, const frothy_value_t *args,
+    size_t arg_count, frothy_value_t *out) {
+  (void)runtime;
+  (void)context;
+  (void)args;
+  (void)arg_count;
+
+  board_ensure_runtime_state();
+  board_random_state = frothy_ffi_random_seed(platform_uptime_ms());
+  return frothy_ffi_return_nil(out);
+}
+
+static froth_error_t board_random_next_cb(frothy_runtime_t *runtime,
+                                          const void *context,
+                                          const frothy_value_t *args,
+                                          size_t arg_count,
+                                          frothy_value_t *out) {
+  (void)runtime;
+  (void)context;
+  (void)args;
+  (void)arg_count;
+
+  board_ensure_runtime_state();
+  return frothy_ffi_return_int(frothy_ffi_random_next_int(&board_random_state),
+                               out);
+}
+
+static froth_error_t board_random_below_cb(frothy_runtime_t *runtime,
+                                           const void *context,
+                                           const frothy_value_t *args,
+                                           size_t arg_count,
+                                           frothy_value_t *out) {
+  int32_t limit = 0;
+  uint32_t value = 0;
+
+  (void)runtime;
+  (void)context;
+  (void)arg_count;
+
+  board_ensure_runtime_state();
+  FROTH_TRY(frothy_ffi_expect_int(args, 0, &limit));
+  if (limit <= 0) {
+    return FROTH_ERROR_BOUNDS;
+  }
+  FROTH_TRY(
+      frothy_ffi_random_below(&board_random_state, (uint32_t)limit, &value));
+  return frothy_ffi_return_int((int32_t)value, out);
+}
+
+static froth_error_t board_random_range_cb(frothy_runtime_t *runtime,
+                                           const void *context,
+                                           const frothy_value_t *args,
+                                           size_t arg_count,
+                                           frothy_value_t *out) {
+  int32_t lo = 0;
+  int32_t hi = 0;
+  int64_t span = 0;
+  uint32_t offset = 0;
+
+  (void)runtime;
+  (void)context;
+  (void)arg_count;
+
+  board_ensure_runtime_state();
+  FROTH_TRY(frothy_ffi_expect_int(args, 0, &lo));
+  FROTH_TRY(frothy_ffi_expect_int(args, 1, &hi));
+  if (lo > hi) {
+    int32_t tmp = lo;
+    lo = hi;
+    hi = tmp;
+  }
+
+  span = (int64_t)hi - (int64_t)lo + 1;
+  if (span <= 0) {
+    return FROTH_ERROR_BOUNDS;
+  }
+  FROTH_TRY(
+      frothy_ffi_random_below(&board_random_state, (uint32_t)span, &offset));
+  return frothy_ffi_return_int((int32_t)((int64_t)lo + (int64_t)offset), out);
 }
 
 static froth_error_t board_tm1629_raw_init_cb(frothy_runtime_t *runtime,
@@ -875,6 +976,19 @@ static const frothy_ffi_param_t board_delay_params[] = {
     FROTHY_FFI_PARAM_INT("ms"),
 };
 
+static const frothy_ffi_param_t board_random_seed_params[] = {
+    FROTHY_FFI_PARAM_INT("seed"),
+};
+
+static const frothy_ffi_param_t board_random_below_params[] = {
+    FROTHY_FFI_PARAM_INT("limit"),
+};
+
+static const frothy_ffi_param_t board_random_range_params[] = {
+    FROTHY_FFI_PARAM_INT("lo"),
+    FROTHY_FFI_PARAM_INT("hi"),
+};
+
 static const frothy_ffi_param_t board_tm1629_init_params[] = {
     FROTHY_FFI_PARAM_INT("stb"),
     FROTHY_FFI_PARAM_INT("clk"),
@@ -965,6 +1079,27 @@ const frothy_ffi_entry_t frothy_board_bindings[] = {
                 FROTHY_FFI_VALUE_INT, "Read a 12-bit ADC sample from a pin.",
                 board_adc_read_cb,
                 "( pin -- value )"),
+    BOARD_ENTRY("random.seed!", board_random_seed_params,
+                FROTHY_FFI_PARAM_COUNT(board_random_seed_params), 1,
+                FROTHY_FFI_VALUE_NIL,
+                "Seed the board pseudo-random generator.",
+                board_random_seed_cb, "( seed -- )"),
+    BOARD_ENTRY("random.seedFromMillis!", NULL, 0, 0, FROTHY_FFI_VALUE_NIL,
+                "Seed the board pseudo-random generator from millis.",
+                board_random_seed_from_millis_cb, "( -- )"),
+    BOARD_ENTRY("random.next", NULL, 0, 0, FROTHY_FFI_VALUE_INT,
+                "Return the next non-negative pseudo-random integer.",
+                board_random_next_cb, "( -- n )"),
+    BOARD_ENTRY("random.below", board_random_below_params,
+                FROTHY_FFI_PARAM_COUNT(board_random_below_params), 1,
+                FROTHY_FFI_VALUE_INT,
+                "Return a pseudo-random integer in [0, limit).",
+                board_random_below_cb, "( limit -- n )"),
+    BOARD_ENTRY("random.range", board_random_range_params,
+                FROTHY_FFI_PARAM_COUNT(board_random_range_params), 2,
+                FROTHY_FFI_VALUE_INT,
+                "Return a pseudo-random integer between lo and hi inclusive.",
+                board_random_range_cb, "( lo hi -- n )"),
     BOARD_ENTRY("tm1629.raw.init", board_tm1629_init_params,
                 FROTHY_FFI_PARAM_COUNT(board_tm1629_init_params), 3,
                 FROTHY_FFI_VALUE_NIL,

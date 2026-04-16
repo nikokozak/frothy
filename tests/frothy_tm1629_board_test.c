@@ -250,6 +250,25 @@ static int test_surface_metadata_and_smoke(void) {
   ok &= expect_ok("adc.percent: A0", &value);
   ok &= expect_int_value(value, expected_a0_percent, "adc.percent: A0");
   release_value(&value);
+  ok &= expect_ok("map: 6, 0, 12, 0, 120", &value);
+  ok &= expect_int_value(value, 60, "map");
+  release_value(&value);
+  ok &= expect_ok("mapClamped: 15, 0, 12, 0, 120", &value);
+  ok &= expect_int_value(value, 120, "mapClamped");
+  release_value(&value);
+  ok &= expect_ok("mod: -1, 12", &value);
+  ok &= expect_int_value(value, 11, "mod");
+  release_value(&value);
+  ok &= expect_ok("rand.seed!: 7", &value);
+  ok &= expect_nil_value(value, "rand.seed!");
+  release_value(&value);
+  ok &= expect_ok("rand.range: 5, 9", &value);
+  ok &= frothy_value_is_int(value);
+  if (ok && (frothy_value_as_int(value) < 5 || frothy_value_as_int(value) > 9)) {
+    fprintf(stderr, "rand.range should stay within [5, 9]\n");
+    ok = 0;
+  }
+  release_value(&value);
   ok &= expect_ok("knob.left.raw:", &value);
   ok &= expect_int_value(value, expected_left_raw, "knob.left.raw");
   release_value(&value);

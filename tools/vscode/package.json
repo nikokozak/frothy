@@ -3,7 +3,7 @@
   "displayName": "Frothy",
   "description": "Live board control for Frothy devices",
   "version": "0.1.0",
-  "publisher": "frothy",
+  "publisher": "NikolaiKozak",
   "repository": {
     "type": "git",
     "url": "https://github.com/nikokozak/frothy.git"

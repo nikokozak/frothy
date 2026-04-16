@@ -48,6 +48,7 @@ static posix_i2c_device_t posix_i2c_devices[POSIX_I2C_MAX_DEVICES];
 static posix_uart_t posix_uarts[POSIX_UART_MAX_PORTS];
 static uint8_t posix_gpio_known[40];
 static froth_cell_t posix_gpio_levels[40];
+static uint32_t posix_random_state = 1;
 static const uint8_t posix_uart_readback[] = {'f', 'r', 'o', 't', 'h'};
 
 void froth_board_reset_runtime_state(void) {
@@ -56,6 +57,7 @@ void froth_board_reset_runtime_state(void) {
   memset(posix_uarts, 0, sizeof(posix_uarts));
   memset(posix_gpio_known, 0, sizeof(posix_gpio_known));
   memset(posix_gpio_levels, 0, sizeof(posix_gpio_levels));
+  posix_random_state = frothy_ffi_random_seed(1);
 }
 
 static int posix_gpio_pin_valid(froth_cell_t pin) {
@@ -172,6 +174,62 @@ FROTH_FFI_ARITY(prim_adc_read, "adc.read", "( pin -- value )", 1, 1,
   }
 
   FROTH_PUSH(2048 + (pin & 0xff));
+  return FROTH_OK;
+}
+
+FROTH_FFI_ARITY(prim_random_seed, "random.seed!", "( seed -- )", 1, 0,
+                "Seed the board pseudo-random generator.") {
+  FROTH_POP(seed);
+  posix_random_state = frothy_ffi_random_seed((uint32_t)seed);
+  return FROTH_OK;
+}
+
+FROTH_FFI_ARITY(prim_random_seed_from_millis, "random.seedFromMillis!", "( -- )",
+                0, 0, "Seed the board pseudo-random generator from millis.") {
+  posix_random_state = frothy_ffi_random_seed(platform_uptime_ms());
+  return FROTH_OK;
+}
+
+FROTH_FFI_ARITY(prim_random_next, "random.next", "( -- n )", 0, 1,
+                "Return the next non-negative pseudo-random integer.") {
+  FROTH_PUSH(frothy_ffi_random_next_int(&posix_random_state));
+  return FROTH_OK;
+}
+
+FROTH_FFI_ARITY(prim_random_below, "random.below", "( limit -- n )", 1, 1,
+                "Return a pseudo-random integer in [0, limit).") {
+  uint32_t value = 0;
+
+  FROTH_POP(limit);
+  if (limit <= 0) {
+    return FROTH_ERROR_BOUNDS;
+  }
+  FROTH_TRY(frothy_ffi_random_below(&posix_random_state, (uint32_t)limit,
+                                    &value));
+  FROTH_PUSH((froth_cell_t)value);
+  return FROTH_OK;
+}
+
+FROTH_FFI_ARITY(prim_random_range, "random.range", "( lo hi -- n )", 2, 1,
+                "Return a pseudo-random integer between lo and hi inclusive.") {
+  uint32_t offset = 0;
+  int64_t span = 0;
+
+  FROTH_POP(hi);
+  FROTH_POP(lo);
+  if (lo > hi) {
+    froth_cell_t tmp = lo;
+    lo = hi;
+    hi = tmp;
+  }
+
+  span = (int64_t)hi - (int64_t)lo + 1;
+  if (span <= 0) {
+    return FROTH_ERROR_BOUNDS;
+  }
+  FROTH_TRY(
+      frothy_ffi_random_below(&posix_random_state, (uint32_t)span, &offset));
+  FROTH_PUSH((froth_cell_t)((int64_t)lo + (int64_t)offset));
   return FROTH_OK;
 }
 
@@ -380,6 +438,9 @@ FROTH_BOARD_BEGIN(froth_board_bindings)
 FROTH_BIND(prim_gpio_mode), FROTH_BIND(prim_gpio_write),
     FROTH_BIND(prim_gpio_read), FROTH_BIND(prim_ms),
     FROTH_BIND(prim_millis), FROTH_BIND(prim_adc_read),
+    FROTH_BIND(prim_random_seed), FROTH_BIND(prim_random_seed_from_millis),
+    FROTH_BIND(prim_random_next), FROTH_BIND(prim_random_below),
+    FROTH_BIND(prim_random_range),
     FROTH_BIND(prim_i2c_init),
     FROTH_BIND(prim_i2c_add_device), FROTH_BIND(prim_i2c_rm_device),
     FROTH_BIND(prim_i2c_del_bus), FROTH_BIND(prim_i2c_probe),

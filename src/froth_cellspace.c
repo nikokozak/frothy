@@ -3,6 +3,7 @@
 
 void froth_cellspace_init(froth_cellspace_t *cellspace) {
   cellspace->used = 0;
+  cellspace->high_water = 0;
   cellspace->base_mark = 0;
   memset(cellspace->data, 0, sizeof(froth_cell_t) * cellspace->capacity);
   memset(cellspace->base_seed, 0,
@@ -23,6 +24,9 @@ froth_error_t froth_cellspace_allot(froth_cellspace_t *cellspace,
   *base_addr_out = cellspace->used;
   memset(cellspace->data + cellspace->used, 0, sizeof(froth_cell_t) * count);
   cellspace->used += count;
+  if (cellspace->used > cellspace->high_water) {
+    cellspace->high_water = cellspace->used;
+  }
 
   return FROTH_OK;
 };
@@ -54,6 +58,9 @@ void froth_cellspace_capture_base_seed(froth_cellspace_t *cellspace) {
          sizeof(froth_cell_t) * cellspace->used);
 
   cellspace->base_mark = cellspace->used;
+  if (cellspace->used > cellspace->high_water) {
+    cellspace->high_water = cellspace->used;
+  }
 }
 
 void froth_cellspace_reset_to_base(froth_cellspace_t *cellspace) {

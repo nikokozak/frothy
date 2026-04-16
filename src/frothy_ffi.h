@@ -101,3 +101,8 @@ const char *frothy_ffi_native_owner(frothy_native_fn_t fn, const void *context);
 const char *frothy_ffi_native_effect(frothy_native_fn_t fn, const void *context);
 const char *frothy_ffi_native_help(frothy_native_fn_t fn, const void *context);
 froth_cell_t frothy_ffi_wrap_uptime_ms(uint32_t uptime_ms);
+uint32_t frothy_ffi_random_seed(uint32_t seed);
+uint32_t frothy_ffi_random_next_bits(uint32_t *state);
+int32_t frothy_ffi_random_next_int(uint32_t *state);
+froth_error_t frothy_ffi_random_below(uint32_t *state, uint32_t limit,
+                                      uint32_t *out);

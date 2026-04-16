@@ -180,12 +180,15 @@ else()
 endif()
 
 board_config_or_default("heap_size" "4096" EXPECTED_HEAP_SIZE)
+board_config_or_default("data_space_size" "256" EXPECTED_DATA_SPACE_SIZE)
 board_config_or_default("slot_count" "128" EXPECTED_SLOT_COUNT)
 board_config_or_default("frothy_eval_value_capacity" "256"
                         EXPECTED_EVAL_VALUE_CAPACITY)
+board_config_or_default("frothy_eval_frame_capacity" "128"
+                        EXPECTED_EVAL_FRAME_CAPACITY)
 board_config_or_default("frothy_object_capacity" "128"
                         EXPECTED_OBJECT_CAPACITY)
-board_config_or_default("frothy_payload_capacity" "16384"
+board_config_or_default("frothy_payload_capacity" "90112"
                         EXPECTED_PAYLOAD_CAPACITY)
 board_config_or_default("frothy_parser_binding_capacity" "128"
                         EXPECTED_PARSER_BINDING_CAPACITY)
@@ -201,10 +204,14 @@ board_flag_or_default("has_snapshots" "ON" EXPECTED_HAS_SNAPSHOTS)
 
 expect_definition("FROTH_HEAP_SIZE=${EXPECTED_HEAP_SIZE}"
                   "esp-idf target did not ingest board heap size")
+expect_definition("FROTH_DATA_SPACE_SIZE=${EXPECTED_DATA_SPACE_SIZE}"
+                  "esp-idf target did not ingest board data space size")
 expect_definition("FROTH_SLOT_TABLE_SIZE=${EXPECTED_SLOT_COUNT}"
                   "esp-idf target did not ingest board slot count")
 expect_definition("FROTHY_EVAL_VALUE_CAPACITY=${EXPECTED_EVAL_VALUE_CAPACITY}"
                   "esp-idf target did not ingest Frothy eval value capacity")
+expect_definition("FROTHY_EVAL_FRAME_CAPACITY=${EXPECTED_EVAL_FRAME_CAPACITY}"
+                  "esp-idf target did not ingest Frothy eval frame capacity")
 expect_definition("FROTHY_OBJECT_CAPACITY=${EXPECTED_OBJECT_CAPACITY}"
                   "esp-idf target did not ingest Frothy object capacity")
 expect_definition("FROTHY_PAYLOAD_CAPACITY=${EXPECTED_PAYLOAD_CAPACITY}"

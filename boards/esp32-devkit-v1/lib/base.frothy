@@ -46,3 +46,56 @@ to adc.percent with pin [
   here raw is adc.read: pin;
   raw * 100 / adc.max
 ]
+
+to math.abs with n [
+  if n < 0 [ -n ] else [ n ]
+]
+
+to math.min with a, b [
+  if a < b [ a ] else [ b ]
+]
+
+to math.max with a, b [
+  if a > b [ a ] else [ b ]
+]
+
+to math.clamp with value, lo, hi [
+  here low is math.min: lo, hi;
+  here high is math.max: lo, hi;
+  if value < low [
+    low
+  ] else [
+    if value > high [ high ] else [ value ]
+  ]
+]
+
+to math.mod with value, size [
+  here span is math.abs: size;
+  here rem is value % span;
+  if rem < 0 [ rem + span ] else [ rem ]
+]
+
+to math.wrap with value, size [ math.mod: value, size ]
+
+to math.map with value, inLo, inHi, outLo, outHi [
+  outLo + ((value - inLo) * (outHi - outLo)) / (inHi - inLo)
+]
+
+to math.mapClamped with value, inLo, inHi, outLo, outHi [
+  math.map: (math.clamp: value, (math.min: inLo, inHi), (math.max: inLo, inHi)), inLo, inHi, outLo, outHi
+]
+
+abs is math.abs
+min is math.min
+max is math.max
+clamp is math.clamp
+mod is math.mod
+wrap is math.wrap
+map is math.map
+mapClamped is math.mapClamped
+
+rand is random.next
+rand.below is random.below
+rand.range is random.range
+rand.seed! is random.seed!
+rand.seedFromMillis! is random.seedFromMillis!

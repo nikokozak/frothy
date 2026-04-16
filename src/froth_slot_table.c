@@ -4,6 +4,7 @@
 
 froth_slot_t slot_table[FROTH_SLOT_TABLE_SIZE];
 static froth_cell_u_t slot_pointer = 0;
+static froth_cell_u_t slot_high_water = 0;
 
 static char index_has_slot_assigned(froth_cell_u_t index) {
   return slot_table[index].name != NULL;
@@ -61,6 +62,9 @@ froth_error_t froth_slot_create_n(const char *name, size_t length,
                                               .impl_bound = 0,
                                               .in_arity = FROTH_SLOT_ARITY_UNKNOWN,
                                               .out_arity = FROTH_SLOT_ARITY_UNKNOWN};
+  if (slot_pointer > slot_high_water) {
+    slot_high_water = slot_pointer;
+  }
 
   return FROTH_OK;
 }
@@ -149,6 +153,10 @@ froth_error_t froth_slot_get_name(froth_cell_u_t slot_index,
 }
 
 froth_cell_u_t froth_slot_count(void) { return slot_pointer; }
+
+froth_cell_u_t froth_slot_high_water(void) { return slot_high_water; }
+
+void froth_slot_debug_reset_high_water(void) { slot_high_water = slot_pointer; }
 
 froth_error_t froth_slot_set_overlay(froth_cell_u_t slot_index,
                                      uint8_t overlay) {

@@ -6,7 +6,7 @@ export const resetUnavailableLogLine =
 export const resetUnavailableProceedLogLine =
   "[frothy] whole-file Send File continuing without control reset; additive eval may leave stale bindings";
 export const resetUnavailableError =
-  "Whole-file Send File requires control reset. The connected Frothy firmware is too old for safe whole-file send. Upgrade or reflash the firmware, or use Send Selection / Line for intentional additive eval.";
+  "Whole-file Send File requires control reset. The connected Frothy firmware is too old for safe whole-file send. Upgrade or reflash the firmware, or use Send Selection / Form for intentional additive eval.";
 export const resetUnavailableProceedAction = "Send Anyway";
 export const resetUnavailableCancelAction = "Cancel";
 

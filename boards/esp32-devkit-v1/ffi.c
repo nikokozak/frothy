@@ -37,6 +37,7 @@ static froth_error_t poll_interruptible_wait(froth_vm_t *froth_vm) {
 
 static uint8_t esp32_gpio_output_shadow_valid[GPIO_NUM_MAX];
 static froth_cell_t esp32_gpio_output_shadow_levels[GPIO_NUM_MAX];
+static uint32_t esp32_random_state = 1;
 
 static bool esp32_adc1_channel_for_pin(froth_cell_t pin,
                                        adc1_channel_t *channel_out) {
@@ -189,6 +190,63 @@ FROTH_FFI_ARITY(esp32_adc_read, "adc.read", "( pin -- value )", 1, 1,
   }
 
   FROTH_PUSH(sample);
+  return FROTH_OK;
+}
+
+FROTH_FFI_ARITY(esp32_random_seed, "random.seed!", "( seed -- )", 1, 0,
+                "Seed the board pseudo-random generator.") {
+  FROTH_POP(seed);
+  esp32_random_state = frothy_ffi_random_seed((uint32_t)seed);
+  return FROTH_OK;
+}
+
+FROTH_FFI_ARITY(esp32_random_seed_from_millis, "random.seedFromMillis!",
+                "( -- )", 0, 0,
+                "Seed the board pseudo-random generator from millis.") {
+  esp32_random_state = frothy_ffi_random_seed(platform_uptime_ms());
+  return FROTH_OK;
+}
+
+FROTH_FFI_ARITY(esp32_random_next, "random.next", "( -- n )", 0, 1,
+                "Return the next non-negative pseudo-random integer.") {
+  FROTH_PUSH(frothy_ffi_random_next_int(&esp32_random_state));
+  return FROTH_OK;
+}
+
+FROTH_FFI_ARITY(esp32_random_below, "random.below", "( limit -- n )", 1, 1,
+                "Return a pseudo-random integer in [0, limit).") {
+  uint32_t value = 0;
+
+  FROTH_POP(limit);
+  if (limit <= 0) {
+    return FROTH_ERROR_BOUNDS;
+  }
+  FROTH_TRY(frothy_ffi_random_below(&esp32_random_state, (uint32_t)limit,
+                                    &value));
+  FROTH_PUSH((froth_cell_t)value);
+  return FROTH_OK;
+}
+
+FROTH_FFI_ARITY(esp32_random_range, "random.range", "( lo hi -- n )", 2, 1,
+                "Return a pseudo-random integer between lo and hi inclusive.") {
+  uint32_t offset = 0;
+  int64_t span = 0;
+
+  FROTH_POP(hi);
+  FROTH_POP(lo);
+  if (lo > hi) {
+    froth_cell_t tmp = lo;
+    lo = hi;
+    hi = tmp;
+  }
+
+  span = (int64_t)hi - (int64_t)lo + 1;
+  if (span <= 0) {
+    return FROTH_ERROR_BOUNDS;
+  }
+  FROTH_TRY(
+      frothy_ffi_random_below(&esp32_random_state, (uint32_t)span, &offset));
+  FROTH_PUSH((froth_cell_t)((int64_t)lo + (int64_t)offset));
   return FROTH_OK;
 }
 
@@ -599,6 +657,8 @@ void froth_board_reset_runtime_state(void) {
     uart_tx_pins[i] = -1;
     uart_rx_pins[i] = -1;
   }
+
+  esp32_random_state = frothy_ffi_random_seed(1);
 }
 
 static bool aux_uart_conflicts_console(froth_cell_t tx, froth_cell_t rx) {
@@ -853,7 +913,9 @@ FROTH_BOARD_BEGIN(froth_board_bindings)
 FROTH_BIND(esp32_gpio_mode), FROTH_BIND(esp32_gpio_read),
     FROTH_BIND(esp32_gpio_write), FROTH_BIND(esp32_ms),
     FROTH_BIND(esp32_millis),
-    FROTH_BIND(esp32_adc_read),
+    FROTH_BIND(esp32_adc_read), FROTH_BIND(esp32_random_seed),
+    FROTH_BIND(esp32_random_seed_from_millis), FROTH_BIND(esp32_random_next),
+    FROTH_BIND(esp32_random_below), FROTH_BIND(esp32_random_range),
     FROTH_BIND(esp32_ledc_timer_config), FROTH_BIND(esp32_ledc_channel_config),
     FROTH_BIND(esp32_ledc_set_duty), FROTH_BIND(esp32_ledc_update_duty),
     FROTH_BIND(esp32_ledc_get_duty), FROTH_BIND(esp32_ledc_set_frequency),

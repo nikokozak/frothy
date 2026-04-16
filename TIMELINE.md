@@ -86,6 +86,17 @@ keep each item's description and references so deferral does not erase context.
   References: Frothy ADR-108,
   `docs/roadmap/Frothy_M9_Board_FFI_Closeout.md`, and
   `docs/spec/Frothy_Language_Spec_v0_1.md`, Appendix C.
+- [x] Embedded tool surface tranche 1
+  Deliverable: stop treating `v0.1` as the whole user-facing ceiling, and ship
+  a first serious embedded-helper cut through the maintained base image:
+  `map`, `clamp`, `mod`, `wrap`, and integer `random.*` helpers plus short
+  aliases.
+  References: Frothy ADR-123,
+  `docs/roadmap/Frothy_Embedded_Tool_Surface_Tranche_1.md`,
+  `boards/posix/lib/base.frothy`,
+  `boards/esp32-devkit-v1/lib/base.frothy`,
+  `boards/esp32-devkit-v4-game-board/lib/base.frothy`, and
+  `tests/frothy_ffi_test.c`.
 - [x] Readability language tranche: `in prefix`, `cond`, `case`, and ordinary-code `@`
   Deliverable: land the narrow language additions that most improve workshop
   code and small-library readability without reopening the slot/image model.

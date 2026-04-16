@@ -195,6 +195,10 @@ Rules:
 - locals and parameters keep their ordinary lexical precedence
 - unqualified top-level references inside the body resolve through the active
   prefix first, then through ordinary top-level lookup
+- existing shipped helper families such as `math.*`, `random.*`, `gpio.*`,
+  and `adc.*` already use this prefixed-slot style today; `in prefix` would
+  formalize source-time grouping over that same model rather than introduce a
+  second grouping mechanism
 - the result is still one flat stable-slot image at runtime
 - there is no module object, second namespace, loader, registry, or package
   system in this tranche

@@ -9,7 +9,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 
 
@@ -27,9 +26,6 @@ CELLS_PROOF = os.path.join(
 )
 WORKSHOP_PROOF = os.path.join(
     ROOT_DIR, "tools", "frothy", "proof_m10_workshop_surface.frothy"
-)
-WORKSHOP_STARTER_CHECKS_PROOF = os.path.join(
-    ROOT_DIR, "tools", "frothy", "proof_m10_workshop_starter_checks.frothy"
 )
 HOMEBREW_BIN = "/opt/homebrew/bin"
 
@@ -374,71 +370,12 @@ def run_phase_three(session: IdfMonitorSession) -> None:
     require_not_contains(segment, "parse error (")
 
 
-def build_workshop_starter_bundle() -> tuple[str, str]:
-    temp_dir = tempfile.mkdtemp(prefix="frothy-m10-workshop-")
-    try:
-        starter_dir = os.path.join(temp_dir, "workshop-starter")
-        starter_proof = os.path.join(temp_dir, "workshop-starter-proof.frothy")
-        scaffold = subprocess.run(
-            [CLI_BIN, "new", "--board", "esp32-devkit-v1", starter_dir],
-            cwd=ROOT_DIR,
-            env=idf_env(),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if scaffold.returncode != 0:
-            fail(
-                "failed to scaffold workshop starter\n"
-                f"{scaffold.stdout}{scaffold.stderr}"
-            )
-
-        resolved = subprocess.run(
-            [
-                CLI_BIN,
-                "tooling",
-                "resolve-source",
-                os.path.join(starter_dir, "src", "main.froth"),
-            ],
-            cwd=ROOT_DIR,
-            env=idf_env(),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if resolved.returncode != 0:
-            fail(
-                "failed to resolve workshop starter source\n"
-                f"{resolved.stdout}{resolved.stderr}"
-            )
-        if "warning:" in resolved.stderr:
-            fail(f"workshop starter resolve emitted warnings\n{resolved.stderr}")
-
-        runtime_source = resolved.stdout
-        if runtime_source and not runtime_source.endswith("\n"):
-            runtime_source += "\n"
-
-        with open(starter_proof, "w", encoding="utf-8") as handle:
-            handle.write(runtime_source)
-            with open(WORKSHOP_STARTER_CHECKS_PROOF, "r", encoding="utf-8") as tail:
-                handle.write(tail.read())
-
-        return temp_dir, starter_proof
-    except BaseException:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        raise
-
-
-def run_phase_four(session: IdfMonitorSession, starter_proof: str) -> None:
+def run_phase_four(session: IdfMonitorSession) -> None:
     phase_start = session.text()
     session.run_file(CELLS_PROOF)
     cells_transcript = session.text()[len(phase_start) :]
     session.run_file(WORKSHOP_PROOF)
     workshop_transcript = session.text()[len(phase_start) + len(cells_transcript) :]
-    session.send_line("dangerous.wipe")
-    starter_start = len(session.text())
-    session.run_file(starter_proof)
-    starter_transcript = session.text()[starter_start:]
     matches = re.findall(r"sample\.read: \d\r?\n(\d+)\r?\nfrothy> ", cells_transcript)
     if len(matches) < 4:
         fail("expected four ADC sample readbacks in the transcript")
@@ -512,86 +449,6 @@ def run_phase_four(session: IdfMonitorSession, starter_proof: str) -> None:
     require_gpio_blink_result(workshop_transcript, "restored.blink.check", "nil")
     require_not_contains(workshop_transcript, "eval error (")
     require_not_contains(workshop_transcript, "parse error (")
-    require_sequence(
-        starter_transcript,
-        [
-            '"boot.check"',
-            '"Workshop starter ready"',
-            'player[0]',
-            '0',
-            'player[1]',
-            '0',
-            'score',
-            '0',
-        ],
-    )
-    require_sequence(
-        starter_transcript,
-        [
-            '"lesson.ready.check"',
-            '"Workshop starter ready"',
-        ],
-    )
-    require_sequence(
-        starter_transcript,
-        [
-            '"lesson.blink.check"',
-            '[gpio] pin 2 = LOW',
-            '[gpio] pin 2 = HIGH',
-            '[gpio] pin 2 = LOW',
-            'nil',
-        ],
-    )
-    require_sequence(
-        starter_transcript,
-        [
-            '"lesson.animate.check"',
-            'anim[0]',
-            '7',
-            'anim[1]',
-            '8',
-            'anim[2]',
-            '9',
-        ],
-    )
-    require_sequence(
-        starter_transcript,
-        [
-            '"game.capture.check"',
-            'player[0]',
-            '1',
-            'player[1]',
-            '1',
-            'score',
-        ],
-    )
-    score_match = re.search(
-        r'"game\.capture\.check".*?score\r?\n(\d+)\r?\nfrothy> ',
-        starter_transcript,
-        re.MULTILINE | re.DOTALL,
-    )
-    if score_match is None:
-        fail("expected score readback after game.capture")
-    score_value = int(score_match.group(1))
-    if score_value < 0 or score_value > 100:
-        fail(f"expected game.capture score in 0..100, got {score_value}")
-    require_match(
-        starter_transcript,
-        r'"game\.restore\.check"\r?\n[\s\S]*?restore\r?\n[\s\S]*?true\r?\nfrothy> [\s\S]*?true\r?\nfrothy> [\s\S]*?true\r?\nfrothy> ',
-    )
-    require_sequence(
-        starter_transcript,
-        [
-            '"game.wipe.check"',
-            'eval error (4)',
-        ],
-    )
-    require_count_exact(starter_transcript, "eval error (4)", 1)
-    require_match(
-        starter_transcript,
-        r'"base\.recovery\.check"\r?\n[\s\S]*?info @blink\r?\n[\s\S]*?slot: base\r?\n[\s\S]*?blink: LED_BUILTIN, 1, 1\r?\n[\s\S]*?\[gpio\] pin 2 = LOW\r?\n\[gpio\] pin 2 = HIGH\r?\n\[gpio\] pin 2 = LOW\r?\nnil\r?\nfrothy> ',
-    )
-    require_not_contains(starter_transcript, "parse error (")
 
 
 def main() -> int:
@@ -615,7 +472,6 @@ def main() -> int:
         BOOT_PROOF,
         CELLS_PROOF,
         WORKSHOP_PROOF,
-        WORKSHOP_STARTER_CHECKS_PROOF,
     ):
         if not os.path.isfile(path):
             fail(f"missing proof file: {path}")
@@ -657,16 +513,11 @@ def main() -> int:
 
     wait_for_port_ready(args.port)
     fourth_session = IdfMonitorSession(args.port, flash=False)
-    starter_bundle_dir = None
-    starter_proof = None
     try:
-        starter_bundle_dir, starter_proof = build_workshop_starter_bundle()
         run_phase_three(fourth_session)
-        run_phase_four(fourth_session, starter_proof)
+        run_phase_four(fourth_session)
         emitted.append(fourth_session.text())
     finally:
-        if starter_bundle_dir is not None:
-            shutil.rmtree(starter_bundle_dir, ignore_errors=True)
         fourth_session.close()
 
     combined = "".join(emitted)

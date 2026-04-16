@@ -8,6 +8,9 @@ froth_error_t froth_heap_allocate_bytes(froth_cell_u_t size, froth_heap_t* heap,
 
   froth_cell_u_t start_pointer = heap->pointer;
   heap->pointer += size;
+  if (heap->pointer > heap->high_water) {
+    heap->high_water = heap->pointer;
+  }
 
   *assigned_heap_location = start_pointer;
   return FROTH_OK;
@@ -21,6 +24,9 @@ froth_error_t froth_heap_allocate_cells(froth_cell_u_t count, froth_heap_t* heap
   }
 
   heap->pointer = aligned_pointer + count * sizeof(froth_cell_t);
+  if (heap->pointer > heap->high_water) {
+    heap->high_water = heap->pointer;
+  }
 
   *cells_out = (froth_cell_t*)&heap->data[aligned_pointer];
   if (byte_offset_out != NULL) { *byte_offset_out = aligned_pointer; }

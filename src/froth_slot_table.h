@@ -57,5 +57,7 @@ froth_error_t froth_slot_set_arity(froth_cell_u_t slot_index, uint8_t in_arity,
                                    uint8_t out_arity);
 froth_error_t froth_slot_clear_arity(froth_cell_u_t slot_index);
 froth_cell_u_t froth_slot_count(void);
+froth_cell_u_t froth_slot_high_water(void);
+void froth_slot_debug_reset_high_water(void);
 bool froth_slot_is_overlay(froth_cell_u_t slot_index);
 froth_error_t froth_slot_reset_overlay(void);

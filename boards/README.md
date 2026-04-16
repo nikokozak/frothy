@@ -117,7 +117,7 @@ size of internal data structures. Larger values use more RAM.
 | `has_snapshots` | `FROTH_HAS_SNAPSHOTS` | true | Enable save/restore/wipe. Requires the platform to implement snapshot storage. |
 | `snapshot_block_size` | `FROTH_SNAPSHOT_BLOCK_SIZE` | 2048 | Size of each snapshot storage slot in bytes. |
 | `frothy_object_capacity` | `FROTHY_OBJECT_CAPACITY` | 128 | Optional Frothy runtime object/free-span capacity for boards that ship a larger base library. |
-| `frothy_payload_capacity` | `FROTHY_PAYLOAD_CAPACITY` | 16384 | Optional Frothy runtime payload arena size in bytes for boards that ship a larger base library. |
+| `frothy_payload_capacity` | `FROTHY_PAYLOAD_CAPACITY` | 16384 generic / 90112 on `esp-idf` | Optional Frothy runtime payload arena size in bytes for boards that ship a larger base library. |
 
 For resource-constrained targets, reduce `heap_size`, `ds_depth`,
 `rs_depth`, and `slot_count`. The POSIX board uses generous defaults

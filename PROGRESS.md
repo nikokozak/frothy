@@ -12,6 +12,22 @@ file is wrong.
 ## Landed And Still Relevant
 
 - Frothy `v0.1` is closed through M10; the dated ladder is done.
+- The first embedded tool-surface tranche is now landed: Frothy no longer
+  treats the accepted `v0.1` spec as the whole present-day user-facing
+  ceiling, the maintained base image now ships `map`, `clamp`, `mod`, `wrap`,
+  and integer `random.*` helpers plus short aliases across the maintained board
+  paths, and `docs/adr/123-post-v0_1-embedded-tool-surface.md` plus
+  `docs/roadmap/Frothy_Embedded_Tool_Surface_Tranche_1.md` now record that
+  boundary explicitly, including the naming rule that canonical dotted
+  families stay ordinary slots while bare aliases are reserved for common pure
+  transforms.
+- The first workshop-board DRAM downsize tranche is now landed: the v4 board
+  now carries an `8192`-byte heap and a `64`-frame explicit evaluator stack,
+  the snapshot codec no longer keeps duplicated encode/decode tables live in
+  BSS at the same time, base-slot ownership no longer costs a full pointer
+  array, and `docs/roadmap/Frothy_Workshop_DRAM_Tranche_2026-04-15.md` records
+  the exact baseline, scenario high-waters, byte recovery, and remaining
+  payload-arena constraints.
 - Spoken-ledger syntax tranche 1 is the frozen baseline for future language
   work. See `docs/spec/Frothy_Language_Spec_vNext.md`,
   `docs/spec/Frothy_Surface_Syntax_Proposal_vNext.md`, and

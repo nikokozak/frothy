@@ -55,7 +55,7 @@ clean-machine passes.
 7. Connect the preflashed `esp32-devkit-v4-game-board` proto board and run
    `Frothy: Connect Device`.
 8. Confirm the board is already running the shipped Pong demo.
-9. Run `Frothy: Send Selection / Line` on `1 + 1`.
+9. Run `Frothy: Send Selection / Form` on `1 + 1`.
 10. Open [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) and send `pong.frothy`.
 11. Change one visible behavior in `pong.frothy` and resend it.
 12. Confirm the prompt and workshop base image with `words`,

@@ -71,8 +71,54 @@ const froth_ffi_entry_t froth_project_bindings[] FROTHY_WEAK_DEF = {{0}};
 #endif
 #endif
 
+#define FROTHY_FFI_RANDOM_DEFAULT_SEED UINT32_C(0x6d2b79f5)
+
 froth_cell_t frothy_ffi_wrap_uptime_ms(uint32_t uptime_ms) {
   return froth_wrap_payload((froth_cell_u_t)uptime_ms);
+}
+
+uint32_t frothy_ffi_random_seed(uint32_t seed) {
+  return seed == 0 ? FROTHY_FFI_RANDOM_DEFAULT_SEED : seed;
+}
+
+uint32_t frothy_ffi_random_next_bits(uint32_t *state) {
+  uint32_t value = frothy_ffi_random_seed(state != NULL ? *state : 0);
+
+  value ^= value << 13;
+  value ^= value >> 17;
+  value ^= value << 5;
+  value = frothy_ffi_random_seed(value);
+  if (state != NULL) {
+    *state = value;
+  }
+  return value;
+}
+
+int32_t frothy_ffi_random_next_int(uint32_t *state) {
+  return (int32_t)(frothy_ffi_random_next_bits(state) & UINT32_C(0x1fffffff));
+}
+
+froth_error_t frothy_ffi_random_below(uint32_t *state, uint32_t limit,
+                                      uint32_t *out) {
+  uint32_t candidate = 0;
+  uint32_t threshold = 0;
+
+  if (out == NULL) {
+    return FROTH_ERROR_BOUNDS;
+  }
+  if (limit == 0) {
+    return FROTH_ERROR_BOUNDS;
+  }
+
+  /* Reject the biased tail so modulo stays uniform across the generator's
+   * full 32-bit domain. */
+  threshold = (uint32_t)(0u - limit) % limit;
+  do {
+    candidate = frothy_ffi_random_next_bits(state);
+  } while (candidate < threshold);
+
+  *out = candidate % limit;
+  return FROTH_OK;
 }
 
 static bool frothy_ffi_table_present(const frothy_ffi_entry_t *table) {
