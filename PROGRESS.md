@@ -49,6 +49,11 @@ file is wrong.
   release assets, installed CLI, and repo-local checkout build all use the
   Frothy-owned `frothy` / `frothy-cli` names, while VS Code keeps only narrow
   legacy `froth` discovery fallback during the transition.
+- The VS Code live-edit loop now separates last-run and pinned-run targets:
+  `Run Binding` records a zero-arity `name:` call for `Rerun Last Form`,
+  `Pin Run Binding` records a fixed `name:` call for repeated testing after
+  edits, and definition or top-level value sends do not overwrite the
+  remembered run target.
 - This control-surface repair tranche is landed: `PROGRESS.md` and
   `TIMELINE.md` are thin again, `AGENTS.md` supports targeted work, and the
   forward queue now lives in one short roadmap note plus Frothy ADR-116.

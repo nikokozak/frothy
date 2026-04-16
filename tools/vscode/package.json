@@ -74,6 +74,26 @@
         "icon": "$(play)"
       },
       {
+        "command": "frothy.runBinding",
+        "title": "Frothy: Run Binding",
+        "icon": "$(run)"
+      },
+      {
+        "command": "frothy.pinRunBinding",
+        "title": "Frothy: Pin Run Binding",
+        "icon": "$(pinned)"
+      },
+      {
+        "command": "frothy.runLast",
+        "title": "Frothy: Rerun Last Form",
+        "icon": "$(debug-rerun)"
+      },
+      {
+        "command": "frothy.runPinned",
+        "title": "Frothy: Run Pinned Binding",
+        "icon": "$(debug-start)"
+      },
+      {
         "command": "frothy.sendFile",
         "title": "Frothy: Send File",
         "icon": "$(file-code)"
@@ -137,6 +157,24 @@
         "when": "editorTextFocus && (resourceExtname == .frothy || resourceExtname == .froth)"
       },
       {
+        "command": "frothy.runLast",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "frothy.hasLastRun && editorTextFocus && (resourceExtname == .frothy || resourceExtname == .froth)"
+      },
+      {
+        "command": "frothy.pinRunBinding",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p",
+        "when": "editorTextFocus && (resourceExtname == .frothy || resourceExtname == .froth)"
+      },
+      {
+        "command": "frothy.runPinned",
+        "key": "ctrl+alt+enter",
+        "mac": "cmd+alt+enter",
+        "when": "frothy.hasPinnedRun && editorTextFocus && (resourceExtname == .frothy || resourceExtname == .froth)"
+      },
+      {
         "command": "frothy.sendFile",
         "key": "ctrl+shift+enter",
         "mac": "cmd+shift+enter",
@@ -144,8 +182,9 @@
       },
       {
         "command": "frothy.interrupt",
-        "key": "ctrl+shift+backspace",
-        "mac": "cmd+shift+backspace"
+        "key": "ctrl+alt+.",
+        "mac": "cmd+alt+.",
+        "when": "frothy.isRunning"
       }
     ],
     "viewsContainers": {
@@ -204,6 +243,21 @@
           "group": "navigation"
         },
         {
+          "command": "frothy.runLast",
+          "when": "view == frothyDeviceView && frothy.hasLastRun",
+          "group": "navigation"
+        },
+        {
+          "command": "frothy.runPinned",
+          "when": "view == frothyDeviceView && frothy.hasPinnedRun",
+          "group": "navigation"
+        },
+        {
+          "command": "frothy.pinRunBinding",
+          "when": "view == frothyDeviceView",
+          "group": "navigation"
+        },
+        {
           "command": "frothy.showConsole",
           "when": "view == frothyDeviceView",
           "group": "navigation"
@@ -253,6 +307,26 @@
         {
           "command": "frothy.sendSelection",
           "when": "resourceExtname == .frothy || resourceExtname == .froth",
+          "group": "navigation"
+        },
+        {
+          "command": "frothy.runBinding",
+          "when": "resourceExtname == .frothy || resourceExtname == .froth",
+          "group": "navigation"
+        },
+        {
+          "command": "frothy.pinRunBinding",
+          "when": "resourceExtname == .frothy || resourceExtname == .froth",
+          "group": "navigation"
+        },
+        {
+          "command": "frothy.runLast",
+          "when": "frothy.hasLastRun && (resourceExtname == .frothy || resourceExtname == .froth)",
+          "group": "navigation"
+        },
+        {
+          "command": "frothy.runPinned",
+          "when": "frothy.hasPinnedRun && (resourceExtname == .frothy || resourceExtname == .froth)",
           "group": "navigation"
         },
         {

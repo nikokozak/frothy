@@ -35,6 +35,10 @@ async function main() {
     "frothy.connect",
     "frothy.disconnect",
     "frothy.sendSelection",
+    "frothy.runBinding",
+    "frothy.pinRunBinding",
+    "frothy.runLast",
+    "frothy.runPinned",
     "frothy.sendFile",
     "frothy.interrupt",
     "frothy.words",
@@ -53,6 +57,17 @@ async function main() {
   for (const command of ["froth.connect", "froth.tryLocal", "froth.reset"]) {
     assert(!commands.has(command), `stale public command ${command}`);
   }
+  const pinRunCommand = manifest.contributes.commands.find(
+    (entry) => entry.command === "frothy.pinRunBinding",
+  );
+  const runPinnedCommand = manifest.contributes.commands.find(
+    (entry) => entry.command === "frothy.runPinned",
+  );
+  assert(pinRunCommand.icon === "$(pinned)", "pin binding should use pinned icon");
+  assert(
+    runPinnedCommand.icon === "$(debug-start)",
+    "run pinned should use a distinct run icon",
+  );
 
   const config = manifest.contributes.configuration.properties;
   assert(config["frothy.cliPath"], "missing frothy.cliPath setting");
@@ -76,6 +91,32 @@ async function main() {
   const welcome = manifest.contributes.viewsWelcome[0].contents;
   assert(/Connect Device/.test(welcome), "welcome content should offer connect");
   assert(!/Try Local/.test(welcome), "welcome content should not offer local mode");
+
+  const keybindings = manifest.contributes.keybindings;
+  assert(
+    keybindings.some(
+      (entry) => entry.command === "frothy.runLast" && entry.mac === "cmd+alt+r",
+    ),
+    "run last should have a macOS keybinding",
+  );
+  assert(
+    keybindings.some(
+      (entry) => entry.command === "frothy.pinRunBinding" && entry.mac === "cmd+alt+p",
+    ),
+    "pin run binding should have a macOS keybinding",
+  );
+  assert(
+    keybindings.some(
+      (entry) => entry.command === "frothy.runPinned" && entry.mac === "cmd+alt+enter",
+    ),
+    "run pinned binding should have a macOS keybinding",
+  );
+  assert(
+    keybindings.some(
+      (entry) => entry.command === "frothy.interrupt" && entry.mac === "cmd+alt+.",
+    ),
+    "interrupt should have the macOS interrupt chord",
+  );
 
   const output = [];
   const handledErrors = [];

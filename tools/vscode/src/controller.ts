@@ -26,6 +26,8 @@ export interface ControllerSnapshot {
   state: ConnectionState;
   device: DeviceInfo | null;
   degradedSendFile: boolean;
+  lastRunPreview: string | null;
+  pinnedRunPreview: string | null;
 }
 
 export type StateChangeListener = () => void;
@@ -121,6 +123,8 @@ export class FrothyController {
   private disposed = false;
   private deactivating = false;
   private degradedSendFile = false;
+  private lastRunSource: string | null = null;
+  private pinnedRunSource: string | null = null;
   private readonly stateListeners: StateChangeListener[] = [];
 
   constructor(private readonly deps: ControllerDeps) {}
@@ -156,6 +160,10 @@ export class FrothyController {
       state: this.state,
       device: this.device,
       degradedSendFile: this.degradedSendFile,
+      lastRunPreview: this.lastRunSource ? previewText(this.lastRunSource) : null,
+      pinnedRunPreview: this.pinnedRunSource
+        ? previewText(this.pinnedRunSource)
+        : null,
     };
   }
 
@@ -234,7 +242,106 @@ export class FrothyController {
 
     this.deps.host.output.show(true);
     this.deps.host.output.appendLine(`> ${previewText(text)}`);
-    await this.runTextOperation("eval", () => this.client!.eval(text), true);
+    if (isRepeatableRunSource(text)) {
+      this.rememberLastRun(text);
+    }
+    await this.runTextOperation(
+      "eval",
+      () => this.client!.eval(text),
+      true,
+    );
+  }
+
+  async runBinding(): Promise<void> {
+    const name = await this.resolveBindingName(
+      'Zero-arity binding name to run, for example "demo.loop"',
+      this.lastRunBindingName() ?? "",
+    );
+    if (!name) {
+      return;
+    }
+    if (!(await this.ensureConnected())) {
+      return;
+    }
+    if (!(await this.requireIdle())) {
+      return;
+    }
+
+    const source = `${name}:`;
+    this.rememberLastRun(source);
+    this.deps.host.output.show(true);
+    this.deps.host.output.appendLine(`[frothy] run ${source}`);
+    await this.runTextOperation(
+      "run",
+      () => this.client!.eval(source),
+      true,
+    );
+  }
+
+  async pinRunBinding(): Promise<void> {
+    const name = await this.resolveBindingName(
+      'Zero-arity binding name to pin, for example "boot"',
+      this.pinnedRunBindingName() ?? this.lastRunBindingName() ?? "",
+    );
+    if (!name) {
+      return;
+    }
+
+    const source = `${name}:`;
+    this.rememberPinnedRun(source);
+    this.deps.host.output.appendLine(`[frothy] pinned run ${source}`);
+  }
+
+  async runLast(): Promise<void> {
+    const source = this.lastRunSource;
+    if (!source) {
+      await this.deps.host.showWarningMessage(
+        "No previous Frothy run form. Use Run Binding or Send Selection / Form on an expression first.",
+      );
+      return;
+    }
+    if (!(await this.ensureConnected())) {
+      return;
+    }
+    if (!(await this.requireIdle())) {
+      return;
+    }
+
+    this.deps.host.output.show(true);
+    this.deps.host.output.appendLine(`[frothy] rerun ${previewText(source)}`);
+    const result = await this.runTextOperation(
+      "rerun",
+      () => this.client!.eval(source),
+      true,
+    );
+    if (result) {
+      this.rememberLastRun(source);
+    }
+  }
+
+  async runPinned(): Promise<void> {
+    const source = this.pinnedRunSource;
+    if (!source) {
+      await this.deps.host.showWarningMessage(
+        "No pinned Frothy run binding. Use Pin Run Binding first.",
+      );
+      return;
+    }
+    if (!(await this.ensureConnected())) {
+      return;
+    }
+    if (!(await this.requireIdle())) {
+      return;
+    }
+
+    this.rememberLastRun(source);
+    this.deps.host.output.show(true);
+    this.deps.host.output.appendLine(`[frothy] run pinned ${source}`);
+    await this.runTextOperation(
+      "run pinned",
+      () => this.client!.eval(source),
+      true,
+    );
   }
 
   async sendFile(): Promise<void> {
@@ -745,12 +852,15 @@ export class FrothyController {
     this.notifyStateChange();
   }
 
-  private async resolveBindingName(): Promise<string | null> {
+  private async resolveBindingName(
+    prompt = 'Binding name, for example "save" or "board.led.pin"',
+    fallbackValue = "",
+  ): Promise<string | null> {
     const editor = this.deps.host.getActiveEditor();
     const selected = editor?.selectedName() ?? null;
     const value = await this.deps.host.showInputBox({
-      prompt: 'Binding name, for example "save" or "board.led.pin"',
-      value: selected ?? "",
+      prompt,
+      value: selected ?? fallbackValue,
       ignoreFocusOut: true,
     });
 
@@ -759,6 +869,32 @@ export class FrothyController {
     }
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private rememberLastRun(source: string): void {
+    const trimmed = source.trim();
+    if (trimmed.length === 0 || this.lastRunSource === trimmed) {
+      return;
+    }
+    this.lastRunSource = trimmed;
+    this.notifyStateChange();
+  }
+
+  private lastRunBindingName(): string | null {
+    return runBindingName(this.lastRunSource);
+  }
+
+  private rememberPinnedRun(source: string): void {
+    const trimmed = source.trim();
+    if (trimmed.length === 0 || this.pinnedRunSource === trimmed) {
+      return;
+    }
+    this.pinnedRunSource = trimmed;
+    this.notifyStateChange();
+  }
+
+  private pinnedRunBindingName(): string | null {
+    return runBindingName(this.pinnedRunSource);
   }
 
   private preferredPort(): string {
@@ -804,6 +940,33 @@ function previewText(source: string): string {
     return compact;
   }
   return compact.slice(0, 77) + "...";
+}
+
+function runBindingName(source: string | null): string | null {
+  const trimmed = source?.trim() ?? "";
+  const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_.!?@]*)\s*:\s*$/);
+  return match ? match[1] : null;
+}
+
+function isRepeatableRunSource(source: string): boolean {
+  let forms: string[];
+  try {
+    forms = splitTopLevelForms(source);
+  } catch {
+    return false;
+  }
+  if (forms.length !== 1) {
+    return false;
+  }
+
+  const form = forms[0].trim();
+  if (/^to\s+/.test(form) || /^set\s+/.test(form)) {
+    return false;
+  }
+  if (/^[A-Za-z_][A-Za-z0-9_.!?@]*\s*(?:\([^)]*\)\s*)?[\[{]/.test(form)) {
+    return false;
+  }
+  return !/^[A-Za-z_][A-Za-z0-9_.!?@]*\s*(?:=|\bis\b)/.test(form);
 }
 
 export function valueClassName(valueClass: number): string {

@@ -378,6 +378,76 @@ async function main() {
     assertEq(client.evalCalls[0], host.editor.formText, "send selection should eval full form");
   });
 
+  await test("send selection keeps the previous run form across redefinitions", async () => {
+    const host = new FakeHost();
+    const client = new FakeClient();
+    const controller = createController(host, client);
+
+    await controller.connectToDevice();
+    host.editor.lineText = "demo.loop:";
+    host.editor.formText = "demo.loop:";
+    await controller.sendSelection();
+    assertEq(controller.getSnapshot().lastRunPreview, "demo.loop:", "last run preview");
+
+    host.editor.lineText = "speed = 2";
+    host.editor.formText = "speed = 2";
+    await controller.sendSelection();
+    host.editor.lineText = "demo.loop() { keep }";
+    host.editor.formText = "demo.loop() { keep }";
+    await controller.sendSelection();
+    await controller.runLast();
+
+    assertEq(client.evalCalls.length, 4, "eval call count");
+    assertEq(client.evalCalls[0], "demo.loop:", "first run call");
+    assertEq(client.evalCalls[1], "speed = 2", "redefinition call");
+    assertEq(client.evalCalls[2], "demo.loop() { keep }", "function definition call");
+    assertEq(client.evalCalls[3], "demo.loop:", "rerun call");
+  });
+
+  await test("run binding records a zero-arity call for rerun", async () => {
+    const host = new FakeHost();
+    const client = new FakeClient();
+    const controller = createController(host, client);
+
+    host.inputResponses.push("demo.loop");
+    await controller.connectToDevice();
+    await controller.runBinding();
+    await controller.runLast();
+
+    assertEq(client.evalCalls.length, 2, "eval call count");
+    assertEq(client.evalCalls[0], "demo.loop:", "run binding call");
+    assertEq(client.evalCalls[1], "demo.loop:", "rerun binding call");
+  });
+
+  await test("pinned run binding survives edits and separate last run changes", async () => {
+    const host = new FakeHost();
+    const client = new FakeClient();
+    const controller = createController(host, client);
+
+    host.inputResponses.push("boot");
+    await controller.pinRunBinding();
+    assertEq(controller.getSnapshot().pinnedRunPreview, "boot:", "pinned preview");
+
+    await controller.connectToDevice();
+    host.editor.lineText = "matrix.brightness!: 2;";
+    host.editor.formText = "matrix.brightness!: 2;";
+    await controller.sendSelection();
+    await controller.runPinned();
+
+    host.editor.lineText = "demo.once:";
+    host.editor.formText = "demo.once:";
+    await controller.sendSelection();
+    assertEq(controller.getSnapshot().lastRunPreview, "demo.once:", "last run preview");
+    assertEq(controller.getSnapshot().pinnedRunPreview, "boot:", "pinned should remain");
+    await controller.runPinned();
+
+    assertEq(client.evalCalls.length, 4, "eval call count");
+    assertEq(client.evalCalls[0], "matrix.brightness!: 2;", "edit call");
+    assertEq(client.evalCalls[1], "boot:", "first pinned call");
+    assertEq(client.evalCalls[2], "demo.once:", "separate last run call");
+    assertEq(client.evalCalls[3], "boot:", "second pinned call");
+  });
+
   await test("helper exit drops the session back to disconnected", async () => {
     const host = new FakeHost();
     const client = new FakeClient();

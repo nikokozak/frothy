@@ -38,6 +38,10 @@ Extension-specific expectations:
 - `Frothy: Connect Device`
 - `Frothy: Disconnect`
 - `Frothy: Send Selection / Form`
+- `Frothy: Run Binding`
+- `Frothy: Pin Run Binding`
+- `Frothy: Rerun Last Form`
+- `Frothy: Run Pinned Binding`
 - `Frothy: Send File`
 - `Frothy: Interrupt`
 - `Frothy: Words`
@@ -51,12 +55,29 @@ Extension-specific expectations:
 
 `Send Selection / Form` is intentional additive eval.
 
+`Run Binding` prompts for a zero-arity binding name and evaluates `name:`.
+`Rerun Last Form` repeats the last remembered run form. Sending an expression
+or call with `Send Selection / Form` remembers it; sending definitions, `set`
+forms, or top-level value updates leaves the remembered run form unchanged.
+
+`Pin Run Binding` records a zero-arity binding name without running it.
+`Run Pinned Binding` always evaluates the pinned `name:` call, so you can send
+small edits with `Send Selection / Form` and then rerun a fixed target such as
+`boot:` without moving the cursor back to that line.
+
 `Send File` is whole-file `reset + eval`. If the connected firmware does not
 support control `reset`, the extension blocks the send and tells you to upgrade
 or reflash the firmware instead of replaying the file additively.
 
-`Interrupt` is bound to `Cmd+Shift+Backspace` on macOS and
-`Ctrl+Shift+Backspace` on other platforms.
+`Rerun Last Form` is bound to `Cmd+Option+R` on macOS and `Ctrl+Alt+R` on other
+platforms.
+
+`Pin Run Binding` is bound to `Cmd+Option+P` on macOS and `Ctrl+Alt+P` on other
+platforms. `Run Pinned Binding` is bound to `Cmd+Option+Enter` on macOS and
+`Ctrl+Alt+Enter` on other platforms.
+
+`Interrupt` is bound to `Cmd+Option+.` on macOS and `Ctrl+Alt+.` on other
+platforms while a program is running.
 
 ## Development
 

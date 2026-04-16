@@ -37,6 +37,14 @@ export function activate(
     vscode.StatusBarAlignment.Left,
     49,
   );
+  const rerunItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    48,
+  );
+  const pinnedRunItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Left,
+    47,
+  );
   const host = new VSCodeHost(context, bufferedOutput);
   const controller = new FrothyController({
     host,
@@ -55,6 +63,10 @@ export function activate(
     ["frothy.connect", async () => controller.connectToDevice()],
     ["frothy.disconnect", () => controller.disconnect()],
     ["frothy.sendSelection", () => controller.sendSelection()],
+    ["frothy.runBinding", () => controller.runBinding()],
+    ["frothy.pinRunBinding", () => controller.pinRunBinding()],
+    ["frothy.runLast", () => controller.runLast()],
+    ["frothy.runPinned", () => controller.runPinned()],
     ["frothy.sendFile", () => controller.sendFile()],
     ["frothy.interrupt", () => controller.interrupt()],
     ["frothy.words", () => controller.showWords()],
@@ -68,6 +80,8 @@ export function activate(
     ["frothy.showConsole", () => controller.showConsole()],
     ["froth.connect", async () => controller.connectToDevice()],
     ["froth.sendSelection", () => controller.sendSelection()],
+    ["froth.runLast", () => controller.runLast()],
+    ["froth.runPinned", () => controller.runPinned()],
     ["froth.sendFile", () => controller.sendFile()],
     ["froth.interrupt", () => controller.interrupt()],
     ["froth.doctor", () => controller.runDoctor()],
@@ -80,6 +94,8 @@ export function activate(
   context.subscriptions.push(
     statusItem,
     interruptItem,
+    rerunItem,
+    pinnedRunItem,
     treeView,
     { dispose: () => bufferedOutput.dispose() },
     { dispose: () => controller.dispose() },
@@ -87,10 +103,14 @@ export function activate(
 
   controller.onStateChange(() => {
     sidebarProvider.refresh();
-    updateStatusBar(statusItem, interruptItem, controller.getSnapshot());
+    const snapshot = controller.getSnapshot();
+    updateStatusBar(statusItem, interruptItem, rerunItem, pinnedRunItem, snapshot);
+    updateCommandContext(snapshot);
   });
 
-  updateStatusBar(statusItem, interruptItem, controller.getSnapshot());
+  const snapshot = controller.getSnapshot();
+  updateStatusBar(statusItem, interruptItem, rerunItem, pinnedRunItem, snapshot);
+  updateCommandContext(snapshot);
   statusItem.show();
   controller.start();
 
@@ -118,6 +138,8 @@ export function deactivate(): Thenable<void> | undefined {
 function updateStatusBar(
   statusItem: vscode.StatusBarItem,
   interruptItem: vscode.StatusBarItem,
+  rerunItem: vscode.StatusBarItem,
+  pinnedRunItem: vscode.StatusBarItem,
   snapshot: ControllerSnapshot,
 ): void {
   switch (snapshot.state) {
@@ -186,6 +208,42 @@ function updateStatusBar(
   } else {
     interruptItem.hide();
   }
+
+  if (snapshot.state === "connected" && snapshot.lastRunPreview) {
+    rerunItem.text = "$(debug-rerun) Rerun";
+    rerunItem.tooltip = `Run last Frothy form: ${snapshot.lastRunPreview}`;
+    rerunItem.command = "frothy.runLast";
+    rerunItem.show();
+  } else {
+    rerunItem.hide();
+  }
+
+  if (snapshot.state === "connected" && snapshot.pinnedRunPreview) {
+    pinnedRunItem.text = "$(debug-start) Run Pin";
+    pinnedRunItem.tooltip = `Run pinned Frothy binding: ${snapshot.pinnedRunPreview}`;
+    pinnedRunItem.command = "frothy.runPinned";
+    pinnedRunItem.show();
+  } else {
+    pinnedRunItem.hide();
+  }
+}
+
+function updateCommandContext(snapshot: ControllerSnapshot): void {
+  void vscode.commands.executeCommand(
+    "setContext",
+    "frothy.isRunning",
+    snapshot.state === "running",
+  );
+  void vscode.commands.executeCommand(
+    "setContext",
+    "frothy.hasLastRun",
+    snapshot.lastRunPreview !== null,
+  );
+  void vscode.commands.executeCommand(
+    "setContext",
+    "frothy.hasPinnedRun",
+    snapshot.pinnedRunPreview !== null,
+  );
 }
 
 class FrothySidebarProvider implements vscode.TreeDataProvider<SidebarItem> {
@@ -234,10 +292,10 @@ class FrothySidebarProvider implements vscode.TreeDataProvider<SidebarItem> {
     }
 
     if (!snapshot.device) {
-      return items;
+      return appendPinnedRunItem(items, snapshot);
     }
 
-    return items.concat([
+    return appendPinnedRunItem(items.concat([
       new SidebarItem(
         "Board",
         snapshot.device.board,
@@ -258,8 +316,22 @@ class FrothySidebarProvider implements vscode.TreeDataProvider<SidebarItem> {
         `${snapshot.device.cell_bits}`,
         new vscode.ThemeIcon("symbol-numeric"),
       ),
-    ]);
+    ]), snapshot);
   }
+}
+
+function appendPinnedRunItem(
+  items: SidebarItem[],
+  snapshot: ControllerSnapshot,
+): SidebarItem[] {
+  items.push(
+    new SidebarItem(
+      "Pinned Run",
+      snapshot.pinnedRunPreview ?? "none",
+      new vscode.ThemeIcon(snapshot.pinnedRunPreview ? "pinned" : "circle-slash"),
+    ),
+  );
+  return items;
 }
 
 class SidebarItem extends vscode.TreeItem {
