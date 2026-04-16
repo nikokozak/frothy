@@ -76,6 +76,9 @@ platforms.
 platforms. `Run Pinned Binding` is bound to `Cmd+Option+Enter` on macOS and
 `Ctrl+Alt+Enter` on other platforms.
 
+`See Binding` is bound to `Cmd+Option+B` on macOS and `Ctrl+Alt+B` on other
+platforms.
+
 `Interrupt` is bound to `Cmd+Option+.` on macOS and `Ctrl+Alt+.` on other
 platforms while a program is running.
 

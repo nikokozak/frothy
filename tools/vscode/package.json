@@ -181,6 +181,12 @@
         "when": "editorTextFocus && (resourceExtname == .frothy || resourceExtname == .froth)"
       },
       {
+        "command": "frothy.see",
+        "key": "ctrl+alt+b",
+        "mac": "cmd+alt+b",
+        "when": "editorTextFocus && (resourceExtname == .frothy || resourceExtname == .froth)"
+      },
+      {
         "command": "frothy.interrupt",
         "key": "ctrl+alt+.",
         "mac": "cmd+alt+.",

@@ -113,6 +113,12 @@ async function main() {
   );
   assert(
     keybindings.some(
+      (entry) => entry.command === "frothy.see" && entry.mac === "cmd+alt+b",
+    ),
+    "see binding should have a macOS keybinding",
+  );
+  assert(
+    keybindings.some(
       (entry) => entry.command === "frothy.interrupt" && entry.mac === "cmd+alt+.",
     ),
     "interrupt should have the macOS interrupt chord",
