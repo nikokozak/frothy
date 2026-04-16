@@ -27,7 +27,7 @@ trap 'rm -f "$TMP_FILE"' EXIT INT TERM
 # executable.
 cat >"$TMP_FILE" <<EOF
 class Frothy < Formula
-  desc "A live lexical language for programmable devices"
+  desc "Live lexical language for programmable devices"
   homepage "https://github.com/nikokozak/frothy"
   version "${VERSION}"
   license "MIT"
