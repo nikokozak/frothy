@@ -493,6 +493,41 @@ to demo.pong.run [
   ]
 ]
 
+\ -- Puzzle namespace (workshop discovery activity) --
+
+puzzle.x is 5
+puzzle.y is 3
+
+to puzzle.dot [
+  grid.clear:;
+  grid.set: puzzle.x, puzzle.y, true;
+  grid.show:
+]
+
+to puzzle.frame [
+  grid.set: 0, 0, true;
+  grid.show:
+]
+
+to puzzle.top [
+  grid.fill: true
+]
+
+to puzzle.bottom [
+  nil
+]
+
+to puzzle.scene [
+  puzzle.top:;
+  puzzle.bottom:
+]
+
+to puzzle.reveal [
+  grid.clear:;
+  grid.rect: 0, 0, 3, grid.height, true;
+  grid.show:
+]
+
 to boot [
   demo.pong.setup:;
   demo.pong.run:
