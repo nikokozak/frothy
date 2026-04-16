@@ -102,9 +102,16 @@ func ensureProfile(paths pathSet, name string, quiet bool) error {
 	cachePath := filepath.Join(buildDir, "CMakeCache.txt")
 
 	args := profileDef.Args(paths.Root)
+	inputs, err := profileInputFingerprints(paths.Root, profileDef)
+	if err != nil {
+		return err
+	}
 	desired := map[string]any{
 		"name": profileDef.Name,
 		"args": args,
+	}
+	if len(inputs) > 0 {
+		desired["inputs"] = inputs
 	}
 	digest := sha256.Sum256([]byte(mustJSON(desired)))
 	desired["fingerprint"] = fmt.Sprintf("%x", digest[:])
@@ -127,6 +134,33 @@ func ensureProfile(paths pathSet, name string, quiet bool) error {
 		fmt.Printf("==> build profile: %s\n", name)
 	}
 	return runCommand(paths, "profile:"+name+":build", nil, paths.Root, "cmake", "--build", buildDir)
+}
+
+func profileInputFingerprints(root string, profileDef profile) ([]map[string]string, error) {
+	if profileDef.Inputs == nil {
+		return nil, nil
+	}
+
+	paths := profileDef.Inputs(root)
+	out := make([]map[string]string, 0, len(paths))
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read profile input %s: %w", path, err)
+		}
+
+		name := path
+		if rel, err := filepath.Rel(root, path); err == nil && !strings.HasPrefix(rel, "..") {
+			name = filepath.ToSlash(rel)
+		}
+
+		sum := sha256.Sum256(data)
+		out = append(out, map[string]string{
+			"path":   name,
+			"sha256": fmt.Sprintf("%x", sum[:]),
+		})
+	}
+	return out, nil
 }
 
 func profileNeedsConfigure(cachePath string, stampPath string, desired map[string]any) bool {

@@ -11,6 +11,7 @@
     "ds_depth": 256,
     "rs_depth": 256,
     "slot_count": 128,
+    "frothy_payload_capacity": 90112,
     "has_snapshots": true,
     "snapshot_block_size": 2048
   },

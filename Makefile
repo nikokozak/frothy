@@ -21,7 +21,7 @@ build: build-kernel build-cli ## Build everything (kernel + CLI)
 
 build-kernel: check-cmake check-make ## Build the Frothy host runtime
 	@echo "==> Building Frothy host runtime (POSIX, 32-bit)..."
-	@cmake -S . -B build -U 'FROTH_*' -DFROTH_CELL_SIZE_BITS=32 -DFROTHY_BUILD_HOST=ON
+	@cmake -S . -B build -U 'FROTH_*' -U 'FROTHY_*' -DFROTH_CELL_SIZE_BITS=32 -DFROTHY_BUILD_HOST=ON
 	@cmake --build build
 	@echo "==> Host runtime ready: build/Frothy"
 

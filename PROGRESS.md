@@ -1,6 +1,6 @@
 # Frothy Progress
 
-*Last updated: 2026-04-15*
+*Last updated: 2026-04-16*
 
 This file is the thin operational note for Frothy.
 The current-state block in `docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
@@ -20,7 +20,9 @@ file is wrong.
   `docs/roadmap/Frothy_Embedded_Tool_Surface_Tranche_1.md` now record that
   boundary explicitly, including the naming rule that canonical dotted
   families stay ordinary slots while bare aliases are reserved for common pure
-  transforms.
+  transforms. The default POSIX profile now carries the payload arena budget
+  needed by that richer base image, and the test runner invalidates host-profile
+  caches when CMake or board profile inputs change.
 - The first workshop-board DRAM downsize tranche is now landed: the v4 board
   now carries an `8192`-byte heap and a `64`-frame explicit evaluator stack,
   the snapshot codec no longer keeps duplicated encode/decode tables live in

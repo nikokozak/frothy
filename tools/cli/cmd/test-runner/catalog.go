@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"os/exec"
+	"path/filepath"
 	"sync"
 )
 
@@ -20,6 +21,7 @@ type profile struct {
 	Name        string
 	Description string
 	Args        func(root string) []string
+	Inputs      func(root string) []string
 }
 
 type pathSet struct {
@@ -48,8 +50,16 @@ var profiles = map[string]profile{
 		Args: func(string) []string {
 			return []string{
 				"-U", "FROTH_*",
+				"-U", "FROTHY_*",
 				"-DFROTH_CELL_SIZE_BITS=32",
 				"-DFROTHY_BUILD_HOST=ON",
+			}
+		},
+		Inputs: func(root string) []string {
+			return []string{
+				filepath.Join(root, "CMakeLists.txt"),
+				filepath.Join(root, "cmake", "froth_board_assets.cmake"),
+				filepath.Join(root, "boards", "posix", "board.json"),
 			}
 		},
 	},
