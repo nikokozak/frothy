@@ -14,9 +14,9 @@ Use it to run and record those passes.
 
 | Platform | CLI install path | Extension asset | Board path | Must pass |
 | --- | --- | --- | --- | --- |
-| macOS Apple Silicon | `brew install frothy` preferred; `frothy-v<version>-darwin-arm64.tar.gz` fallback | Marketplace listing `frothy.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, Pong-on-boot, `pong.frothy`, CLI fallback |
-| macOS Intel | `brew install frothy` preferred; `frothy-v<version>-darwin-amd64.tar.gz` fallback | Marketplace listing `frothy.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, Pong-on-boot, `pong.frothy`, CLI fallback |
-| Linux x86_64 | `frothy-v<version>-linux-amd64.tar.gz` | Marketplace listing `frothy.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, Pong-on-boot, `pong.frothy`, CLI fallback |
+| macOS Apple Silicon | `brew install frothy` preferred; `frothy-v<version>-darwin-arm64.tar.gz` fallback | Marketplace listing `NikolaiKozak.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, Pong-on-boot, `pong.frothy`, CLI fallback |
+| macOS Intel | `brew install frothy` preferred; `frothy-v<version>-darwin-amd64.tar.gz` fallback | Marketplace listing `NikolaiKozak.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, Pong-on-boot, `pong.frothy`, CLI fallback |
+| Linux x86_64 | `frothy-v<version>-linux-amd64.tar.gz` | Marketplace listing `NikolaiKozak.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, Pong-on-boot, `pong.frothy`, CLI fallback |
 
 Not promised here:
 
@@ -35,7 +35,7 @@ The current release workflow builds and publishes:
 - `frothy-vscode-v<extension-version>.vsix`
 - `frothy-v<version>-checksums.txt`
 
-The attendee extension path is the Marketplace listing `frothy.frothy`, with
+The attendee extension path is the Marketplace listing `NikolaiKozak.frothy`, with
 the VSIX kept as fallback.
 The workshop proto-board firmware is not a published attendee asset.
 Carry the CLI assets, the matching checksums file, access to

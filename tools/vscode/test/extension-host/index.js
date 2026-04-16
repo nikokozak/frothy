@@ -6,7 +6,9 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const vscode = require("vscode");
+const manifest = require("../../package.json");
 
+const extensionId = `${manifest.publisher}.${manifest.name}`;
 const tracePath = path.join(os.tmpdir(), "frothy-editor-smoke-trace.log");
 
 function sleep(ms) {
@@ -101,9 +103,9 @@ async function run() {
   fs.writeFileSync(tracePath, "", "utf8");
   try {
     trace("start");
-    const extension = vscode.extensions.getExtension("frothy.frothy");
+    const extension = vscode.extensions.getExtension(extensionId);
     if (!extension) {
-      throw new Error("frothy.frothy extension not found");
+      throw new Error(`${extensionId} extension not found`);
     }
 
     const api = await extension.activate();
@@ -243,7 +245,7 @@ async function run() {
     await vscode.commands.executeCommand("workbench.action.closeWindow");
   } catch (err) {
     try {
-      const extension = vscode.extensions.getExtension("frothy.frothy");
+      const extension = vscode.extensions.getExtension(extensionId);
       const api = extension && extension.isActive ? extension.exports : null;
       if (api && typeof api.getOutputText === "function") {
         trace(`output:\n${api.getOutputText()}`);

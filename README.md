@@ -52,7 +52,7 @@ publish:
 | Surface | Release surface | Workshop promise |
 | --- | --- | --- |
 | CLI release | `frothy-v<version>-darwin-arm64.tar.gz`, `frothy-v<version>-darwin-amd64.tar.gz`, `frothy-v<version>-linux-amd64.tar.gz` | macOS via Homebrew is the preferred attendee path; Linux x86_64 can use the release tarball directly |
-| VS Code | Marketplace listing `frothy.frothy`, with matching `frothy-vscode-v<extension-version>.vsix` fallback | supported on the same machines that can already run the installed CLI |
+| VS Code | Marketplace listing `NikolaiKozak.frothy`, with matching `frothy-vscode-v<extension-version>.vsix` fallback | supported on the same machines that can already run the installed CLI |
 | Firmware / recovery | workshop-board recovery for `esp32-devkit-v4-game-board` is maintainer-only from the repo checkout and [boards/esp32-devkit-v4-game-board/WORKSHOP.md](/Users/niko/Developer/Frothy/boards/esp32-devkit-v4-game-board/WORKSHOP.md) | attendees do not flash; maintainers carry preflashed `esp32-devkit-v4-game-board` boards |
 | Source build | checkout build via `make build` | maintainer path, not required before the workshop |
 | Workshop repo | [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) containing `README.md` and `pong.frothy` | attendees open and edit `pong.frothy` against the preflashed demo board |

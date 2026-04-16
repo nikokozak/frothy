@@ -143,6 +143,10 @@ file is wrong.
   session degraded when the user explicitly chooses `Send Anyway` after reset is
   unavailable, and the control proof ladder now re-checks recovery on the real
   ESP32 path.
+- The workshop editor/install surface is back in sync with the manifest:
+  attendee docs now name the `NikolaiKozak.frothy` Marketplace listing, the
+  editor-host smoke derives the extension id from `tools/vscode/package.json`,
+  and the workshop ops proof checks that docs and manifest stay aligned.
 - `esp32-devkit-v1` and `esp32-devkit-v4-game-board` remain accepted board
   models in the repo; the workshop promise is simply narrower and currently
   centered on the mounted preflashed v4 board.

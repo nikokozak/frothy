@@ -31,7 +31,7 @@ Supported attendee path:
 
 Install steps:
 1. Install the CLI and run `frothy doctor`
-2. Install the `frothy.frothy` VS Code extension, or the matching `frothy-vscode-v<extension-version>.vsix`
+2. Install the `NikolaiKozak.frothy` VS Code extension, or the matching `frothy-vscode-v<extension-version>.vsix`
 3. Bring a known-good USB data cable for the preflashed `esp32-devkit-v4-game-board`
    proto board
 
@@ -43,7 +43,7 @@ You do not need a repo checkout, ESP-IDF, or a source build before arriving.
 | Surface | Supported attendee path |
 | --- | --- |
 | CLI | macOS via Homebrew; Linux x86_64 via release tarball |
-| VS Code | Marketplace listing `frothy.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback on a machine that can already run `frothy` |
+| VS Code | Marketplace listing `NikolaiKozak.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback on a machine that can already run `frothy` |
 | Hardware | preflashed `esp32-devkit-v4-game-board` proto board |
 | Workshop source | [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) |
 
@@ -76,7 +76,7 @@ frothy doctor
 VS Code:
 
 ```sh
-code --install-extension frothy.frothy
+code --install-extension NikolaiKozak.frothy
 ```
 
 VSIX fallback:

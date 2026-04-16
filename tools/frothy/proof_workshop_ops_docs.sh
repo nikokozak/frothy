@@ -5,10 +5,19 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 cd "$repo_root"
 
+vscode_extension_id=$(node -e "const p=require('./tools/vscode/package.json'); console.log(p.publisher + '.' + p.name)")
+
 sh tools/frothy/export_workshop_repo.sh check
 test -f workshop/README.md
 
 rg -n '^## Start Here$' README.md
+rg -nF "Marketplace listing \`$vscode_extension_id\`" README.md \
+  docs/guide/Frothy_Workshop_Install_Quickstart.md \
+  docs/guide/Frothy_Workshop_Clean_Machine_Validation.md
+rg -nF "Install the \`$vscode_extension_id\` VS Code extension" \
+  docs/guide/Frothy_Workshop_Install_Quickstart.md
+rg -nF "code --install-extension $vscode_extension_id" \
+  docs/guide/Frothy_Workshop_Install_Quickstart.md
 rg -n 'Frothy_Workshop_Quick_Reference\.md|Frothy_Workshop_Clean_Machine_Validation\.md|boards/esp32-devkit-v4-game-board/WORKSHOP\.md|Frothy_Workshop_Rehearsal_Closeout_2026-04-14\.md' \
   README.md
 rg -n 'pong\.frothy|export_workshop_repo\.sh' workshop/README.md
