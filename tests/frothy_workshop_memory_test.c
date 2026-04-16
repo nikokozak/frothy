@@ -290,6 +290,93 @@ static void print_report(const char *scenario, const memory_report_t *report) {
       report->snapshot_usage.binding_count_high_water);
 }
 
+static int expect_high_water_at_least(const char *scenario, const char *name,
+                                      size_t high_water, size_t used) {
+  if (high_water < used) {
+    fprintf(stderr, "%s %s high water %zu below current %zu\n", scenario, name,
+            high_water, used);
+    return 0;
+  }
+  return 1;
+}
+
+static int expect_report_counters(const char *scenario,
+                                  const memory_report_t *report) {
+  int ok = 1;
+
+  ok &= expect_high_water_at_least(scenario, "heap", report->heap_high_water,
+                                   report->heap_used);
+  ok &= expect_high_water_at_least(scenario, "slots", report->slot_high_water,
+                                   report->slot_count);
+  ok &= expect_high_water_at_least(scenario, "cellspace",
+                                   report->cellspace_high_water,
+                                   report->cellspace_used);
+  ok &= expect_high_water_at_least(scenario, "objects",
+                                   report->object_high_water,
+                                   report->live_objects);
+  ok &= expect_high_water_at_least(scenario, "payload",
+                                   report->payload_high_water,
+                                   report->payload_used);
+  ok &= expect_high_water_at_least(scenario, "eval values",
+                                   report->eval_value_high_water,
+                                   report->eval_value_used);
+  return ok;
+}
+
+static int expect_eval_frame_counter(const char *scenario,
+                                     const memory_report_t *report) {
+  if (report->eval_frame_high_water == 0) {
+    fprintf(stderr, "%s expected nonzero eval frame high water\n", scenario);
+    return 0;
+  }
+  return 1;
+}
+
+static int expect_eval_value_counter(const char *scenario,
+                                     const memory_report_t *report) {
+  if (report->eval_value_high_water == 0) {
+    fprintf(stderr, "%s expected nonzero eval value high water\n", scenario);
+    return 0;
+  }
+  return 1;
+}
+
+static int expect_snapshot_counters(const char *scenario,
+                                    const memory_report_t *report) {
+  const frothy_snapshot_codec_usage_t *usage = &report->snapshot_usage;
+
+  if (usage->payload_length_high_water == 0 ||
+      usage->symbol_count_high_water == 0 ||
+      usage->object_count_high_water == 0 ||
+      usage->binding_count_high_water == 0) {
+    fprintf(stderr, "%s expected nonzero snapshot high-water counters\n",
+            scenario);
+    return 0;
+  }
+  return 1;
+}
+
+static int print_and_check_report(const char *scenario,
+                                  const memory_report_t *report,
+                                  bool expect_eval_frames,
+                                  bool expect_eval_values,
+                                  bool expect_snapshot_usage) {
+  int ok;
+
+  print_report(scenario, report);
+  ok = expect_report_counters(scenario, report);
+  if (expect_eval_frames) {
+    ok &= expect_eval_frame_counter(scenario, report);
+  }
+  if (expect_eval_values) {
+    ok &= expect_eval_value_counter(scenario, report);
+  }
+  if (expect_snapshot_usage) {
+    ok &= expect_snapshot_counters(scenario, report);
+  }
+  return ok;
+}
+
 static int run_inspection_exercises(void) {
   const char **names = NULL;
   size_t count = 0;
@@ -517,38 +604,60 @@ int main(void) {
     leave_temp_workspace(&workspace);
     return 1;
   }
-  print_report("base_image_install", &report);
+  if (!print_and_check_report("base_image_install", &report, true, false,
+                              false)) {
+    leave_temp_workspace(&workspace);
+    return 1;
+  }
 
   if (!scenario_fresh_boot(&report)) {
     leave_temp_workspace(&workspace);
     return 1;
   }
-  print_report("fresh_boot", &report);
+  if (!print_and_check_report("fresh_boot", &report, true, true, false)) {
+    leave_temp_workspace(&workspace);
+    return 1;
+  }
 
   if (!scenario_inspection(&report)) {
     leave_temp_workspace(&workspace);
     return 1;
   }
-  print_report("inspection_discovery", &report);
+  if (!print_and_check_report("inspection_discovery", &report, false, false,
+                              false)) {
+    leave_temp_workspace(&workspace);
+    return 1;
+  }
 
   if (!scenario_shipped_pong(&report)) {
     leave_temp_workspace(&workspace);
     return 1;
   }
-  print_report("shipped_pong", &report);
+  if (!print_and_check_report("shipped_pong", &report, true, true, false)) {
+    leave_temp_workspace(&workspace);
+    return 1;
+  }
 
   if (!scenario_modified_pong(&report)) {
     leave_temp_workspace(&workspace);
     return 1;
   }
-  print_report("modified_pong", &report);
+  if (!print_and_check_report("modified_pong", &report, true, true, false)) {
+    leave_temp_workspace(&workspace);
+    return 1;
+  }
 
   if (!scenario_save_restore_wipe(&restore_report, &wipe_report)) {
     leave_temp_workspace(&workspace);
     return 1;
   }
-  print_report("save_restore_peak", &restore_report);
-  print_report("wipe_post_state", &wipe_report);
+  if (!print_and_check_report("save_restore_peak", &restore_report, true, false,
+                              true) ||
+      !print_and_check_report("wipe_post_state", &wipe_report, true, false,
+                              false)) {
+    leave_temp_workspace(&workspace);
+    return 1;
+  }
 
   leave_temp_workspace(&workspace);
   return 0;

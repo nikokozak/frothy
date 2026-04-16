@@ -5,9 +5,17 @@ to gpio.input with pin [ gpio.mode: pin, 0 ]
 to gpio.output with pin [ gpio.mode: pin, 1 ]
 to gpio.high with pin [ gpio.write: pin, 1 ]
 to gpio.low with pin [ gpio.write: pin, 0 ]
+to gpio.high? with pin [ (gpio.read: pin) == 1 ]
+to gpio.low? with pin [ (gpio.read: pin) == 0 ]
 to gpio.toggle with pin [
   here state is gpio.read: pin;
   gpio.write: pin, 1 - state
+]
+to gpio.pulse with pin, wait [
+  gpio.output: pin;
+  gpio.high: pin;
+  ms: wait;
+  gpio.low: pin
 ]
 
 to animate with count, wait, step [
@@ -85,6 +93,30 @@ to math.mapClamped with value, inLo, inHi, outLo, outHi [
   math.map: (math.clamp: value, (math.min: inLo, inHi), (math.max: inLo, inHi)), inLo, inHi, outLo, outHi
 ]
 
+to math.inRange? with value, lo, hi [
+  here low is math.min: lo, hi;
+  here high is math.max: lo, hi;
+  if value < low [ false ] else [ if value > high [ false ] else [ true ] ]
+]
+
+to math.sign with n [
+  if n < 0 [ -1 ] else [ if n > 0 [ 1 ] else [ 0 ] ]
+]
+
+to math.approach with current, target, step [
+  here delta is math.abs: step;
+  if current < target [
+    math.min: target, current + delta
+  ] else [
+    if current > target [ math.max: target, current - delta ] else [ target ]
+  ]
+]
+
+to math.deadband with value, center, radius [
+  here span is math.abs: radius;
+  if (math.inRange?: value, center - span, center + span) [ center ] else [ value ]
+]
+
 abs is math.abs
 min is math.min
 max is math.max
@@ -93,9 +125,32 @@ mod is math.mod
 wrap is math.wrap
 map is math.map
 mapClamped is math.mapClamped
+inRange? is math.inRange?
+sign is math.sign
+approach is math.approach
+deadband is math.deadband
+
+to random.byte [ random.below: 256 ]
+
+to random.chance? with numer, denom [
+  if denom <= 0 [
+    random.below: 0
+  ] else [
+    if numer <= 0 [
+      false
+    ] else [
+      if numer >= denom [ true ] else [ (random.below: denom) < numer ]
+    ]
+  ]
+]
+
+to random.percent? with percent [ random.chance?: percent, 100 ]
 
 rand is random.next
+rand.byte is random.byte
 rand.below is random.below
+rand.chance? is random.chance?
+rand.percent? is random.percent?
 rand.range is random.range
 rand.seed! is random.seed!
 rand.seedFromMillis! is random.seedFromMillis!

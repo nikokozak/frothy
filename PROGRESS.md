@@ -137,7 +137,8 @@ file is wrong.
   maintained Frothy path: Frothy owns the product/docs/editor/install identity,
   the default CLI home is `~/.frothy` with `FROTHY_HOME` override, Frothy now
   creates that home on demand instead of consulting legacy `~/.froth`,
-  whole-file editor send blocks unsafe replay when control `reset` is
+  whole-file editor send attempts control `reset` before replay and marks the
+  session degraded when the user explicitly chooses `Send Anyway` after reset is
   unavailable, and the control proof ladder now re-checks recovery on the real
   ESP32 path.
 - `esp32-devkit-v1` and `esp32-devkit-v4-game-board` remain accepted board

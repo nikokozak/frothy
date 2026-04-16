@@ -302,10 +302,8 @@ Focused host validation run:
 
 Real-device proof status:
 
-- not completed in this tranche run because `/dev/cu.usbserial-0001` was busy
-  with another active Frothy/minicom session when sign-off validation was due.
-- required follow-up once the line is free:
-  - `sh tools/frothy/proof.sh workshop-v4 <PORT>`
-  - if hardware/runtime changes beyond the workshop board are being signed off,
-    also run a minimal `esp32-devkit-v1` real-device sanity proof per repo
-    policy.
+- completed on the maintained workshop path after the serial line became free:
+  `sh tools/frothy/proof.sh workshop-v4 /dev/cu.usbserial-0001`
+- this signs off the workshop-v4 tranche path; hardware/runtime changes beyond
+  the workshop board still need a minimal `esp32-devkit-v1` real-device sanity
+  proof per repo policy.

@@ -34,11 +34,18 @@ maintained board paths:
 - `math.wrap`
 - `math.map`
 - `math.mapClamped`
+- `math.inRange?`
+- `math.sign`
+- `math.approach`
+- `math.deadband`
 - `random.seed!`
 - `random.seedFromMillis!`
 - `random.next`
+- `random.byte`
 - `random.below`
 - `random.range`
+- `random.chance?`
+- `random.percent?`
 
 Short aliases are also shipped:
 
@@ -50,9 +57,16 @@ Short aliases are also shipped:
 - `wrap`
 - `map`
 - `mapClamped`
+- `inRange?`
+- `sign`
+- `approach`
+- `deadband`
 - `rand`
+- `rand.byte`
 - `rand.below`
 - `rand.range`
+- `rand.chance?`
+- `rand.percent?`
 - `rand.seed!`
 - `rand.seedFromMillis!`
 
@@ -105,10 +119,9 @@ Focused host proof:
 - `cmake -S . -B build && cmake --build build`
 - `ctest --test-dir build --output-on-failure -R 'frothy_ffi|frothy_snapshot|frothy_tm1629_board'`
 
-Small real-device proof:
+Small manual real-device spot-check:
 
-- flash the maintained ESP32 path
-- at the prompt, verify:
+- after flashing the maintained ESP32 path, verify these prompt checks manually:
   `map: 5, 0, 10, 0, 100`
   `mod: -1, 8`
   `rand.seed!: 7`

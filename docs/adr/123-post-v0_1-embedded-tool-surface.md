@@ -83,15 +83,18 @@ The first embedded-tool-surface tranche is:
 
 - math helpers in the base image:
   `math.abs`, `math.min`, `math.max`, `math.clamp`, `math.mod`,
-  `math.wrap`, `math.map`, and `math.mapClamped`
+  `math.wrap`, `math.map`, `math.mapClamped`, `math.inRange?`,
+  `math.sign`, `math.approach`, and `math.deadband`
 - short aliases for the helpers:
-  `abs`, `min`, `max`, `clamp`, `mod`, `wrap`, `map`, and `mapClamped`
+  `abs`, `min`, `max`, `clamp`, `mod`, `wrap`, `map`, `mapClamped`,
+  `inRange?`, `sign`, `approach`, and `deadband`
 - integer random helpers in the base image:
   `random.seed!`, `random.seedFromMillis!`, `random.next`,
-  `random.below`, and `random.range`
+  `random.byte`, `random.below`, `random.range`, `random.chance?`,
+  and `random.percent?`
 - short aliases for the random surface:
-  `rand`, `rand.below`, `rand.range`, `rand.seed!`,
-  and `rand.seedFromMillis!`
+  `rand`, `rand.byte`, `rand.below`, `rand.range`, `rand.chance?`,
+  `rand.percent?`, `rand.seed!`, and `rand.seedFromMillis!`
 
 Naming policy held by this tranche:
 

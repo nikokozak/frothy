@@ -1139,6 +1139,15 @@ static froth_error_t frothy_snapshot_validate_node_id(uint32_t node_id,
   return FROTH_OK;
 }
 
+static froth_error_t frothy_snapshot_validate_link_span(uint32_t first,
+                                                        uint32_t count,
+                                                        uint32_t link_count) {
+  if (first > link_count || count > link_count - first) {
+    return FROTH_ERROR_SNAPSHOT_FORMAT;
+  }
+  return FROTH_OK;
+}
+
 static froth_error_t frothy_snapshot_validate_value(
     frothy_snapshot_reader_t *reader, const uint8_t *object_kinds,
     uint32_t object_count, bool restricted_objects,
@@ -1403,9 +1412,10 @@ static froth_error_t frothy_snapshot_validate_code_object(
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &a));
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &b));
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &c));
-      if (flag > FROTHY_IR_BUILTIN_NEQ || b + c > link_count) {
+      if (flag > FROTHY_IR_BUILTIN_NEQ) {
         return FROTH_ERROR_SNAPSHOT_FORMAT;
       }
+      FROTH_TRY(frothy_snapshot_validate_link_span(b, c, link_count));
       if (flag == FROTHY_IR_BUILTIN_NONE) {
         FROTH_TRY(frothy_snapshot_validate_node_id(a, node_count, false));
       } else {
@@ -1431,9 +1441,7 @@ static froth_error_t frothy_snapshot_validate_code_object(
     case FROTHY_IR_NODE_SEQ:
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &a));
       FROTH_TRY(frothy_snapshot_reader_read_u32(reader, &b));
-      if (a + b > link_count) {
-        return FROTH_ERROR_SNAPSHOT_FORMAT;
-      }
+      FROTH_TRY(frothy_snapshot_validate_link_span(a, b, link_count));
       break;
     default:
       return FROTH_ERROR_SNAPSHOT_FORMAT;

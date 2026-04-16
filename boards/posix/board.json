@@ -7,7 +7,7 @@
 
   "config": {
     "cell_size_bits": 32,
-    "heap_size": 4096,
+    "heap_size": 6144,
     "ds_depth": 256,
     "rs_depth": 256,
     "slot_count": 128,

@@ -353,6 +353,7 @@ good fit for:
 - booleans
 - `nil`
 - text
+- records
 
 Important edge cases:
 
@@ -419,13 +420,16 @@ Important edge case:
 ```frothy
 path is cells(2)
 set path[0] to Point: 1, 2
+path[0]->x
 ```
 
 Result:
 
-- storing a record inside `Cells` fails with `eval error (3)`
+- storing a record inside `Cells` succeeds
+- `path[0]->x` returns `1`
 
-Records are for shaped data. `Cells` remain the narrow array.
+Records are for shaped data. `Cells` remain the narrow array, and they still
+reject `Code`, other `Cells`, record definitions, and native values.
 
 ## Prefix groups with `in`
 
@@ -1336,42 +1340,155 @@ Frothy's memory model is small on purpose. You are maintaining a bounded live
 system, not a language runtime that assumes a desktop heap will quietly grow
 forever.
 
-Important bounded capacities from `src/frothy_value.h`:
+Important bounded capacities from `src/frothy_value.h` and `src/frothy_eval.c`:
 
 - `FROTHY_EVAL_VALUE_CAPACITY 256`
 - `FROTHY_OBJECT_CAPACITY 128`
 - `FROTHY_PAYLOAD_CAPACITY 16384`
+- `FROTHY_EVAL_FRAME_CAPACITY 128`
 
 Those are compile-time limits. They are part of the design, not temporary
 scaffolding.
 
+The first thing to internalize is that Frothy does not have one generic heap.
+It has several bounded stores with different jobs:
+
+- the inherited substrate slot table stores stable top-level names and binding
+  metadata
+- the Frothy object table stores live heap-like objects such as `Text`, `Code`,
+  `Cells`, record definitions, records, and natives
+- the payload arena stores variable-sized object payloads such as text bytes,
+  packed IR, record-def strings, and record field arrays
+- `cellspace` stores the indexed contents behind `Cells`
+- the evaluator scratch arena stores temporary locals and argument buffers
+- the evaluator frame stack stores resumable execution frames for IR dispatch
+
+The runtime value word itself is only 32 bits. From `src/frothy_value.c`:
+
+```text
+bits ... 2 1 0
+          ^^^^^ low tag bits
+
+00 = signed 30-bit int
+01 = special immediate
+10 = slot designator
+11 = object reference
+```
+
+Special immediates are:
+
+- `nil = 0x1`
+- `false = 0x5`
+- `true = 0x9`
+
+Integers are `value << 2`. Slot and object references are `index << 2 | tag`.
+That means a `frothy_value_t` is cheap to copy, cheap to store in `cellspace`,
+and still explicit about whether it names a slot or an object.
+
+### Runtime storage map
+
+The important runtime structs are:
+
+```text
+froth_vm_t
+  slot table         -> inherited Froth substrate, stable name index
+  cellspace          -> indexed cells storage + base seed/reset mark
+  frothy_runtime_t
+       object_storage[128]
+       free_span_storage[128]
+       payload_storage[16384]
+       payload_free_span_storage[128]
+       eval_value_storage[256]
+
+src/frothy_eval.c
+  frothy_eval_frame_stack[128]
+```
+
+`frothy_runtime_t` in `src/frothy_value.h` is the best single map of Frothy's
+owned memory.
+
+The live object kinds are:
+
+- `TEXT`: payload span + logical length
+- `CELLS`: `base` and `length` into `cellspace`
+- `CODE`: payload span + arity + local count + body node id + packed IR view
+- `NATIVE`: C function pointer + context + exported name + arity
+- `RECORD_DEF`: payload span containing field-count + record name + field names
+- `RECORD`: payload span containing `frothy_value_t[field_count]` plus a
+  retained pointer to its definition object
+
+In other words, a `Cells` object is only a descriptor. The actual indexed data
+is in `froth_vm.cellspace.data`. A `Code` object is also mostly a descriptor.
+The actual cloned IR arrays live in the payload arena, and the embedded
+`frothy_ir_program_t` inside the object is just a view over that packed block.
+
+### Ownership and lifetime rules
+
 Ownership works like this:
 
-- slots own the values bound into them
-- locals own the values stored in the current frame
-- temporary evaluator buffers own child results until they are released
-- object values keep live storage alive with refcounts
+- top-level slots own the values bound into them
+- local frames own the values stored in their local slots
+- evaluator scratch buffers own temporary child results while a node is in
+  progress
+- object references use refcounts so shared values such as text, code, and
+  records stay alive until the last owner releases them
 
-A **lifetime** is simply how long a piece of state stays valid. Frothy tries to
-make those lifetimes boring and visible.
+The key retain/release entry points are `frothy_value_retain()` and
+`frothy_value_release()` in `src/frothy_value.c`.
 
-### Code Walk
+When an object's refcount drops to zero, `frothy_runtime_clear_live_object()`
+releases the storage specific to that kind:
 
-`src/frothy_value.c` contains the runtime's cleanup heart:
-`frothy_runtime_clear_overlay_state()`.
+- `TEXT` returns its payload span to the payload free list
+- `CELLS` releases any stored child values, zeroes the span, and returns the
+  span to the cellspace free list
+- `CODE` releases the packed IR payload span
+- `RECORD_DEF` releases its packed names payload
+- `RECORD` releases each field value, releases the retained definition, and
+  releases the field-array payload
 
-It walks overlay slots and releases their bound values. It resets `cellspace` to
-base. It discards every live object, clears free-span bookkeeping, resets the
-payload arena accounting, resets the evaluator scratch arena, and increments
-`reset_epoch`.
+The free lists matter. Frothy does not just bump forever. The payload arena and
+cellspace both support span reuse and tail coalescing, so short-lived overlay
+objects do not permanently fragment the runtime.
 
-That last field matters in `src/frothy_eval.c`. Evaluation frames and temporary
-buffers remember the `reset_epoch` they were allocated under. If a reset
-happens during evaluation, cleanup code can tell it is looking at stale storage
-and avoid double-release mistakes.
+### `cellspace` versus payload arena
 
-This is exactly what "clear reset story" looks like in systems code. The code is
-not clever. It is defensive.
+`src/froth_cellspace.h` and `src/froth_cellspace.c` define:
+
+```text
+froth_cellspace_t
+  data       -> active cells storage
+  base_seed  -> saved base-image cells content
+  used       -> next free cell index
+  high_water -> max used seen
+  capacity   -> total cells capacity
+  base_mark  -> cutoff between base image and overlay cells
+```
+
+`cellspace` is for indexed `frothy_value_t` cells only. The payload arena is
+for bytes and packed structs. Keeping those stores separate is why `Cells`
+indexing is simple and why code/text/record payloads can be densely packed
+without pretending they are random-access cell arrays.
+
+### Reset story
+
+`frothy_runtime_clear_overlay_state()` is the cleanup heart.
+
+It does all of these, in order:
+
+1. walk overlay slots and release their bound values
+2. reset `cellspace` to the captured base image
+3. discard every live object
+4. clear free-span bookkeeping
+5. zero payload-usage accounting
+6. zero evaluator scratch usage
+7. clear last FFI error bookkeeping
+8. increment `reset_epoch`
+
+That last field is what keeps reset safe while evaluation is running.
+Evaluator buffers and frame states remember the epoch they were allocated
+under. If a reset happens, later cleanup sees the epoch mismatch and avoids
+double-release on now-stale storage.
 
 ### Worked Example
 
@@ -1391,6 +1508,8 @@ What gets released:
 - the text payload for `texty`
 - the packed code payload for `codey`
 - the `Cells` span for `frame`
+- the snapshot on storage because `dangerous.wipe` is both live reset and saved
+  overlay wipe
 - any overlay slot bindings that owned those values
 
 What survives:
@@ -1400,19 +1519,25 @@ What survives:
 
 ### What to remember
 
+- Frothy's memory model is several bounded stores, not one general heap.
+- The runtime value word is tagged enough to tell scalar, slot, and object
+  identities apart in 32 bits.
 - Bounded capacities are part of the product shape.
 - Refcounts are how object lifetimes stay explicit.
 - `cellspace` is a separate arena used by `Cells`.
-- Reset is a first-class operation, not an error case hack.
+- The payload arena stores text, packed IR, and record payloads.
+- Reset is a first-class operation, not an error-case hack.
 
 ### Common confusions
 
 - "Does Frothy have a garbage collector?" No. It uses reference counting plus
   explicit reset paths.
-- "Is payload storage the same thing as cellspace?" No. Text and packed code
+- "Is payload storage the same thing as `cellspace`?" No. Text and packed code
   live in the payload arena; `Cells` live in `cellspace`.
 - "Why does evaluation have its own scratch arena?" To make temporary
   allocations bounded and easy to reset.
+- "Where are locals stored?" In the evaluator scratch arena, not in object
+  storage and not in the payload arena.
 
 ### Invariants
 
@@ -1438,6 +1563,13 @@ job is to resolve names, lower sugar, and produce canonical IR.
 local or to a top-level slot." Frothy does that with scopes and frames in
 `src/frothy_parser.c`.
 
+The parser state has three important dynamic arrays:
+
+- `bindings`: visible local names and their assigned local indexes
+- `scopes`: boundaries that say which bindings die when a block ends
+- `frames`: one lexical function context, with its own local-index numbering and
+  outer-capture policy
+
 The crucial design choice is that `Code` is non-capturing in `v0.1`. In plain
 language: an inner function does not close over outer locals.
 
@@ -1450,9 +1582,13 @@ Why choose that?
 
 ### Code Walk
 
-Read two regions in `src/frothy_parser.c`.
+Read four regions in `src/frothy_parser.c`.
 
-`frothy_push_frame()` stores whether a frame rejects outer capture.
+- `frothy_push_scope()` stores `binding_start`, so block cleanup can discard
+  only the names that belong to that scope.
+- `frothy_push_frame()` stores `scope_base`, `next_local_index`, and
+  `reject_outer_capture`.
+- `frothy_declare_local()` assigns the next local index in the current frame.
 
 `frothy_resolve_name()` first searches locals in the current frame. If it sees a
 matching name in an outer frame and `reject_outer_capture` is true, it returns a
@@ -1461,6 +1597,16 @@ signature error instead of silently creating a closure-like reference.
 Then read `frothy_parse_fn_node()`. Every `fn` body pushes a frame with
 `reject_outer_capture = true`. That is the parser-level guardrail that keeps
 `Code` non-capturing.
+
+Then read the lowerers:
+
+- `frothy_parse_repeat()` lowers `repeat` into hidden locals plus `while`
+- `frothy_make_short_circuit_node()` lowers `and` and `or` into `if`
+- `frothy_parse_top_level_record()` lowers `record Name [ ... ]` into a
+  top-level write of a `RECORD_DEF` node
+- `frothy_parse_in()` sets `active_prefix`, which is why names inside
+  `in led [ ... ]` become fallback slot reads and writes such as
+  `read-slot-fallback "led.pin" "pin"`
 
 This is a good example of Frothy's style. The rule is enforced early, not
 hand-waved as "undefined later."
@@ -1484,6 +1630,30 @@ Why not?
 So if you want reusable changing state, put it in a top-level slot or a top-level
 owned `Cells` object instead.
 
+For a concrete lowering example, the parser fixture
+`tests/frothy_parser/fixtures/spoken_repeat_expr.ir` shows that:
+
+```frothy
+repeat 2 as i [ i ]
+```
+
+becomes:
+
+```text
+(seq
+  (write-local 1 (lit 2))
+  (write-local 2 (lit 0))
+  (while
+    (call (builtin "<") (read-local 2) (read-local 1))
+    (seq
+      (write-local 0 (read-local 2))
+      (seq (read-local 0))
+      (write-local 2 (call (builtin "+") (read-local 2) (lit 1))))))
+```
+
+That is the pattern to keep in mind: the parser prefers to widen the IR a
+little rather than add lots of special runtime opcodes.
+
 ### What to remember
 
 - The parser resolves names before evaluation.
@@ -1491,6 +1661,8 @@ owned `Cells` object instead.
 - `Code` values do not capture outer locals in `v0.1`.
 - `repeat`, `when`, and `unless` are parser-level conveniences, not special
   runtime object kinds.
+- Prefix groups are mostly name rewriting plus fallback slot nodes, not modules
+  or runtime namespaces.
 
 ### Common confusions
 
@@ -1501,6 +1673,8 @@ owned `Cells` object instead.
   meaning.
 - "Are top-level names resolved at parse time too?" The parser chooses slot-read
   versus local-read structure, but the actual slot value is read at call time.
+- "Why are `record` and `cells(n)` top-level only?" Because the runtime and
+  snapshot model are intentionally keeping collection ownership shallow.
 
 ### Invariants
 
@@ -1513,25 +1687,55 @@ owned `Cells` object instead.
 
 **IR** stands for *intermediate representation*: the tree form between parsing
 and evaluation. In Frothy, IR is not a private compiler detail that you can
-ignore. It is the canonical truth for code.
+ignore. It is the canonical truth for code, inspection, and persisted `Code`
+objects.
 
-The node kinds in `src/frothy_ir.h` are compact and revealing:
+`src/frothy_ir.h` gives you the real program container:
+
+```text
+frothy_ir_program_t
+  literals[]   -> ints, bools, nil, text
+  nodes[]      -> fixed-size node headers/payloads
+  links[]      -> variable-length edges and lists
+  root         -> top-level root node id
+  root_local_count
+  storage_kind/storage_base/storage_size
+```
+
+The complete current node set is:
 
 - `LIT`
 - `READ_LOCAL`
 - `WRITE_LOCAL`
 - `READ_SLOT`
 - `WRITE_SLOT`
+- `READ_SLOT_FALLBACK`
+- `WRITE_SLOT_FALLBACK`
+- `SLOT_DESIGNATOR`
+- `RECORD_DEF`
 - `READ_INDEX`
 - `WRITE_INDEX`
+- `READ_FIELD`
+- `WRITE_FIELD`
 - `FN`
 - `CALL`
 - `IF`
 - `WHILE`
 - `SEQ`
 
-That list tells you what the runtime really understands. If a surface feature
-is not in that list, it is sugar.
+That list tells you what the runtime really understands. If a surface feature is
+not in that list, it is sugar.
+
+The `links[]` side table is the detail most people miss at first. Frothy does
+not embed variable-length child lists inside every node. Instead:
+
+- `CALL` uses `first_arg` and `arg_count` into `links[]`
+- `SEQ` uses `first_item` and `item_count` into `links[]`
+- `RECORD_DEF` uses `first_field` and `field_count` into `links[]`, where each
+  link points at a text literal id for a field name
+
+That is why IR nodes stay fixed-size while still representing calls, sequences,
+and field lists.
 
 Flow:
 
@@ -1558,21 +1762,31 @@ Why persist IR instead of source?
 - normalized meaning is easier to restore than original spelling
 - snapshots stay smaller and less ambiguous
 - `see` and `core` can tell the truth about what will actually run
+- later bytecode or caching can remain an additive optimization rather than the
+  semantic source of truth
 
 ### Code Walk
 
-Read `frothy_ir_render_surface_expr()` in `src/frothy_ir.c`.
+Read three regions in `src/frothy_ir.c`.
 
-That one function shows the whole philosophy. It does not merely pretty-print a
-stored source string. It pattern-matches the canonical IR and reconstructs a
-surface form for humans:
+- `frothy_ir_render_surface_expr()` pattern-matches the IR and reconstructs a
+  human-normalized surface form:
 
 - a `WRITE_SLOT` becomes either `name is value` or `set name to value`
 - a lowered repeat loop becomes `repeat ... as ... [ ... ]`
 - an `if` without an else may render as `when` or `unless`
 
-Then compare that with `frothy_ir_render_code()`, which prints the smaller core
-tree directly.
+- `frothy_ir_render_code()` prints the exact core tree directly.
+- `frothy_ir_program_clone_packed()` and
+  `frothy_ir_program_init_packed_view()` explain how code objects store IR in
+  the payload arena.
+
+That packed layout is important. A dynamic parse uses separately allocated
+arrays and strings. When the evaluator creates a `Code` object,
+`frothy_runtime_alloc_code()` measures the program, allocates one aligned
+payload span, clones literals/nodes/links/string bytes into that one block, and
+then stores a `FROTHY_IR_STORAGE_VIEW` program that points into the payload
+arena. Releasing the code object releases the whole packed IR at once.
 
 ### Worked Example
 
@@ -1600,12 +1814,29 @@ same code at two useful levels:
 - human-normalized surface form
 - canonical evaluator form
 
+For a second example, the record fixture
+`tests/frothy_parser/fixtures/record_def.ir` is:
+
+```text
+(write-slot "Point" (record-def "Point" "x" "y"))
+```
+
+That tells you exactly how top-level record declarations live in the image:
+
+- the slot `Point` is rebound
+- the bound value is a `record-def` object
+- record field names are data carried by that object, not metadata hidden
+  somewhere else
+
 ### What to remember
 
 - Canonical IR is the code truth Frothy persists.
 - Surface syntax can change without changing the deeper IR model.
 - `see` is normalized source-like rendering.
 - `core` is actual core structure.
+- `links[]` is where variable-length child lists really live.
+- Packed `Code` objects are views over one payload block, not loose malloc
+  trees.
 
 ### Common confusions
 
@@ -1621,48 +1852,71 @@ same code at two useful levels:
 - Every persisted code object must decode into valid canonical IR.
 - Renderer output must correspond to the same IR body, not to stale source text.
 - Lowered sugar must be semantically faithful to the surface form.
+- Packed IR views must point only inside the owning payload span.
 
 ## Evaluator Architecture: Frames, Locals, Slot Lookup, Calls, Mutation, Loops, Interrupts, and Safe Points
 
-The evaluator in `src/frothy_eval.c` is a direct tree-walker. That is a good
-fit for Frothy today because the runtime is small, interruptibility matters, and
-inspection wants obvious control flow.
+The evaluator in `src/frothy_eval.c` is no longer the old recursive tree-walker.
+The current runtime executes canonical IR with an explicit frame stack and a
+dispatcher loop, which is exactly the architecture Frothy ADR-118 called for.
 
 Important ideas:
 
-- a **frame** is one call's local storage
-- **arity** means how many arguments a function expects
-- slot reads are late reads from the stable top-level image
-- safe points are places where the runtime checks whether `Ctrl-C` interrupted
-  the program
+- a **root local frame** is still allocated out of the evaluator scratch arena
+  for one top-level evaluation
+- an **evaluator frame state** is one resumable IR node execution
+- **phase** is the resume point inside a compound node
+- **call kind** says whether a call resolved to builtin, native, record-def
+  constructor, or `Code`
+- safe points are places where the dispatcher checks whether `Ctrl-C`
+  interrupted the program
 
 ### Code Walk
 
-There are three especially important regions.
+There are four especially important regions.
 
-First, `frothy_frame_init()` allocates the local frame out of the evaluator's
-bounded scratch arena.
+First, `frothy_frame_init()` allocates the root locals array out of the bounded
+`eval_value_storage`.
 
-Second, `frothy_eval_node()` dispatches on IR node kind. This is where you see
-the real language:
+Second, `frothy_eval_frame_state_t` shows what a resumable node needs:
 
-- local read/write
-- slot read/write
-- index read/write
-- function creation
-- call
-- if
-- while
-- sequence
+- `program`, `locals`, `local_count`, `node_id`, and `out`
+- `phase` and `index`
+- `values[3]` for fixed scratch intermediates
+- `buffer` for variable-size arg/local storage
+- `call_kind`, `target_program`, `target_node`, `native_fn`, and
+  `native_context`
+- `reset_epoch`
 
-Third, `frothy_eval_while()` checks `frothy_poll_interrupt()` on each loop turn.
-That is the heart of safe interruption. The runtime does not need preemption or
-threads to stay responsive. It needs good safe points.
+Third, `frothy_eval_node()` pushes one initial frame and then runs:
 
-One more subtle but important detail: `frothy_eval_program()` converts the
-internal reset sentinel into a normal top-level `nil` result. That keeps a user
-action like `dangerous.wipe` from tearing through the REPL as a special control-flow
-explosion.
+```text
+while exec.depth > 0:
+  look at top frame
+  poll interrupt at phase 0
+  dispatch by node kind
+  either:
+    push child frame
+    advance phase
+    complete value and pop
+    return error
+```
+
+Fourth, the helper state machines matter:
+
+- `frothy_eval_call()` is a 4-phase call dispatcher
+- `frothy_eval_if()` is a 3-phase conditional
+- `frothy_eval_while()` loops by resetting its phase to `0` instead of growing
+  call depth
+- `frothy_eval_seq()` evaluates intermediate items into scratch slot `values[0]`
+  and drops them before moving on
+
+That is the current execution model. The runtime does not recurse IR-to-IR
+through the C stack anymore. It explicitly pushes child evaluator frames into
+`frothy_eval_frame_stack[FROTHY_EVAL_FRAME_CAPACITY]`.
+
+The old guide description that called this a recursive tree-walker is now out
+of date.
 
 ### Worked Example
 
@@ -1681,17 +1935,34 @@ Execution trace in ordinary language:
 
 1. `counter` points at a one-cell `Cells` object.
 2. The parser lowers each `repeat` into locals plus a `while`.
-3. The evaluator allocates locals for loop limits and indexes.
-4. Each body iteration reads `counter[0]`, computes the new value, writes it
-   back, and discards intermediate results.
-5. The final result is `9`.
+3. The top-level eval allocates one locals array from `eval_value_storage`.
+4. `frothy_eval_node()` pushes an initial `SEQ` frame.
+5. Each compound node pushes child frames instead of recursing in C.
+6. Each `while` iteration returns its frame to phase `0`, polls interrupt, and
+   reuses the same frame slot.
+7. Each body iteration reads `counter[0]`, computes the new value, writes it
+   back, and releases temporary child results.
+8. The final result is `9`.
+
+Calls are worth spelling out because they define most of the evaluator:
+
+1. phase `0`: if the call is not a builtin, evaluate the callee
+2. phase `1`: classify the callee as builtin, native, record-def, or `Code`
+3. phase `2`: evaluate arguments left to right into `frame.buffer`
+4. phase `3`: for `Code`, push the target code body as another evaluator frame
+
+For `Code` calls, `frame.buffer` is sized to the callee's `local_count`, and
+the evaluated arguments occupy the first `arity` locals. That is how call-time
+local storage stays bounded and obvious.
 
 ### What to remember
 
-- The evaluator is small enough to read in one sitting.
+- The evaluator is an explicit dispatcher loop over bounded frame storage.
 - Slot lookup is dynamic at call time.
 - Safe points are explicit.
 - Reset paths are deliberately folded back into normal REPL behavior.
+- Hot execution does not allocate from the host heap; it uses bounded scratch
+  arenas and fixed frame storage.
 
 ### Common confusions
 
@@ -1700,6 +1971,9 @@ Execution trace in ordinary language:
 - "Why does `repeat` seem like syntax magic?" Because it is parse-time sugar
   that becomes plain evaluator machinery.
 - "Does `while` return the last loop body value?" No. It returns `nil`.
+- "Why is there both `buffer.values` and `values[3]` in a frame?" The fixed
+  array handles small fixed-arity intermediates cheaply; the buffer handles
+  argument and local arrays whose size depends on the node or callee.
 
 ### Invariants
 
@@ -1707,6 +1981,8 @@ Execution trace in ordinary language:
 - Slot writes must release the old value and own the new value.
 - Loop evaluation must poll for interrupts.
 - Reset during evaluation must not leave stale temporary ownership behind.
+- Frame-stack overflow must fail as `FROTH_ERROR_CALL_DEPTH`, not as a target
+  crash.
 
 ## `Cells`: Why They Are Narrow, What They Can Store, How Indexing Works, and Why They Are Top-Level Owned
 
@@ -1718,7 +1994,8 @@ In `v0.1`, `Cells` are the only collection value and they are constrained:
 - created with `cells(n)`
 - indexed with `frame[i]`
 - mutated with `set frame[i] to value`
-- intended to be top-level owned, not casually nested everywhere
+- intended to keep mutable state shallow rather than becoming a second general
+  graph store
 
 The stored value classes are deliberately restricted to:
 
@@ -1726,6 +2003,7 @@ The stored value classes are deliberately restricted to:
 - `Bool`
 - `Nil`
 - `Text`
+- `Record`
 
 Why so narrow?
 
@@ -1740,9 +2018,11 @@ Read three helpers in `src/frothy_eval.c`:
 - `frothy_cells_value_allowed()`
 - `frothy_read_index_owned()`
 - `frothy_write_index_owned()`
+- `frothy_runtime_alloc_cells()`
 
 `frothy_cells_value_allowed()` is the policy gate. If you try to store `Code`,
-another `Cells`, or a native binding, it returns `FROTH_ERROR_TYPE_MISMATCH`.
+another `Cells`, a record definition, or a native binding, it returns
+`FROTH_ERROR_TYPE_MISMATCH`.
 
 `frothy_read_index_owned()` resolves the `Cells` object, bounds-checks the
 index, reads the stored tagged value out of `cellspace`, and retains it.
@@ -1751,20 +2031,31 @@ index, reads the stored tagged value out of `cellspace`, and retains it.
 validate the index, validate the stored value class, release the old stored
 value, then replace it in `cellspace`.
 
+`frothy_runtime_alloc_cells()` shows the actual storage story:
+
+1. reuse a free span if one exists
+2. otherwise call `froth_cellspace_allot()`
+3. initialize each cell to `nil`
+4. append a `FROTHY_OBJECT_CELLS` descriptor with `base` and `length`
+
+So a `Cells` value is never a separately malloc'd array. It is an object-table
+descriptor pointing into `froth_vm.cellspace`.
+
 ### Worked Example
 
 ```frothy
 frame is cells(2)
 set frame[0] to "left"
-set frame[1] to true
+record Point [ x, y ]
+set frame[1] to Point: 7, 8
 frame[0]
-frame[1]
+frame[1]->y
 ```
 
 Result:
 
 - `"left"`
-- `true`
+- `8`
 
 This works because both stored values are allowed classes. If you try to store
 a `Code` value instead, the write fails.
@@ -1774,7 +2065,9 @@ a `Code` value instead, the write fails.
 - `Cells` are narrow by design.
 - Indexing is bounds-checked and type-checked.
 - The cells payload lives in `cellspace`, not the payload arena.
-- Top-level ownership keeps the image model simpler.
+- `Record` values are allowed in `Cells`; `Code`, `Cells`, natives, and record
+  definitions are not.
+- `cellspace` can reset back to a captured base image in one operation.
 
 ### Common confusions
 
@@ -1784,6 +2077,8 @@ a `Code` value instead, the write fails.
   slot often needs a little structured mutable state.
 - "Are `Cells` persisted by pointer?" No. Snapshot restore rebuilds them by
   content.
+- "Can `Cells` nest?" No. A cell may hold a `Record`, but not another `Cells`
+  object.
 
 ### Invariants
 
@@ -1808,14 +2103,15 @@ That is why the model stays robust.
 Snapshot payload layout in plain language:
 
 ```text
-header
-  magic = FRTY
-  version
-  IR version
+outer substrate snapshot header
   payload length
   CRC32
+  A/B slot metadata
 
-payload
+inner Frothy payload
+  magic = FRTY
+  snapshot version = 2
+  IR version = 2
   symbol table
   object table
   binding table
@@ -1823,6 +2119,52 @@ payload
 
 The symbol table stores names. The object table stores persistable objects. The
 binding table says which overlay slots point at which values.
+
+More concretely, `src/frothy_snapshot_codec.c` writes:
+
+- symbols:
+  - `u32 symbol_count`
+  - repeated `u16 length + raw name bytes`
+- objects:
+  - `u32 object_count`
+  - repeated `u8 kind + kind-specific payload`
+- bindings:
+  - `u32 binding_count`
+  - repeated `u32 symbol_index + encoded value`
+
+The encoded value tags are:
+
+- `NIL`
+- `FALSE`
+- `TRUE`
+- `INT`
+- `OBJECT`
+
+That last case is an index into the snapshot object table, not a process
+pointer.
+
+Object payloads are kind-specific:
+
+- `TEXT`: `u32 byte_length + raw bytes`
+- `CELLS`: `u32 length + repeated restricted values`
+- `CODE`: arity, local count, body, root, root local count, literal count, node
+  count, link count, then literals, nodes, and links
+- `RECORD_DEF`: field count, record name, then field names
+- `RECORD`: definition object index, field count, then repeated restricted
+  values
+- `NATIVE`: rejected immediately as not persistable
+
+The phrase **restricted value** matters. For cells payloads and record fields,
+the codec only allows:
+
+- `Int`
+- `Bool`
+- `Nil`
+- `Text`
+- `Record`
+
+That restriction is why `Cells` and records can persist without reopening the
+runtime into a general cyclic object graph.
 
 ### Code Walk
 
@@ -1843,10 +2185,31 @@ The restore path is deliberately conservative:
 That "reset back to base again" rule is what makes restore trustworthy. A bad
 snapshot should not leave you in half-restored limbo.
 
-Then read the top of `src/frothy_snapshot_codec.c`. The codec keeps explicit
-symbol, object, and decoded-object workspaces. That is how it achieves a
-pointer-free restore path: persisted data talks in table indexes and literal
-bytes, not raw process addresses.
+Then read three areas in `src/frothy_snapshot_codec.c`.
+
+`frothy_snapshot_collect_overlay()` and
+`frothy_snapshot_collect_value_visit()` define the save walk:
+
+- only overlay slots are roots
+- names are interned into a symbol table
+- reachable persistable objects are interned into an object table
+- record cycles are rejected with a small `record_stack`
+- code objects contribute slot symbols referenced from their IR
+
+`frothy_snapshot_write_object_table()` defines the exact wire layout by object
+kind.
+
+`frothy_snapshot_decode_payload()` shows the restore order:
+
+1. decode symbols
+2. decode objects into live runtime values
+3. decode bindings and install them into slots
+
+Code restore is especially worth reading. The decoder measures how much packed
+storage the restored IR will need, allocates one payload span, initializes a
+packed view into that storage, then fills the literals, nodes, links, and copied
+strings in place. Restored `Code` objects therefore end up in the same packed
+runtime shape as freshly evaluated `fn` values.
 
 ### Worked Example
 
@@ -1876,6 +2239,9 @@ Result:
 - Code is persisted as canonical IR, not as raw source text.
 - Native bindings are non-persistable.
 - Failed restore returns you to a clean base image.
+- Symbol and object indexes replace process pointers in the payload.
+- `Cells` and record fields use the restricted-value subset, which is a major
+  part of why restore stays simple.
 
 ### Common confusions
 
@@ -1885,6 +2251,9 @@ Result:
   factory-reset the user layer, not merely clear RAM.
 - "If code is persisted, why does `see` still look nice?" Because `see` renders
   from canonical IR back into a human-normalized surface form.
+- "Why is `record-def` both an IR node and an object kind?" The parser uses the
+  node to express the declaration at top level; evaluation turns that node into
+  a persistable record-definition object bound in a slot.
 
 ### Invariants
 
@@ -1892,6 +2261,7 @@ Result:
 - CRC mismatch must abort restore.
 - Non-persistable values must make `save` fail instead of silently degrading.
 - Restore failure must leave the system base-only and usable.
+- Snapshot object indexes must always resolve within the decoded object table.
 
 ## Inspection: `words`, `show`, `core`, `info`, and How Inspection Reflects Canonical IR Rather Than Raw Source
 
@@ -2522,19 +2892,22 @@ your head.
 
 **Active now**
 
-- evaluator execution-stack hardening
+- workshop operational closeout across clean-machine validation, room-side
+  recovery prep, and one recorded workshop-board rehearsal
 
-That is the immediate live priority because ordinary embedded looping and
-nested game code still need to be bounded by Frothy-managed evaluator depth
-rather than hidden C stack depth. The roadmap current-state block and
-`PROGRESS.md` are the authoritative control surface for that work.
+That is the immediate live priority because the major runtime and language
+tranches are already landed, and the remaining real risk sits in truthful
+operator proof on clean machines and real devices. The roadmap current-state
+block and `PROGRESS.md` are the authoritative control surface for that work.
 
-**Queued after the active runtime cut**
+**Queued after the current operational closeout**
 
 - clean-machine validation on the promised attendee platforms
 - classroom hardware and recovery kit closeout
 - final measured workshop rehearsal
 - post-workshop publishability reset tranches
+- the bounded frame-arena ownership revisit if Frothy intentionally grows
+  multiple live runtime instances again
 
 **Still deliberately deferred**
 

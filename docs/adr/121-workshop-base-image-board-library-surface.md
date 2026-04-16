@@ -40,16 +40,19 @@ The shipped workshop base-library names are:
 - `led.pin`
 - `led.on()`, `led.off()`, `led.toggle()`, `led.blink(count, wait)`
 - `gpio.input(pin)`, `gpio.output(pin)`, `gpio.high(pin)`, `gpio.low(pin)`,
-  `gpio.toggle(pin)`
+  `gpio.toggle(pin)`, `gpio.high?(pin)`, `gpio.low?(pin)`, `gpio.pulse(pin, wait)`
 - `adc.max`
 - `adc.percent(pin)`
 - `math.abs`, `math.min`, `math.max`, `math.clamp`, `math.mod`, `math.wrap`,
-  `math.map`, `math.mapClamped`
-- `abs`, `min`, `max`, `clamp`, `mod`, `wrap`, `map`, `mapClamped`
+  `math.map`, `math.mapClamped`, `math.inRange?`, `math.sign`,
+  `math.approach`, `math.deadband`
+- `abs`, `min`, `max`, `clamp`, `mod`, `wrap`, `map`, `mapClamped`,
+  `inRange?`, `sign`, `approach`, `deadband`
 - `random.seed!`, `random.seedFromMillis!`, `random.next`,
-  `random.below`, `random.range`
-- `rand`, `rand.below`, `rand.range`, `rand.seed!`,
-  `rand.seedFromMillis!`
+  `random.byte`, `random.below`, `random.range`, `random.chance?`,
+  `random.percent?`
+- `rand`, `rand.byte`, `rand.below`, `rand.range`, `rand.chance?`,
+  `rand.percent?`, `rand.seed!`, `rand.seedFromMillis!`
 - `tm1629.raw.*`, `tm1629.*`, `matrix.*`, `grid.*`, `joy.*`, `knob.*`
 
 The shipped demo-board namespace is:

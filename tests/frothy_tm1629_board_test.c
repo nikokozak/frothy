@@ -256,11 +256,40 @@ static int test_surface_metadata_and_smoke(void) {
   ok &= expect_ok("mapClamped: 15, 0, 12, 0, 120", &value);
   ok &= expect_int_value(value, 120, "mapClamped");
   release_value(&value);
+  ok &= expect_ok("inRange?: 12, 6, 12", &value);
+  ok &= expect_bool_value(value, true, "inRange? inclusive");
+  release_value(&value);
+  ok &= expect_ok("inRange?: 13, 6, 12", &value);
+  ok &= expect_bool_value(value, false, "inRange? outside");
+  release_value(&value);
+  ok &= expect_ok("sign: -3", &value);
+  ok &= expect_int_value(value, -1, "sign negative");
+  release_value(&value);
+  ok &= expect_ok("approach: 2, 10, 3", &value);
+  ok &= expect_int_value(value, 5, "approach up");
+  release_value(&value);
+  ok &= expect_ok("approach: 10, 2, 3", &value);
+  ok &= expect_int_value(value, 7, "approach down");
+  release_value(&value);
+  ok &= expect_ok("deadband: 48, 50, 3", &value);
+  ok &= expect_int_value(value, 50, "deadband inside");
+  release_value(&value);
+  ok &= expect_ok("deadband: 54, 50, 3", &value);
+  ok &= expect_int_value(value, 54, "deadband outside");
+  release_value(&value);
   ok &= expect_ok("mod: -1, 12", &value);
   ok &= expect_int_value(value, 11, "mod");
   release_value(&value);
   ok &= expect_ok("rand.seed!: 7", &value);
   ok &= expect_nil_value(value, "rand.seed!");
+  release_value(&value);
+  ok &= expect_ok("rand.byte:", &value);
+  ok &= frothy_value_is_int(value);
+  if (ok &&
+      (frothy_value_as_int(value) < 0 || frothy_value_as_int(value) > 255)) {
+    fprintf(stderr, "rand.byte should stay within [0, 255]\n");
+    ok = 0;
+  }
   release_value(&value);
   ok &= expect_ok("rand.range: 5, 9", &value);
   ok &= frothy_value_is_int(value);
@@ -269,6 +298,13 @@ static int test_surface_metadata_and_smoke(void) {
     ok = 0;
   }
   release_value(&value);
+  ok &= expect_ok("rand.percent?: 0", &value);
+  ok &= expect_bool_value(value, false, "rand.percent? zero");
+  release_value(&value);
+  ok &= expect_ok("rand.percent?: 100", &value);
+  ok &= expect_bool_value(value, true, "rand.percent? hundred");
+  release_value(&value);
+  ok &= expect_error("rand.chance?: 1, 0", FROTH_ERROR_BOUNDS);
   ok &= expect_ok("knob.left.raw:", &value);
   ok &= expect_int_value(value, expected_left_raw, "knob.left.raw");
   release_value(&value);
@@ -291,14 +327,26 @@ static int test_surface_metadata_and_smoke(void) {
   ok &= expect_ok("gpio.low: LED_BUILTIN", &value);
   ok &= expect_nil_value(value, "gpio.low LED_BUILTIN");
   release_value(&value);
+  ok &= expect_ok("gpio.low?: LED_BUILTIN", &value);
+  ok &= expect_bool_value(value, true, "gpio.low? active");
+  release_value(&value);
   ok &= expect_ok("joy.up?:", &value);
   ok &= expect_bool_value(value, true, "joy.up? active low true");
   release_value(&value);
   ok &= expect_ok("gpio.high: LED_BUILTIN", &value);
   ok &= expect_nil_value(value, "gpio.high LED_BUILTIN");
   release_value(&value);
+  ok &= expect_ok("gpio.high?: LED_BUILTIN", &value);
+  ok &= expect_bool_value(value, true, "gpio.high? active");
+  release_value(&value);
   ok &= expect_ok("joy.up?:", &value);
   ok &= expect_bool_value(value, false, "joy.up? active low false");
+  release_value(&value);
+  ok &= expect_ok("gpio.pulse: LED_BUILTIN, 0", &value);
+  ok &= expect_nil_value(value, "gpio.pulse LED_BUILTIN");
+  release_value(&value);
+  ok &= expect_ok("gpio.low?: LED_BUILTIN", &value);
+  ok &= expect_bool_value(value, true, "gpio.low? after pulse");
   release_value(&value);
 
   ok &= expect_ok("matrix.init:", &value);

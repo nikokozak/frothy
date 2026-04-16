@@ -5,6 +5,7 @@
 #include "frothy_boot.h"
 #include "frothy_eval.h"
 #include "frothy_inspect.h"
+#include "frothy_ir.h"
 #include "frothy_parser.h"
 #include "frothy_snapshot.h"
 #include "frothy_value.h"
@@ -14,6 +15,7 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -682,6 +684,140 @@ static int write_simple_record_snapshot(void) {
   return ok;
 }
 
+typedef struct {
+  uint8_t bytes[160];
+  size_t length;
+} test_snapshot_payload_t;
+
+#define TEST_SNAPSHOT_IR_VERSION 2u
+#define TEST_SNAPSHOT_VALUE_OBJECT 4u
+
+static int test_snapshot_payload_write_bytes(test_snapshot_payload_t *payload,
+                                             const void *bytes,
+                                             size_t length) {
+  if (length > sizeof(payload->bytes) - payload->length) {
+    fprintf(stderr, "test snapshot payload overflow\n");
+    return 0;
+  }
+  memcpy(payload->bytes + payload->length, bytes, length);
+  payload->length += length;
+  return 1;
+}
+
+static int test_snapshot_payload_write_u8(test_snapshot_payload_t *payload,
+                                          uint8_t value) {
+  return test_snapshot_payload_write_bytes(payload, &value, sizeof(value));
+}
+
+static int test_snapshot_payload_write_u16(test_snapshot_payload_t *payload,
+                                           uint16_t value) {
+  uint8_t bytes[2] = {
+      (uint8_t)(value & 0xFFu),
+      (uint8_t)((value >> 8) & 0xFFu),
+  };
+  return test_snapshot_payload_write_bytes(payload, bytes, sizeof(bytes));
+}
+
+static int test_snapshot_payload_write_u32(test_snapshot_payload_t *payload,
+                                           uint32_t value) {
+  uint8_t bytes[4] = {
+      (uint8_t)(value & 0xFFu),
+      (uint8_t)((value >> 8) & 0xFFu),
+      (uint8_t)((value >> 16) & 0xFFu),
+      (uint8_t)((value >> 24) & 0xFFu),
+  };
+  return test_snapshot_payload_write_bytes(payload, bytes, sizeof(bytes));
+}
+
+static int test_snapshot_payload_write_symbol(test_snapshot_payload_t *payload,
+                                              const char *name) {
+  size_t length = strlen(name);
+
+  if (length > UINT16_MAX) {
+    fprintf(stderr, "test snapshot symbol too long\n");
+    return 0;
+  }
+  return test_snapshot_payload_write_u16(payload, (uint16_t)length) &&
+         test_snapshot_payload_write_bytes(payload, name, length);
+}
+
+static int write_test_snapshot_payload(const test_snapshot_payload_t *payload) {
+  uint8_t header[FROTH_SNAPSHOT_HEADER_SIZE];
+  FILE *file = NULL;
+  int ok = 0;
+
+  if (froth_snapshot_build_header(header, (uint32_t)payload->length,
+                                  payload->bytes, 1) != FROTH_OK) {
+    fprintf(stderr, "failed to build test snapshot header\n");
+    return 0;
+  }
+
+  file = fopen(FROTH_SNAPSHOT_PATH_A, "wb");
+  if (file == NULL) {
+    perror("fopen");
+    return 0;
+  }
+  if (fwrite(header, 1, sizeof(header), file) != sizeof(header) ||
+      fwrite(payload->bytes, 1, payload->length, file) != payload->length) {
+    perror("fwrite");
+    goto done;
+  }
+  ok = 1;
+
+done:
+  fclose(file);
+  return ok;
+}
+
+static int write_wrapped_link_span_snapshot(frothy_ir_node_kind_t node_kind) {
+  test_snapshot_payload_t payload = {{0}, 0};
+
+  if (node_kind != FROTHY_IR_NODE_CALL && node_kind != FROTHY_IR_NODE_SEQ) {
+    fprintf(stderr, "unsupported test node kind %d\n", (int)node_kind);
+    return 0;
+  }
+
+  if (!test_snapshot_payload_write_bytes(&payload, "FRTY", 4) ||
+      !test_snapshot_payload_write_u16(&payload, frothy_snapshot_version) ||
+      !test_snapshot_payload_write_u16(&payload, TEST_SNAPSHOT_IR_VERSION) ||
+      !test_snapshot_payload_write_u32(&payload, 1) ||
+      !test_snapshot_payload_write_symbol(&payload, "spanProbe") ||
+      !test_snapshot_payload_write_u32(&payload, 1) ||
+      !test_snapshot_payload_write_u8(&payload, FROTHY_OBJECT_CODE) ||
+      !test_snapshot_payload_write_u32(&payload, 0) ||
+      !test_snapshot_payload_write_u32(&payload, 0) ||
+      !test_snapshot_payload_write_u32(&payload, 0) ||
+      !test_snapshot_payload_write_u32(&payload, 0) ||
+      !test_snapshot_payload_write_u32(&payload, 0) ||
+      !test_snapshot_payload_write_u32(&payload, 0) ||
+      !test_snapshot_payload_write_u32(&payload, 1) ||
+      !test_snapshot_payload_write_u32(&payload, 1) ||
+      !test_snapshot_payload_write_u8(&payload, (uint8_t)node_kind)) {
+    return 0;
+  }
+
+  if (node_kind == FROTHY_IR_NODE_CALL) {
+    if (!test_snapshot_payload_write_u8(&payload, FROTHY_IR_BUILTIN_ADD) ||
+        !test_snapshot_payload_write_u32(&payload, UINT32_MAX) ||
+        !test_snapshot_payload_write_u32(&payload, UINT32_MAX) ||
+        !test_snapshot_payload_write_u32(&payload, 2)) {
+      return 0;
+    }
+  } else {
+    if (!test_snapshot_payload_write_u32(&payload, UINT32_MAX) ||
+        !test_snapshot_payload_write_u32(&payload, 2)) {
+      return 0;
+    }
+  }
+
+  return test_snapshot_payload_write_u32(&payload, 0) &&
+         test_snapshot_payload_write_u32(&payload, 1) &&
+         test_snapshot_payload_write_u32(&payload, 0) &&
+         test_snapshot_payload_write_u8(&payload, TEST_SNAPSHOT_VALUE_OBJECT) &&
+         test_snapshot_payload_write_u32(&payload, 0) &&
+         write_test_snapshot_payload(&payload);
+}
+
 static int build_overlay_text_name(size_t index, char *buffer, size_t capacity) {
   return snprintf(buffer, capacity, "t%03zu", index) < (int)capacity;
 }
@@ -1134,6 +1270,32 @@ static int test_corrupt_snapshot_failures_reset_to_base(void) {
   return ok;
 }
 
+static int test_code_snapshot_rejects_wrapped_link_spans(void) {
+  temp_workspace_t workspace = {{0}};
+  frothy_value_t value = frothy_value_make_nil();
+  int ok = 1;
+
+  if (!enter_temp_workspace(&workspace)) {
+    return 0;
+  }
+
+  ok &= write_wrapped_link_span_snapshot(FROTHY_IR_NODE_CALL);
+  ok &= expect_ok("junk is 1", &value);
+  release_value(&value);
+  ok &= expect_error("restore:", FROTH_ERROR_SNAPSHOT_FORMAT);
+  ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
+
+  ok &= frothy_snapshot_wipe() == FROTH_OK;
+  ok &= write_wrapped_link_span_snapshot(FROTHY_IR_NODE_SEQ);
+  ok &= expect_ok("junk is 1", &value);
+  release_value(&value);
+  ok &= expect_error("restore:", FROTH_ERROR_SNAPSHOT_FORMAT);
+  ok &= expect_error("junk", FROTH_ERROR_UNDEFINED_WORD);
+
+  leave_temp_workspace(&workspace);
+  return ok;
+}
+
 static int test_repeated_near_capacity_save_restore(void) {
   temp_workspace_t workspace = {{0}};
   frothy_value_t value = frothy_value_make_nil();
@@ -1576,19 +1738,57 @@ static int test_board_base_library_wipe_restore(void) {
                             "base blink view");
   ok &= expect_binding_view("map", false, FROTHY_VALUE_CLASS_CODE,
                             "base map view");
+  ok &= expect_binding_view("math.inRange?", false, FROTHY_VALUE_CLASS_CODE,
+                            "base math.inRange? view");
   ok &= expect_binding_view("random.next", false, FROTHY_VALUE_CLASS_NATIVE,
                             "base random.next view");
+  ok &= expect_binding_view("random.chance?", false, FROTHY_VALUE_CLASS_CODE,
+                            "base random.chance? view");
   ok &= expect_binding_view("adc.percent", false, FROTHY_VALUE_CLASS_CODE,
                             "base adc.percent view");
+  ok &= expect_binding_view("gpio.pulse", false, FROTHY_VALUE_CLASS_CODE,
+                            "base gpio.pulse view");
   ok &= capture_code_renders("blink", &see_before, &core_before);
   ok &= expect_ok("map: 5, 0, 10, 0, 100", &value);
   ok &= expect_int_value(value, 50, "base map");
+  release_value(&value);
+  ok &= expect_ok("inRange?: 7, 5, 7", &value);
+  ok &= expect_bool_value(value, true, "base inRange? inclusive");
+  release_value(&value);
+  ok &= expect_ok("inRange?: 8, 5, 7", &value);
+  ok &= expect_bool_value(value, false, "base inRange? outside");
+  release_value(&value);
+  ok &= expect_ok("sign: -42", &value);
+  ok &= expect_int_value(value, -1, "base sign negative");
+  release_value(&value);
+  ok &= expect_ok("sign: 0", &value);
+  ok &= expect_int_value(value, 0, "base sign zero");
+  release_value(&value);
+  ok &= expect_ok("approach: 3, 10, 4", &value);
+  ok &= expect_int_value(value, 7, "base approach up");
+  release_value(&value);
+  ok &= expect_ok("approach: 11, 4, 3", &value);
+  ok &= expect_int_value(value, 8, "base approach down");
+  release_value(&value);
+  ok &= expect_ok("deadband: 51, 50, 2", &value);
+  ok &= expect_int_value(value, 50, "base deadband inside");
+  release_value(&value);
+  ok &= expect_ok("deadband: 54, 50, 2", &value);
+  ok &= expect_int_value(value, 54, "base deadband outside");
   release_value(&value);
   ok &= expect_ok("mod: -1, 8", &value);
   ok &= expect_int_value(value, 7, "base mod");
   release_value(&value);
   ok &= expect_ok("rand.seed!: 1234", &value);
   ok &= expect_nil_value(value, "base rand.seed!");
+  release_value(&value);
+  ok &= expect_ok("rand.byte:", &value);
+  ok &= frothy_value_is_int(value);
+  if (ok &&
+      (frothy_value_as_int(value) < 0 || frothy_value_as_int(value) > 255)) {
+    fprintf(stderr, "base rand.byte should stay within [0, 255]\n");
+    ok = 0;
+  }
   release_value(&value);
   ok &= expect_ok("rand.range: 3, 7", &value);
   ok &= frothy_value_is_int(value);
@@ -1597,17 +1797,46 @@ static int test_board_base_library_wipe_restore(void) {
     ok = 0;
   }
   release_value(&value);
+  ok &= expect_ok("rand.percent?: 0", &value);
+  ok &= expect_bool_value(value, false, "base rand.percent? 0");
+  release_value(&value);
+  ok &= expect_ok("rand.percent?: 100", &value);
+  ok &= expect_bool_value(value, true, "base rand.percent? 100");
+  release_value(&value);
+  ok &= expect_ok("rand.seed!: 99", &value);
+  ok &= expect_nil_value(value, "base rand.seed! 99");
+  release_value(&value);
+  ok &= expect_ok("rand.chance?: 1, 4", &value);
+  ok &= frothy_value_is_bool(value);
+  if (ok) {
+    bool seeded_chance = frothy_value_as_bool(value);
+    release_value(&value);
+    ok &= expect_ok("rand.seed!: 99", &value);
+    ok &= expect_nil_value(value, "base rand.seed! 99 repeat");
+    release_value(&value);
+    ok &= expect_ok("rand.chance?: 1, 4", &value);
+    ok &= expect_bool_value(value, seeded_chance,
+                            "base rand.chance? repeat after reseed");
+  }
+  release_value(&value);
+  ok &= expect_error("rand.chance?: 1, 0", FROTH_ERROR_BOUNDS);
   ok &= expect_ok("adc.percent: A0", &value);
   ok &= expect_int_value(value, 50, "base adc.percent: A0");
   release_value(&value);
   ok &= expect_ok("led.off:", &value);
   ok &= expect_nil_value(value, "led.off:");
   release_value(&value);
+  ok &= expect_ok("gpio.low?: LED_BUILTIN", &value);
+  ok &= expect_bool_value(value, true, "gpio.low? after led.off:");
+  release_value(&value);
   ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
   ok &= expect_int_value(value, 0, "gpio.read after led.off:");
   release_value(&value);
   ok &= expect_ok("led.on:", &value);
   ok &= expect_nil_value(value, "led.on:");
+  release_value(&value);
+  ok &= expect_ok("gpio.high?: LED_BUILTIN", &value);
+  ok &= expect_bool_value(value, true, "gpio.high? after led.on:");
   release_value(&value);
   ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
   ok &= expect_int_value(value, 1, "gpio.read after led.on:");
@@ -1617,6 +1846,12 @@ static int test_board_base_library_wipe_restore(void) {
   release_value(&value);
   ok &= expect_ok("gpio.read: LED_BUILTIN", &value);
   ok &= expect_int_value(value, 0, "gpio.read after led.toggle:");
+  release_value(&value);
+  ok &= expect_ok("gpio.pulse: LED_BUILTIN, 0", &value);
+  ok &= expect_nil_value(value, "gpio.pulse:");
+  release_value(&value);
+  ok &= expect_ok("gpio.low?: LED_BUILTIN", &value);
+  ok &= expect_bool_value(value, true, "gpio.low? after gpio.pulse:");
   release_value(&value);
 
   if (frothy_base_image_has_slot("matrix.init")) {
@@ -2386,6 +2621,7 @@ int main(void) {
   ok &= test_overlay_reset_semantics();
   ok &= test_restore_without_snapshot_resets_to_base();
   ok &= test_corrupt_snapshot_failures_reset_to_base();
+  ok &= test_code_snapshot_rejects_wrapped_link_spans();
   ok &= test_repeated_near_capacity_save_restore();
   ok &= test_decode_failure_after_reset_re_resets_to_base();
   ok &= test_wipe_inside_nested_call_unwinds_cleanly();
