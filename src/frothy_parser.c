@@ -789,9 +789,17 @@ static bool frothy_is_name_continue(unsigned char byte) {
 }
 
 static void frothy_lex_skip_space(frothy_parser_t *parser) {
-  while (*parser->cursor != '\0' &&
-         isspace((unsigned char)*parser->cursor)) {
-    parser->cursor++;
+  for (;;) {
+    while (*parser->cursor != '\0' &&
+           isspace((unsigned char)*parser->cursor)) {
+      parser->cursor++;
+    }
+    if (*parser->cursor != '\\') {
+      return;
+    }
+    while (*parser->cursor != '\0' && *parser->cursor != '\n') {
+      parser->cursor++;
+    }
   }
 }
 

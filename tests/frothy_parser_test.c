@@ -594,6 +594,15 @@ int main(void) {
       "spoken_designator_surface",
       "designatorDemo is fn [ set @count to 1; @count ]",
       render_surface_designator_expected);
+  ok &= run_render_surface_case(
+      "line_comments",
+      "\\ top-level comment\n"
+      "inc is fn with x [\n"
+      "  \\ block comment\n"
+      "  x + 1 \\ trailing comment\n"
+      "]\n"
+      "\\ final comment\n",
+      render_surface_named_expected);
   ok &= test_capacity_failures_recover();
   ok &= test_top_level_prefix_consumes_multiline_forms();
   ok &= test_top_level_trailing_semicolons();

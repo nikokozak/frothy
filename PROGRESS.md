@@ -140,6 +140,10 @@ file is wrong.
   force-clean sticky target/board caches when selection flags are passed, and
   real-device proof now goes back through `frothy flash` rather than raw
   `idf.py` for the maintained repo-side flash path.
+- The v4 workshop base-image seed regression from source comments is fixed:
+  the C parser now treats backslash line comments as whitespace, matching the
+  existing CLI source splitter, and the `esp32-devkit-v4-game-board` base image
+  boots with the `puzzle.*` helpers present.
 - The attendee-facing naming and recovery story is now explicit on the
   maintained Frothy path: Frothy owns the product/docs/editor/install identity,
   the default CLI home is `~/.frothy` with `FROTHY_HOME` override, Frothy now
