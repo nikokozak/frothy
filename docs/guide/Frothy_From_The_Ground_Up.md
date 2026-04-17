@@ -1214,7 +1214,7 @@ For the current workshop and hardware path, prefer the shipped demo-board flow
 instead of a project starter:
 
 1. use the preflashed `esp32-devkit-v4-game-board`
-2. open the exported `workshop/pong.frothy`
+2. open the exported `workshop/starter.frothy`
 3. send or edit it live against the running board
 
 That keeps the workshop path aligned with the actual shipped board state

@@ -14,9 +14,9 @@ Use it to run and record those passes.
 
 | Platform | CLI install path | Extension asset | Board path | Must pass |
 | --- | --- | --- | --- | --- |
-| macOS Apple Silicon | `brew install frothy` preferred; `frothy-v<version>-darwin-arm64.tar.gz` fallback | Marketplace listing `NikolaiKozak.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, Pong-on-boot, `pong.frothy`, CLI fallback |
-| macOS Intel | `brew install frothy` preferred; `frothy-v<version>-darwin-amd64.tar.gz` fallback | Marketplace listing `NikolaiKozak.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, Pong-on-boot, `pong.frothy`, CLI fallback |
-| Linux x86_64 | `frothy-v<version>-linux-amd64.tar.gz` | Marketplace listing `NikolaiKozak.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, Pong-on-boot, `pong.frothy`, CLI fallback |
+| macOS Apple Silicon | `brew install frothy` preferred; `frothy-v<version>-darwin-arm64.tar.gz` fallback | Marketplace listing `NikolaiKozak.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, Pong-on-boot, `starter.frothy`, CLI fallback |
+| macOS Intel | `brew install frothy` preferred; `frothy-v<version>-darwin-amd64.tar.gz` fallback | Marketplace listing `NikolaiKozak.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, Pong-on-boot, `starter.frothy`, CLI fallback |
+| Linux x86_64 | `frothy-v<version>-linux-amd64.tar.gz` | Marketplace listing `NikolaiKozak.frothy` preferred; matching `frothy-vscode-v<extension-version>.vsix` fallback | preflashed `esp32-devkit-v4-game-board` proto board | `frothy doctor`, VS Code connect, Pong-on-boot, `starter.frothy`, CLI fallback |
 
 Not promised here:
 
@@ -40,7 +40,7 @@ the VSIX kept as fallback.
 The workshop proto-board firmware is not a published attendee asset.
 Carry the CLI assets, the matching checksums file, access to
 [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) for
-`pong.frothy`, and preflashed `esp32-devkit-v4-game-board` boards into the
+`starter.frothy`, and preflashed `esp32-devkit-v4-game-board` boards into the
 clean-machine passes.
 
 ## Clean-Machine Procedure
@@ -56,8 +56,8 @@ clean-machine passes.
    `Frothy: Connect Device`.
 8. Confirm the board is already running the shipped Pong demo.
 9. Run `Frothy: Send Selection / Form` on `1 + 1`.
-10. Open [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) and send `pong.frothy`.
-11. Change one visible behavior in `pong.frothy` and resend it.
+10. Open [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) and send `starter.frothy`.
+11. Change one visible behavior in `starter.frothy` and resend it.
 12. Confirm the prompt and workshop base image with `words`,
    `info @matrix.init`, `info @grid.clear`, `info @joy.up?`, and
    `info @knob.left`.

@@ -55,7 +55,7 @@ publish:
 | VS Code | Marketplace listing `NikolaiKozak.frothy`, with matching `frothy-vscode-v<extension-version>.vsix` fallback | supported on the same machines that can already run the installed CLI |
 | Firmware / recovery | workshop-board recovery for `esp32-devkit-v4-game-board` is maintainer-only from the repo checkout and [boards/esp32-devkit-v4-game-board/WORKSHOP.md](/Users/niko/Developer/Frothy/boards/esp32-devkit-v4-game-board/WORKSHOP.md) | attendees do not flash; maintainers carry preflashed `esp32-devkit-v4-game-board` boards |
 | Source build | checkout build via `make build` | maintainer path, not required before the workshop |
-| Workshop repo | [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) containing `README.md` and `pong.frothy` | attendees open and edit `pong.frothy` against the preflashed demo board |
+| Workshop repo | [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) containing `README.md` and `starter.frothy` | attendees open and edit `starter.frothy` against the preflashed demo board |
 
 Windows, extra boards, and custom toolchain setups are not part of the
 maintained attendee promise for this tranche.

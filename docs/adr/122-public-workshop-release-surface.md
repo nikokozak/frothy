@@ -29,7 +29,7 @@ The maintained public workshop release surface is:
 - one public `frothy` CLI release surface
 - one public Homebrew tap for the installed `frothy` command
 - one VS Code Marketplace listing, with matching VSIX fallback
-- one tiny workshop repo containing `README.md` and `pong.frothy`
+- one tiny workshop repo containing `README.md` and `starter.frothy`
 - one maintained workshop board promise: the preflashed
   `esp32-devkit-v4-game-board`
 
@@ -49,10 +49,11 @@ Maintainer recovery stays source-based from a repo checkout.
 
 The workshop repo is an exported artifact, not a second authored source:
 
-- the canonical demo-board source stays in
+- the preflashed board helper/base-image source stays in
   `boards/esp32-devkit-v4-game-board/lib/base.frothy`
-- `workshop/pong.frothy` is generated from that source
-- release automation must verify that export before publishing
+- the public workshop starter source is the generated
+  `workshop/starter.frothy` template
+- release automation must verify the starter export before publishing
 
 The manual release workflow remains explicit:
 

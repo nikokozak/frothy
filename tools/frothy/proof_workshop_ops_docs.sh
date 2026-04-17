@@ -20,7 +20,7 @@ rg -nF "code --install-extension $vscode_extension_id" \
   docs/guide/Frothy_Workshop_Install_Quickstart.md
 rg -n 'Frothy_Workshop_Quick_Reference\.md|Frothy_Workshop_Clean_Machine_Validation\.md|boards/esp32-devkit-v4-game-board/WORKSHOP\.md|Frothy_Workshop_Rehearsal_Closeout_2026-04-14\.md' \
   README.md
-rg -n 'pong\.frothy|export_workshop_repo\.sh' workshop/README.md
+rg -n 'starter\.frothy|export_workshop_repo\.sh' workshop/README.md
 rg -n 'proof\.sh workshop-v4 <PORT>' README.md \
   docs/roadmap/Frothy_Workshop_Rehearsal_Closeout_2026-04-14.md
 rg -n -- '--live-controls' README.md \

@@ -88,7 +88,7 @@ file is wrong.
   all survived the local proof ladder plus repeated review cycles.
 - The first detailed Friday workshop run spec is now checked in at
   `docs/roadmap/Frothy_Workshop_Run_Spec_2026-04-17.md`; it freezes the lesson
-  arc, `Get Home` inspection puzzle, the shared `pong.frothy` game, required helper
+  arc, `Get Home` inspection puzzle, the shared `starter.frothy` scaffold, required helper
   surface, persistence teaching points, and rehearsal checklist.
 - The v4 workshop-helper tranche is now landed on the maintained proto-board
   path: `esp32-devkit-v4-game-board` base now carries the generic workshop
@@ -124,11 +124,11 @@ file is wrong.
   `tools/package-release.sh`, and the VS Code docs all agree on the promised
   attendee path of released CLI assets, matching VSIX, and preflashed
   `esp32-devkit-v4-game-board` hardware.
-- The workshop product shape is now simpler and single-sourced in-repo: the
-  v4 board base image is the canonical demo-board source, `workshop/pong.frothy`
-  is exported from that base image, `frothy doctor` no longer treats source-build
-  tools as attendee blockers, and the manual release workflow no longer
-  promises an attendee firmware artifact that this tranche does not publish.
+- The workshop product shape is now simpler and single-sourced in-repo:
+  `workshop/starter.frothy` is the sanctioned public starter scaffold,
+  `frothy doctor` no longer treats source-build tools as attendee blockers,
+  and the manual release workflow no longer promises an attendee firmware
+  artifact that this tranche does not publish.
 - Board-selected build input is now truthful again: host and ESP-IDF builds
   resolve board-owned extra C sources from the selected board declaration
   instead of carrying hardcoded TM1629 linkage in the global build lists, so

@@ -140,13 +140,13 @@ keep each item's description and references so deferral does not erase context.
   `tools/frothy/proof_f1_control_smoke.sh`, and
   `tools/frothy/proof_m10_smoke.sh`.
 - [x] Workshop starter project and frozen board/game surface
-  Deliverable: one sanctioned editable workshop game surface, exported from
-  the canonical demo-board base image and proved through the maintained host
-  and board ladders.
+  Deliverable: one sanctioned editable workshop starter surface, exported as
+  the public workshop repo source and proved through the maintained host and
+  board ladders.
   References: `tools/cli/cmd/new.go`,
   `tools/cli/internal/project/starter.go`,
   `tools/frothy/export_workshop_repo.sh`,
-  `workshop/pong.frothy`,
+  `workshop/starter.frothy`,
   `docs/adr/121-workshop-base-image-board-library-surface.md`, and
   `docs/guide/Frothy_Workshop_Install_Quickstart.md`.
 - [x] Minimal docs front door and quick reference

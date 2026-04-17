@@ -57,7 +57,7 @@ test-all: version-check test-runner-bin ## Run the exhaustive local test gate (C
 test-publishability: version-check test-runner-bin ## Run the full shipped-surface local gate (adds VS Code host smoke)
 	@FROTHY_EDITOR_SMOKE_PORT="$(PORT)" $(TEST_RUNNER) publishability
 
-workshop-export-check: ## Verify workshop/pong.frothy matches the canonical v4 base image export
+workshop-export-check: ## Verify workshop/starter.frothy matches the canonical starter export
 	@sh tools/frothy/export_workshop_repo.sh check
 
 test-frothy: version-check test-runner-bin ## Run Frothy host ctests and proofs

@@ -93,11 +93,11 @@ available during the transition.
 
 1. Plug in the preflashed `esp32-devkit-v4-game-board` proto board.
 2. Confirm the board is already running the shipped Pong demo.
-3. Clone or open [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) and open `pong.frothy`.
+3. Clone or open [nikokozak/frothy-workshop](https://github.com/nikokozak/frothy-workshop) and open `starter.frothy`.
 4. Open VS Code.
 5. Run `Frothy: Connect Device`.
 6. Run `Frothy: Send Selection / Form` on a small expression.
-7. Run `matrix.init:`, `grid.clear:`, `grid.show:`, or edit `pong.frothy` for the first visible hardware check.
+7. Run `matrix.init:`, `grid.clear:`, `grid.show:`, or edit `starter.frothy` for the first visible hardware check.
 
 ## Preflight
 
@@ -108,7 +108,7 @@ Before class, confirm:
 - your laptop can see the board over USB
 - the board is already running Pong when first plugged in
 - `matrix.init:` and `grid.show:` work on the attached proto board
-- `pong.frothy` opens and sends cleanly
+- `starter.frothy` opens and sends cleanly
 
 If you cannot complete those steps, stop there and bring that exact failure to
 the workshop instead of installing extra toolchains ad hoc.

@@ -23,7 +23,7 @@ Start elsewhere when needed:
 2. Run `frothy doctor`.
 3. If several serial ports are visible, rerun `frothy --port <path> doctor`.
 4. Confirm the board is already running the shipped Pong demo.
-5. Open `pong.frothy` or another `.frothy` file in VS Code.
+5. Open `starter.frothy` or another `.frothy` file in VS Code.
 6. Run `Frothy: Connect Device`.
 7. Run `Frothy: Send Selection / Form` on `1 + 1`.
 8. Run `matrix.init:`, `grid.clear:`, `grid.set: 1, 1, true`, and `grid.show:`

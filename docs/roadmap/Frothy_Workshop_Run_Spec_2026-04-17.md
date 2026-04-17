@@ -172,18 +172,18 @@ Then show the board input surface:
 - knob or potentiometer helper words
 - the discovery helper path for unknown pins or ranges
 
-### 4. Shared workshop game: `Pong`: 58-100 min
+### 4. Shared workshop starter: 58-100 min
 
-All pairs start from one common exported game file.
+All pairs start from one common exported starter file.
 
 The file should already:
 
-- draw the paddles and ball
-- read the knob control surface
-- handle reset and replay
-- expose a small visible parameter surface
+- draw one visible object
+- use the board display helper surface
+- stop cleanly on joystick click
+- expose a small visible state surface
 
-Attendees spend this phase modifying and extending the same `pong.frothy`.
+Attendees spend this phase modifying and extending the same `starter.frothy`.
 
 ### 5. Personal extension sprint: 100-115 min
 
@@ -435,7 +435,7 @@ This section is a workshop requirement, not an accepted new language contract.
 The exact vehicle is:
 
 - preflashed base-image helper code for the board surface and shipped Pong demo
-- one tiny workshop repo containing `README.md` and exported `pong.frothy`
+- one tiny workshop repo containing `README.md` and exported `starter.frothy`
 
 The attendee-facing names should still be frozen before rehearsal.
 
@@ -573,7 +573,7 @@ Required artifacts:
 - attendee install note
 - one one-page cheat sheet
 - one puzzle file: `Get Home`
-- one workshop repo containing `README.md` and `pong.frothy`
+- one workshop repo containing `README.md` and `starter.frothy`
 - one facilitator note with hint ladder and pacing cues
 - one board smoke check routine
 
@@ -612,7 +612,7 @@ Check:
 - do they understand that `dangerous.wipe` also erases the saved snapshot?
 - do they find `hero.step` without being told immediately?
 - do they actually redefine code during the puzzle?
-- do they make at least one meaningful modification to `pong.frothy`?
+- do they make at least one meaningful modification to `starter.frothy`?
 - is the second half still energetic, or does it collapse into debugging?
 
 If the rehearsal exposes friction, cut breadth before adding features.
@@ -638,5 +638,5 @@ Do not cut:
 - this tranche does not add `learn.digital` or `learn.analog`
 - the matrix path is the maintained workshop route
 - the shipped board boots the Pong demo from the base image, and the workshop
-  source is a tiny repo containing exported `pong.frothy`
+  source is a tiny repo containing exported `starter.frothy`
 - the workshop gate date should match the actual Friday 2026-04-17 run

@@ -1,0 +1,36 @@
+\ -- Frothy workshop starter ------------------------------------
+\ Send this file to your board, then type: my.run:
+\ Click the joystick to stop. Edit, re-send, run again.
+
+my.x is 5
+my.y is 3
+
+to my.setup [
+  matrix.init:;
+  matrix.brightness!: 1
+]
+
+to my.update [
+  \ Read inputs and change state here.
+  nil
+]
+
+to my.draw [
+  grid.clear:;
+  \ Draw your scene here.
+  grid.set: my.x, my.y, true;
+  grid.show:
+]
+
+to my.frame [
+  my.update:;
+  my.draw:;
+  ms: 42
+]
+
+to my.run [
+  my.setup:;
+  while (not joy.click?:) [
+    my.frame:
+  ]
+]

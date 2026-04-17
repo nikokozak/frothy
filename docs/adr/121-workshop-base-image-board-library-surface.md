@@ -71,8 +71,9 @@ Naming rule for this shipped base-library surface:
 - random keeps a short family alias `rand.*` instead of bare generic names so
   sketches stay short without losing the stateful-domain cue
 
-The tiny public workshop repo is exported from that same canonical
-`base.frothy` source. It is not an independently authored second demo source.
+The tiny public workshop repo is now the generated starter scaffold recorded
+in ADR-122. It is separate from the preflashed base image so the workshop can
+start from a small participant-owned overlay instead of a Pong edit path.
 
 ## Base/Overlay Rule
 
@@ -102,7 +103,7 @@ This tranche does not:
 - add new handle/value classes
 - calibrate ADC into volts or board-specific physical units
 - widen into PWM, I2C, UART teaching helpers, or board-specific sensor APIs
-- add a second workshop runtime mode or an independent starter scaffold
+- add a second workshop runtime mode
 
 ## Proof
 
