@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 #ifndef FROTH_LINK_MAX_PAYLOAD
-#define FROTH_LINK_MAX_PAYLOAD 256
+#define FROTH_LINK_MAX_PAYLOAD 1024
 #endif
 
 #define FROTH_LINK_HEADER_SIZE 20

@@ -11,7 +11,7 @@ import (
 // Frame layout constants matching ADR-048 and froth_transport.h.
 const (
 	HeaderSize        = 20
-	DefaultMaxPayload = 256
+	DefaultMaxPayload = 1024
 	Magic0            = 'F'
 	Magic1            = 'L'
 	ProtocolVersion   = 2

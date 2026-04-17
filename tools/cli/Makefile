@@ -2,7 +2,7 @@ REPO_ROOT := ../..
 SDK_PAYLOAD_DIR := internal/sdk/generated
 # Repo-local checkout builds use the Frothy-owned CLI name.
 OUTPUT ?= frothy-cli
-export FROTH_LINK_MAX_PAYLOAD ?= 256
+export FROTH_LINK_MAX_PAYLOAD ?= 1024
 
 .PHONY: sdk-payload build build-test-runner test test-unit test-localruntime test-integration
 
