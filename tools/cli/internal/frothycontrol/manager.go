@@ -9,7 +9,9 @@ import (
 	"github.com/nikokozak/frothy/tools/cli/internal/serial"
 )
 
-var openSerialTransport = serial.Open
+var openSerialTransport func(string) (serial.Transport, error) = func(path string) (serial.Transport, error) {
+	return serial.Open(path)
+}
 
 var ErrNotConnected = errors.New("not connected")
 var ErrResetUnavailable = errors.New(
@@ -75,16 +77,28 @@ type managedConnection struct {
 }
 
 type Manager struct {
-	mu   sync.Mutex
-	opMu sync.Mutex
+	mu        sync.Mutex
+	opMu      sync.Mutex
+	opStateMu sync.Mutex
 
-	config ManagerConfig
-	conn   *managedConnection
+	config        ManagerConfig
+	conn          *managedConnection
+	opKind        managerOperationKind
+	pendingOpKind managerOperationKind
+	connectCancel uint64
 }
 
 func NewManager(config ManagerConfig) *Manager {
 	return &Manager{config: config}
 }
+
+type managerOperationKind uint8
+
+const (
+	managerOpNone managerOperationKind = iota
+	managerOpConnect
+	managerOpRequest
+)
 
 func (m *Manager) IsConnected() bool {
 	m.mu.Lock()
@@ -93,14 +107,21 @@ func (m *Manager) IsConnected() bool {
 }
 
 func (m *Manager) Connect(portHint string) (*DeviceInfo, error) {
-	m.opMu.Lock()
-	defer m.opMu.Unlock()
+	cancelGeneration := m.connectCancelGeneration()
+	m.beginOperation(managerOpConnect)
+	defer m.endOperation()
+	if m.connectWasCancelled(cancelGeneration) {
+		return nil, ErrNotConnected
+	}
 
 	conn := m.connection()
 	targetPort := m.resolveTargetPort(portHint)
 	if conn != nil {
 		if targetPort == "" || conn.port == targetPort {
 			if err := probeManagedConnection(conn); err == nil {
+				if m.connectWasCancelled(cancelGeneration) {
+					return nil, ErrNotConnected
+				}
 				return deviceInfoFromConnection(conn), nil
 			}
 
@@ -112,6 +133,9 @@ func (m *Manager) Connect(portHint string) (*DeviceInfo, error) {
 			if err != nil {
 				return nil, err
 			}
+			if m.closeIfConnectCancelled(cancelGeneration, nextConn) {
+				return nil, ErrNotConnected
+			}
 			m.mu.Lock()
 			m.conn = nextConn
 			m.mu.Unlock()
@@ -122,18 +146,29 @@ func (m *Manager) Connect(portHint string) (*DeviceInfo, error) {
 		if err != nil {
 			return nil, err
 		}
+		if m.closeIfConnectCancelled(cancelGeneration, nextConn) {
+			return nil, ErrNotConnected
+		}
+		m.clearConnection(conn)
+		if err := closeManagedConnection(conn, true); err != nil {
+			_ = closeManagedConnection(nextConn, false)
+			return nil, err
+		}
+		if m.closeIfConnectCancelled(cancelGeneration, nextConn) {
+			return nil, ErrNotConnected
+		}
 		m.mu.Lock()
 		m.conn = nextConn
 		m.mu.Unlock()
-		if err := closeManagedConnection(conn, true); err != nil {
-			return nil, err
-		}
 		return deviceInfoFromConnection(nextConn), nil
 	}
 
 	conn, err := m.openConnection(targetPort)
 	if err != nil {
 		return nil, err
+	}
+	if m.closeIfConnectCancelled(cancelGeneration, conn) {
+		return nil, ErrNotConnected
 	}
 
 	m.mu.Lock()
@@ -143,10 +178,88 @@ func (m *Manager) Connect(portHint string) (*DeviceInfo, error) {
 }
 
 func (m *Manager) Disconnect() error {
-	m.opMu.Lock()
+	m.cancelConnectOperations()
+	if !m.opMu.TryLock() {
+		if m.currentOperation() == managerOpRequest {
+			return m.closeConnection(false)
+		}
+		m.opMu.Lock()
+		defer m.opMu.Unlock()
+		return m.closeConnection(true)
+	}
 	defer m.opMu.Unlock()
 
 	return m.closeConnection(true)
+}
+
+func (m *Manager) beginOperation(kind managerOperationKind) {
+	m.setPendingOperation(kind)
+	m.opMu.Lock()
+	m.activatePendingOperation(kind)
+}
+
+func (m *Manager) endOperation() {
+	m.setOperation(managerOpNone)
+	m.opMu.Unlock()
+}
+
+func (m *Manager) setOperation(kind managerOperationKind) {
+	m.opStateMu.Lock()
+	defer m.opStateMu.Unlock()
+	m.opKind = kind
+}
+
+func (m *Manager) setPendingOperation(kind managerOperationKind) {
+	m.opStateMu.Lock()
+	defer m.opStateMu.Unlock()
+	if m.opKind == managerOpNone {
+		m.pendingOpKind = kind
+	}
+}
+
+func (m *Manager) activatePendingOperation(kind managerOperationKind) {
+	m.opStateMu.Lock()
+	defer m.opStateMu.Unlock()
+	m.opKind = kind
+	if m.pendingOpKind == kind {
+		m.pendingOpKind = managerOpNone
+	}
+}
+
+func (m *Manager) currentOperation() managerOperationKind {
+	m.opStateMu.Lock()
+	defer m.opStateMu.Unlock()
+	if m.opKind != managerOpNone {
+		return m.opKind
+	}
+	return m.pendingOpKind
+}
+
+func (m *Manager) connectCancelGeneration() uint64 {
+	m.opStateMu.Lock()
+	defer m.opStateMu.Unlock()
+	return m.connectCancel
+}
+
+func (m *Manager) cancelConnectOperations() {
+	m.opStateMu.Lock()
+	defer m.opStateMu.Unlock()
+	m.connectCancel++
+}
+
+func (m *Manager) connectWasCancelled(generation uint64) bool {
+	m.opStateMu.Lock()
+	defer m.opStateMu.Unlock()
+	return m.connectCancel != generation
+}
+
+func (m *Manager) closeIfConnectCancelled(generation uint64,
+	conn *managedConnection) bool {
+	if !m.connectWasCancelled(generation) {
+		return false
+	}
+	_ = closeManagedConnection(conn, false)
+	return true
 }
 
 func (m *Manager) Eval(source string, onOutput func([]byte)) (string, error) {
@@ -156,8 +269,8 @@ func (m *Manager) Eval(source string, onOutput func([]byte)) (string, error) {
 }
 
 func (m *Manager) Reset() (*baseproto.ResetResponse, error) {
-	m.opMu.Lock()
-	defer m.opMu.Unlock()
+	m.beginOperation(managerOpRequest)
+	defer m.endOperation()
 
 	conn := m.connection()
 	if conn == nil {
@@ -175,8 +288,8 @@ func (m *Manager) Reset() (*baseproto.ResetResponse, error) {
 }
 
 func (m *Manager) Words() ([]string, error) {
-	m.opMu.Lock()
-	defer m.opMu.Unlock()
+	m.beginOperation(managerOpRequest)
+	defer m.endOperation()
 
 	conn := m.connection()
 	if conn == nil {
@@ -191,8 +304,8 @@ func (m *Manager) Words() ([]string, error) {
 }
 
 func (m *Manager) See(name string) (*SeeResult, error) {
-	m.opMu.Lock()
-	defer m.opMu.Unlock()
+	m.beginOperation(managerOpRequest)
+	defer m.endOperation()
 
 	conn := m.connection()
 	if conn == nil {
@@ -272,8 +385,8 @@ func (m *Manager) runBuiltinCompat(runDirect func(*Session) (string, error),
 }
 
 func (m *Manager) runTextOp(run func(*Session) (string, error)) (string, error) {
-	m.opMu.Lock()
-	defer m.opMu.Unlock()
+	m.beginOperation(managerOpRequest)
+	defer m.endOperation()
 
 	conn := m.connection()
 	if conn == nil {

@@ -1,6 +1,6 @@
 # Frothy Progress
 
-*Last updated: 2026-04-16*
+*Last updated: 2026-04-17*
 
 This file is the thin operational note for Frothy.
 The current-state block in `docs/roadmap/Frothy_Development_Roadmap_v0_1.md`
@@ -54,6 +54,16 @@ file is wrong.
   `Pin Run Binding` records a fixed `name:` call for repeated testing after
   edits, and definition or top-level value sends do not overwrite the
   remembered run target.
+- The VS Code board recovery path no longer strands the editor in `running`:
+  control-session prompt acquisition sends the emergency Ctrl-C much earlier,
+  helper disconnect can close a serial transport even while an eval owns the
+  operation lock, pending helper connects no longer block later disconnect
+  recovery, full-file send interrupts and supersedes stale long evals, stale
+  helper completions cannot clobber a fresh session, remembered serial ports
+  fall back to discovery when stale, and `dangerous.wipe` now requires an
+  explicit editor confirmation. The VS Code board proof now exercises
+  interrupt, Send File while running, and disconnect while running through the
+  real extension host.
 - This control-surface repair tranche is landed: `PROGRESS.md` and
   `TIMELINE.md` are thin again, `AGENTS.md` supports targeted work, and the
   forward queue now lives in one short roadmap note plus Frothy ADR-116.

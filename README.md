@@ -113,8 +113,8 @@ The maintained editor path stays on the accepted direct-control surface:
 
 `Send Selection / Form` is intentional additive eval.
 `Send File` is whole-file `reset + eval`; if the connected firmware is too old
-for control `reset`, the extension blocks the send and asks you to upgrade or
-reflash instead of replaying the file unsafely.
+for control `reset`, the extension warns before any explicitly unsafe additive
+fallback and otherwise asks you to upgrade or reflash.
 
 ## Build And Test
 

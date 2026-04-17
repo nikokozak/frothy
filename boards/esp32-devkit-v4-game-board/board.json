@@ -9,7 +9,7 @@
     "heap_size": 8192,
     "ds_depth": 256,
     "rs_depth": 256,
-    "slot_count": 256,
+    "slot_count": 320,
     "frothy_eval_value_capacity": 512,
     "frothy_eval_frame_capacity": 64,
     "frothy_object_capacity": 256,
@@ -19,7 +19,7 @@
     "frothy_ir_node_capacity": 1024,
     "frothy_ir_link_capacity": 1024,
     "has_snapshots": true,
-    "snapshot_block_size": 2048
+    "snapshot_block_size": 4096
   },
   "sources": [
     "src/frothy_tm1629.c"

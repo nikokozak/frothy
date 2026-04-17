@@ -358,6 +358,9 @@ func RunSmoke(cfg SmokeConfig) error {
 		if err := runDisconnectRecovery(cfg.Port); err != nil {
 			return fmt.Errorf("disconnect recovery: %w", err)
 		}
+		if err := runManagedDisconnectDuringEval(cfg.Port); err != nil {
+			return fmt.Errorf("managed disconnect during eval: %w", err)
+		}
 	}
 
 	return nil
@@ -405,6 +408,65 @@ func runDisconnectRecovery(port string) error {
 		return err
 	}
 	return recoverSession.AcquirePrompt(rawPromptTimeout)
+}
+
+func runManagedDisconnectDuringEval(port string) error {
+	manager := NewManager(ManagerConfig{DefaultPort: port})
+	if _, err := manager.Connect(""); err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer manager.Disconnect()
+
+	evalDone := make(chan error, 1)
+	outputSeen := make(chan struct{}, 1)
+	go func() {
+		_, err := manager.Eval(`while true [ core: @save ]`, func(data []byte) {
+			if len(data) > 0 {
+				select {
+				case outputSeen <- struct{}{}:
+				default:
+				}
+			}
+		})
+		evalDone <- err
+	}()
+
+	select {
+	case <-outputSeen:
+	case err := <-evalDone:
+		if err != nil {
+			return fmt.Errorf("eval ended before output: %w", err)
+		}
+		return fmt.Errorf("eval ended before output")
+	case <-time.After(controlCommandTimeout):
+		return fmt.Errorf("timed out waiting for managed eval output")
+	}
+
+	if err := manager.Disconnect(); err != nil {
+		return fmt.Errorf("disconnect running eval: %w", err)
+	}
+
+	select {
+	case err := <-evalDone:
+		if err == nil {
+			return fmt.Errorf("running eval returned nil after disconnect")
+		}
+	case <-time.After(controlCommandTimeout):
+		return fmt.Errorf("running eval did not unblock after disconnect")
+	}
+
+	if _, err := manager.Connect(""); err != nil {
+		return fmt.Errorf("reconnect: %w", err)
+	}
+
+	value, err := manager.Eval("1 + 1", nil)
+	if err != nil {
+		return fmt.Errorf("post-disconnect eval: %w", err)
+	}
+	if value != "2" {
+		return fmt.Errorf("post-disconnect eval returned %q", value)
+	}
+	return nil
 }
 
 func contains(values []string, needle string) bool {

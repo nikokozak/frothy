@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"sync"
 	"testing"
+	"time"
 
 	baseproto "github.com/nikokozak/frothy/tools/cli/internal/protocol"
 )
@@ -15,6 +17,9 @@ type fakeBackend struct {
 	mu             sync.Mutex
 	connected      bool
 	device         *DeviceInfo
+	connectErr     error
+	connectStarted chan struct{}
+	unblockConnect chan struct{}
 	evalValue      string
 	evalOutput     []byte
 	evalErr        error
@@ -36,6 +41,14 @@ type fakeBackend struct {
 	slotInfoErr    error
 }
 
+type overlappingConnectBackend struct {
+	mu             sync.Mutex
+	connectCalls   int
+	disconnectHits int
+	firstStarted   chan struct{}
+	releaseFirst   chan struct{}
+}
+
 func (b *fakeBackend) IsConnected() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -44,7 +57,24 @@ func (b *fakeBackend) IsConnected() bool {
 
 func (b *fakeBackend) Connect(string) (*DeviceInfo, error) {
 	b.mu.Lock()
+	started := b.connectStarted
+	b.connectStarted = nil
+	unblock := b.unblockConnect
+	b.mu.Unlock()
+
+	if started != nil {
+		close(started)
+	}
+	if unblock != nil {
+		<-unblock
+	}
+
+	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.connectErr != nil {
+		b.connected = false
+		return nil, b.connectErr
+	}
 	b.connected = true
 	return b.device, nil
 }
@@ -61,8 +91,11 @@ func (b *fakeBackend) Eval(source string, onOutput func([]byte)) (string, error)
 	if len(b.evalOutput) > 0 {
 		onOutput(b.evalOutput)
 	}
-	if b.blockEval != nil {
-		<-b.blockEval
+	b.mu.Lock()
+	blockEval := b.blockEval
+	b.mu.Unlock()
+	if blockEval != nil {
+		<-blockEval
 	}
 	return b.evalValue + source[:0], b.evalErr
 }
@@ -72,9 +105,12 @@ func (b *fakeBackend) Reset() (*baseproto.ResetResponse, error) {
 }
 
 func (b *fakeBackend) Interrupt() error {
-	if b.blockEval != nil {
-		close(b.blockEval)
-		b.blockEval = nil
+	b.mu.Lock()
+	blockEval := b.blockEval
+	b.blockEval = nil
+	b.mu.Unlock()
+	if blockEval != nil {
+		close(blockEval)
 	}
 	return b.interruptErr
 }
@@ -119,6 +155,70 @@ func (b *fakeBackend) SlotInfo(name string, onOutput func([]byte)) (string, erro
 		return "nil", nil
 	}
 	return b.slotInfoValue, b.slotInfoErr
+}
+
+func (b *overlappingConnectBackend) IsConnected() bool { return true }
+
+func (b *overlappingConnectBackend) Connect(string) (*DeviceInfo, error) {
+	b.mu.Lock()
+	b.connectCalls++
+	call := b.connectCalls
+	b.mu.Unlock()
+
+	if call == 1 {
+		close(b.firstStarted)
+		<-b.releaseFirst
+	}
+
+	return &DeviceInfo{
+		Port:     "/dev/cu.mock",
+		Board:    "mock-board",
+		Version:  "0.1.0-test",
+		CellBits: 32,
+	}, nil
+}
+
+func (b *overlappingConnectBackend) Disconnect() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.disconnectHits++
+	return nil
+}
+
+func (b *overlappingConnectBackend) Eval(string, func([]byte)) (string, error) {
+	return "nil", nil
+}
+
+func (b *overlappingConnectBackend) Reset() (*baseproto.ResetResponse, error) {
+	return nil, nil
+}
+
+func (b *overlappingConnectBackend) Interrupt() error { return nil }
+
+func (b *overlappingConnectBackend) Words() ([]string, error) { return nil, nil }
+
+func (b *overlappingConnectBackend) See(string) (*SeeResult, error) {
+	return nil, nil
+}
+
+func (b *overlappingConnectBackend) Save(func([]byte)) (string, error) {
+	return "nil", nil
+}
+
+func (b *overlappingConnectBackend) Restore(func([]byte)) (string, error) {
+	return "nil", nil
+}
+
+func (b *overlappingConnectBackend) Wipe(func([]byte)) (string, error) {
+	return "nil", nil
+}
+
+func (b *overlappingConnectBackend) Core(string, func([]byte)) (string, error) {
+	return "nil", nil
+}
+
+func (b *overlappingConnectBackend) SlotInfo(string, func([]byte)) (string, error) {
+	return "nil", nil
 }
 
 type sessionHarness struct {
@@ -178,6 +278,22 @@ func (h *sessionHarness) next(t *testing.T) map[string]any {
 		t.Fatal("message channel closed")
 	}
 	return message
+}
+
+func (h *sessionHarness) nextWithin(t *testing.T,
+	timeout time.Duration) map[string]any {
+	t.Helper()
+
+	select {
+	case message, ok := <-h.messages:
+		if !ok {
+			t.Fatal("message channel closed")
+		}
+		return message
+	case <-time.After(timeout):
+		t.Fatalf("timed out waiting for session message")
+		return nil
+	}
 }
 
 func (h *sessionHarness) close(t *testing.T) {
@@ -294,6 +410,112 @@ func TestControlSessionServerInterruptsRunningEval(t *testing.T) {
 	if !sawInterruptResponse || !sawInterruptedEvent || !sawIdleEvent || !sawEvalResponse {
 		t.Fatalf("missing interrupt cycle: response=%v interrupted=%v idle=%v eval=%v",
 			sawInterruptResponse, sawInterruptedEvent, sawIdleEvent, sawEvalResponse)
+	}
+}
+
+func TestControlSessionServerDisconnectPreemptsBlockedConnect(t *testing.T) {
+	backend := &fakeBackend{
+		device: &DeviceInfo{
+			Port:     "/dev/cu.mock",
+			Board:    "mock-board",
+			Version:  "0.1.0-test",
+			CellBits: 32,
+		},
+		connectStarted: make(chan struct{}),
+		unblockConnect: make(chan struct{}),
+	}
+	harness := startHarness(t, backend)
+	defer harness.close(t)
+
+	connectStarted := backend.connectStarted
+	harness.send(t, controlSessionRequest{ID: 1, Command: "connect"})
+	select {
+	case <-connectStarted:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("connect did not start")
+	}
+
+	harness.send(t, controlSessionRequest{ID: 2, Command: "disconnect"})
+	sawDisconnectEvent := false
+	sawDisconnectResponse := false
+	for !sawDisconnectEvent || !sawDisconnectResponse {
+		message := harness.nextWithin(t, 500*time.Millisecond)
+		if message["event"] == "connected" {
+			t.Fatalf("blocked connect published connected before disconnect: %v", message)
+		}
+		if message["event"] == "disconnected" {
+			sawDisconnectEvent = true
+			continue
+		}
+		if message["type"] == "response" && message["id"] == float64(2) {
+			if message["ok"] != true {
+				t.Fatalf("disconnect response = %v", message)
+			}
+			sawDisconnectResponse = true
+			continue
+		}
+		t.Fatalf("unexpected message before blocked connect release: %v", message)
+	}
+
+	close(backend.unblockConnect)
+	message := harness.nextWithin(t, 500*time.Millisecond)
+	if message["type"] != "response" || message["id"] != float64(1) ||
+		message["ok"] != false {
+		t.Fatalf("superseded connect response = %v", message)
+	}
+}
+
+func TestControlSessionServerConnectFailureReportsDisconnected(t *testing.T) {
+	backend := &fakeBackend{
+		connected:  true,
+		connectErr: errors.New("reconnect failed"),
+	}
+	harness := startHarness(t, backend)
+	defer harness.close(t)
+
+	harness.send(t, controlSessionRequest{ID: 1, Command: "connect"})
+	if event := harness.nextWithin(t, 500*time.Millisecond); event["event"] != "disconnected" {
+		t.Fatalf("connect failure event = %v, want disconnected", event)
+	}
+	response := harness.nextWithin(t, 500*time.Millisecond)
+	if response["type"] != "response" || response["id"] != float64(1) ||
+		response["ok"] != false {
+		t.Fatalf("connect failure response = %v", response)
+	}
+}
+
+func TestControlSessionServerSupersededConnectDoesNotDisconnectNewerConnect(t *testing.T) {
+	backend := &overlappingConnectBackend{
+		firstStarted: make(chan struct{}),
+		releaseFirst: make(chan struct{}),
+	}
+	harness := startHarness(t, backend)
+	defer harness.close(t)
+
+	harness.send(t, controlSessionRequest{ID: 1, Command: "connect"})
+	select {
+	case <-backend.firstStarted:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("first connect did not start")
+	}
+
+	harness.send(t, controlSessionRequest{ID: 2, Command: "connect"})
+	if event := harness.nextWithin(t, 500*time.Millisecond); event["event"] != "connected" ||
+		event["request_id"] != float64(2) {
+		t.Fatalf("newer connect event = %v", event)
+	}
+	if response := harness.nextWithin(t, 500*time.Millisecond); response["type"] != "response" ||
+		response["id"] != float64(2) || response["ok"] != true {
+		t.Fatalf("newer connect response = %v", response)
+	}
+
+	close(backend.releaseFirst)
+	if response := harness.nextWithin(t, 500*time.Millisecond); response["type"] != "response" ||
+		response["id"] != float64(1) || response["ok"] != false {
+		t.Fatalf("superseded connect response = %v", response)
+	}
+	if backend.disconnectHits != 0 {
+		t.Fatalf("disconnect hits = %d, want 0", backend.disconnectHits)
 	}
 }
 

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"io"
 	"sync"
 	"testing"
 	"time"
 
 	baseproto "github.com/nikokozak/frothy/tools/cli/internal/protocol"
+	"github.com/nikokozak/frothy/tools/cli/internal/serial"
 )
 
 type stubTransport struct {
@@ -18,6 +20,70 @@ type stubTransport struct {
 	onWrite     func([]byte)
 	readTimeout time.Duration
 }
+
+type blockingTransport struct {
+	mu          sync.Mutex
+	writes      [][]byte
+	readTimeout time.Duration
+	closed      chan struct{}
+	readStarted chan struct{}
+	readOnce    sync.Once
+	closeOnce   sync.Once
+}
+
+type closeCountingTransport struct {
+	*stubTransport
+	closeCount int
+	closeErr   error
+}
+
+func (t *closeCountingTransport) Close() error {
+	t.closeCount++
+	return t.closeErr
+}
+
+func newBlockingTransport() *blockingTransport {
+	return &blockingTransport{
+		closed:      make(chan struct{}),
+		readStarted: make(chan struct{}),
+	}
+}
+
+func (t *blockingTransport) Read([]byte) (int, error) {
+	t.readOnce.Do(func() {
+		close(t.readStarted)
+	})
+	<-t.closed
+	return 0, io.EOF
+}
+
+func (t *blockingTransport) Write(data []byte) error {
+	writeCopy := append([]byte(nil), data...)
+	t.mu.Lock()
+	t.writes = append(t.writes, writeCopy)
+	t.mu.Unlock()
+	return nil
+}
+
+func (t *blockingTransport) Close() error {
+	t.closeOnce.Do(func() {
+		close(t.closed)
+	})
+	return nil
+}
+
+func (t *blockingTransport) Path() string { return "blocking" }
+
+func (t *blockingTransport) SetReadTimeout(timeout time.Duration) error {
+	t.mu.Lock()
+	t.readTimeout = timeout
+	t.mu.Unlock()
+	return nil
+}
+
+func (t *blockingTransport) ResetInputBuffer() {}
+
+func (t *blockingTransport) Drain(time.Duration) {}
 
 func (t *stubTransport) Read(buf []byte) (int, error) {
 	t.mu.Lock()
@@ -120,6 +186,42 @@ func buildOutputPayload(data []byte) []byte {
 	binary.LittleEndian.PutUint16(payload[:2], uint16(len(data)))
 	copy(payload[2:], data)
 	return payload
+}
+
+func buildHelloPayload(board string) []byte {
+	payload := []byte{32}
+	payload = binary.LittleEndian.AppendUint16(payload, 256)
+	payload = binary.LittleEndian.AppendUint32(payload, 8192)
+	payload = binary.LittleEndian.AppendUint32(payload, 2048)
+	payload = binary.LittleEndian.AppendUint16(payload, 200)
+	payload = append(payload, 0)
+	payload = append(payload, buildStringPayload("0.1.0-test")...)
+	payload = append(payload, buildStringPayload(board)...)
+	payload = append(payload, 0)
+	return payload
+}
+
+func newReadyControlTransport(t *testing.T, board string) *closeCountingTransport {
+	t.Helper()
+
+	stub := &stubTransport{}
+	transport := &closeCountingTransport{stubTransport: stub}
+	stub.queueRaw("frothy> ")
+	stub.onWrite = func(data []byte) {
+		if bytes.Equal(data, []byte(".control\n")) {
+			stub.queueRaw("control: ready")
+			return
+		}
+		if len(data) > 0 && data[0] == 0x00 {
+			header, _ := decodeWriteFrame(t, data)
+			if header.MessageType == helloReq {
+				stub.queueFrame(t, header.SessionID, helloEvt, header.Seq,
+					buildHelloPayload(board))
+				stub.queueFrame(t, header.SessionID, idleEvt, header.Seq, nil)
+			}
+		}
+	}
+	return transport
 }
 
 func decodeWriteFrame(t *testing.T, wire []byte) (*baseproto.Header, []byte) {
@@ -264,6 +366,183 @@ func TestManagerResetMapsUnknownRequestToResetUnavailable(t *testing.T) {
 
 	if _, err := manager.Reset(); !errors.Is(err, ErrResetUnavailable) {
 		t.Fatalf("Reset error = %v, want ErrResetUnavailable", err)
+	}
+}
+
+func TestManagerDisconnectClosesTransportDuringRunningEval(t *testing.T) {
+	transport := newBlockingTransport()
+	session := NewSession(transport)
+	session.sessionID = 0x55
+	session.nextSeq = 1
+
+	manager := NewManager(ManagerConfig{})
+	manager.conn = &managedConnection{
+		transport: transport,
+		session:   session,
+		info: &baseproto.HelloResponse{
+			Board:   "mock-board",
+			Version: "0.1.0-test",
+		},
+	}
+
+	evalDone := make(chan error, 1)
+	go func() {
+		_, err := manager.Eval("while true [ nil ]", nil)
+		evalDone <- err
+	}()
+
+	select {
+	case <-transport.readStarted:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("eval did not start reading")
+	}
+
+	disconnectDone := make(chan error, 1)
+	go func() {
+		disconnectDone <- manager.Disconnect()
+	}()
+
+	select {
+	case err := <-disconnectDone:
+		if err != nil {
+			t.Fatalf("Disconnect() error = %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("Disconnect() blocked behind running eval")
+	}
+
+	select {
+	case err := <-evalDone:
+		if err == nil {
+			t.Fatalf("Eval() error = nil, want closed transport error")
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("Eval() did not unblock after disconnect")
+	}
+
+	if manager.IsConnected() {
+		t.Fatalf("manager still connected after disconnect")
+	}
+}
+
+func TestManagerDisconnectWaitsForConnectOperation(t *testing.T) {
+	manager := NewManager(ManagerConfig{})
+	manager.opMu.Lock()
+	manager.setOperation(managerOpConnect)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- manager.Disconnect()
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("Disconnect returned during connect operation: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	manager.setOperation(managerOpNone)
+	manager.opMu.Unlock()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Disconnect error = %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("Disconnect did not return after connect operation ended")
+	}
+}
+
+func TestManagerDisconnectCancelsPendingConnect(t *testing.T) {
+	manager := NewManager(ManagerConfig{})
+	manager.opMu.Lock()
+	manager.setOperation(managerOpRequest)
+
+	openCalls := 0
+	originalOpenSerialTransport := openSerialTransport
+	openSerialTransport = func(path string) (serial.Transport, error) {
+		openCalls += 1
+		return nil, errors.New("open should not be called")
+	}
+	defer func() {
+		openSerialTransport = originalOpenSerialTransport
+	}()
+
+	connectDone := make(chan error, 1)
+	go func() {
+		_, err := manager.Connect("/dev/new")
+		connectDone <- err
+	}()
+
+	select {
+	case err := <-connectDone:
+		t.Fatalf("Connect returned before pending request released: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	if err := manager.Disconnect(); err != nil {
+		t.Fatalf("Disconnect error = %v", err)
+	}
+	manager.setOperation(managerOpNone)
+	manager.opMu.Unlock()
+
+	select {
+	case err := <-connectDone:
+		if !errors.Is(err, ErrNotConnected) {
+			t.Fatalf("Connect error = %v, want ErrNotConnected", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("Connect did not return after pending request released")
+	}
+	if openCalls != 0 {
+		t.Fatalf("open calls = %d, want 0 for cancelled pending connect", openCalls)
+	}
+}
+
+func TestManagerPortSwitchClosesNewConnectionWhenOldCloseFails(t *testing.T) {
+	oldCloseErr := errors.New("old close failed")
+	oldTransport := &closeCountingTransport{
+		stubTransport: &stubTransport{},
+		closeErr:      oldCloseErr,
+	}
+	manager := NewManager(ManagerConfig{})
+	manager.conn = &managedConnection{
+		transport: oldTransport,
+		port:      "/dev/old",
+		info: &baseproto.HelloResponse{
+			Board:   "old-board",
+			Version: "0.1.0-test",
+		},
+	}
+
+	var newTransport *closeCountingTransport
+	originalOpenSerialTransport := openSerialTransport
+	openSerialTransport = func(path string) (serial.Transport, error) {
+		if path != "/dev/new" {
+			t.Fatalf("open path = %q, want /dev/new", path)
+		}
+		newTransport = newReadyControlTransport(t, "new-board")
+		return newTransport, nil
+	}
+	defer func() {
+		openSerialTransport = originalOpenSerialTransport
+	}()
+
+	if _, err := manager.Connect("/dev/new"); !errors.Is(err, oldCloseErr) {
+		t.Fatalf("Connect error = %v, want old close error", err)
+	}
+	if oldTransport.closeCount != 1 {
+		t.Fatalf("old close count = %d, want 1", oldTransport.closeCount)
+	}
+	if newTransport == nil {
+		t.Fatalf("new transport was not opened")
+	}
+	if newTransport.closeCount != 1 {
+		t.Fatalf("new close count = %d, want 1", newTransport.closeCount)
+	}
+	if got := manager.connection(); got != nil {
+		t.Fatalf("manager connection = %#v, want disconnected after close failure", got)
 	}
 }
 

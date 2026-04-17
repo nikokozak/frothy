@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/nikokozak/frothy/tools/cli/internal/protocol"
@@ -34,6 +35,8 @@ type Port struct {
 	file        *os.File
 	path        string
 	readTimeout time.Duration
+	closeOnce   sync.Once
+	closed      chan struct{}
 }
 
 // Open opens a serial port at the given path with Froth defaults (115200 8N1).
@@ -52,6 +55,7 @@ func Open(path string) (*Port, error) {
 		file:        os.NewFile(uintptr(fd), path),
 		path:        path,
 		readTimeout: 0,
+		closed:      make(chan struct{}),
 	}, nil
 }
 
@@ -77,14 +81,21 @@ func configurePort(fd int) error {
 
 // Close closes the serial port.
 func (p *Port) Close() error {
-	if p.file == nil {
-		return nil
-	}
-	return p.file.Close()
+	var err error
+	p.closeOnce.Do(func() {
+		close(p.closed)
+		if p.file != nil {
+			err = p.file.Close()
+		}
+	})
+	return err
 }
 
 // Write sends raw bytes to the serial port.
 func (p *Port) Write(data []byte) error {
+	if p.isClosed() {
+		return io.EOF
+	}
 	fd := int(p.file.Fd())
 	for written := 0; written < len(data); {
 		n, err := unix.Write(fd, data[written:])
@@ -123,11 +134,14 @@ func ReadFrameTransport(conn Transport, timeout time.Duration, passthrough io.Wr
 	inFrame := false
 
 	for {
-		remaining := 30 * time.Second
+		remaining := 250 * time.Millisecond
 		if !noTimeout {
 			remaining = time.Until(deadline)
 			if remaining <= 0 {
 				return nil, ErrTimeout
+			}
+			if remaining > 250*time.Millisecond {
+				remaining = 250 * time.Millisecond
 			}
 		}
 		if err := conn.SetReadTimeout(remaining); err != nil {
@@ -139,10 +153,7 @@ func ReadFrameTransport(conn Transport, timeout time.Duration, passthrough io.Wr
 			return nil, fmt.Errorf("transport read: %w", err)
 		}
 		if n == 0 {
-			if noTimeout {
-				continue
-			}
-			return nil, ErrTimeout
+			continue
 		}
 
 		b := buf[0]
@@ -174,6 +185,9 @@ func (p *Port) Read(buf []byte) (int, error) {
 	fd := int(p.file.Fd())
 
 	for {
+		if p.isClosed() {
+			return 0, io.EOF
+		}
 		timeoutMs := durationToPollTimeout(p.readTimeout)
 		fds := []unix.PollFd{{
 			Fd:     int32(fd),
@@ -188,6 +202,9 @@ func (p *Port) Read(buf []byte) (int, error) {
 			return 0, err
 		}
 		if n == 0 {
+			if p.isClosed() {
+				return 0, io.EOF
+			}
 			return 0, nil
 		}
 
@@ -203,6 +220,15 @@ func (p *Port) Read(buf []byte) (int, error) {
 			continue
 		}
 		return read, err
+	}
+}
+
+func (p *Port) isClosed() bool {
+	select {
+	case <-p.closed:
+		return true
+	default:
+		return false
 	}
 }
 

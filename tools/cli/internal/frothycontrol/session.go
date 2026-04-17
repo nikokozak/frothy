@@ -100,18 +100,19 @@ func (s *Session) AcquirePrompt(timeout time.Duration) error {
 		return err
 	}
 
-	if err := waitPrompt(timeout); err == nil {
+	initialWait := minDuration(timeout, rawPromptInitialWait)
+	if err := waitPrompt(initialWait); err == nil {
 		return nil
 	} else if !isRawWaitTimeout(err) {
 		return err
-	} else {
-		timeout = max(timeout/2, 500*time.Millisecond)
 	}
 
+	recoveryWait := minDuration(max(timeout/2, 500*time.Millisecond),
+		rawPromptRecoveryWait)
 	steps := []promptRecoveryStep{
-		{label: "ctrl-c", write: []byte{0x03}, wait: timeout},
-		{label: "newline", write: []byte{'\n'}, wait: timeout},
-		{label: "ctrl-c/newline", write: []byte{0x03, '\n'}, wait: timeout},
+		{label: "ctrl-c", write: []byte{0x03}, wait: recoveryWait},
+		{label: "newline", write: []byte{'\n'}, wait: recoveryWait},
+		{label: "ctrl-c/newline", write: []byte{0x03, '\n'}, wait: recoveryWait},
 	}
 
 	var lastErr error = rawWaitTimeoutError{needle: "frothy> "}
@@ -130,6 +131,13 @@ func (s *Session) AcquirePrompt(timeout time.Duration) error {
 	}
 
 	return lastErr
+}
+
+func minDuration(a time.Duration, b time.Duration) time.Duration {
+	if a <= 0 || a < b {
+		return a
+	}
+	return b
 }
 
 func (s *Session) EnterControl(timeout time.Duration) error {

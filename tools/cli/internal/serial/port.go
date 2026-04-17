@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/nikokozak/frothy/tools/cli/internal/protocol"
@@ -31,8 +32,10 @@ type Transport interface {
 
 // Port wraps a serial connection with byte-level and frame-level I/O.
 type Port struct {
-	port serial.Port
-	path string
+	port      serial.Port
+	path      string
+	closeOnce sync.Once
+	closed    chan struct{}
 }
 
 // Open opens a serial port at the given path with Froth defaults (115200 8N1).
@@ -52,16 +55,24 @@ func Open(path string) (*Port, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open serial port: %w", err)
 	}
-	return &Port{port: conn, path: path}, nil
+	return &Port{port: conn, path: path, closed: make(chan struct{})}, nil
 }
 
 // Close closes the serial port.
 func (p *Port) Close() error {
-	return p.port.Close()
+	var err error
+	p.closeOnce.Do(func() {
+		close(p.closed)
+		err = p.port.Close()
+	})
+	return err
 }
 
 // Write sends raw bytes to the serial port.
 func (p *Port) Write(data []byte) error {
+	if p.isClosed() {
+		return io.EOF
+	}
 	n, err := p.port.Write(data)
 	if err != nil {
 		return fmt.Errorf("serial write: %w", err)
@@ -93,11 +104,14 @@ func ReadFrameTransport(conn Transport, timeout time.Duration, passthrough io.Wr
 	inFrame := false
 
 	for {
-		remaining := 30 * time.Second
+		remaining := 250 * time.Millisecond
 		if !noTimeout {
 			remaining = time.Until(deadline)
 			if remaining <= 0 {
 				return nil, ErrTimeout
+			}
+			if remaining > 250*time.Millisecond {
+				remaining = 250 * time.Millisecond
 			}
 		}
 		if err := conn.SetReadTimeout(remaining); err != nil {
@@ -109,10 +123,7 @@ func ReadFrameTransport(conn Transport, timeout time.Duration, passthrough io.Wr
 			return nil, fmt.Errorf("transport read: %w", err)
 		}
 		if n == 0 {
-			if noTimeout {
-				continue
-			}
-			return nil, ErrTimeout
+			continue
 		}
 
 		b := buf[0]
@@ -142,7 +153,23 @@ func ReadFrameTransport(conn Transport, timeout time.Duration, passthrough io.Wr
 
 // Read reads raw bytes from the serial port.
 func (p *Port) Read(buf []byte) (int, error) {
-	return p.port.Read(buf)
+	if p.isClosed() {
+		return 0, io.EOF
+	}
+	n, err := p.port.Read(buf)
+	if n == 0 && err == nil && p.isClosed() {
+		return 0, io.EOF
+	}
+	return n, err
+}
+
+func (p *Port) isClosed() bool {
+	select {
+	case <-p.closed:
+		return true
+	default:
+		return false
+	}
 }
 
 // SetReadTimeout sets the read timeout on the serial port.

@@ -30,9 +30,11 @@ type HelperBackend interface {
 }
 
 type controlSessionServer struct {
-	backend HelperBackend
-	writer  io.Writer
-	writeMu sync.Mutex
+	backend             HelperBackend
+	writer              io.Writer
+	writeMu             sync.Mutex
+	lifecycleMu         sync.Mutex
+	lifecycleGeneration uint64
 }
 
 type controlSessionRequest struct {
@@ -144,38 +146,9 @@ func RunControlSessionServer(backend HelperBackend, reader io.Reader,
 func (s *controlSessionServer) handleRequest(request controlSessionRequest) {
 	switch request.Command {
 	case "connect":
-		device, err := s.backend.Connect(request.Port)
-		if err != nil {
-			s.sendResponse(controlSessionResponse{
-				Type:  "response",
-				ID:    request.ID,
-				OK:    false,
-				Error: helperErrorFrom(err),
-			})
-			return
-		}
-		s.sendEvent(controlSessionEvent{
-			Type:      "event",
-			Event:     "connected",
-			RequestID: request.ID,
-			Device:    device,
-		})
-		s.sendResponse(controlSessionResponse{
-			Type:   "response",
-			ID:     request.ID,
-			OK:     true,
-			Result: device,
-		})
+		s.handleConnectRequest(request)
 	case "disconnect":
-		err := s.backend.Disconnect()
-		if err == nil {
-			s.sendEvent(controlSessionEvent{
-				Type:      "event",
-				Event:     "disconnected",
-				RequestID: request.ID,
-			})
-		}
-		s.finishSimple(request.ID, nil, err)
+		s.handleDisconnectRequest(request)
 	case "interrupt":
 		s.finishSimple(request.ID, nil, s.backend.Interrupt())
 	case "eval":
@@ -213,6 +186,79 @@ func (s *controlSessionServer) handleRequest(request controlSessionRequest) {
 			Error: &helperError{Code: "unknown_command", Message: fmt.Sprintf("unknown command: %s", request.Command)},
 		})
 	}
+}
+
+func (s *controlSessionServer) handleConnectRequest(request controlSessionRequest) {
+	generation := s.nextLifecycleGeneration()
+
+	device, err := s.backend.Connect(request.Port)
+	if err != nil {
+		if !s.backend.IsConnected() {
+			s.sendEvent(controlSessionEvent{
+				Type:      "event",
+				Event:     "disconnected",
+				RequestID: request.ID,
+			})
+		}
+		s.sendResponse(controlSessionResponse{
+			Type:  "response",
+			ID:    request.ID,
+			OK:    false,
+			Error: helperErrorFrom(err),
+		})
+		return
+	}
+	if !s.isCurrentLifecycleGeneration(generation) {
+		s.sendResponse(controlSessionResponse{
+			Type: "response",
+			ID:   request.ID,
+			OK:   false,
+			Error: &helperError{
+				Code:    "not_connected",
+				Message: "connection attempt was superseded",
+			},
+		})
+		return
+	}
+	s.sendEvent(controlSessionEvent{
+		Type:      "event",
+		Event:     "connected",
+		RequestID: request.ID,
+		Device:    device,
+	})
+	s.sendResponse(controlSessionResponse{
+		Type:   "response",
+		ID:     request.ID,
+		OK:     true,
+		Result: device,
+	})
+}
+
+func (s *controlSessionServer) handleDisconnectRequest(request controlSessionRequest) {
+	s.nextLifecycleGeneration()
+
+	err := s.backend.Disconnect()
+	if err == nil {
+		s.sendEvent(controlSessionEvent{
+			Type:      "event",
+			Event:     "disconnected",
+			RequestID: request.ID,
+		})
+	}
+	s.finishSimple(request.ID, nil, err)
+}
+
+func (s *controlSessionServer) nextLifecycleGeneration() uint64 {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	s.lifecycleGeneration++
+	return s.lifecycleGeneration
+}
+
+func (s *controlSessionServer) isCurrentLifecycleGeneration(generation uint64) bool {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	return s.lifecycleGeneration == generation
 }
 
 func (s *controlSessionServer) runTextRequest(requestID int64,

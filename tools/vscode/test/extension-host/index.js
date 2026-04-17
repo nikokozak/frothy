@@ -56,6 +56,20 @@ async function openEditor(fileName) {
   return vscode.window.showTextDocument(document, { preview: false });
 }
 
+async function restoreEditorSmokeFixtures() {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder) {
+    return;
+  }
+  const fixtures = new Map([
+    ["send-file.frothy", "keep = 30\nprobe(n) { n + 2 }\n"],
+  ]);
+  for (const [fileName, contents] of fixtures) {
+    const uri = vscode.Uri.file(path.join(folder.uri.fsPath, fileName));
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(contents, "utf8"));
+  }
+}
+
 async function replaceDocument(editor, text) {
   const fullRange = new vscode.Range(
     editor.document.positionAt(0),
@@ -138,7 +152,7 @@ async function run() {
     await expectSee(api, "control.value", "42");
     trace("selection ok");
 
-    const fileEditor = await openEditor("send-file.frothy");
+    let fileEditor = await openEditor("send-file.frothy");
     await replaceDocument(
       fileEditor,
       "keep = 10\ndrop = 20\nprobe(n) { n + 1 }\n",
@@ -184,7 +198,7 @@ async function run() {
     await waitForOutput(api, "[frothy] save");
     trace("save ok");
 
-    const runtimeEditor = await openEditor("line-send.frothy");
+    let runtimeEditor = await openEditor("line-send.frothy");
     setLineCursor(runtimeEditor, 0);
     await replaceDocument(
       runtimeEditor,
@@ -211,6 +225,26 @@ async function run() {
     await api.waitForState("connected", 15000);
     trace("interrupt ok");
 
+    fileEditor = await openEditor("send-file.frothy");
+    await replaceDocument(fileEditor, "file_after_interrupt = 44\n");
+    runtimeEditor = await openEditor("line-send.frothy");
+    setLineCursor(runtimeEditor, 1);
+    api.clearOutput();
+    const supersededEval = vscode.commands.executeCommand("frothy.sendSelection");
+    await api.waitForState("running", 15000);
+    await vscode.window.showTextDocument(fileEditor.document, { preview: false });
+    await vscode.commands.executeCommand("frothy.sendFile");
+    await withTimeout(supersededEval, 15000, "superseded eval to settle");
+    await api.waitForState("connected", 15000);
+    await waitForOutput(api, "send requested while running");
+    await waitForOutput(api, "[frothy] reset");
+    api.clearOutput();
+    await expectSee(api, "file_after_interrupt", "44");
+    api.clearOutput();
+    await expectSee(api, "probe", "see failed");
+    trace("send file while running ok");
+
+    runtimeEditor = await openEditor("line-send.frothy");
     setLineCursor(runtimeEditor, 2);
     api.clearOutput();
     await vscode.commands.executeCommand("frothy.sendSelection");
@@ -218,14 +252,22 @@ async function run() {
     trace("post interrupt ok");
 
     api.clearOutput();
+    api.enqueueWarningResponse("Wipe Snapshot");
     await vscode.commands.executeCommand("frothy.wipe");
     await waitForOutput(api, "[frothy] wipe");
     await expectSee(api, "keep", "see failed");
     trace("wipe ok");
 
+    runtimeEditor = await openEditor("line-send.frothy");
+    await replaceDocument(runtimeEditor, "while true { nil }\n");
+    setLineCursor(runtimeEditor, 0);
+    api.clearOutput();
+    const disconnectEval = vscode.commands.executeCommand("frothy.sendSelection");
+    await api.waitForState("running", 15000);
     await vscode.commands.executeCommand("frothy.disconnect");
+    await withTimeout(disconnectEval, 15000, "disconnect eval to settle");
     await api.waitForState("idle", 15000);
-    trace("disconnect ok");
+    trace("disconnect while running ok");
 
     api.clearOutput();
     await vscode.commands.executeCommand("frothy.connect");
@@ -233,6 +275,9 @@ async function run() {
     await vscode.commands.executeCommand("frothy.disconnect");
     await api.waitForState("idle", 15000);
     trace("reconnect ok");
+
+    await restoreEditorSmokeFixtures();
+    trace("fixtures restored");
 
     const mode = process.env.FROTHY_VSCODE_SMOKE_MODE ?? "local";
     const report = [
@@ -254,6 +299,12 @@ async function run() {
       // Best effort.
     }
     trace(`error: ${err.stack || err}`);
+    try {
+      await restoreEditorSmokeFixtures();
+      trace("fixtures restored after failure");
+    } catch (restoreErr) {
+      trace(`fixture restore failed: ${restoreErr.stack || restoreErr}`);
+    }
     throw err;
   }
 }

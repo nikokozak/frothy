@@ -66,8 +66,8 @@ small edits with `Send Selection / Form` and then rerun a fixed target such as
 `boot:` without moving the cursor back to that line.
 
 `Send File` is whole-file `reset + eval`. If the connected firmware does not
-support control `reset`, the extension blocks the send and tells you to upgrade
-or reflash the firmware instead of replaying the file additively.
+support control `reset`, the extension warns before any explicitly unsafe
+additive fallback and otherwise tells you to upgrade or reflash the firmware.
 
 `Rerun Last Form` is bound to `Cmd+Option+R` on macOS and `Ctrl+Alt+R` on other
 platforms.
