@@ -616,7 +616,7 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 		| build/host/frothy-host-normal); \
 	notice_expected=$$(printf '%s\n' \
 		'> error: busy: 0 (25)' \
-		'detail: uart.open argument 1 was rejected' \
+		'detail: uart.open argument 1 was rejected -- uart port is already open -- uart.close it first' \
 		'> notice: not saved (13)' \
 		"detail: cannot save slot 'appuart' - bound to a live handle or buffer" \
 		'ok' \
