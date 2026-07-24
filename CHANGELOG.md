@@ -6,6 +6,8 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-07-24
+
 ### Added
 
 - **Errors can now say why.** Rejections that used to stop at
