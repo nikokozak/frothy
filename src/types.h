@@ -164,6 +164,8 @@ typedef struct fr_diagnostic_t {
   fr_diag_presentation_t presentation;
   /* May point into suggestion_text; do not copy a populated diagnostic. */
   const char *context_name;
+  /* Always a static string literal or NULL; never owned, never copied. */
+  const char *note;
   const char *suggestion_start;
   uint16_t suggestion_length;
   char suggestion_text[FR_PROFILE_PARSE_MAX_TOKEN_BYTES + 1];

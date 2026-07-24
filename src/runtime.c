@@ -67,12 +67,18 @@ fr_err_t fr_runtime_clear_project(fr_runtime_t *runtime) {
     return FR_ERR_INVALID;
   }
 
+  /* A failed platform close keeps its entry for a later retry (ADR 0068);
+     nothing is folded into clear_err -- this path runs inside payload
+     restore, where cleanup noise must not abort a restore. */
   fr_handle_close_all(runtime);
   /* Spec §5: unregister platform resources before code/slots clear so late
      callbacks cannot reach a body that is about to disappear. Report the
      first failed removal, but finish the clear so the runtime is consistent. */
 #if FR_FEATURE_BLE
   clear_err = fr_platform_ble_project_clear();
+  /* The project clear is authoritative for connections even when it
+     errors, so any BLE entry preserved above is stale now (ADR 0068). */
+  fr_handle_forget_kind(runtime, FR_HANDLE_KIND_BLE_CONNECTION);
 #endif
   step_err = fr_event_clear_table(runtime);
   if (clear_err == FR_OK) {

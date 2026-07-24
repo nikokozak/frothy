@@ -38,8 +38,15 @@ typedef struct fr_handle_table_t {
 } fr_handle_table_t;
 
 void fr_handle_reset(fr_runtime_t *runtime);
+/* Bulk closes preserve any entry whose platform close failed (the
+ * platform kept ownership -- see fr_platform_handle_close) so a later
+ * cleanup can retry, and keep closing the rest. Survivor state is
+ * observable through the open paths; nothing is reported (ADR 0068). */
 void fr_handle_close_all(fr_runtime_t *runtime);
 fr_err_t fr_handle_close_kind(fr_runtime_t *runtime, fr_handle_kind_t kind);
+/* Clear every entry of a kind without platform closes -- only for when
+ * another teardown already freed the platform side (ble.off). */
+void fr_handle_forget_kind(fr_runtime_t *runtime, fr_handle_kind_t kind);
 
 fr_err_t fr_handle_reserve(fr_runtime_t *runtime, fr_handle_kind_t kind,
                            fr_handle_ref_t *out_ref,

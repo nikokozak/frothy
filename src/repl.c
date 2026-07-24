@@ -1132,7 +1132,12 @@ static fr_err_t fr_repl_append_runtime_context_line(
     FR_TRY(fr_repl_append(out, out_cap, used, " argument "));
     FR_TRY(fr_repl_append_u16(out, out_cap, used,
                               (uint16_t)(diag->index + 1u)));
-    return fr_repl_append(out, out_cap, used, " was rejected\n");
+    FR_TRY(fr_repl_append(out, out_cap, used, " was rejected"));
+    if (diag->note != NULL) {
+      FR_TRY(fr_repl_append(out, out_cap, used, " -- "));
+      FR_TRY(fr_repl_append(out, out_cap, used, diag->note));
+    }
+    return fr_repl_append_char(out, out_cap, used, '\n');
   }
 
   switch ((fr_diag_message_id_t)diag->message_id) {

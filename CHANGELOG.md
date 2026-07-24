@@ -6,6 +6,28 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+### Added
+
+- **Errors can now say why.** Rejections that used to stop at
+  `detail: adc.read argument 1 was rejected` carry a one-line reason:
+  `-- pin has no analog input (ADC1)`. The first set covers the walls
+  students actually hit — non-analog pins on `adc.read`/`adc.above?`,
+  `busy` on `pwm.open` frequency changes, `gpio.write`/`gpio.mode` on a
+  PWM-held pin, reopening an open uart port, and `watchdog.feed` before
+  `watchdog.arm`. Notes are static text on the existing detail line; the
+  wire protocol and error codes are unchanged.
+
+### Fixed
+
+- **A failed platform close no longer strands the resource.** Bulk handle
+  cleanup (`wipe-user`, `restore`, project clear) used to clear the
+  runtime entry even when the platform kept the slot — the pin then
+  reported `busy` until reset with nothing left to close. The entry is
+  now preserved so the next cleanup retries the close, an exact-repeat
+  `pwm.open` still reaches the live channel, and `ble.off` (whose radio
+  teardown frees connections wholesale) forgets its entries afterwards
+  instead of leaving stale ones.
+
 ## [0.1.11] - 2026-07-23
 
 ### Fixed

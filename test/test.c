@@ -3419,7 +3419,8 @@ static void test_uart(void) {
                 FR_ERR_BUSY &&
             strcmp(out,
                    "error: busy: 0 (25)\n"
-                   "detail: uart.open argument 1 was rejected\n") == 0);
+                   "detail: uart.open argument 1 was rejected -- uart port "
+                   "is already open -- uart.close it first\n") == 0);
   CHECK("uart available starts with host script",
         test_uart_one_handle_call(&runtime, available_entry, handle, &result) ==
                 FR_OK &&
@@ -3804,6 +3805,28 @@ static void test_pwm(void) {
             fr_repl_eval_line(&runtime, "diagpwm is nil", out, sizeof(out)) ==
                 FR_OK);
 
+  CHECK("pwm busy explains the frequency change",
+        fr_repl_eval_line(&runtime, "busypwm is pwm.open: 6, 1000", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "pwm.open: 6, 2000", out,
+                              sizeof(out)) == FR_ERR_BUSY &&
+            strcmp(out,
+                   "error: busy: 2000 (25)\n"
+                   "detail: pwm.open argument 2 was rejected -- pin is "
+                   "already open at a different frequency -- pwm.close it "
+                   "first\n") == 0);
+  CHECK("gpio busy explains the pwm hold",
+        fr_repl_eval_line(&runtime, "gpio.write: 6, 1", out, sizeof(out)) ==
+                FR_ERR_BUSY &&
+            strcmp(out,
+                   "error: busy: 6 (25)\n"
+                   "detail: gpio.write argument 1 was rejected -- pin is "
+                   "driven by an open pwm channel -- pwm.close it first\n") ==
+                0 &&
+            fr_repl_eval_line(&runtime, "pwm.close: busypwm", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "busypwm is nil", out, sizeof(out)) ==
+                FR_OK);
   CHECK("pwm rejects write after close",
         test_pwm_open_call(&runtime, open_entry, 7, 1000, &handle) == FR_OK &&
             test_pwm_close_call(&runtime, close_entry, handle, &result) ==
@@ -5684,6 +5707,107 @@ static void test_release_word_reports_text(void) {
             strstr(out, FR_RELEASE) != NULL);
 }
 #endif
+
+/* ADR 0068: a failed platform close preserves the runtime entry (the
+ * platform retained the slot for retry) instead of orphaning the slot
+ * behind a cleared table. */
+static void test_bulk_close_preserves_failed_entries(void) {
+  fr_runtime_t runtime;
+  char out[64];
+
+  CHECK("strict-close base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("strict-close open two pwm",
+        fr_repl_eval_line(&runtime, "a is pwm.open: 24, 1000", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "b is pwm.open: 25, 1000", out,
+                              sizeof(out)) == FR_OK);
+  fr_host_handle_fail_close(FR_ERR_IO, 1);
+  fr_handle_close_all(&runtime);
+  CHECK("strict-close freed the entry whose close succeeded",
+        fr_repl_eval_line(&runtime, "b is pwm.open: 25, 2000", out,
+                          sizeof(out)) == FR_OK);
+  CHECK("strict-close survivor answers an exact repeat",
+        fr_repl_eval_line(&runtime, "a is pwm.open: 24, 1000", out,
+                          sizeof(out)) == FR_OK);
+  CHECK("strict-close survivor still holds its frequency",
+        fr_repl_eval_line(&runtime, "pwm.open: 24, 2000", out, sizeof(out)) ==
+            FR_ERR_BUSY);
+  fr_handle_close_all(&runtime);
+  CHECK("strict-close retry clears the survivor",
+        fr_repl_eval_line(&runtime, "c is pwm.open: 24, 2000", out,
+                          sizeof(out)) == FR_OK);
+  fr_handle_close_all(&runtime);
+}
+
+/* ADR 0068: wipe-user reports nothing for close failures. A transient
+ * failure is healed by the save-remount's second cleanup pass. */
+static void test_wipe_user_retries_failed_close(void) {
+  fr_runtime_t runtime;
+  char out[64];
+
+  CHECK("wipe-retry base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("wipe-retry open pwm",
+        fr_repl_eval_line(&runtime, "h is pwm.open: 24, 1000", out,
+                          sizeof(out)) == FR_OK);
+  fr_host_handle_fail_close(FR_ERR_IO, 1);
+  CHECK("wipe-retry wipe-user stays ok",
+        fr_persist_wipe_user(&runtime) == FR_OK);
+  CHECK("wipe-retry remount retried the close",
+        fr_repl_eval_line(&runtime, "h is pwm.open: 24, 2000", out,
+                          sizeof(out)) == FR_OK);
+  fr_handle_close_all(&runtime);
+}
+
+/* ADR 0068: a close that keeps failing keeps its entry — the pin stays
+ * reachable through the exact-repeat open, and a later cleanup without
+ * the failure clears it. */
+static void test_wipe_user_preserves_unclosable_handle(void) {
+  fr_runtime_t runtime;
+  char out[64];
+
+  CHECK("wipe-preserve base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("wipe-preserve open pwm",
+        fr_repl_eval_line(&runtime, "h is pwm.open: 24, 1000", out,
+                          sizeof(out)) == FR_OK);
+  fr_host_handle_fail_close(FR_ERR_IO, 255);
+  CHECK("wipe-preserve wipe-user stays ok",
+        fr_persist_wipe_user(&runtime) == FR_OK);
+  fr_host_handle_fail_close(FR_OK, 0);
+  CHECK("wipe-preserve survivor answers an exact repeat",
+        fr_repl_eval_line(&runtime, "h2 is pwm.open: 24, 1000", out,
+                          sizeof(out)) == FR_OK);
+  CHECK("wipe-preserve survivor still holds its frequency",
+        fr_repl_eval_line(&runtime, "pwm.open: 24, 2000", out, sizeof(out)) ==
+            FR_ERR_BUSY);
+  CHECK("wipe-preserve later wipe clears the survivor",
+        fr_persist_wipe_user(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime, "h3 is pwm.open: 24, 2000", out,
+                              sizeof(out)) == FR_OK);
+  fr_handle_close_all(&runtime);
+}
+
+/* ADR 0068: close_kind preserves a failing entry and closes the rest. */
+static void test_close_kind_preserves_failed_entry(void) {
+  fr_runtime_t runtime;
+  char out[64];
+
+  CHECK("kind-preserve base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("kind-preserve open two pwm",
+        fr_repl_eval_line(&runtime, "a is pwm.open: 24, 1000", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "b is pwm.open: 25, 1000", out,
+                              sizeof(out)) == FR_OK);
+  fr_host_handle_fail_close(FR_ERR_IO, 1);
+  CHECK("kind-preserve reports the first close error",
+        fr_handle_close_kind(&runtime, FR_HANDLE_KIND_PWM) == FR_ERR_IO);
+  CHECK("kind-preserve freed the entry whose close succeeded",
+        fr_repl_eval_line(&runtime, "b is pwm.open: 25, 2000", out,
+                          sizeof(out)) == FR_OK);
+  CHECK("kind-preserve survivor answers an exact repeat",
+        fr_repl_eval_line(&runtime, "a is pwm.open: 24, 1000", out,
+                          sizeof(out)) == FR_OK);
+  fr_handle_close_all(&runtime);
+}
 
 /* Regression: public restore must close platform handles too — replacing the
  * user tier orphans open channels the same way wipe-user did. */
@@ -13727,6 +13851,13 @@ static void test_repl(void) {
             fr_repl_eval_line(&runtime, "adc.above?: 14, 600", out,
                               sizeof(out)) == FR_OK &&
             strcmp(out, "false\nok\n") == 0);
+  CHECK("repl explains a non-analog adc pin",
+        fr_repl_eval_line(&runtime, "adc.read: 6", out, sizeof(out)) ==
+                FR_ERR_DOMAIN &&
+            strcmp(out,
+                   "error: bad value: 6 (3)\n"
+                   "detail: adc.read argument 1 was rejected -- pin has no "
+                   "analog input (ADC1)\n") == 0);
   CHECK("host microsecond delay carries sub-millisecond time",
         fr_platform_millis(&before_ms) == FR_OK &&
             fr_platform_micros(&before_us) == FR_OK &&
@@ -16257,6 +16388,10 @@ int main(void) {
   test_event_register_cancel();
   test_wipe_user_clears_events();
   test_wipe_user_closes_handles();
+  test_bulk_close_preserves_failed_entries();
+  test_wipe_user_retries_failed_close();
+  test_wipe_user_preserves_unclosable_handle();
+  test_close_kind_preserves_failed_entry();
 #if FR_FEATURE_TEXT
   test_release_word_reports_text();
 #endif

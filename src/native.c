@@ -199,6 +199,20 @@ fr_err_t fr_native_reject_arg(fr_runtime_t *runtime, const fr_tagged_t *args,
   return err;
 }
 
+fr_err_t fr_native_reject_arg_because(fr_runtime_t *runtime,
+                                      const fr_tagged_t *args,
+                                      uint8_t arg_count, uint8_t index,
+                                      fr_err_t err, const char *note) {
+  bool was_empty = fr_native_diag_empty(runtime);
+
+  err = fr_native_reject_arg(runtime, args, arg_count, index, err);
+  if (was_empty && runtime != NULL && runtime->diag != NULL &&
+      runtime->diag->message_id == FR_DIAG_MSG_RUNTIME_REJECTED_ARGUMENT) {
+    runtime->diag->note = note;
+  }
+  return err;
+}
+
 static const char *fr_native_diag_context_name(fr_diagnostic_t *diag,
                                                const char *context_name) {
   uint16_t length = 0;

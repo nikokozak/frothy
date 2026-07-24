@@ -53,6 +53,13 @@ void fr_native_restore_base(fr_runtime_t *runtime);
  * fr_native_call_named applies signature-owned display/redaction policy. */
 fr_err_t fr_native_reject_arg(fr_runtime_t *runtime, const fr_tagged_t *args,
                               uint8_t arg_count, uint8_t index, fr_err_t err);
+/* reject_arg plus a one-line reason rendered on the detail line. The note
+ * must be a static string literal that is true on every target: name the
+ * concept, not board-specific pin lists. Lower case, no trailing period. */
+fr_err_t fr_native_reject_arg_because(fr_runtime_t *runtime,
+                                      const fr_tagged_t *args,
+                                      uint8_t arg_count, uint8_t index,
+                                      fr_err_t err, const char *note);
 fr_err_t fr_native_install(fr_runtime_t *runtime, fr_native_fn_t fn,
                            uint8_t arity,
                            const fr_native_signature_t *signature,

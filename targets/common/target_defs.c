@@ -176,6 +176,11 @@ static fr_err_t fr_native_gpio_mode(fr_runtime_t *runtime,
   if (err == FR_ERR_DOMAIN) {
     return fr_native_reject_arg(runtime, args, arg_count, 0, err);
   }
+  if (err == FR_ERR_BUSY) {
+    return fr_native_reject_arg_because(
+        runtime, args, arg_count, 0, err,
+        "pin is driven by an open pwm channel -- pwm.close it first");
+  }
   FR_TRY(err);
   *out = fr_tagged_nil();
   return FR_OK;
@@ -193,6 +198,11 @@ static fr_err_t fr_native_gpio_write(fr_runtime_t *runtime,
   err = fr_platform_gpio_write(pin, value);
   if (err == FR_ERR_DOMAIN) {
     return fr_native_reject_arg(runtime, args, arg_count, 0, err);
+  }
+  if (err == FR_ERR_BUSY) {
+    return fr_native_reject_arg_because(
+        runtime, args, arg_count, 0, err,
+        "pin is driven by an open pwm channel -- pwm.close it first");
   }
   FR_TRY(err);
   *out = fr_tagged_nil();
@@ -225,7 +235,8 @@ static fr_err_t fr_native_adc_read(fr_runtime_t *runtime,
   FR_TRY(fr_native_decode_u16(runtime, args, arg_count, 0, &pin));
   err = fr_platform_adc_read(pin, &value);
   if (err == FR_ERR_DOMAIN) {
-    return fr_native_reject_arg(runtime, args, arg_count, 0, err);
+    return fr_native_reject_arg_because(runtime, args, arg_count, 0, err,
+                                        "pin has no analog input (ADC1)");
   }
   FR_TRY(err);
   return fr_tagged_encode_int((int32_t)value, out);
@@ -243,7 +254,8 @@ static fr_err_t fr_native_adc_above(fr_runtime_t *runtime,
   FR_TRY(fr_native_decode_u16(runtime, args, arg_count, 1, &threshold));
   err = fr_platform_adc_read(pin, &value);
   if (err == FR_ERR_DOMAIN) {
-    return fr_native_reject_arg(runtime, args, arg_count, 0, err);
+    return fr_native_reject_arg_because(runtime, args, arg_count, 0, err,
+                                        "pin has no analog input (ADC1)");
   }
   FR_TRY(err);
   *out = value > threshold ? fr_tagged_true() : fr_tagged_false();
@@ -308,7 +320,9 @@ static fr_err_t fr_native_uart_open(fr_runtime_t *runtime,
   if (err != FR_OK) {
     (void)fr_handle_release_reserved(runtime, ref);
     if (err == FR_ERR_BUSY) {
-      err = fr_native_reject_arg(runtime, args, arg_count, 0, err);
+      err = fr_native_reject_arg_because(
+          runtime, args, arg_count, 0, err,
+          "uart port is already open -- uart.close it first");
     }
     return err;
   }
@@ -472,9 +486,10 @@ static fr_err_t fr_native_pwm_open(fr_runtime_t *runtime,
    * frequency returns the existing handle with no state change, checked
    * before reservation so no generation is burned. A different frequency on
    * an open pin stays busy. A platform slot with no live handle entry is
-   * rare but reachable -- close-all is best-effort and a failed platform
-   * close keeps the slot occupied after the runtime entry clears -- so that
-   * case fails closed as busy; other lookup errors propagate as themselves. */
+   * now nearly unreachable -- bulk close preserves entries whose platform
+   * close failed (ADR 0068), leaving only boot-time table zeroing to orphan
+   * a slot -- but that case still fails closed as busy; other lookup errors
+   * propagate as themselves. */
   err = fr_platform_pwm_find(pin, freq, &platform_index);
   if (err == FR_OK) {
     err = fr_handle_find_active(runtime, FR_HANDLE_KIND_PWM, platform_index,
@@ -483,6 +498,11 @@ static fr_err_t fr_native_pwm_open(fr_runtime_t *runtime,
       return FR_ERR_BUSY;
     }
     return err;
+  }
+  if (err == FR_ERR_BUSY) {
+    return fr_native_reject_arg_because(
+        runtime, args, arg_count, 1, err,
+        "pin is already open at a different frequency -- pwm.close it first");
   }
   if (err != FR_ERR_NOT_FOUND) {
     return err;
@@ -493,7 +513,8 @@ static fr_err_t fr_native_pwm_open(fr_runtime_t *runtime,
   if (err != FR_OK) {
     (void)fr_handle_release_reserved(runtime, ref);
     if (err == FR_ERR_DOMAIN) {
-      err = fr_native_reject_arg(runtime, args, arg_count, 0, err);
+      err = fr_native_reject_arg_because(runtime, args, arg_count, 0, err,
+                                         "pin cannot drive output");
     }
     return err;
   }
@@ -1678,7 +1699,18 @@ static fr_err_t fr_native_ble_off(fr_runtime_t *runtime,
    * an in-progress disconnect even though off completes the shutdown. */
   (void)fr_handle_close_kind(runtime, FR_HANDLE_KIND_BLE_CONNECTION);
 #endif
-  FR_TRY(fr_platform_ble_off(runtime));
+  {
+    fr_err_t off_err = fr_platform_ble_off(runtime);
+
+#if FR_BLE_ENABLE_CENTRAL || FR_BLE_ENABLE_PERIPHERAL
+    /* Radio teardown drops every platform connection before any later
+     * cleanup step can fail, so entries preserved by a failed close above
+     * are stale even when off itself errors. Forget them either way and
+     * keep the platform's error (ADR 0068). */
+    fr_handle_forget_kind(runtime, FR_HANDLE_KIND_BLE_CONNECTION);
+#endif
+    FR_TRY(off_err);
+  }
   *out = fr_tagged_nil();
   return FR_OK;
 }

@@ -393,8 +393,24 @@ fr_err_t fr_platform_heap_largest(uint32_t *out_bytes) {
   return FR_OK;
 }
 
+#ifdef FR_HOST_TEST_HELPERS
+static fr_err_t fr_host_handle_close_fail_err = FR_OK;
+static uint8_t fr_host_handle_close_fail_times = 0;
+
+void fr_host_handle_fail_close(fr_err_t err, uint8_t times) {
+  fr_host_handle_close_fail_err = err;
+  fr_host_handle_close_fail_times = times;
+}
+#endif
+
 fr_err_t fr_platform_handle_close(fr_handle_kind_t kind,
                                   uint16_t platform_index) {
+#ifdef FR_HOST_TEST_HELPERS
+  if (fr_host_handle_close_fail_times > 0) {
+    fr_host_handle_close_fail_times -= 1;
+    return fr_host_handle_close_fail_err;
+  }
+#endif
 #if FR_FEATURE_UART
   if (kind == FR_HANDLE_KIND_UART) {
     if (platform_index < FR_PROFILE_MAX_HANDLES) {
@@ -922,6 +938,8 @@ typedef struct fr_host_ble_state_t {
 
 #ifdef FR_HOST_TEST_HELPERS
   fr_err_t fail_next_on;
+  fr_err_t fail_next_off;
+  fr_err_t fail_next_project_clear;
 #if FR_BLE_ENABLE_OBSERVER
   fr_err_t fail_next_scan_start;
 #endif
@@ -1424,6 +1442,17 @@ fr_err_t fr_platform_ble_off(fr_runtime_t *runtime) {
   fr_host_ble.radio_state = FR_BLE_RADIO_OFF;
   fr_host_ble.shutdown_in_progress = false;
   fr_host_ble.cleanup_required = false;
+#ifdef FR_HOST_TEST_HELPERS
+  /* Models the ESP shape: connections drop before later cleanup steps can
+   * fail, so a failing off has still torn the connections down. */
+  if (fr_host_ble.fail_next_off != FR_OK) {
+    fr_err_t failure = fr_host_ble.fail_next_off;
+
+    fr_host_ble.fail_next_off = FR_OK;
+    fr_host_ble_record(FR_BLE_OP_OFF, failure, 0, 0);
+    return failure;
+  }
+#endif
   fr_host_ble_record(FR_BLE_OP_OFF, FR_OK, 0, 0);
   return FR_OK;
 }
@@ -1480,6 +1509,16 @@ fr_err_t fr_platform_ble_project_clear(void) {
   fr_host_ble.last_platform_code = 0;
   fr_host_ble.last_protocol_reason = 0;
   fr_host_ble.last_operation_ms = fr_host_millis;
+#ifdef FR_HOST_TEST_HELPERS
+  /* Models the ESP shape: connections and volatile state drop before the
+   * later cleanup step that reports the failure. */
+  if (fr_host_ble.fail_next_project_clear != FR_OK) {
+    fr_err_t failure = fr_host_ble.fail_next_project_clear;
+
+    fr_host_ble.fail_next_project_clear = FR_OK;
+    return failure;
+  }
+#endif
   return FR_OK;
 }
 
@@ -2811,6 +2850,14 @@ void fr_host_ble_fail_next_on(fr_err_t err, int32_t raw_code) {
   fr_host_ble.fail_next_on = err;
   fr_host_ble.fail_next_on_raw_code = raw_code;
   fr_host_ble.timeout_next_on = false;
+}
+
+void fr_host_ble_fail_next_off(fr_err_t err) {
+  fr_host_ble.fail_next_off = err;
+}
+
+void fr_host_ble_fail_next_project_clear(fr_err_t err) {
+  fr_host_ble.fail_next_project_clear = err;
 }
 
 #if FR_BLE_ENABLE_OBSERVER

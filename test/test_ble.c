@@ -1251,6 +1251,216 @@ static void test_peripheral_accept_drains_stale_notices_and_ble_off(void) {
   TEST_ASSERT_EQUAL_UINT8(gatt_value, current_value);
 }
 
+/* ADR 0068: ble.off owns the final outcome. A connection close that fails
+ * (in-progress disconnect) preserves its entry, but once the radio is down
+ * the platform side is gone, so ble.off must forget the survivor instead
+ * of leaving a stale entry behind. */
+static void test_ble_off_forgets_unclosable_connection(void) {
+  static const uint8_t advertising_data[] = {2, 0x01, 0x06};
+  const uint8_t peer[7] = {FR_BLE_ADDRESS_RANDOM, 0xB1, 0xB2, 0xB3,
+                           0xB4,                  0xB5, 0xB6};
+  const fr_base_def_t *accept = NULL;
+  const fr_base_def_t *off = NULL;
+  fr_tagged_t connection = fr_tagged_nil();
+  fr_tagged_t result = fr_tagged_nil();
+  fr_handle_ref_t connection_ref = {0};
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  read_native_def("ble.accept", FR_SLOT_BLE_ACCEPT, 0, &accept);
+  read_native_def("ble.off", FR_SLOT_BLE_OFF, 0, &off);
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_ble_on(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_platform_ble_advertise_start(
+                        advertising_data, sizeof(advertising_data), NULL, 0,
+                        100, true));
+  TEST_ASSERT_EQUAL(FR_OK, fr_host_ble_queue_incoming(peer));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    accept->native_fn(&s_runtime, NULL, 0, &connection));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_tagged_decode_handle_ref(connection, &connection_ref));
+
+  fr_host_handle_fail_close(FR_ERR_BLE_BUSY, 1);
+  TEST_ASSERT_EQUAL(FR_OK, off->native_fn(&s_runtime, NULL, 0, &result));
+  fr_host_handle_fail_close(FR_OK, 0);
+  TEST_ASSERT_EQUAL(FR_ERR_HANDLE,
+                    fr_handle_lookup(&s_runtime, connection_ref,
+                                     FR_HANDLE_KIND_BLE_CONNECTION, NULL,
+                                     NULL));
+  TEST_ASSERT_EQUAL(FR_BLE_RADIO_OFF, read_status().radio_state);
+}
+
+/* ADR 0068 round 2: public restore's BLE project clear is authoritative --
+ * it frees every platform connection before close_all runs, so the close
+ * reports a stale handle. Restore must forget the entries rather than let
+ * preservation keep a zombie that blocks the platform index forever. */
+static void test_restore_forgets_live_connection(void) {
+  static const uint8_t advertising_data[] = {2, 0x01, 0x06};
+  const uint8_t peer[7] = {FR_BLE_ADDRESS_RANDOM, 0xC1, 0xC2, 0xC3,
+                           0xC4,                  0xC5, 0xC6};
+  const fr_base_def_t *accept = NULL;
+  fr_tagged_t connection = fr_tagged_nil();
+  fr_handle_ref_t connection_ref = {0};
+  char out[64];
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_repl_eval_line(&s_runtime, "save", out, sizeof(out)));
+  read_native_def("ble.accept", FR_SLOT_BLE_ACCEPT, 0, &accept);
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_ble_on(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_platform_ble_advertise_start(
+                        advertising_data, sizeof(advertising_data), NULL, 0,
+                        100, true));
+  TEST_ASSERT_EQUAL(FR_OK, fr_host_ble_queue_incoming(peer));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    accept->native_fn(&s_runtime, NULL, 0, &connection));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_tagged_decode_handle_ref(connection, &connection_ref));
+
+  TEST_ASSERT_EQUAL(
+      FR_OK, fr_repl_eval_line(&s_runtime, "restore", out, sizeof(out)));
+  TEST_ASSERT_EQUAL(FR_ERR_HANDLE,
+                    fr_handle_lookup(&s_runtime, connection_ref,
+                                     FR_HANDLE_KIND_BLE_CONNECTION, NULL,
+                                     NULL));
+
+  /* The platform index must be reusable: a zombie entry would make the
+   * next accept fail activate's one-live-entry-per-slot check. */
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_ble_on(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_platform_ble_advertise_start(
+                        advertising_data, sizeof(advertising_data), NULL, 0,
+                        100, true));
+  TEST_ASSERT_EQUAL(FR_OK, fr_host_ble_queue_incoming(peer));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    accept->native_fn(&s_runtime, NULL, 0, &connection));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_tagged_decode_handle_ref(connection, &connection_ref));
+  TEST_ASSERT_EQUAL(FR_OK, fr_handle_close(&s_runtime, connection_ref));
+}
+
+/* ADR 0068 round 3: restore forgets connection entries even when the BLE
+ * project clear reports a cleanup error -- the connections dropped before
+ * the failing step, so the abandoned restore must not keep a zombie. */
+static void test_restore_forgets_connection_when_ble_clear_fails(void) {
+  static const uint8_t advertising_data[] = {2, 0x01, 0x06};
+  const uint8_t peer[7] = {FR_BLE_ADDRESS_RANDOM, 0xF1, 0xF2, 0xF3,
+                           0xF4,                  0xF5, 0xF6};
+  const fr_base_def_t *accept = NULL;
+  fr_tagged_t connection = fr_tagged_nil();
+  fr_handle_ref_t connection_ref = {0};
+  char out[64];
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_repl_eval_line(&s_runtime, "save", out, sizeof(out)));
+  read_native_def("ble.accept", FR_SLOT_BLE_ACCEPT, 0, &accept);
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_ble_on(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_platform_ble_advertise_start(
+                        advertising_data, sizeof(advertising_data), NULL, 0,
+                        100, true));
+  TEST_ASSERT_EQUAL(FR_OK, fr_host_ble_queue_incoming(peer));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    accept->native_fn(&s_runtime, NULL, 0, &connection));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_tagged_decode_handle_ref(connection, &connection_ref));
+
+  fr_host_ble_fail_next_project_clear(FR_ERR_IO);
+  TEST_ASSERT_EQUAL(FR_ERR_IO, fr_persist_restore(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_ERR_HANDLE,
+                    fr_handle_lookup(&s_runtime, connection_ref,
+                                     FR_HANDLE_KIND_BLE_CONNECTION, NULL,
+                                     NULL));
+
+  /* The platform index stays reusable after the failed restore. */
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_ble_on(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_platform_ble_advertise_start(
+                        advertising_data, sizeof(advertising_data), NULL, 0,
+                        100, true));
+  TEST_ASSERT_EQUAL(FR_OK, fr_host_ble_queue_incoming(peer));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    accept->native_fn(&s_runtime, NULL, 0, &connection));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_tagged_decode_handle_ref(connection, &connection_ref));
+  TEST_ASSERT_EQUAL(FR_OK, fr_handle_close(&s_runtime, connection_ref));
+}
+
+/* ADR 0068 round 2: a failing radio-off has still dropped every platform
+ * connection, so ble.off forgets the entries and reports the error. */
+static void test_ble_off_failure_still_forgets_connections(void) {
+  static const uint8_t advertising_data[] = {2, 0x01, 0x06};
+  const uint8_t peer[7] = {FR_BLE_ADDRESS_RANDOM, 0xD1, 0xD2, 0xD3,
+                           0xD4,                  0xD5, 0xD6};
+  const fr_base_def_t *accept = NULL;
+  const fr_base_def_t *off = NULL;
+  fr_tagged_t connection = fr_tagged_nil();
+  fr_tagged_t result = fr_tagged_nil();
+  fr_handle_ref_t connection_ref = {0};
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  read_native_def("ble.accept", FR_SLOT_BLE_ACCEPT, 0, &accept);
+  read_native_def("ble.off", FR_SLOT_BLE_OFF, 0, &off);
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_ble_on(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_platform_ble_advertise_start(
+                        advertising_data, sizeof(advertising_data), NULL, 0,
+                        100, true));
+  TEST_ASSERT_EQUAL(FR_OK, fr_host_ble_queue_incoming(peer));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    accept->native_fn(&s_runtime, NULL, 0, &connection));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_tagged_decode_handle_ref(connection, &connection_ref));
+
+  fr_host_handle_fail_close(FR_ERR_BLE_BUSY, 1);
+  fr_host_ble_fail_next_off(FR_ERR_IO);
+  TEST_ASSERT_EQUAL(FR_ERR_IO, off->native_fn(&s_runtime, NULL, 0, &result));
+  fr_host_handle_fail_close(FR_OK, 0);
+  TEST_ASSERT_EQUAL(FR_ERR_HANDLE,
+                    fr_handle_lookup(&s_runtime, connection_ref,
+                                     FR_HANDLE_KIND_BLE_CONNECTION, NULL,
+                                     NULL));
+  TEST_ASSERT_EQUAL(FR_BLE_RADIO_OFF, read_status().radio_state);
+}
+
+/* ADR 0068 round 2: project clear is authoritative for connections even
+ * when a preceding close failed -- no zombie entry may survive it. */
+static void test_clear_project_forgets_unclosable_connection(void) {
+  static const uint8_t advertising_data[] = {2, 0x01, 0x06};
+  const uint8_t peer[7] = {FR_BLE_ADDRESS_RANDOM, 0xE1, 0xE2, 0xE3,
+                           0xE4,                  0xE5, 0xE6};
+  const fr_base_def_t *accept = NULL;
+  fr_tagged_t connection = fr_tagged_nil();
+  fr_handle_ref_t connection_ref = {0};
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  read_native_def("ble.accept", FR_SLOT_BLE_ACCEPT, 0, &accept);
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_ble_on(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_platform_ble_advertise_start(
+                        advertising_data, sizeof(advertising_data), NULL, 0,
+                        100, true));
+  TEST_ASSERT_EQUAL(FR_OK, fr_host_ble_queue_incoming(peer));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    accept->native_fn(&s_runtime, NULL, 0, &connection));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_tagged_decode_handle_ref(connection, &connection_ref));
+
+  fr_host_handle_fail_close(FR_ERR_BLE_BUSY, 1);
+  TEST_ASSERT_EQUAL(FR_OK, fr_runtime_clear_project(&s_runtime));
+  fr_host_handle_fail_close(FR_OK, 0);
+  TEST_ASSERT_EQUAL(FR_ERR_HANDLE,
+                    fr_handle_lookup(&s_runtime, connection_ref,
+                                     FR_HANDLE_KIND_BLE_CONNECTION, NULL,
+                                     NULL));
+}
+
 static void test_radio_lifecycle_and_status(void) {
   static const uint8_t own_address[6] = {0xaa, 0xbb, 0xcc,
                                          0xdd, 0xee, 0xff};
@@ -1594,6 +1804,11 @@ int main(void) {
   RUN_TEST(test_central_connection_owns_one_inspectable_handle);
   RUN_TEST(test_gatt_client_keeps_remote_handles_connection_scoped);
   RUN_TEST(test_peripheral_accept_drains_stale_notices_and_ble_off);
+  RUN_TEST(test_ble_off_forgets_unclosable_connection);
+  RUN_TEST(test_ble_off_failure_still_forgets_connections);
+  RUN_TEST(test_restore_forgets_live_connection);
+  RUN_TEST(test_restore_forgets_connection_when_ble_clear_fails);
+  RUN_TEST(test_clear_project_forgets_unclosable_connection);
   RUN_TEST(test_radio_lifecycle_and_status);
   RUN_TEST(test_scan_parameters_and_state_gates);
   RUN_TEST(test_queue_conservation_overflow_and_cursor);

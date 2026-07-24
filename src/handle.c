@@ -62,13 +62,15 @@ void fr_handle_close_all(fr_runtime_t *runtime) {
     fr_handle_entry_t *entry = &runtime->handles.entries[i];
 
     if (entry->kind != FR_HANDLE_KIND_NONE &&
-        entry->platform_index != FR_HANDLE_PLATFORM_NONE) {
-      (void)fr_platform_handle_close(entry->kind, entry->platform_index);
+        entry->platform_index != FR_HANDLE_PLATFORM_NONE &&
+        fr_platform_handle_close(entry->kind, entry->platform_index) !=
+            FR_OK) {
+      /* The platform kept ownership (ADR 0068): keep the entry so the
+       * next bulk cleanup retries and open paths can find it. */
+      continue;
     }
     fr_handle_clear_entry(entry);
   }
-#else
-  (void)runtime;
 #endif
 }
 
@@ -87,8 +89,12 @@ fr_err_t fr_handle_close_kind(fr_runtime_t *runtime, fr_handle_kind_t kind) {
     }
     if (entry->platform_index != FR_HANDLE_PLATFORM_NONE) {
       fr_err_t err = fr_platform_handle_close(kind, entry->platform_index);
-      if (first_error == FR_OK) {
-        first_error = err;
+      if (err != FR_OK) {
+        /* Same preservation rule as fr_handle_close_all. */
+        if (first_error == FR_OK) {
+          first_error = err;
+        }
+        continue;
       }
     }
     fr_handle_clear_entry(entry);
@@ -98,6 +104,24 @@ fr_err_t fr_handle_close_kind(fr_runtime_t *runtime, fr_handle_kind_t kind) {
   (void)runtime;
   (void)kind;
   return FR_ERR_UNSUPPORTED;
+#endif
+}
+
+void fr_handle_forget_kind(fr_runtime_t *runtime, fr_handle_kind_t kind) {
+#if FR_FEATURE_HANDLES
+  if (runtime == NULL || !fr_handle_kind_is_known(kind)) {
+    return;
+  }
+  for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
+    fr_handle_entry_t *entry = &runtime->handles.entries[i];
+
+    if (entry->kind == kind) {
+      fr_handle_clear_entry(entry);
+    }
+  }
+#else
+  (void)runtime;
+  (void)kind;
 #endif
 }
 

@@ -85,8 +85,22 @@ fr_err_t fr_platform_gpio_write(uint16_t pin, uint16_t value);
 fr_err_t fr_platform_gpio_read(uint16_t pin, uint16_t *out_value);
 fr_err_t fr_platform_adc_read(uint16_t pin, uint16_t *out_value);
 fr_err_t fr_platform_poll_interrupt(fr_runtime_t *runtime);
+/* Close contract (ADR 0068), in ownership terms: FR_OK means the
+ * runtime may forget its entry -- the platform finishes any remaining
+ * teardown itself (async BLE disconnects included). An error means the
+ * platform kept the resource in a retryable state (trace and pulse do
+ * this by design) and the entry should be retained -- unless a broader
+ * authoritative teardown (ble radio off, ble project clear) has already
+ * invalidated that ownership, in which case the caller forgets the
+ * entries via fr_handle_forget_kind. */
 fr_err_t fr_platform_handle_close(fr_handle_kind_t kind,
                                   uint16_t platform_index);
+
+#ifdef FR_HOST_TEST_HELPERS
+/* Arm the next `times` handle closes to fail with err without freeing
+ * the host slot (the retained-retryable contract above); 0 disarms. */
+void fr_host_handle_fail_close(fr_err_t err, uint8_t times);
+#endif
 
 /* Return 0 when the platform can't report (host, AVR); not an error. */
 fr_err_t fr_platform_heap_free(uint32_t *out_bytes);
@@ -756,6 +770,8 @@ void fr_host_ble_reset(void);
 fr_err_t fr_host_ble_push_scan_report(const fr_ble_scan_report_t *report);
 #endif
 void fr_host_ble_fail_next_on(fr_err_t err, int32_t raw_code);
+void fr_host_ble_fail_next_off(fr_err_t err);
+void fr_host_ble_fail_next_project_clear(fr_err_t err);
 #if FR_BLE_ENABLE_OBSERVER
 void fr_host_ble_fail_next_scan_start(fr_err_t err, int32_t raw_code);
 #endif

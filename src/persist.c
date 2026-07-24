@@ -291,12 +291,22 @@ fr_err_t fr_persist_restore(fr_runtime_t *runtime) {
 #if FR_FEATURE_BLE
   /* Public restore preserves library-tier slots, so it cannot clear the whole
    * runtime. BLE is still volatile project state and must stop before saved
-   * user code replaces the current user tier. */
-  FR_TRY(fr_platform_ble_project_clear());
+   * user code replaces the current user tier. The clear is authoritative for
+   * connections even when it errors (they drop before later cleanup steps
+   * can fail), so the runtime entries are forgotten either way -- otherwise
+   * close_all would preserve them as zombies (ADR 0068). */
+  {
+    fr_err_t ble_err = fr_platform_ble_project_clear();
+
+    fr_handle_forget_kind(runtime, FR_HANDLE_KIND_BLE_CONNECTION);
+    FR_TRY(ble_err);
+  }
 #endif
   /* Handles are volatile project state for the same reason: replacing the
    * user tier drops every binding that could close them, leaving the pin
-   * stuck busy until reset (same failure wipe-user had). */
+   * stuck busy until reset (same failure wipe-user had). A failed close
+   * keeps its entry (ADR 0068) for the next cleanup to retry; the result
+   * is not reported -- restore errors must mean restore. */
   fr_handle_close_all(runtime);
   return fr_persist_restore_read_and_apply(
       runtime, fr_persist_payload_restore_user_only, false, NULL);
@@ -379,7 +389,9 @@ fr_err_t fr_persist_wipe_user(fr_runtime_t *runtime) {
    * spams 'wrong type' errors. Close handles for the same reason with a worse
    * failure mode: the tier wipe drops every binding that could close them, so
    * a surviving platform channel (an open PWM pin, an I2C bus) would be
-   * unreachable and its pin stuck busy until reset. */
+   * unreachable and its pin stuck busy until reset. A failed close keeps
+   * its entry (ADR 0068); the save's remount re-enters clear_project and
+   * retries it, so no error is reported from here. */
   FR_TRY(fr_event_clear_table(runtime));
   fr_handle_close_all(runtime);
   fr_persist_session_wipe_user_tier(runtime);
