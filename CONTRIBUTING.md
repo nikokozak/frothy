@@ -8,8 +8,8 @@ build, and explain.
 Clone the repo and build the local CLI:
 
 ```sh
-git clone https://github.com/nikokozak/FrothyRewrite
-cd FrothyRewrite
+git clone https://github.com/nikokozak/frothy
+cd frothy
 make cli
 ```
 
@@ -118,8 +118,8 @@ Render the proven formula template with the real release values:
 
 ```sh
 version=X.Y.Z
-url="https://github.com/nikokozak/FrothyRewrite/archive/refs/tags/v${version}.tar.gz"
-firmware_url="https://github.com/nikokozak/FrothyRewrite/releases/download/v${version}/frothy-firmware-v${version}.tar.gz"
+url="https://github.com/nikokozak/frothy/archive/refs/tags/v${version}.tar.gz"
+firmware_url="https://github.com/nikokozak/frothy/releases/download/v${version}/frothy-firmware-v${version}.tar.gz"
 curl -fL "$url" -o "/tmp/frothy-${version}.tar.gz"
 curl -fL "$firmware_url" -o "/tmp/frothy-firmware-${version}.tar.gz"
 sha256="$(shasum -a 256 "/tmp/frothy-${version}.tar.gz" | cut -d ' ' -f 1)"

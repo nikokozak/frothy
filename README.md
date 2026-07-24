@@ -1,6 +1,6 @@
 # Frothy
 
-[![CI](https://github.com/nikokozak/FrothyRewrite/actions/workflows/ci.yml/badge.svg)](https://github.com/nikokozak/FrothyRewrite/actions/workflows/ci.yml)
+[![CI](https://github.com/nikokozak/frothy/actions/workflows/ci.yml/badge.svg)](https://github.com/nikokozak/frothy/actions/workflows/ci.yml)
 
 Frothy is a small language for live-coding microcontrollers over a serial
 line. You define words and send them to the board; it evaluates them and
@@ -31,8 +31,8 @@ deeper inspection, file editing, and CI:
 
 ```sh
 # 1. Get the source.
-git clone https://github.com/nikokozak/FrothyRewrite
-cd FrothyRewrite
+git clone https://github.com/nikokozak/frothy
+cd frothy
 
 # 2. Build the host CLI and put it on your PATH.
 #    `make cli` prints the exact export line for your machine; add it to

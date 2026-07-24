@@ -131,7 +131,7 @@ async function connectWithGuidance(): Promise<void> {
         await vscode.commands.executeCommand('workbench.action.openSettings', 'frothy.binaryPath');
       } else if (choice === 'Install CLI') {
         await vscode.env.openExternal(
-          vscode.Uri.parse('https://github.com/nikokozak/FrothyRewrite#develop-on-your-machine'),
+          vscode.Uri.parse('https://github.com/nikokozak/frothy#develop-on-your-machine'),
         );
       }
       return;

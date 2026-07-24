@@ -7,12 +7,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nikokozak/FrothyRewrite.git",
+    "url": "https://github.com/nikokozak/frothy.git",
     "directory": "editors/vscode"
   },
-  "homepage": "https://github.com/nikokozak/FrothyRewrite/tree/main/editors/vscode#readme",
+  "homepage": "https://github.com/nikokozak/frothy/tree/main/editors/vscode#readme",
   "bugs": {
-    "url": "https://github.com/nikokozak/FrothyRewrite/issues"
+    "url": "https://github.com/nikokozak/frothy/issues"
   },
   "engines": {
     "vscode": "^1.74.0"
