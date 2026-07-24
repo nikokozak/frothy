@@ -224,6 +224,12 @@ fr_err_t fr_handle_release_reserved(fr_runtime_t *runtime,
     return FR_ERR_INVALID;
   }
 
+  /* A reservation released before activation never handed its tagged ref
+   * to user code (the open failed inside the native), so the generation
+   * rolls back instead of burning. Without this, repeatedly reopening a
+   * busy resource retires table entries one failed attempt at a time
+   * until the whole table is dead until reboot. */
+  entry->generation = (fr_handle_generation_t)(entry->generation - 1u);
   fr_handle_clear_entry(entry);
   return FR_OK;
 #else

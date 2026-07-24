@@ -5809,6 +5809,65 @@ static void test_close_kind_preserves_failed_entry(void) {
   fr_handle_close_all(&runtime);
 }
 
+#if FR_FEATURE_UART
+/* Failed opens must not spend handle identities: a reservation released
+ * before activation never handed its tagged ref to user code, so the
+ * generation rolls back. Before this, ~15 failed reopens per free entry
+ * retired the whole table until reboot. */
+static void test_failed_open_does_not_burn_generations(void) {
+  fr_runtime_t runtime;
+  const fr_native_entry_t *open_entry = NULL;
+  fr_tagged_t handle = 0;
+  fr_tagged_t retry = 0;
+  fr_err_t err = FR_OK;
+  bool all_busy = true;
+  char out[64];
+
+  CHECK("gen-burn base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("gen-burn uart entry",
+        test_uart_entry(&runtime, FR_SLOT_UART_OPEN, &open_entry) == FR_OK);
+  CHECK("gen-burn open port",
+        test_uart_open_call(&runtime, open_entry, 6, 9600, &handle) == FR_OK);
+  for (int attempt = 0; attempt < 300; attempt++) {
+    err = test_uart_open_call(&runtime, open_entry, 6, 9600, &retry);
+    if (err != FR_ERR_BUSY) {
+      all_busy = false;
+      break;
+    }
+  }
+  CHECK("gen-burn every failed reopen stays busy", all_busy);
+  CHECK("gen-burn table still allocates afterwards",
+        fr_repl_eval_line(&runtime, "later is pwm.open: 26, 1000", out,
+                          sizeof(out)) == FR_OK);
+  fr_handle_close_all(&runtime);
+}
+
+/* ADR 0068 for a kind without an exact-repeat path: the survivor keeps
+ * the platform port reachable for retry, and the failed reopens in
+ * between cost nothing. */
+static void test_uart_survivor_lifecycle(void) {
+  fr_runtime_t runtime;
+  const fr_native_entry_t *open_entry = NULL;
+  fr_tagged_t handle = 0;
+  fr_tagged_t retry = 0;
+
+  CHECK("uart-survivor base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("uart-survivor entry",
+        test_uart_entry(&runtime, FR_SLOT_UART_OPEN, &open_entry) == FR_OK);
+  CHECK("uart-survivor open",
+        test_uart_open_call(&runtime, open_entry, 7, 9600, &handle) == FR_OK);
+  fr_host_handle_fail_close(FR_ERR_IO, 1);
+  fr_handle_close_all(&runtime);
+  CHECK("uart-survivor reopen stays busy",
+        test_uart_open_call(&runtime, open_entry, 7, 9600, &retry) ==
+            FR_ERR_BUSY);
+  fr_handle_close_all(&runtime);
+  CHECK("uart-survivor retry frees the port",
+        test_uart_open_call(&runtime, open_entry, 7, 9600, &retry) == FR_OK);
+  fr_handle_close_all(&runtime);
+}
+#endif
+
 /* Regression: public restore must close platform handles too — replacing the
  * user tier orphans open channels the same way wipe-user did. */
 static void test_restore_closes_handles(void) {
@@ -16392,6 +16451,10 @@ int main(void) {
   test_wipe_user_retries_failed_close();
   test_wipe_user_preserves_unclosable_handle();
   test_close_kind_preserves_failed_entry();
+#if FR_FEATURE_UART
+  test_failed_open_does_not_burn_generations();
+  test_uart_survivor_lifecycle();
+#endif
 #if FR_FEATURE_TEXT
   test_release_word_reports_text();
 #endif

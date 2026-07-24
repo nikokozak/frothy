@@ -19,6 +19,13 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ### Fixed
 
+- **Failed opens no longer spend handle identities.** Opening a busy
+  resource (a uart port already open, a pin held at another frequency)
+  used to consume a handle-table generation per attempt; enough retries
+  — a `forever` loop polling an open, for instance — permanently retired
+  the table until reboot. A reservation released before its open
+  succeeds now rolls its generation back, which is safe because the
+  handle value never reached user code.
 - **A failed platform close no longer strands the resource.** Bulk handle
   cleanup (`wipe-user`, `restore`, project clear) used to clear the
   runtime entry even when the platform kept the slot — the pin then
