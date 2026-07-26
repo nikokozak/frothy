@@ -31,6 +31,16 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   outright for a live Bluetooth connection, a library-mode slot, or more
   handle-bound slots than the device can hold at once.
 
+### Fixed
+
+- **Giving a live handle a second name works.** `led2 is led` used to
+  answer `error: not saved (13)` and bind nothing, which was doubly
+  confusing: nothing was being saved. The definition path folds a name
+  into a literal so the overlay image can carry it, and an image cannot
+  carry a handle. A handle is no longer treated as a literal, so the
+  binding reads the slot when the line runs — the two names then refer to
+  the same open resource, and closing through one invalidates the other.
+
 ## [0.1.12] - 2026-07-24
 
 ### Added

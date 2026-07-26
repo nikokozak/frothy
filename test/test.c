@@ -5973,6 +5973,57 @@ static void test_failed_remount_drops_the_hold(void) {
 }
 #endif
 
+#if FR_FEATURE_PWM
+/* Giving a live handle a second name used to answer `not saved (13)` and
+ * bind nothing: the definition path folded the name into a literal for the
+ * overlay image, which cannot carry a handle. A handle is not a literal,
+ * so the binding reads the slot when the line runs. */
+static void test_naming_a_handle_binds_it(void) {
+  fr_runtime_t runtime;
+  char out[128];
+
+  CHECK("alias base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("alias open a pin",
+        fr_repl_eval_line(&runtime, "h is pwm.open: 22, 1000", out,
+                          sizeof(out)) == FR_OK);
+  CHECK("alias naming the handle binds it",
+        fr_repl_eval_line(&runtime, "z is h", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "ok\n") == 0 &&
+            fr_repl_eval_line(&runtime, "see z", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "overlay volatile pwm\nok\n") == 0);
+  CHECK("alias drives the same resource",
+        fr_repl_eval_line(&runtime, "pwm.write: z, 64", out, sizeof(out)) ==
+            FR_OK);
+  CHECK("alias closing through one name invalidates the other",
+        fr_repl_eval_line(&runtime, "pwm.close: h", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "pwm.write: z, 64", out,
+                              sizeof(out)) == FR_ERR_HANDLE);
+  CHECK("alias of an ordinary value is untouched",
+        fr_repl_eval_line(&runtime, "one is 1", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "two is one", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "two", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "1\nok\n") == 0);
+  CHECK("alias of an unknown name still reports the name",
+        fr_repl_eval_line(&runtime, "three is nowhere", out, sizeof(out)) ==
+                FR_ERR_NOT_FOUND &&
+            strstr(out, "nowhere") != NULL);
+#if FR_FEATURE_RECORDS
+  /* A slot can hold a handle; a record field cannot, and says so. Only
+   * the definition path treats a handle value as a run-time binding. */
+  CHECK("alias rule does not leak into record fields",
+        fr_repl_eval_line(&runtime, "k is pwm.open: 23, 1000", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "record Point [ x, y ]", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "p is Point: k, 1", out,
+                              sizeof(out)) == FR_ERR_VOLATILE);
+#endif
+  fr_handle_close_all(&runtime);
+}
+#endif
+
 #if FR_FEATURE_PERSISTENCE && FR_FEATURE_PWM
 /* A save that fails before it commits changes nothing at all: the live
  * program, its unsaved definitions, and its open handles are all still
@@ -10122,7 +10173,9 @@ static void test_compile(void) {
                 FR_OK &&
             fr_slot_read(&binding_runtime, slot_id, &tagged) == FR_OK &&
             fr_tagged_decode_int(tagged, &decoded) == FR_OK && decoded == 512);
-  CHECK("compile runtime value binding is call-only",
+  /* Calls and handle-valued names bind at run time; a literal belongs in
+   * the image, so it is not this path's shape. */
+  CHECK("compile runtime value binding leaves literals to the image",
         fr_compile_value_binding_for_runtime(&binding_runtime, "static is 1",
                                              &binding) == FR_ERR_UNSUPPORTED);
   CHECK("compiled parameter function owns arity header",
@@ -16657,6 +16710,9 @@ int main(void) {
   test_wipe_user_retries_failed_close();
   test_wipe_user_preserves_unclosable_handle();
   test_close_kind_preserves_failed_entry();
+#if FR_FEATURE_PWM
+  test_naming_a_handle_binds_it();
+#endif
 #if FR_FEATURE_PERSISTENCE && FR_FEATURE_PWM
   test_save_holds_live_handles();
   test_save_holds_only_named_handles();

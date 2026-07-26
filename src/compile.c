@@ -1964,8 +1964,19 @@ static fr_err_t fr_compile_literal_ref(const fr_compile_context_t *ctx,
   }
   if (expr->kind == FR_PARSE_EXPR_NAME && ctx != NULL &&
       ctx->runtime != NULL) {
+    fr_handle_ref_t handle_ref = {0};
+
     FR_TRY(fr_compile_expr_slot_for_name(ctx, expr->name, &slot_id, false));
     FR_TRY(fr_slot_read(ctx->runtime, slot_id, &tagged));
+    /* A handle value is not a literal. It names a resource in this
+     * runtime, and an image record is also the wire format, where a handle
+     * from somewhere else would mean nothing -- true of a stale ref too,
+     * which names a resource that is already gone. Callers decide what to
+     * do about it: a definition falls back to binding at run time, a
+     * record field has nowhere else to go and reports the rejection. */
+    if (fr_tagged_decode_handle_ref(tagged, &handle_ref) == FR_OK) {
+      return FR_ERR_VOLATILE;
+    }
     *out_ref = (fr_image_ref_t){FR_IMAGE_REF_LITERAL_TAGGED, tagged, 0};
     return FR_OK;
   }
@@ -2464,7 +2475,19 @@ fr_compile_overlay_update_with_context(const fr_compile_context_t *ctx,
   }
 #endif
 
-  FR_TRY(fr_compile_literal_ref(ctx, value, &out->slot_inits[0].ref));
+  {
+    fr_err_t literal_err =
+        fr_compile_literal_ref(ctx, value, &out->slot_inits[0].ref);
+
+    /* A definition whose value is a handle is not an image record at all;
+     * it binds when the line runs. Say "not this shape" so the caller
+     * tries the value binding. Everywhere else a volatile value is simply
+     * rejected. */
+    if (literal_err == FR_ERR_VOLATILE) {
+      return FR_ERR_UNSUPPORTED;
+    }
+    FR_TRY(literal_err);
+  }
   out->slot_inits[0].slot_id = slot_id;
   out->overlay_update = (fr_overlay_update_t){
       .slot_inits = out->slot_inits,
@@ -2504,9 +2527,32 @@ fr_err_t fr_compile_overlay_update_for_runtime_with_diagnostic(
   return fr_compile_overlay_update_with_context(&ctx, source, out);
 }
 
+/* A value the binding has to compute when the line runs, rather than one
+ * the image can carry. Calls always are. A plain name is too when it holds
+ * a handle value right now: fr_compile_literal_ref refuses to fold that
+ * into a literal, so `led2 is led` binds by reading the slot at run time.
+ * The name lookup here uses the quiet resolver -- an unknown name is not
+ * this shape, and the caller reports it. */
 static bool fr_compile_expr_is_runtime_binding_value(
-    const fr_parse_expr_t *expr) {
-  return expr != NULL && expr->kind == FR_PARSE_EXPR_CALL;
+    const fr_compile_context_t *ctx, const fr_parse_expr_t *expr) {
+  fr_slot_id_t slot_id = 0;
+  fr_tagged_t tagged = 0;
+  fr_handle_ref_t handle_ref = {0};
+
+  if (expr == NULL) {
+    return false;
+  }
+  if (expr->kind == FR_PARSE_EXPR_CALL) {
+    return true;
+  }
+  if (expr->kind != FR_PARSE_EXPR_NAME || ctx == NULL || ctx->runtime == NULL) {
+    return false;
+  }
+  if (fr_compile_slot_for_name(ctx, expr->name, &slot_id) != FR_OK ||
+      fr_slot_read(ctx->runtime, slot_id, &tagged) != FR_OK) {
+    return false;
+  }
+  return fr_tagged_decode_handle_ref(tagged, &handle_ref) == FR_OK;
 }
 
 fr_err_t fr_compile_value_binding_for_runtime(
@@ -2539,7 +2585,7 @@ fr_err_t fr_compile_value_binding_for_runtime_with_diagnostic(
     return FR_ERR_UNSUPPORTED;
   }
   value = fr_compile_expr_at(&parsed, parsed.definition.value);
-  if (!fr_compile_expr_is_runtime_binding_value(value)) {
+  if (!fr_compile_expr_is_runtime_binding_value(&ctx, value)) {
     return FR_ERR_UNSUPPORTED;
   }
 
