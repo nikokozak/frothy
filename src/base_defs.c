@@ -29,17 +29,16 @@ static fr_err_t fr_native_save(fr_runtime_t *runtime, const fr_tagged_t *args,
     *runtime->diag = (fr_diagnostic_t){0};
   }
   err = fr_persist_save(runtime);
-  if (err == FR_ERR_VOLATILE && runtime != NULL && runtime->diag != NULL) {
-    if (runtime->diag->kind == FR_DIAG_NONE) {
-      runtime->diag->kind = FR_DIAG_NOTE;
-      runtime->diag->message_id = FR_DIAG_MSG_RUNTIME_SLOT_UNPERSISTABLE;
-      runtime->diag->got = FR_DIAG_UNPERSISTABLE_UNSUPPORTED_VALUE;
-    }
-    runtime->diag->presentation = FR_DIAG_PRESENT_NOTICE;
-  }
+  fr_persist_note_save_rejection(runtime, err);
   FR_TRY(err);
   *out = fr_tagged_nil();
   return FR_OK;
+}
+
+/* The REPL asks so its own zero-arg call paths can run the tolerant save
+ * (ADR 0070). Identity, not slot id: an alias holds the same native. */
+bool fr_base_native_is_save(const fr_native_entry_t *entry) {
+  return entry != NULL && entry->fn == fr_native_save;
 }
 
 static fr_err_t fr_native_restore(fr_runtime_t *runtime, const fr_tagged_t *args,

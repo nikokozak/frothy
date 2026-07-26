@@ -1793,6 +1793,47 @@ static void test_save_and_restore_drop_volatile_ble_state(void) {
   TEST_ASSERT_EQUAL(FR_BLE_OP_NONE, status.last_operation);
 }
 
+/* ADR 0070: the prompt's tolerant save stores handle values as nil and
+ * keeps them running, but a BLE connection cannot be kept: the project
+ * teardown beside the handle close destroys it, so a held value would
+ * name nothing. Those saves keep refusing, in the wording they always
+ * had. */
+static void test_save_refuses_to_hold_a_live_connection(void) {
+  static const uint8_t advertising_data[] = {2, 0x01, 0x06};
+  const uint8_t peer[7] = {FR_BLE_ADDRESS_RANDOM, 0xD1, 0xD2, 0xD3,
+                           0xD4,                  0xD5, 0xD6};
+  const fr_base_def_t *accept = NULL;
+  fr_tagged_t connection = fr_tagged_nil();
+  fr_slot_id_t slot_id = 0;
+  char out[192];
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  read_native_def("ble.accept", FR_SLOT_BLE_ACCEPT, 0, &accept);
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_ble_on(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_platform_ble_advertise_start(
+                        advertising_data, sizeof(advertising_data), NULL, 0,
+                        100, true));
+  TEST_ASSERT_EQUAL(FR_OK, fr_host_ble_queue_incoming(peer));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    accept->native_fn(&s_runtime, NULL, 0, &connection));
+
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_slot_prepare_project_name(&s_runtime, "link", &slot_id));
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_write(&s_runtime, slot_id, connection));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_slot_bind_project_name(&s_runtime, "link", slot_id));
+
+  TEST_ASSERT_EQUAL(FR_ERR_VOLATILE,
+                    fr_repl_eval_line(&s_runtime, "save", out, sizeof(out)));
+  TEST_ASSERT_EQUAL_STRING(
+      "notice: not saved (13)\n"
+      "detail: cannot save slot 'link' - bound to a live handle or buffer\n"
+      "ok\n",
+      out);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_lifecycle_words_and_status_retention);
@@ -1817,5 +1858,6 @@ int main(void) {
   RUN_TEST(test_runtime_clear_shuts_down_ble_before_reuse);
   RUN_TEST(test_runtime_clear_closes_connection_handle_before_radio);
   RUN_TEST(test_save_and_restore_drop_volatile_ble_state);
+  RUN_TEST(test_save_refuses_to_hold_a_live_connection);
   return UNITY_END();
 }

@@ -6,6 +6,15 @@
 #if FR_FEATURE_PERSISTENCE
 
 fr_err_t fr_persist_save(fr_runtime_t *runtime);
+/* ADR 0070: the prompt's own `save`. Stores slots holding handle values as
+ * nil, keeps the live ones running, and leaves an advisory diagnostic
+ * naming what will not survive a reboot. Anything it cannot hold falls
+ * back to fr_persist_save, so those responses are unchanged. Only for
+ * calls made outside the VM -- see the comment on the definition. */
+fr_err_t fr_persist_save_tolerant(fr_runtime_t *runtime);
+/* Mark a volatile save rejection for notice presentation. Both save entries
+ * need it: refusing to save is advice at the prompt, not a fault. */
+void fr_persist_note_save_rejection(fr_runtime_t *runtime, fr_err_t err);
 fr_err_t fr_persist_restore(fr_runtime_t *runtime);
 fr_err_t fr_persist_wipe(fr_runtime_t *runtime);
 

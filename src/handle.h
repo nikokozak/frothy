@@ -37,11 +37,23 @@ typedef struct fr_handle_table_t {
   fr_handle_entry_t entries[FR_HANDLE_TABLE_CAPACITY];
 } fr_handle_table_t;
 
+/* One slot whose live handle value a tolerant save stores as nil while the
+ * resource keeps running (ADR 0070). The save owns the array; the runtime
+ * borrows it for the length of that one save. */
+typedef struct fr_handle_hold_t {
+  fr_slot_id_t slot_id;
+  fr_tagged_t value;
+} fr_handle_hold_t;
+
 void fr_handle_reset(fr_runtime_t *runtime);
 /* Bulk closes preserve any entry whose platform close failed (the
  * platform kept ownership -- see fr_platform_handle_close) so a later
  * cleanup can retry, and keep closing the rest. Survivor state is
- * observable through the open paths; nothing is reported (ADR 0068). */
+ * observable through the open paths; nothing is reported (ADR 0068).
+ *
+ * close_all also keeps every entry a tolerant save is holding, and takes
+ * that hold away as it goes: the hold covers one reset, so the recovery
+ * reset after a failed apply closes everything (ADR 0070). */
 void fr_handle_close_all(fr_runtime_t *runtime);
 fr_err_t fr_handle_close_kind(fr_runtime_t *runtime, fr_handle_kind_t kind);
 /* Clear every entry of a kind without platform closes -- only for when

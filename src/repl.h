@@ -10,6 +10,10 @@ enum {
   FR_REPL_APPLY_BYTES =
       (FR_REPL_LINE_BYTES - FR_REPL_APPLY_PREFIX_BYTES - 1) / 2,
   FR_REPL_OUTPUT_BYTES = 256,
+  /* Notice codes start above the fr_err range: a notice can report a
+   * success worth mentioning, which no error code can name. Registry is in
+   * docs/wire-protocol.md. */
+  FR_REPL_NOTICE_SAVED_HANDLES_AS_NIL = 100,
 };
 
 typedef fr_err_t (*fr_repl_read_line_fn)(char *line, uint16_t cap,

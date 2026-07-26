@@ -47,6 +47,18 @@ fr_err_t fr_persist_payload_save_stream(
     uint16_t old_payload_length, fr_persist_payload_write_fn_t write,
     void *ctx, uint16_t *out_length);
 
+/* ADR 0070 tolerant save. hold_volatile_slots collects the overlay slots
+ * whose live handle value can be stored as nil, or returns FR_ERR_VOLATILE
+ * when any of them must keep the old strict rejection. note_held_slots
+ * records the advisory the REPL renders after the save succeeds. */
+fr_err_t fr_persist_payload_hold_volatile_slots(const fr_runtime_t *runtime,
+                                                fr_handle_hold_t *out,
+                                                uint8_t cap,
+                                                uint8_t *out_count);
+void fr_persist_payload_note_held_slots(const fr_runtime_t *runtime,
+                                        fr_slot_id_t first_slot_id,
+                                        uint8_t count);
+
 /* Wipe the module-global per-slot tier stamps. Called when a fresh base image
  * is installed so stamps from a prior runtime cannot leak across. */
 void fr_persist_session_reset(void);

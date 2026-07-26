@@ -3171,11 +3171,6 @@ static void test_uart(void) {
   const fr_native_entry_t *save_entry = NULL;
   fr_diagnostic_t save_diag = {0};
   fr_tagged_t save_result = 0;
-  fr_tagged_t unsafe_name_handle = 0;
-  fr_slot_id_t appuart_slot_id = 0;
-  fr_slot_id_t unsafe_name_slot_id = 0;
-  char compact_notice_out[27];
-  char short_notice_out[26];
 #endif
 
   CHECK("uart installs base image", fr_base_image_install(&runtime) == FR_OK);
@@ -3266,57 +3261,9 @@ static void test_uart(void) {
             save_diag.context_name != NULL &&
             strcmp(save_diag.context_name, "appuart") == 0);
   runtime.diag = NULL;
-  CHECK("bare save reports volatile state as a notice",
-        fr_repl_eval_line(&runtime, "save", out, sizeof(out)) ==
-                FR_ERR_VOLATILE &&
-            strcmp(out,
-                   "notice: not saved (13)\n"
-                   "detail: cannot save slot 'appuart' - bound to a live "
-                   "handle or buffer\n"
-                   "ok\n") == 0);
-  CHECK("top-level save call reports volatile state as a notice",
-        fr_repl_eval_line(&runtime, "save:", out, sizeof(out)) ==
-                FR_ERR_VOLATILE &&
-            strcmp(out,
-                   "notice: not saved (13)\n"
-                   "detail: cannot save slot 'appuart' - bound to a live "
-                   "handle or buffer\n"
-                   "ok\n") == 0);
-  CHECK("small public buffer keeps notice headline and prompt completion",
-        fr_repl_eval_line(&runtime, "save", compact_notice_out,
-                          sizeof(compact_notice_out)) == FR_ERR_VOLATILE &&
-            strcmp(compact_notice_out,
-                   "notice: not saved (13)\n"
-                   "ok\n") == 0);
-  CHECK("too-small public buffer does not emit a partial notice",
-        fr_repl_eval_line(&runtime, "save", short_notice_out,
-                          sizeof(short_notice_out)) == FR_ERR_RANGE &&
-            strcmp(short_notice_out, "") == 0);
   CHECK("programming continues after a save notice",
         fr_repl_eval_line(&runtime, "2 + 2", out, sizeof(out)) == FR_OK &&
             strcmp(out, "4\nok\n") == 0);
-  CHECK("unsafe slot names cannot inject save notice syntax",
-        fr_slot_id_for_name(&runtime, "appuart", &appuart_slot_id) == FR_OK &&
-            fr_slot_read(&runtime, appuart_slot_id, &unsafe_name_handle) ==
-                FR_OK &&
-            fr_slot_prepare_project_name(&runtime, "bad'name",
-                                         &unsafe_name_slot_id) == FR_OK &&
-            fr_slot_write(&runtime, unsafe_name_slot_id,
-                          unsafe_name_handle) == FR_OK &&
-            fr_slot_bind_project_name(&runtime, "bad'name",
-                                      unsafe_name_slot_id) == FR_OK &&
-            fr_repl_eval_line(&runtime, "appuart is nil", out, sizeof(out)) ==
-                FR_OK &&
-            fr_repl_eval_line(&runtime, "save", out, sizeof(out)) ==
-                FR_ERR_VOLATILE &&
-            strcmp(out,
-                   "notice: not saved (13)\n"
-                   "detail: cannot save - bound to a live handle or buffer\n"
-                   "ok\n") == 0 &&
-            fr_slot_write(&runtime, appuart_slot_id, unsafe_name_handle) ==
-                FR_OK &&
-            fr_slot_write(&runtime, unsafe_name_slot_id, fr_tagged_nil()) ==
-                FR_OK);
   CHECK("nested save remains an error and aborts its form",
         fr_repl_eval_line(&runtime,
                           "save-more is fn [ save: ; 9 ]", out,
@@ -5808,6 +5755,265 @@ static void test_close_kind_preserves_failed_entry(void) {
                           sizeof(out)) == FR_OK);
   fr_handle_close_all(&runtime);
 }
+
+#if FR_FEATURE_PERSISTENCE && FR_FEATURE_PWM
+/* ADR 0070: the prompt's own save stores slots holding handle values as
+ * nil and keeps the handles running, so a live program can be saved
+ * without stopping its hardware. What the image has and what the runtime
+ * has deliberately differ afterwards. */
+static void test_save_holds_live_handles(void) {
+  fr_runtime_t runtime;
+  char out[256];
+
+  fr_platform_persist_clear();
+  CHECK("hold base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("hold define a program",
+        fr_repl_eval_line(&runtime, "blink is fn [ 42 ]", out, sizeof(out)) ==
+            FR_OK);
+  CHECK("hold open a pin and strand a closed one",
+        fr_repl_eval_line(&runtime, "led is pwm.open: 20, 1000", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "gone is pwm.open: 21, 1000", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "pwm.close: gone", out, sizeof(out)) ==
+                FR_OK);
+  CHECK("hold save reports both slots and completes",
+        fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+            strcmp(out,
+                   "notice: saved; handle values stored as nil (100)\n"
+                   "detail: 'led' and 1 other were stored as nil - recreate "
+                   "them in boot so a reboot brings them back\n"
+                   "ok\n") == 0);
+  CHECK("hold keeps the handle working after the save",
+        fr_repl_eval_line(&runtime, "see led", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "overlay volatile pwm\nok\n") == 0 &&
+            fr_repl_eval_line(&runtime, "pwm.write: led, 128", out,
+                              sizeof(out)) == FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("hold saved the program itself",
+        fr_repl_eval_line(&runtime, "restore", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "blink:", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "42\nok\n") == 0);
+  CHECK("hold restores the slot as nil",
+        fr_repl_eval_line(&runtime, "see led", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "overlay nil\nok\n") == 0);
+  CHECK("hold restore closed the handle",
+        fr_repl_eval_line(&runtime, "pwm.open: 20, 2000", out, sizeof(out)) ==
+            FR_OK);
+  fr_handle_close_all(&runtime);
+
+  /* The boot sequence itself, not the public restore: library pass then
+   * user pass, which is what a real reboot runs. */
+  CHECK("hold reboot restores the slot as nil and keeps the program",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_persist_restore_library(&runtime) == FR_OK &&
+            fr_persist_restore_user(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime, "see led", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "overlay nil\nok\n") == 0 &&
+            fr_repl_eval_line(&runtime, "blink:", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "42\nok\n") == 0);
+  fr_handle_close_all(&runtime);
+}
+
+/* Only handles a slot still names survive the save. A discarded open dies
+ * with the remount exactly as it does today, so a tolerant save cannot
+ * quietly leak the handle table away. */
+static void test_save_holds_only_named_handles(void) {
+  fr_runtime_t runtime;
+  char out[256];
+
+  fr_platform_persist_clear();
+  CHECK("reach base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("reach open one named and one discarded",
+        fr_repl_eval_line(&runtime, "kept is pwm.open: 20, 1000", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "pwm.open: 21, 1000", out,
+                              sizeof(out)) == FR_OK);
+  CHECK("reach save holds the named one",
+        fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+            strcmp(out,
+                   "notice: saved; handle values stored as nil (100)\n"
+                   "detail: 'kept' was stored as nil - recreate it in boot so "
+                   "a reboot brings it back\n"
+                   "ok\n") == 0);
+  CHECK("reach kept handle still drives its pin",
+        fr_repl_eval_line(&runtime, "pwm.write: kept, 64", out, sizeof(out)) ==
+            FR_OK);
+  CHECK("reach kept pin is still busy at another frequency",
+        fr_repl_eval_line(&runtime, "pwm.open: 20, 2000", out, sizeof(out)) ==
+            FR_ERR_BUSY);
+  CHECK("reach discarded pin was released",
+        fr_repl_eval_line(&runtime, "again is pwm.open: 21, 2000", out,
+                          sizeof(out)) == FR_OK);
+  fr_handle_close_all(&runtime);
+}
+
+/* The strict save is still the rule everywhere else, and its refusal reads
+ * exactly as it did. More handle-bound slots than the hold can carry is
+ * one such case -- the bound stays visible instead of silently dropping
+ * slots. */
+static void test_save_beyond_hold_capacity_stays_strict(void) {
+  fr_runtime_t runtime;
+  fr_tagged_t handle = 0;
+  fr_slot_id_t handle_slot_id = 0;
+  fr_slot_id_t alias_slot_id = 0;
+  char name[32];
+  char out[256];
+  char compact_notice_out[27];
+  char short_notice_out[26];
+  bool all_ok = true;
+
+  fr_platform_persist_clear();
+  CHECK("cap base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("cap open one handle",
+        fr_repl_eval_line(&runtime, "h is pwm.open: 20, 1000", out,
+                          sizeof(out)) == FR_OK &&
+            fr_slot_id_for_name(&runtime, "h", &handle_slot_id) == FR_OK &&
+            fr_slot_read(&runtime, handle_slot_id, &handle) == FR_OK);
+  /* Aliasing copies the tagged handle, so one open can name more slots
+   * than the hold carries -- one more than the handle table itself. */
+  for (uint16_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
+    snprintf(name, sizeof(name), "alias%u", (unsigned)i);
+    if (fr_slot_prepare_project_name(&runtime, name, &alias_slot_id) != FR_OK ||
+        fr_slot_write(&runtime, alias_slot_id, handle) != FR_OK ||
+        fr_slot_bind_project_name(&runtime, name, alias_slot_id) != FR_OK) {
+      all_ok = false;
+    }
+  }
+  CHECK("cap alias one handle into more slots than the hold carries", all_ok);
+  CHECK("cap save refuses exactly as it did before",
+        fr_repl_eval_line(&runtime, "save", out, sizeof(out)) ==
+                FR_ERR_VOLATILE &&
+            strcmp(out,
+                   "notice: not saved (13)\n"
+                   "detail: cannot save slot 'h' - bound to a live handle or "
+                   "buffer\n"
+                   "ok\n") == 0);
+  CHECK("cap small buffer keeps the headline and the prompt completion",
+        fr_repl_eval_line(&runtime, "save", compact_notice_out,
+                          sizeof(compact_notice_out)) == FR_ERR_VOLATILE &&
+            strcmp(compact_notice_out, "notice: not saved (13)\nok\n") == 0);
+  CHECK("cap too-small buffer emits no partial notice",
+        fr_repl_eval_line(&runtime, "save", short_notice_out,
+                          sizeof(short_notice_out)) == FR_ERR_RANGE &&
+            strcmp(short_notice_out, "") == 0);
+  fr_handle_close_all(&runtime);
+}
+
+/* A slot name that cannot be quoted safely leaves the advisory anonymous
+ * rather than letting the name break the response lines. */
+static void test_save_advisory_survives_an_unsafe_slot_name(void) {
+  fr_runtime_t runtime;
+  fr_slot_id_t unsafe_slot_id = 0;
+  fr_tagged_t handle = 0;
+  fr_slot_id_t handle_slot_id = 0;
+  char out[256];
+
+  fr_platform_persist_clear();
+  CHECK("unsafe base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("unsafe open a handle",
+        fr_repl_eval_line(&runtime, "h is pwm.open: 20, 1000", out,
+                          sizeof(out)) == FR_OK &&
+            fr_slot_id_for_name(&runtime, "h", &handle_slot_id) == FR_OK &&
+            fr_slot_read(&runtime, handle_slot_id, &handle) == FR_OK);
+  CHECK("unsafe bind the handle to a name holding a quote",
+        fr_slot_prepare_project_name(&runtime, "bad'name", &unsafe_slot_id) ==
+                FR_OK &&
+            fr_slot_write(&runtime, unsafe_slot_id, handle) == FR_OK &&
+            fr_slot_bind_project_name(&runtime, "bad'name", unsafe_slot_id) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "h is nil", out, sizeof(out)) == FR_OK);
+  CHECK("unsafe advisory counts the slot without naming it",
+        fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+            strcmp(out,
+                   "notice: saved; handle values stored as nil (100)\n"
+                   "detail: 1 slot was stored as nil - recreate it in boot so "
+                   "a reboot brings it back\n"
+                   "ok\n") == 0);
+  fr_handle_close_all(&runtime);
+}
+
+/* If the save-tail remount fails, the save reports that failure, the held
+ * handles go with it, and no advisory claims a success that did not
+ * happen. Recovery is the ordinary candidate loop, so the runtime comes
+ * back on a program it can run rather than a cleared one. */
+static void test_failed_remount_drops_the_hold(void) {
+  fr_runtime_t runtime;
+  char out[256];
+
+  fr_platform_persist_clear();
+  CHECK("drop base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("drop save a program worth recovering",
+        fr_repl_eval_line(&runtime, "blink is fn [ 42 ]", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("drop arm a timer and open a pin",
+        fr_repl_eval_line(&runtime, "tick is fn [ 1 ]", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "boot is fn [ every 50 [ tick: ] ]",
+                              out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "boot:", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "led is pwm.open: 20, 1000", out,
+                              sizeof(out)) == FR_OK);
+  fr_host_event_debug_fail_next_timer_install();
+  CHECK("drop save reports the remount failure without an advisory",
+        fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_ERR_IO &&
+            strstr(out, "notice: saved") == NULL);
+  CHECK("drop recovery left a program the runtime can run",
+        fr_repl_eval_line(&runtime, "blink:", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "42\nok\n") == 0);
+  CHECK("drop the slot the save held reads as the image binds it",
+        fr_repl_eval_line(&runtime, "see led", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "overlay nil\nok\n") == 0);
+  CHECK("drop the held handle was closed by the recovery cleanup",
+        fr_repl_eval_line(&runtime, "again is pwm.open: 20, 2000", out,
+                          sizeof(out)) == FR_OK);
+  fr_handle_close_all(&runtime);
+}
+#endif
+
+#if FR_FEATURE_PERSISTENCE && FR_FEATURE_PWM
+/* A save that fails before it commits changes nothing at all: the live
+ * program, its unsaved definitions, and its open handles are all still
+ * there, and the previously saved image is still the newest. Only a
+ * committed image that then fails to mount has anything to recover from. */
+static void test_failed_commit_leaves_the_live_program_alone(void) {
+  fr_runtime_t runtime;
+  char out[256];
+
+  fr_platform_persist_clear();
+  CHECK("atomic base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("atomic save a baseline",
+        fr_repl_eval_line(&runtime, "blink is fn [ 42 ]", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK);
+  CHECK("atomic add unsaved work and open a pin",
+        fr_repl_eval_line(&runtime, "later is fn [ 7 ]", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "led is pwm.open: 20, 1000", out,
+                              sizeof(out)) == FR_OK);
+  fr_host_persist_debug_interrupt_next_header_write();
+  CHECK("atomic the save fails without an advisory",
+        fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_ERR_IO &&
+            strstr(out, "notice: saved") == NULL);
+  CHECK("atomic the unsaved definition is still here",
+        fr_repl_eval_line(&runtime, "later:", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "7\nok\n") == 0);
+  CHECK("atomic the handle is still live",
+        fr_repl_eval_line(&runtime, "see led", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "overlay volatile pwm\nok\n") == 0 &&
+            fr_repl_eval_line(&runtime, "pwm.write: led, 32", out,
+                              sizeof(out)) == FR_OK);
+  CHECK("atomic the previous image is untouched",
+        fr_repl_eval_line(&runtime, "restore", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "blink:", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "42\nok\n") == 0 &&
+            fr_repl_eval_line(&runtime, "later:", out, sizeof(out)) ==
+                FR_ERR_NOT_FOUND);
+  fr_handle_close_all(&runtime);
+}
+#endif
 
 #if FR_FEATURE_UART
 /* Failed opens must not spend handle identities: a reservation released
@@ -16451,6 +16657,14 @@ int main(void) {
   test_wipe_user_retries_failed_close();
   test_wipe_user_preserves_unclosable_handle();
   test_close_kind_preserves_failed_entry();
+#if FR_FEATURE_PERSISTENCE && FR_FEATURE_PWM
+  test_save_holds_live_handles();
+  test_save_holds_only_named_handles();
+  test_save_beyond_hold_capacity_stays_strict();
+  test_save_advisory_survives_an_unsafe_slot_name();
+  test_failed_remount_drops_the_hold();
+  test_failed_commit_leaves_the_live_program_alone();
+#endif
 #if FR_FEATURE_UART
   test_failed_open_does_not_burn_generations();
   test_uart_survivor_lifecycle();

@@ -23,6 +23,27 @@ static void fr_handle_clear_entry(fr_handle_entry_t *entry) {
 static bool fr_handle_kind_is_known(fr_handle_kind_t kind) {
   return kind > FR_HANDLE_KIND_NONE && kind < FR_HANDLE_KIND_COUNT;
 }
+
+/* A hold names the live entry by id and generation, so a stale ref left in
+ * a slot after its handle was closed matches nothing and holds nothing. */
+static bool fr_handle_entry_is_held(const fr_handle_entry_t *entry,
+                                    fr_handle_id_t id,
+                                    const fr_handle_hold_t *held,
+                                    uint8_t held_count) {
+  if (held == NULL || entry->kind == FR_HANDLE_KIND_NONE ||
+      entry->platform_index == FR_HANDLE_PLATFORM_NONE) {
+    return false;
+  }
+  for (uint8_t i = 0; i < held_count; i++) {
+    fr_handle_ref_t ref = {0};
+
+    if (fr_tagged_decode_handle_ref(held[i].value, &ref) == FR_OK &&
+        ref.id == id && ref.generation == entry->generation) {
+      return true;
+    }
+  }
+  return false;
+}
 #endif
 
 const char *fr_handle_kind_name(fr_handle_kind_t kind) {
@@ -42,6 +63,8 @@ void fr_handle_reset(fr_runtime_t *runtime) {
   }
 
 #if FR_FEATURE_HANDLES
+  runtime->held_handles = NULL;
+  runtime->held_handle_count = 0;
   for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
     fr_handle_clear_entry(&runtime->handles.entries[i]);
     runtime->handles.entries[i].generation = 0;
@@ -58,9 +81,21 @@ void fr_handle_close_all(fr_runtime_t *runtime) {
   }
 
 #if FR_FEATURE_HANDLES
+  const fr_handle_hold_t *held = runtime->held_handles;
+  uint8_t held_count = runtime->held_handle_count;
+
+  /* Take the hold before walking: it covers the one reset a tolerant save
+   * remounts through, so the recovery reset after a failed apply finds no
+   * hold and closes everything (ADR 0070). */
+  runtime->held_handles = NULL;
+  runtime->held_handle_count = 0;
+
   for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
     fr_handle_entry_t *entry = &runtime->handles.entries[i];
 
+    if (fr_handle_entry_is_held(entry, i, held, held_count)) {
+      continue;
+    }
     if (entry->kind != FR_HANDLE_KIND_NONE &&
         entry->platform_index != FR_HANDLE_PLATFORM_NONE &&
         fr_platform_handle_close(entry->kind, entry->platform_index) !=

@@ -1250,32 +1250,15 @@ static fr_err_t fr_persist_encode_value(
   return FR_ERR_UNSUPPORTED;
 }
 
-static void fr_persist_note_unpersistable_slot(const fr_runtime_t *runtime,
-                                               fr_slot_id_t slot_id,
-                                               fr_tagged_t value,
-                                               fr_err_t err) {
-  fr_native_id_t native_id = 0;
-  const char *name = NULL;
+/* Name a slot on the diagnostic, or leave context_name NULL when the name
+ * cannot be quoted safely -- a name carrying a quote or a control byte
+ * would break the response line, so those slots stay anonymous. */
+static void fr_persist_diag_name_slot(const fr_runtime_t *runtime,
+                                      fr_slot_id_t slot_id) {
+  const char *name = fr_slot_name(runtime, slot_id);
   size_t name_length = 0;
 
-  if ((err != FR_ERR_UNSUPPORTED && err != FR_ERR_VOLATILE) ||
-      runtime->diag == NULL || runtime->diag->kind != FR_DIAG_NONE) {
-    return;
-  }
-
-  runtime->diag->kind = FR_DIAG_LIMIT;
-  runtime->diag->message_id = FR_DIAG_MSG_RUNTIME_SLOT_UNPERSISTABLE;
-  if (fr_tagged_decode_native_id(value, &native_id) == FR_OK &&
-      native_id >= runtime->natives.base_count) {
-    runtime->diag->got = FR_DIAG_UNPERSISTABLE_MISSING_NATIVE;
-  } else if (err == FR_ERR_VOLATILE) {
-    runtime->diag->got = FR_DIAG_UNPERSISTABLE_VOLATILE_VALUE;
-  } else {
-    runtime->diag->got = FR_DIAG_UNPERSISTABLE_UNSUPPORTED_VALUE;
-  }
-
   runtime->diag->context_name = NULL;
-  name = fr_slot_name(runtime, slot_id);
   if (name == NULL) {
     return;
   }
@@ -1296,6 +1279,47 @@ static void fr_persist_note_unpersistable_slot(const fr_runtime_t *runtime,
   runtime->diag->context_name = runtime->diag->suggestion_text;
 }
 
+static void fr_persist_note_unpersistable_slot(const fr_runtime_t *runtime,
+                                               fr_slot_id_t slot_id,
+                                               fr_tagged_t value,
+                                               fr_err_t err) {
+  fr_native_id_t native_id = 0;
+
+  if ((err != FR_ERR_UNSUPPORTED && err != FR_ERR_VOLATILE) ||
+      runtime->diag == NULL || runtime->diag->kind != FR_DIAG_NONE) {
+    return;
+  }
+
+  runtime->diag->kind = FR_DIAG_LIMIT;
+  runtime->diag->message_id = FR_DIAG_MSG_RUNTIME_SLOT_UNPERSISTABLE;
+  if (fr_tagged_decode_native_id(value, &native_id) == FR_OK &&
+      native_id >= runtime->natives.base_count) {
+    runtime->diag->got = FR_DIAG_UNPERSISTABLE_MISSING_NATIVE;
+  } else if (err == FR_ERR_VOLATILE) {
+    runtime->diag->got = FR_DIAG_UNPERSISTABLE_VOLATILE_VALUE;
+  } else {
+    runtime->diag->got = FR_DIAG_UNPERSISTABLE_UNSUPPORTED_VALUE;
+  }
+  fr_persist_diag_name_slot(runtime, slot_id);
+}
+
+/* A tolerant save stores these slots as nil (ADR 0070), so the pre-scan
+ * lets them through and the encoder writes nil in their place. */
+static bool fr_persist_slot_is_held(const fr_runtime_t *runtime,
+                                    fr_slot_id_t slot_id) {
+#if FR_FEATURE_HANDLES
+  for (uint8_t i = 0; i < runtime->held_handle_count; i++) {
+    if (runtime->held_handles[i].slot_id == slot_id) {
+      return true;
+    }
+  }
+#else
+  (void)runtime;
+  (void)slot_id;
+#endif
+  return false;
+}
+
 static fr_err_t fr_persist_check_no_volatile_handles(
     const fr_runtime_t *runtime) {
   if (runtime == NULL) {
@@ -1306,7 +1330,8 @@ static fr_err_t fr_persist_check_no_volatile_handles(
   for (fr_slot_id_t slot_id = 0; slot_id < runtime->slots.count; slot_id++) {
     fr_handle_ref_t handle_ref = {0};
 
-    if (!fr_slot_is_overlay(runtime, slot_id)) {
+    if (!fr_slot_is_overlay(runtime, slot_id) ||
+        fr_persist_slot_is_held(runtime, slot_id)) {
       continue;
     }
     if (fr_tagged_decode_handle_ref(runtime->slots.current[slot_id],
@@ -1369,6 +1394,81 @@ static bool fr_persist_slot_should_encode(const fr_runtime_t *runtime,
   }
   tier = fr_persist_slot_encode_tier(runtime, slot_id);
   return tier_filter == 0 || tier == tier_filter;
+}
+
+/* ADR 0070. Collect the overlay slots a save may store as nil while their
+ * handles keep running. Three kinds of slot keep the old strict rejection
+ * and make the whole save strict again:
+ *
+ *   library tier   -- a tier stamp does not prove a durable record exists,
+ *                     so nil here can drop a value with nothing behind it;
+ *   live BLE       -- BLE connections die in the platform teardown that
+ *                     runs beside the handle close, so no hold can save
+ *                     them;
+ *   more than cap  -- the caller's array is the bound; falling back to the
+ *                     strict path keeps that limit visible.
+ *
+ * A stale ref (its entry closed or reused) has no kind left to check and
+ * is just an inert value: it holds nothing and stores as nil like the rest.
+ */
+fr_err_t fr_persist_payload_hold_volatile_slots(const fr_runtime_t *runtime,
+                                                fr_handle_hold_t *out,
+                                                uint8_t cap,
+                                                uint8_t *out_count) {
+  uint8_t count = 0;
+
+  if (runtime == NULL || out == NULL || out_count == NULL) {
+    return FR_ERR_INVALID;
+  }
+  *out_count = 0;
+
+#if FR_FEATURE_HANDLES
+  for (fr_slot_id_t slot_id = 0; slot_id < runtime->slots.count; slot_id++) {
+    fr_handle_ref_t ref = {0};
+    fr_handle_kind_t kind = FR_HANDLE_KIND_NONE;
+
+    if (!fr_slot_is_overlay(runtime, slot_id) ||
+        fr_tagged_decode_handle_ref(runtime->slots.current[slot_id], &ref) !=
+            FR_OK) {
+      continue;
+    }
+    if (fr_persist_slot_encode_tier(runtime, slot_id) ==
+        FR_PERSIST_TIER_LIBRARY) {
+      return FR_ERR_VOLATILE;
+    }
+    if (fr_handle_lookup(runtime, ref, FR_HANDLE_KIND_NONE, &kind, NULL) ==
+            FR_OK &&
+        kind == FR_HANDLE_KIND_BLE_CONNECTION) {
+      return FR_ERR_VOLATILE;
+    }
+    if (count >= cap) {
+      return FR_ERR_VOLATILE;
+    }
+    out[count].slot_id = slot_id;
+    out[count].value = runtime->slots.current[slot_id];
+    count++;
+  }
+#else
+  (void)cap;
+#endif
+  *out_count = count;
+  return FR_OK;
+}
+
+/* The advisory a tolerant save leaves behind: how many slots it stored as
+ * nil, and the first one by name. */
+void fr_persist_payload_note_held_slots(const fr_runtime_t *runtime,
+                                        fr_slot_id_t first_slot_id,
+                                        uint8_t count) {
+  if (runtime == NULL || runtime->diag == NULL || count == 0) {
+    return;
+  }
+
+  *runtime->diag = (fr_diagnostic_t){0};
+  runtime->diag->kind = FR_DIAG_NOTE;
+  runtime->diag->message_id = FR_DIAG_MSG_RUNTIME_SAVED_HANDLES_AS_NIL;
+  runtime->diag->got = count;
+  fr_persist_diag_name_slot(runtime, first_slot_id);
 }
 
 /* Finalize/remap coverage for payload v5:
@@ -1518,7 +1618,12 @@ static fr_err_t fr_persist_payload_write_finalized(
       FR_TRY(fr_persist_writer_u8(writer, tier));
     }
     {
-      fr_tagged_t value = runtime->slots.current[slot_id];
+      /* A held slot keeps its live handle in the runtime and goes into the
+       * image as nil, so the slot and its name survive the reboot even
+       * though the resource behind it cannot (ADR 0070). */
+      fr_tagged_t value = fr_persist_slot_is_held(runtime, slot_id)
+                              ? fr_tagged_nil()
+                              : runtime->slots.current[slot_id];
       fr_err_t err = fr_persist_encode_value(
           writer, runtime, value, runtime_code_ids, &code_count,
           runtime_object_ids, object_kinds, object_count);

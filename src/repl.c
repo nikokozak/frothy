@@ -2146,6 +2146,75 @@ static fr_err_t fr_repl_zero_arg_call_slot(fr_runtime_t *runtime,
   return fr_slot_id_for_name(runtime, name, out_slot_id);
 }
 
+#if FR_FEATURE_PERSISTENCE
+/* A tolerant save left an advisory: the image has those slots as nil even
+ * though the runtime still holds their handles (ADR 0070). Rendered before
+ * the `ok` the save earned, because the save did succeed. */
+static fr_err_t fr_repl_write_save_advisory(const fr_repl_writer_t *writer,
+                                            const fr_diagnostic_t *diag) {
+  const uint16_t cap = (uint16_t)FR_REPL_OUTPUT_BYTES;
+  char out[FR_REPL_OUTPUT_BYTES];
+  uint16_t used = 0;
+  bool one = false;
+
+  if (diag == NULL || diag->kind != FR_DIAG_NOTE ||
+      diag->message_id != FR_DIAG_MSG_RUNTIME_SAVED_HANDLES_AS_NIL ||
+      diag->got <= 0) {
+    return FR_OK;
+  }
+  one = diag->got == 1;
+  out[0] = '\0';
+  FR_TRY(fr_repl_append(out, cap, &used,
+                        "notice: saved; handle values stored as nil ("));
+  FR_TRY(fr_repl_append_u16(out, cap, &used,
+                            FR_REPL_NOTICE_SAVED_HANDLES_AS_NIL));
+  FR_TRY(fr_repl_append(out, cap, &used, ")\ndetail: "));
+  if (diag->context_name != NULL) {
+    FR_TRY(fr_repl_append_char(out, cap, &used, '\''));
+    FR_TRY(fr_repl_append(out, cap, &used, diag->context_name));
+    FR_TRY(fr_repl_append_char(out, cap, &used, '\''));
+    if (!one) {
+      FR_TRY(fr_repl_append(out, cap, &used, " and "));
+      FR_TRY(fr_repl_append_int(out, cap, &used, diag->got - 1));
+      FR_TRY(fr_repl_append(out, cap, &used,
+                            diag->got == 2 ? " other" : " others"));
+    }
+  } else {
+    FR_TRY(fr_repl_append_int(out, cap, &used, diag->got));
+    FR_TRY(fr_repl_append(out, cap, &used, one ? " slot" : " slots"));
+  }
+  FR_TRY(fr_repl_append(out, cap, &used,
+                        one ? " was stored as nil - recreate it in boot so a "
+                              "reboot brings it back\n"
+                            : " were stored as nil - recreate them in boot so "
+                              "a reboot brings them back\n"));
+  return fr_repl_writer_write(writer, out);
+}
+#endif
+
+/* Both zero-arg call paths below are the prompt calling a word directly,
+ * with no evaluation in progress around it. That is the one context where
+ * `save` can hold live handles across the remount in its tail, so it is
+ * the one context that runs the tolerant save (ADR 0070). */
+static fr_err_t fr_repl_call_zero_arg_native(fr_runtime_t *runtime,
+                                             const fr_native_entry_t *entry,
+                                             fr_tagged_t *out) {
+#if FR_FEATURE_PERSISTENCE
+  if (fr_base_native_is_save(entry)) {
+    if (runtime != NULL && runtime->diag != NULL) {
+      *runtime->diag = (fr_diagnostic_t){0};
+    }
+    if (runtime == NULL || out == NULL) {
+      return FR_ERR_INVALID;
+    }
+    FR_TRY(fr_persist_save_tolerant(runtime));
+    *out = fr_tagged_nil();
+    return FR_OK;
+  }
+#endif
+  return fr_native_call(runtime, entry, NULL, 0, out);
+}
+
 static fr_err_t fr_repl_eval_zero_arg_call(fr_runtime_t *runtime,
                                            const char *line,
                                            fr_tagged_t *out,
@@ -2190,7 +2259,7 @@ static fr_err_t fr_repl_eval_zero_arg_call(fr_runtime_t *runtime,
     return FR_ERR_INVALID;
   }
   *out_ran_command = true;
-  return fr_native_call(runtime, entry, NULL, 0, out);
+  return fr_repl_call_zero_arg_native(runtime, entry, out);
 }
 
 static fr_err_t fr_repl_eval_bare_word(fr_runtime_t *runtime, const char *line,
@@ -2249,7 +2318,7 @@ static fr_err_t fr_repl_eval_bare_word(fr_runtime_t *runtime, const char *line,
     FR_TRY(fr_native_get(runtime, native_id, &entry));
     if (entry->arity == 0) {
       *out_ran_command = true;
-      return fr_native_call(runtime, entry, NULL, 0, out);
+      return fr_repl_call_zero_arg_native(runtime, entry, out);
     }
   }
 
@@ -2380,6 +2449,9 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
   if (matched) {
     *out_notice_allowed = ran_command;
     FR_TRY(err);
+#if FR_FEATURE_PERSISTENCE
+    FR_TRY(fr_repl_write_save_advisory(writer, diag));
+#endif
     return fr_repl_writer_write_eval_response(writer, runtime, result);
   }
   FR_TRY(err);
@@ -2390,6 +2462,9 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
     *out_notice_allowed = ran_command;
     FR_TRY(err);
     if (ran_command) {
+#if FR_FEATURE_PERSISTENCE
+      FR_TRY(fr_repl_write_save_advisory(writer, diag));
+#endif
       return fr_repl_writer_write(writer, "ok\n");
     }
     return fr_repl_writer_write_tagged_response(writer, runtime, result);

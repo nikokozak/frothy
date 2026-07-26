@@ -617,8 +617,8 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 	notice_expected=$$(printf '%s\n' \
 		'> error: busy: 0 (25)' \
 		'detail: uart.open argument 1 was rejected -- uart port is already open -- uart.close it first' \
-		'> notice: not saved (13)' \
-		"detail: cannot save slot 'appuart' - bound to a live handle or buffer" \
+		'> notice: saved; handle values stored as nil (100)' \
+		"detail: 'appuart' was stored as nil - recreate it in boot so a reboot brings it back" \
 		'ok' \
 		'> 4' \
 		'ok'); \

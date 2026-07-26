@@ -169,6 +169,14 @@ struct fr_runtime_t {
   fr_tcp_handle_state_t tcp_handles[FR_TCP_HANDLE_COUNT];
 #endif
   bool interrupted;
+#if FR_FEATURE_HANDLES
+  /* Borrowed for one tolerant save (ADR 0070): the slots it stores as nil
+     while their handles keep running. The encoder writes nil for these
+     slots; the save-tail remount's first close-all keeps their handles and
+     takes the hold. NULL at every other moment. */
+  const fr_handle_hold_t *held_handles;
+  uint8_t held_handle_count;
+#endif
   /* Set while fr_event_dispatch is running a body so the VM step loop does
      not re-enter dispatch from inside a handler (spec §5: no preemption). */
   bool dispatching_event;

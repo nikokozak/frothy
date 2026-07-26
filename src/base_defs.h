@@ -351,6 +351,11 @@ extern const uint16_t fr_target_base_def_count;
 extern const fr_base_def_t fr_board_base_defs[];
 extern const uint16_t fr_board_base_def_count;
 
+#if FR_FEATURE_PERSISTENCE
+/* True for the native `save` is bound to, however it was reached. */
+bool fr_base_native_is_save(const fr_native_entry_t *entry);
+#endif
+
 uint16_t fr_base_def_layer_count(void);
 fr_err_t fr_base_def_layer_at(uint16_t index,
                               fr_base_def_layer_t *out_layer);

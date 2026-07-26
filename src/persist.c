@@ -145,10 +145,17 @@ static fr_err_t fr_persist_cleanup_failed_apply(fr_runtime_t *runtime) {
   return err;
 }
 
+/* latest_only stops after the newest image instead of falling back to the
+ * older one. The save tail needs that for its *result*: a fallback mount
+ * would quietly put the runtime back on the previous program while save
+ * reported success (ADR 0070). It is not a recovery policy -- the tolerant
+ * save runs the ordinary loop afterwards when the newest image fails.
+ * Boot and public restore keep the fallback -- there, an older good image
+ * is the recovery. */
 static fr_err_t
 fr_persist_restore_read_and_apply(fr_runtime_t *runtime,
                                   fr_persist_payload_apply_fn_t apply,
-                                  bool reset_on_miss,
+                                  bool reset_on_miss, bool latest_only,
                                   uint16_t *out_applied_payload_length) {
   fr_err_t err = FR_OK;
   fr_err_t last_err = FR_ERR_NOT_FOUND;
@@ -222,6 +229,9 @@ fr_persist_restore_read_and_apply(fr_runtime_t *runtime,
       fr_platform_persist_mount_discard();
     }
     last_err = err;
+    if (latest_only) {
+      break;
+    }
   }
 
   if (last_err == FR_ERR_NOT_FOUND && reset_on_miss) {
@@ -230,9 +240,9 @@ fr_persist_restore_read_and_apply(fr_runtime_t *runtime,
   return last_err;
 }
 
-static fr_err_t fr_persist_remount_latest(fr_runtime_t *runtime) {
+static fr_err_t fr_persist_remount(fr_runtime_t *runtime, bool latest_only) {
   return fr_persist_restore_read_and_apply(runtime, fr_persist_payload_restore,
-                                           true, NULL);
+                                           true, latest_only, NULL);
 }
 
 /* D5: save persists the user tier only and preserves the library tier in
@@ -240,7 +250,14 @@ static fr_err_t fr_persist_remount_latest(fr_runtime_t *runtime) {
  * scanned for L1 record spans, those source bytes are copied into the new
  * stream in source order, and freshly encoded L2 records follow them. A first
  * save against empty storage produces an L2-only payload. */
-fr_err_t fr_persist_save(fr_runtime_t *runtime) {
+/* Everything up to and including the header write, which is the commit:
+ * the payload goes to the inactive slot first and the stamped header
+ * last. On any error nothing is committed -- the inactive slot may be
+ * dirty, but the newest valid image and the live runtime are both
+ * untouched. Mounting the new image is the caller's next step, and the
+ * boundary between the two is what tells a failed save from a failed
+ * remount. */
+static fr_err_t fr_persist_commit_image(fr_runtime_t *runtime) {
   fr_err_t read_err = FR_OK;
   fr_err_t save_err = FR_OK;
   const uint8_t *image = NULL;
@@ -274,9 +291,99 @@ fr_err_t fr_persist_save(fr_runtime_t *runtime) {
   }
   if (save_err != FR_OK) {
     fr_platform_persist_mount_discard();
-    return save_err;
   }
-  return fr_persist_remount_latest(runtime);
+  return save_err;
+}
+
+fr_err_t fr_persist_save(fr_runtime_t *runtime) {
+  FR_TRY(fr_persist_commit_image(runtime));
+  return fr_persist_remount(runtime, false);
+}
+
+void fr_persist_note_save_rejection(fr_runtime_t *runtime, fr_err_t err) {
+  if (err != FR_ERR_VOLATILE || runtime == NULL || runtime->diag == NULL) {
+    return;
+  }
+  if (runtime->diag->kind == FR_DIAG_NONE) {
+    runtime->diag->kind = FR_DIAG_NOTE;
+    runtime->diag->message_id = FR_DIAG_MSG_RUNTIME_SLOT_UNPERSISTABLE;
+    runtime->diag->got = FR_DIAG_UNPERSISTABLE_UNSUPPORTED_VALUE;
+  }
+  runtime->diag->presentation = FR_DIAG_PRESENT_NOTICE;
+}
+
+/* ADR 0070. The prompt's own `save` stores slots holding handle values as
+ * nil instead of refusing, and keeps the live ones running: the LED stays
+ * lit, the program keeps its bindings, and the response says which slots
+ * will come back empty after a reboot. A stale ref -- a handle value whose
+ * resource is already closed -- is an inert value and rides along.
+ *
+ * Every other route to save -- an expression, a saved function, wipe-user's
+ * internal save -- calls fr_persist_save and keeps refusing. That is the
+ * point of splitting them: this path runs outside the VM, where nothing is
+ * mid-execution when the save tail remounts the image.
+ *
+ * Whatever cannot be held (see fr_persist_payload_hold_volatile_slots)
+ * falls back to the strict save, so those responses stay exactly as they
+ * were. */
+fr_err_t fr_persist_save_tolerant(fr_runtime_t *runtime) {
+#if FR_FEATURE_HANDLES
+  fr_handle_hold_t held[FR_HANDLE_TABLE_CAPACITY];
+  uint8_t held_count = 0;
+  fr_err_t err = FR_OK;
+
+  if (runtime == NULL) {
+    return FR_ERR_INVALID;
+  }
+  if (fr_persist_payload_hold_volatile_slots(
+          runtime, held, (uint8_t)FR_HANDLE_TABLE_CAPACITY, &held_count) !=
+          FR_OK ||
+      held_count == 0) {
+    err = fr_persist_save(runtime);
+    fr_persist_note_save_rejection(runtime, err);
+    return err;
+  }
+
+  runtime->held_handles = held;
+  runtime->held_handle_count = held_count;
+  err = fr_persist_commit_image(runtime);
+  if (err == FR_OK) {
+    err = fr_persist_remount(runtime, true);
+    if (err != FR_OK) {
+      /* Committed, but the new image did not mount. Latest-only kept that
+       * from passing as a success on the older program; recovery is still
+       * the ordinary candidate loop, which every other save gets. The hold
+       * is spent by now, so its handles close with everything else and the
+       * runtime comes back on a mounted program instead of a cleared one.
+       * The save's own error is what the user hears either way. */
+      runtime->held_handles = NULL;
+      runtime->held_handle_count = 0;
+      (void)fr_persist_remount(runtime, false);
+    }
+  }
+  runtime->held_handles = NULL;
+  runtime->held_handle_count = 0;
+  if (err != FR_OK) {
+    /* Two shapes end here. A commit that never happened leaves the runtime
+     * exactly as it was, handles included, with the previous image still
+     * the newest -- nothing to undo. A commit that would not mount has just
+     * been recovered above. Either way the save's own error is the answer. */
+    fr_persist_note_save_rejection(runtime, err);
+    return err;
+  }
+
+  /* The image has the slots as nil; the runtime gets its handles back. */
+  for (uint8_t i = 0; i < held_count; i++) {
+    FR_TRY(fr_slot_write(runtime, held[i].slot_id, held[i].value));
+  }
+  fr_persist_payload_note_held_slots(runtime, held[0].slot_id, held_count);
+  return FR_OK;
+#else
+  fr_err_t err = fr_persist_save(runtime);
+
+  fr_persist_note_save_rejection(runtime, err);
+  return err;
+#endif
 }
 
 /* D5: public `restore` brings L2 back from durable storage; L1 binds already
@@ -309,7 +416,7 @@ fr_err_t fr_persist_restore(fr_runtime_t *runtime) {
    * is not reported -- restore errors must mean restore. */
   fr_handle_close_all(runtime);
   return fr_persist_restore_read_and_apply(
-      runtime, fr_persist_payload_restore_user_only, false, NULL);
+      runtime, fr_persist_payload_restore_user_only, false, false, NULL);
 }
 
 fr_err_t fr_persist_restore_library(fr_runtime_t *runtime) {
@@ -322,7 +429,8 @@ fr_err_t fr_persist_restore_library(fr_runtime_t *runtime) {
   fr_persist_forget_boot_image();
 
   err = fr_persist_restore_read_and_apply(
-      runtime, fr_persist_payload_restore_library, true, &payload_length);
+      runtime, fr_persist_payload_restore_library, true, false,
+      &payload_length);
   if (err == FR_OK) {
     fr_persist_boot_payload_length = payload_length;
     fr_persist_boot_image_pinned = true;
@@ -414,7 +522,7 @@ fr_err_t fr_persist_save_full(fr_runtime_t *runtime) {
   }
   fr_persist_forget_boot_image();
   FR_TRY(fr_persist_stream_commit(runtime, NULL, 0, false));
-  return fr_persist_remount_latest(runtime);
+  return fr_persist_remount(runtime, false);
 }
 
 /* SPEC D10: receiving install-library drops L1 from the device — runtime

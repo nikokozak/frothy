@@ -6,6 +6,31 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+### Changed
+
+- **`save` no longer refuses because hardware is open.** Typing `save`
+  with `led is pwm.open: ...` in your program used to answer
+  `notice: not saved (13)` and persist nothing, so the way to save your
+  code was to close the resource, rebind the slot, save, and reopen. Now
+  the prompt's `save` writes those slots as `nil`, keeps the handles
+  running — the LED stays lit, the program keeps its bindings — and says
+  what it did:
+
+  ```text
+  > save
+  notice: saved; handle values stored as nil (100)
+  detail: 'led' was stored as nil - recreate it in boot so a reboot brings it back
+  ok
+  ```
+
+  A reboot restores those slots as `nil`, which is what they could ever
+  have been; `boot` is where reopening belongs. Code 100 is the first
+  notice code that reports a success — codes below 100 remain `fr_err`
+  values. Unchanged: `save:` inside any larger form still raises the
+  catchable `13` and aborts that form, and the prompt still refuses
+  outright for a live Bluetooth connection, a library-mode slot, or more
+  handle-bound slots than the device can hold at once.
+
 ## [0.1.12] - 2026-07-24
 
 ### Added
