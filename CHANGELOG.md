@@ -6,6 +6,8 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-07-26
+
 ### Changed
 
 - **`save` no longer refuses because hardware is open.** Typing `save`
