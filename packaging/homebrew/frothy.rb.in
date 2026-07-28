@@ -11,6 +11,7 @@ class Frothy < Formula
 
   depends_on "go" => :build
   depends_on "esptool"
+  depends_on "picotool"
 
   resource "firmware" do
     url "@FIRMWARE_URL@"

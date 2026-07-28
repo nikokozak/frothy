@@ -88,7 +88,7 @@ func configureSerial(file *os.File, baud int) error {
 	return nil
 }
 
-func openSerial(port string, baud int) (*serialDevice, error) {
+func openConfiguredSerial(port string, baud int) (*os.File, error) {
 	file, err := os.OpenFile(port, os.O_RDWR, 0)
 	if err != nil {
 		return nil, decorateSerialOpenError(port, err)
@@ -99,6 +99,14 @@ func openSerial(port string, baud int) (*serialDevice, error) {
 	}
 	if err := configureSerial(file, baud); err != nil {
 		_ = file.Close()
+		return nil, err
+	}
+	return file, nil
+}
+
+func openSerial(port string, baud int) (*serialDevice, error) {
+	file, err := openConfiguredSerial(port, baud)
+	if err != nil {
 		return nil, err
 	}
 	dev := &serialDevice{
@@ -1704,16 +1712,19 @@ func availableVerbs() []verb {
 				"--baud.",
 			examples: "  frothy send blink.fr --port /dev/cu.usbserial-0001\n" +
 				"      send blink.fr through the compiler on the board on that port"},
-		{name: "flash", group: "Project", summary: "flash Frothy firmware to a board over serial", run: runFlashMain,
+		{name: "flash", group: "Project", summary: "flash Frothy firmware to a board", run: runFlashMain,
 			longDesc: "Flash writes Frothy firmware to a connected " +
-				"device over serial, replacing whatever was on the chip. Use it once per board " +
+				"device, replacing whatever was on the chip. Use it once per board " +
 				"to install Frothy itself, before send or connect can talk to a running device. " +
 				"A packaged install uses the release firmware included by Homebrew; from a Frothy " +
 				"source checkout it builds that checkout first. " +
 				"The serial port is discovered automatically when one device is attached, or " +
-				"named explicitly with --port when several are.",
+				"named explicitly with --port when several are. For packaged RP2040 firmware, " +
+				"use --bootsel after manually entering BOOTSEL when the running firmware cannot reset itself.",
 			examples: "  frothy flash esp32_devkit_v1 --port /dev/cu.usbserial-0001\n" +
-				"      flash Frothy to the board on that port"},
+				"      flash Frothy to the ESP32 board on that port\n" +
+				"  frothy flash arduino_nano_rp2040_connect --bootsel\n" +
+				"      flash an RP2040 board already showing its RPI-RP2 drive"},
 		{name: "wipe", group: "Recover", summary: "erase Frothy persistence on a wedged board", run: runWipeMain,
 			longDesc: "Wipe erases the persisted device state on a board wedged by a bad save, " +
 				"leaving the firmware and other partitions in place. It erases the dedicated " +
@@ -1871,6 +1882,13 @@ func runSendCommand(args []string, stdout io.Writer, stderr io.Writer) int {
 // the make argv instead of executing make.
 type commandRunner func(name string, args []string) error
 
+type serialResetter func(port string) error
+
+const (
+	rp2040BootselAttempts = 40
+	rp2040BootselPoll     = 500 * time.Millisecond
+)
+
 type commandOutputError struct {
 	err    error
 	output string
@@ -1902,6 +1920,35 @@ func defaultCommandRunner(name string, args []string) error {
 	return nil
 }
 
+func waitForRP2040(probe func() bool, sleep func(time.Duration)) bool {
+	for range rp2040BootselAttempts {
+		if probe() {
+			return true
+		}
+		sleep(rp2040BootselPoll)
+	}
+	return false
+}
+
+func resetRP2040ToBootsel(port string) error {
+	if _, err := exec.LookPath("picotool"); err != nil {
+		return errors.New("picotool is not installed")
+	}
+	file, err := openConfiguredSerial(port, 1200)
+	if err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if !waitForRP2040(func() bool {
+		return exec.Command("picotool", "info").Run() == nil
+	}, time.Sleep) {
+		return errors.New("timed out waiting for an RP2040 BOOTSEL device")
+	}
+	return nil
+}
+
 func runFlashMain() int {
 	args := os.Args[1:]
 	root := ""
@@ -1917,9 +1964,16 @@ func runFlashMain() int {
 
 func runFlashCommand(args []string, sourceRoot, firmwareRoot string, stdout io.Writer,
 	stderr io.Writer, list portLister, run commandRunner) int {
+	return runFlashCommandWithReset(args, sourceRoot, firmwareRoot, stdout, stderr,
+		list, run, resetRP2040ToBootsel)
+}
+
+func runFlashCommandWithReset(args []string, sourceRoot, firmwareRoot string, stdout io.Writer,
+	stderr io.Writer, list portLister, run commandRunner, reset serialResetter) int {
 	fs := flag.NewFlagSet("frothy flash", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	port := fs.String("port", "", "serial port, for example /dev/cu.usbmodem101")
+	bootsel := fs.Bool("bootsel", false, "board is already in BOOTSEL mode (packaged UF2 firmware only)")
 
 	if helpRequested(args) {
 		printVerbHelp(stdout, helpFor("flash"), fs)
@@ -1950,6 +2004,10 @@ func runFlashCommand(args []string, sourceRoot, firmwareRoot string, stdout io.W
 
 	var packaged firmwareBundleRow
 	if sourceRoot != "" {
+		if *bootsel {
+			fmt.Fprintln(stderr, "flash: --bootsel requires packaged UF2 firmware")
+			return 2
+		}
 		if !flashableBoard(filepath.Join(sourceRoot, "boards"), board) {
 			fmt.Fprintf(stderr, "flash: unknown board %q\n", board)
 			return 2
@@ -1967,22 +2025,47 @@ func runFlashCommand(args []string, sourceRoot, firmwareRoot string, stdout io.W
 		}
 	}
 
-	chosen, err := pickPort(*port, list)
-	if err != nil {
-		fmt.Fprintf(stderr, "flash: %v\n", err)
+	if *bootsel && (packaged.UF2 == nil || *port != "") {
+		fmt.Fprintln(stderr, "flash: --bootsel requires packaged UF2 firmware and cannot be combined with --port")
 		return 2
 	}
 
 	command := "make"
-	commandArgs := []string{"-C", sourceRoot, "flash", "BOARD=" + board, "BOARD_PORT=" + chosen}
-	if sourceRoot == "" {
-		command = "esptool"
-		commandArgs = []string{"--chip", packaged.Chip, "--port", chosen, "--baud", "460800",
-			"--before", "default-reset", "--after", "hard-reset", "write-flash",
-			"--flash-mode", "keep", "--flash-freq", "keep", "--flash-size", "keep"}
-		for _, segment := range packaged.Segments {
-			commandArgs = append(commandArgs, fmt.Sprintf("0x%x", segment.Address),
-				filepath.Join(firmwareRoot, segment.File))
+	var commandArgs []string
+	if packaged.UF2 != nil {
+		if !*bootsel {
+			chosen, err := pickPort(*port, list)
+			if err != nil {
+				fmt.Fprintf(stderr, "flash: %v\n", err)
+				fmt.Fprintf(stderr, "flash: %s Then retry with: frothy flash %s --bootsel\n",
+					packaged.Bootsel, board)
+				return 2
+			}
+			if err := reset(chosen); err != nil {
+				fmt.Fprintf(stderr, "flash: could not enter BOOTSEL through %s: %v\n", chosen, err)
+				fmt.Fprintf(stderr, "flash: %s Then retry with: frothy flash %s --bootsel\n",
+					packaged.Bootsel, board)
+				return 1
+			}
+		}
+		command = "picotool"
+		commandArgs = []string{"load", filepath.Join(firmwareRoot, packaged.UF2.File), "-v", "-x"}
+	} else {
+		chosen, err := pickPort(*port, list)
+		if err != nil {
+			fmt.Fprintf(stderr, "flash: %v\n", err)
+			return 2
+		}
+		commandArgs = []string{"-C", sourceRoot, "flash", "BOARD=" + board, "BOARD_PORT=" + chosen}
+		if sourceRoot == "" {
+			command = "esptool"
+			commandArgs = []string{"--chip", packaged.Chip, "--port", chosen, "--baud", "460800",
+				"--before", "default-reset", "--after", "hard-reset", "write-flash",
+				"--flash-mode", "keep", "--flash-freq", "keep", "--flash-size", "keep"}
+			for _, segment := range packaged.Segments {
+				commandArgs = append(commandArgs, fmt.Sprintf("0x%x", segment.Address),
+					filepath.Join(firmwareRoot, segment.File))
+			}
 		}
 	}
 
@@ -1990,6 +2073,10 @@ func runFlashCommand(args []string, sourceRoot, firmwareRoot string, stdout io.W
 		fmt.Fprintf(stderr, "flash: %v\n", err)
 		if strings.Contains(strings.ToLower(commandErrorText(err)), "busy") {
 			fmt.Fprintln(stderr, "flash: port is busy; try: frothy stop")
+		}
+		if packaged.UF2 != nil {
+			fmt.Fprintf(stderr, "flash: %s Then retry with: frothy flash %s --bootsel\n",
+				packaged.Bootsel, board)
 		}
 		return 1
 	}

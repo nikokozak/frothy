@@ -1,11 +1,15 @@
-frothy flash — flash Frothy firmware to a board over serial
+frothy flash — flash Frothy firmware to a board
 
-Flash writes Frothy firmware to a connected device over serial, replacing whatever was on the chip. Use it once per board to install Frothy itself, before send or connect can talk to a running device. A packaged install uses the release firmware included by Homebrew; from a Frothy source checkout it builds that checkout first. The serial port is discovered automatically when one device is attached, or named explicitly with --port when several are.
+Flash writes Frothy firmware to a connected device, replacing whatever was on the chip. Use it once per board to install Frothy itself, before send or connect can talk to a running device. A packaged install uses the release firmware included by Homebrew; from a Frothy source checkout it builds that checkout first. The serial port is discovered automatically when one device is attached, or named explicitly with --port when several are. For packaged RP2040 firmware, use --bootsel after manually entering BOOTSEL when the running firmware cannot reset itself.
 
 Examples:
   frothy flash esp32_devkit_v1 --port /dev/cu.usbserial-0001
-      flash Frothy to the board on that port
+      flash Frothy to the ESP32 board on that port
+  frothy flash arduino_nano_rp2040_connect --bootsel
+      flash an RP2040 board already showing its RPI-RP2 drive
 
 Flags:
+  -bootsel
+    	board is already in BOOTSEL mode (packaged UF2 firmware only)
   -port string
     	serial port, for example /dev/cu.usbmodem101

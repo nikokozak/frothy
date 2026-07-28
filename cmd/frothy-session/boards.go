@@ -17,10 +17,16 @@ type firmwareSegment struct {
 	File    string `json:"file"`
 }
 
+type firmwareFile struct {
+	File string `json:"file"`
+}
+
 type firmwareBundleRow struct {
 	Board    string            `json:"board"`
 	Chip     string            `json:"chip"`
+	Bootsel  string            `json:"bootsel"`
 	Segments []firmwareSegment `json:"segments"`
+	UF2      *firmwareFile     `json:"uf2"`
 }
 
 func flashableBoard(boardsDir, id string) bool {
@@ -77,8 +83,19 @@ func loadPackagedFirmware(root, board string) (firmwareBundleRow, error) {
 		if row.Board != board {
 			continue
 		}
-		if !safeBundleName(row.Chip) || len(row.Segments) == 0 {
+		hasSegments := len(row.Segments) > 0
+		hasUF2 := row.UF2 != nil
+		if !safeBundleName(row.Chip) || hasSegments == hasUF2 {
 			return firmwareBundleRow{}, fmt.Errorf("invalid packaged firmware for board %q", board)
+		}
+		if hasUF2 {
+			if row.Chip != "rp2040" || row.Bootsel == "" ||
+				filepath.Base(row.UF2.File) != row.UF2.File ||
+				!strings.HasSuffix(row.UF2.File, ".uf2") ||
+				!fileExists(filepath.Join(root, row.UF2.File)) {
+				return firmwareBundleRow{}, fmt.Errorf("invalid packaged firmware for board %q", board)
+			}
+			return row, nil
 		}
 		seen := map[uint32]bool{}
 		for _, segment := range row.Segments {
