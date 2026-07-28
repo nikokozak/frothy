@@ -5,11 +5,17 @@ extern "C" {
 }
 
 #include <Arduino.h>
+#if FR_FEATURE_BLE
 #include <ArduinoBLE.h>
-#include <WiFiNINA.h>
-#include <WiFiPreferences.h>
 #include <utility/GAP.h>
 #include <utility/HCI.h>
+#endif
+#if FR_FEATURE_NET || FR_FEATURE_BLE
+#include <WiFiNINA.h>
+#endif
+#if FR_FEATURE_NET
+#include <WiFiPreferences.h>
+#endif
 
 #include <ctype.h>
 #include <stdint.h>
@@ -40,6 +46,7 @@ enum {
   FR_NINA_FIRMWARE_BLE_MIN = 0x030000,
 };
 
+#if FR_FEATURE_NET
 typedef struct fr_nina_credentials_t {
   uint8_t version;
   uint8_t ssid_length;
@@ -58,6 +65,7 @@ typedef struct fr_nina_tcp_t {
 } fr_nina_tcp_t;
 
 static fr_nina_tcp_t fr_nina_tcps[FR_TCP_HANDLE_COUNT];
+#endif
 
 #if FR_FEATURE_BLE
 typedef struct fr_nina_ble_t {
@@ -305,6 +313,7 @@ void fr_nina_poll(void) {
 #endif
 }
 
+#if FR_FEATURE_NET
 static fr_err_t fr_nina_poll_interrupt(fr_runtime_t *runtime) {
   fr_err_t err = fr_platform_poll_interrupt(runtime);
 
@@ -1049,6 +1058,7 @@ fr_err_t fr_platform_tcp_bytes_ready(fr_runtime_t *runtime,
   *out_count = (uint16_t)available;
   return FR_OK;
 }
+#endif
 
 #if FR_FEATURE_BLE
 const char *fr_platform_ble_backend_name(void) { return "nina-arduinoble"; }

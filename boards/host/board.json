@@ -6,7 +6,8 @@
   "console": {
     "kind": "stdio"
   },
-  "peripherals": [],
+  "cores": 1,
+  "peripherals": ["gpio", "adc", "uart", "pwm", "i2c", "net", "ble"],
   "pins": {
     "$led_builtin": 13,
     "$led_active_level": 1

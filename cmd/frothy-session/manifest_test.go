@@ -341,24 +341,20 @@ requires = ["warp"]
 
 func TestCapabilityGateLibraries(t *testing.T) {
 	libs := []resolvedLibrary{
-		{name: "stepper", requires: []string{"cells"}}, // always-on: ok
-		{name: "beacon", requires: []string{"ble"}},    // offered, may be off
+		{name: "stepper", requires: []string{"cells"}},
+		{name: "beacon", requires: []string{"ble"}},
 	}
 
-	// No deviations: ble defaults on, so the ble requirement is satisfied.
-	if err := capabilityGateLibraries(nil, libs); err != nil {
-		t.Fatalf("default composition must satisfy all requires: %v", err)
+	available := testTargetContract("host", nil)
+	if err := capabilityGateLibraries(available, libs); err != nil {
+		t.Fatalf("available capabilities must satisfy all requires: %v", err)
 	}
 
-	// ble explicitly disabled: beacon's requirement is now violated.
-	err := capabilityGateLibraries(map[string]bool{"ble": false}, libs)
+	unavailable := testTargetContract("host",
+		map[string]capabilityReason{"ble": capabilityCompositionDisabled})
+	err := capabilityGateLibraries(unavailable, libs)
 	if err == nil || !strings.Contains(err.Error(),
-		`library beacon requires capability "ble", which is disabled`) {
+		`library beacon requires capability "ble", unavailable on board host: composition_disabled`) {
 		t.Fatalf("want ble-disabled requires failure, got %v", err)
-	}
-
-	// ble explicitly true (absence-vs-false trap): still satisfied.
-	if err := capabilityGateLibraries(map[string]bool{"ble": true}, libs); err != nil {
-		t.Fatalf("ble=true must satisfy the requirement: %v", err)
 	}
 }

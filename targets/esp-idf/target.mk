@@ -1,3 +1,6 @@
+TARGET_BUILD_KIND := esp-idf
+# Target capabilities include SDK surfaces available to native library ports.
+TARGET_CAPABILITIES := adc ble gpio i2c i2s net pwm uart
 TARGET_MAIN_SOURCE := targets/esp-idf/main/main.c
 TARGET_SOURCES += \
 	targets/common/target_defs.c \

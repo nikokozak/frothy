@@ -12,7 +12,8 @@
   },
   "flash_bytes": 2097152,
   "bootsel": "Hold BOOT, tap RESET, then release BOOT to make the RPI-RP2 drive appear.",
-  "peripherals": ["gpio", "adc", "pwm", "i2c"],
+  "cores": 2,
+  "peripherals": ["gpio", "adc", "uart", "pwm", "i2c", "i2s"],
   "pins": {
     "$led_builtin": 17,
     "$led_active_level": 0,

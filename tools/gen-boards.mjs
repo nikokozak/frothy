@@ -53,6 +53,9 @@ const knownPins = new Set([
 ]);
 const consoleKinds = new Set(["stdio", "uart", "usb_cdc", "usb_serial_jtag"]);
 
+// Peripherals are board-provided I/O or native-port surfaces. Runtime-only
+// features such as trace and pulse stay with target/profile facts. The host
+// board lists the surfaces its virtual platform simulates.
 function fail(boardId, message) {
   throw new Error(`${boardId}: ${message}`);
 }
@@ -85,6 +88,7 @@ export function validateBoard(boardId, board) {
     "target",
     "profile",
     "bootsel",
+    "cores",
     "peripherals",
     "pins",
     "console",
@@ -109,6 +113,9 @@ export function validateBoard(boardId, board) {
   if (board.bootsel !== undefined) {
     requireText(boardId, board, "bootsel");
   }
+
+  requireInteger(boardId, board.cores, "cores");
+  if (board.cores < 1) fail(boardId, "cores must be positive");
 
   if (!Array.isArray(board.peripherals)) {
     fail(boardId, "peripherals must be an array");

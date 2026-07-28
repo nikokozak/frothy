@@ -114,10 +114,11 @@ servo = { path = "../servo" }
 		t.Fatalf("dep order wrong: %+v", libs)
 	}
 	// Transitive requirement reaches the flattened gate.
-	if err := capabilityGateLibraries(nil, libs); err != nil {
+	if err := capabilityGateLibraries(testTargetContract("host", nil), libs); err != nil {
 		t.Fatalf("default composition must satisfy servo's requirement: %v", err)
 	}
-	err = capabilityGateLibraries(map[string]bool{"ble": false}, libs)
+	err = capabilityGateLibraries(testTargetContract("host",
+		map[string]capabilityReason{"ble": capabilityCompositionDisabled}), libs)
 	if err == nil || !strings.Contains(err.Error(), `library servo requires capability "ble"`) {
 		t.Fatalf("want transitive servo requires failure, got %v", err)
 	}

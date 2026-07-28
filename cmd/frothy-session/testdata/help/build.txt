@@ -8,6 +8,6 @@ Examples:
 
 Flags:
   -no-make
-    	stop after generator emission; do not invoke make
+    	validate and emit generators; do not compile firmware
   -project string
     	project directory containing frothy.toml (default ".")

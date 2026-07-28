@@ -5,10 +5,33 @@ import (
 	"testing"
 )
 
+func testTargetContract(board string,
+	unavailable map[string]capabilityReason) targetContract {
+	statuses := make(map[string]capabilityStatus, len(capabilities))
+	for _, c := range capabilities {
+		statuses[c.name] = capabilityStatus{available: true}
+	}
+	for name, reason := range unavailable {
+		statuses[name] = capabilityStatus{reason: reason}
+	}
+	return targetContract{board: board, capabilities: statuses}
+}
+
 func TestValidateCapabilitiesUnknownName(t *testing.T) {
 	err := validateCapabilities(map[string]bool{"warp-drive": false})
 	if err == nil || !strings.Contains(err.Error(), `unknown capability "warp-drive"`) {
 		t.Fatalf("want unknown-capability error, got %v", err)
+	}
+}
+
+func TestToggleableCapabilitiesHaveHeaderEvidence(t *testing.T) {
+	for _, c := range capabilities {
+		if c.toggleable && (c.profileMacro == "" || len(c.offDefines) == 0) {
+			t.Errorf("%s toggle lacks profile macro or header override", c.name)
+		}
+		if c.boardPeripheral && !c.needsBoard {
+			t.Errorf("%s is a peripheral without board evidence", c.name)
+		}
 	}
 }
 
@@ -17,7 +40,7 @@ func TestValidateCapabilitiesUnknownName(t *testing.T) {
 // that would let a manifest disable an always-on feature.
 func TestValidateCapabilitiesRejectsKnownButNotOffered(t *testing.T) {
 	err := validateCapabilities(map[string]bool{"cells": false})
-	if err == nil || !strings.Contains(err.Error(), `unknown capability "cells"`) {
+	if err == nil || !strings.Contains(err.Error(), `capability "cells" is not configurable`) {
 		t.Fatalf("want cells rejected as not-offered, got %v", err)
 	}
 }
@@ -27,7 +50,7 @@ func TestValidateCapabilitiesKnownIsAccepted(t *testing.T) {
 		t.Fatalf("ble off must be accepted: %v", err)
 	}
 	if err := validateCapabilities(map[string]bool{"ble": true}); err != nil {
-		t.Fatalf("ble on (no-op) must be accepted: %v", err)
+		t.Fatalf("ble on request must be accepted for later resolution: %v", err)
 	}
 	if err := validateCapabilities(map[string]bool{"net": false}); err != nil {
 		t.Fatalf("net off must be accepted: %v", err)
@@ -40,7 +63,7 @@ func TestI2sIsKnownButNotOffered(t *testing.T) {
 		t.Fatal("i2s must be a known requirement target")
 	}
 	err := validateCapabilities(map[string]bool{"i2s": false})
-	if err == nil || !strings.Contains(err.Error(), `unknown capability "i2s"`) {
+	if err == nil || !strings.Contains(err.Error(), `capability "i2s" is not configurable`) {
 		t.Fatalf("want i2s rejected as not-offered, got %v", err)
 	}
 }

@@ -9,7 +9,10 @@ import (
 )
 
 type boardManifest struct {
-	Target string `json:"target"`
+	Target      string   `json:"target"`
+	Profile     string   `json:"profile"`
+	Cores       int      `json:"cores"`
+	Peripherals []string `json:"peripherals"`
 }
 
 type firmwareSegment struct {
@@ -30,18 +33,41 @@ type firmwareBundleRow struct {
 }
 
 func flashableBoard(boardsDir, id string) bool {
-	if id == "" || id == "." || id == ".." || strings.ContainsAny(id, "/\\") {
-		return false
-	}
-	data, err := os.ReadFile(filepath.Join(boardsDir, id, "board.json"))
+	manifest, err := readBoardManifest(boardsDir, id)
 	if err != nil {
 		return false
 	}
+	return manifest.Target != "" && manifest.Target != "host"
+}
+
+func readBoardManifest(boardsDir, id string) (boardManifest, error) {
+	if !safeBoardID(id) {
+		return boardManifest{}, fmt.Errorf("invalid board %q", id)
+	}
+	data, err := os.ReadFile(filepath.Join(boardsDir, id, "board.json"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return boardManifest{}, fmt.Errorf("unknown board %q", id)
+		}
+		return boardManifest{}, fmt.Errorf("read board %q: %w", id, err)
+	}
 	var manifest boardManifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
+		return boardManifest{}, fmt.Errorf("parse board %q: %w", id, err)
+	}
+	return manifest, nil
+}
+
+func safeBoardID(id string) bool {
+	for index, char := range id {
+		if (char >= 'a' && char <= 'z') ||
+			(char >= '0' && char <= '9') ||
+			(index > 0 && (char == '_' || char == '-')) {
+			continue
+		}
 		return false
 	}
-	return manifest.Target != "" && manifest.Target != "host"
+	return id != ""
 }
 
 func listFlashableBoards(boardsDir string) []string {

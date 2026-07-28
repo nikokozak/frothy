@@ -20,7 +20,7 @@ import (
 
 type buildOptions struct {
 	projectDir string
-	skipMake   bool // for tests
+	skipMake   bool // skip firmware compilation, not target fact resolution
 }
 
 func runBuildMain() int {
@@ -31,7 +31,8 @@ func runBuildCommand(args []string, stdout io.Writer, stderr io.Writer) int {
 	fs := flag.NewFlagSet("frothy build", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	projectDir := fs.String("project", ".", "project directory containing frothy.toml")
-	skipMake := fs.Bool("no-make", false, "stop after generator emission; do not invoke make")
+	skipMake := fs.Bool("no-make", false,
+		"validate and emit generators; do not compile firmware")
 	if helpRequested(args) {
 		printVerbHelp(stdout, helpFor("build"), fs)
 		return 0
@@ -74,11 +75,30 @@ func runBuild(opts buildOptions, stdout io.Writer, stderr io.Writer) error {
 	if err := boardGateLibraries(proj.Board, libs); err != nil {
 		return err
 	}
-	if err := capabilityGateLibraries(proj.Capabilities, libs); err != nil {
-		return err
-	}
 	if err := emitCompositionFiles(opts.projectDir, proj.Board, proj.Capabilities); err != nil {
 		return err
+	}
+	if needsTargetContract(proj.Capabilities, libs) {
+		sourceRoot, err := resolveFrothySourceRoot(opts.projectDir)
+		if err != nil {
+			return err
+		}
+		compositionH := filepath.Join(
+			buildOutputDir(opts.projectDir, proj.Board), "composition.h")
+		if !fileExists(compositionH) {
+			compositionH = ""
+		}
+		contract, err := resolveTargetContract(
+			sourceRoot, proj.Board, proj.Capabilities, compositionH)
+		if err != nil {
+			return err
+		}
+		if err := validateEnabledCapabilities(contract, proj.Capabilities); err != nil {
+			return err
+		}
+		if err := capabilityGateLibraries(contract, libs); err != nil {
+			return err
+		}
 	}
 	if err := emitGeneratedFiles(opts.projectDir, proj.Board, libs); err != nil {
 		return err

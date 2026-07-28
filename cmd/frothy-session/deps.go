@@ -218,17 +218,21 @@ func boardGateLibraries(board string, libs []resolvedLibrary) error {
 	return nil
 }
 
-// capabilityGateLibraries rejects a composition that disables a capability a
-// selected library requires. It runs on the fully resolved (flattened) list,
-// so transitive library requirements are covered without a second traversal.
-// A requirement is satisfied unless the composition explicitly sets it false:
-// an absent capability means "profile default" (on for every offered gate),
-// not "disabled".
-func capabilityGateLibraries(caps map[string]bool, libs []resolvedLibrary) error {
+// capabilityGateLibraries runs on the flattened dependency list, so one check
+// covers direct and transitive requirements.
+func capabilityGateLibraries(contract targetContract, libs []resolvedLibrary) error {
 	for _, lib := range libs {
 		for _, req := range lib.requires {
-			if enabled, present := caps[req]; present && !enabled {
-				return fmt.Errorf("library %s requires capability %q, which is disabled in frothy.toml", lib.name, req)
+			status, ok := contract.capabilities[req]
+			if !ok {
+				return fmt.Errorf(
+					"library %s requires capability %q, which was not resolved",
+					lib.name, req)
+			}
+			if !status.available {
+				return fmt.Errorf(
+					"library %s requires capability %q, unavailable on board %s: %s",
+					lib.name, req, contract.board, status.reason)
 			}
 		}
 	}
