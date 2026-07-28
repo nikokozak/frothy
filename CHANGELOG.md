@@ -6,6 +6,8 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-07-28
+
 ### Changed
 
 - **`save`, `restore`, and `dangerous.wipe` are prompt words now.** Called
