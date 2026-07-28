@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -225,6 +227,78 @@ func TestRunBuildCommand_MissingManifest(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "frothy.toml") {
 		t.Fatalf("expected stderr to mention frothy.toml; got: %s", stderr.String())
+	}
+}
+
+func TestBuildEmitContractRequiresFirmwareBuild(t *testing.T) {
+	var stderr bytes.Buffer
+	code := runBuildCommand([]string{
+		"--project", t.TempDir(),
+		"--no-make",
+		"--emit-contract", filepath.Join(t.TempDir(), "contract.json"),
+	}, io.Discard, &stderr)
+	if code != 2 || !strings.Contains(stderr.String(),
+		"--emit-contract cannot be combined with --no-make") {
+		t.Fatalf("exit/stderr = %d/%q", code, stderr.String())
+	}
+}
+
+func TestBuildEmitsContractOnlyAfterSuccessfulMake(t *testing.T) {
+	if os.PathSeparator == '\\' {
+		t.Skip("test uses a POSIX make stub")
+	}
+	sourceRoot, err := resolveFrothySourceRoot(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	realMake, err := exec.LookPath("make")
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := makeTempProject(t, "name = \"contract\"\nboard = \"host\"\n", "", nil)
+	t.Setenv(frothySourceRootEnv, sourceRoot)
+	binDir := t.TempDir()
+	makePath := filepath.Join(binDir, "make")
+	writeFile(t, makePath, "#!/bin/sh\n"+
+		"case \" $* \" in\n"+
+		"  *\" print-target-facts \"*) exec \""+
+		strings.ReplaceAll(realMake, "\"", "\\\"")+"\" \"$@\" ;;\n"+
+		"esac\n"+
+		"exit \"${FROTHY_TEST_MAKE_EXIT:-0}\"\n")
+	if err := os.Chmod(makePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	contractPath := filepath.Join(project, "target-contract.json")
+	writeFile(t, contractPath, "stale\n")
+	t.Setenv("FROTHY_TEST_MAKE_EXIT", "7")
+	if err := runBuild(buildOptions{
+		projectDir: project, contractOut: contractPath,
+	}, io.Discard, io.Discard); err == nil {
+		t.Fatal("failed make accepted")
+	}
+	if _, err := os.Stat(contractPath); !os.IsNotExist(err) {
+		t.Fatalf("stale contract survived failed build: %v", err)
+	}
+
+	t.Setenv("FROTHY_TEST_MAKE_EXIT", "0")
+	if err := runBuild(buildOptions{
+		projectDir: project, contractOut: contractPath,
+	}, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(contractPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var contract publishedTargetContract
+	if err := json.Unmarshal(data, &contract); err != nil {
+		t.Fatal(err)
+	}
+	if contract.Schema != targetContractSchema || contract.Board != "host" ||
+		len(contract.Capabilities) != len(capabilities) {
+		t.Fatalf("published contract = %+v", contract)
 	}
 }
 

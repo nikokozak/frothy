@@ -19,8 +19,9 @@ import (
 // separate verb (`flash`); this one only builds.
 
 type buildOptions struct {
-	projectDir string
-	skipMake   bool // skip firmware compilation, not target fact resolution
+	projectDir  string
+	skipMake    bool // skip firmware compilation, not target fact resolution
+	contractOut string
 }
 
 func runBuildMain() int {
@@ -33,6 +34,8 @@ func runBuildCommand(args []string, stdout io.Writer, stderr io.Writer) int {
 	projectDir := fs.String("project", ".", "project directory containing frothy.toml")
 	skipMake := fs.Bool("no-make", false,
 		"validate and emit generators; do not compile firmware")
+	contractOut := fs.String("emit-contract", "",
+		"write the resolved target contract after a successful firmware build")
 	if helpRequested(args) {
 		printVerbHelp(stdout, helpFor("build"), fs)
 		return 0
@@ -47,12 +50,28 @@ func runBuildCommand(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "frothy build: unexpected positional argument(s)")
 		return 2
 	}
+	if *skipMake && *contractOut != "" {
+		fmt.Fprintln(stderr, "frothy build: --emit-contract cannot be combined with --no-make")
+		return 2
+	}
 	absProject, err := filepath.Abs(*projectDir)
 	if err != nil {
 		fmt.Fprintf(stderr, "frothy build: %v\n", err)
 		return 1
 	}
-	opts := buildOptions{projectDir: absProject, skipMake: *skipMake}
+	absContract := ""
+	if *contractOut != "" {
+		absContract, err = filepath.Abs(*contractOut)
+		if err != nil {
+			fmt.Fprintf(stderr, "frothy build: %v\n", err)
+			return 1
+		}
+	}
+	opts := buildOptions{
+		projectDir:  absProject,
+		skipMake:    *skipMake,
+		contractOut: absContract,
+	}
 	if err := runBuild(opts, stdout, stderr); err != nil {
 		fmt.Fprintf(stderr, "frothy build: %v\n", err)
 		return 1
@@ -61,6 +80,14 @@ func runBuildCommand(args []string, stdout io.Writer, stderr io.Writer) int {
 }
 
 func runBuild(opts buildOptions, stdout io.Writer, stderr io.Writer) error {
+	if opts.skipMake && opts.contractOut != "" {
+		return errors.New("--emit-contract cannot be combined with --no-make")
+	}
+	if opts.contractOut != "" {
+		if err := os.Remove(opts.contractOut); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove stale target contract: %w", err)
+		}
+	}
 	proj, err := readProjectManifest(opts.projectDir)
 	if err != nil {
 		return err
@@ -78,7 +105,10 @@ func runBuild(opts buildOptions, stdout io.Writer, stderr io.Writer) error {
 	if err := emitCompositionFiles(opts.projectDir, proj.Board, proj.Capabilities); err != nil {
 		return err
 	}
-	if needsTargetContract(proj.Capabilities, libs) {
+	var contract targetContract
+	// Contract emission resolves even default projects so packaged metadata is
+	// checked against the same board, target, and profile that Make will build.
+	if opts.contractOut != "" || needsTargetContract(proj.Capabilities, libs) {
 		sourceRoot, err := resolveFrothySourceRoot(opts.projectDir)
 		if err != nil {
 			return err
@@ -88,7 +118,7 @@ func runBuild(opts buildOptions, stdout io.Writer, stderr io.Writer) error {
 		if !fileExists(compositionH) {
 			compositionH = ""
 		}
-		contract, err := resolveTargetContract(
+		contract, err = resolveTargetContract(
 			sourceRoot, proj.Board, proj.Capabilities, compositionH)
 		if err != nil {
 			return err
@@ -115,6 +145,11 @@ func runBuild(opts buildOptions, stdout io.Writer, stderr io.Writer) error {
 	}
 	if err := runMake(opts.projectDir, proj.Board, stdout, stderr); err != nil {
 		return err
+	}
+	if opts.contractOut != "" {
+		if err := emitTargetContract(opts.contractOut, contract); err != nil {
+			return err
+		}
 	}
 	if sourceRoot, err := resolveFrothySourceRoot(opts.projectDir); err == nil {
 		emitSizeReport(sourceRoot, opts.projectDir, proj.Board, stdout, stderr)

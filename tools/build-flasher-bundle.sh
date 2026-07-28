@@ -17,6 +17,7 @@ node - "$here" "$dest" "$version" <<'NODE'
 const childProcess = require("child_process");
 const crypto = require("crypto");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const [root, destinationArg, version] = process.argv.slice(2);
@@ -30,6 +31,18 @@ const builds = [];
 const rp2040FamilyId = 0xe48bff56;
 const rp2040FlashStart = 0x10000000;
 const rp2040FlashEnd = 0x11000000;
+const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "frothy-bundle-"));
+const frothyCLI = path.join(workspace, "frothy");
+
+process.on("exit", () => fs.rmSync(workspace, { recursive: true, force: true }));
+
+const cliBuild = childProcess.spawnSync(
+  "go",
+  ["build", "-o", frothyCLI, "./cmd/frothy-session"],
+  { cwd: root, stdio: "inherit" },
+);
+if (cliBuild.error) throw cliBuild.error;
+if (cliBuild.status !== 0) throw new Error("could not build the Frothy CLI");
 
 function makeConfig(boardId, profile) {
   const result = childProcess.spawnSync(
@@ -97,6 +110,40 @@ function validateRP2040UF2(data, boardId) {
   }
 }
 
+function readTargetContract(contractFile, boardId, board) {
+  const contract = JSON.parse(fs.readFileSync(contractFile, "utf8"));
+  if (contract?.schema !== 1 ||
+      contract.board !== boardId ||
+      contract.target !== board.target ||
+      contract.profile !== board.profile ||
+      typeof contract.build_kind !== "string" ||
+      !contract.build_kind ||
+      typeof contract.capabilities !== "object" ||
+      contract.capabilities === null ||
+      Array.isArray(contract.capabilities) ||
+      Object.keys(contract.capabilities).length === 0) {
+    throw new Error(`${boardId}: invalid target contract`);
+  }
+  const reasons = new Set([
+    "hardware_absent",
+    "target_unimplemented",
+    "profile_disabled",
+    "composition_disabled",
+  ]);
+  for (const [name, status] of Object.entries(contract.capabilities)) {
+    if (!bundleIdPattern.test(name) ||
+        typeof status !== "object" ||
+        status === null ||
+        Array.isArray(status) ||
+        typeof status.available !== "boolean" ||
+        (status.available && Object.hasOwn(status, "reason")) ||
+        (!status.available && !reasons.has(status.reason))) {
+      throw new Error(`${boardId}: invalid capability contract for ${name}`);
+    }
+  }
+  return contract;
+}
+
 for (const entry of fs.readdirSync(boardsDir, { withFileTypes: true })
   .filter((candidate) => candidate.isDirectory())
   .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)) {
@@ -120,13 +167,24 @@ for (const entry of fs.readdirSync(boardsDir, { withFileTypes: true })
     throw new Error(`${boardId}: invalid board profile ${board.profile}`);
   }
 
+  const projectDir = path.join(workspace, boardId);
+  const contractFile = path.join(projectDir, "target-contract.json");
+  fs.mkdirSync(projectDir);
+  fs.writeFileSync(
+    path.join(projectDir, "frothy.toml"),
+    `name = "firmware-${boardId}"\nboard = "${boardId}"\n`,
+  );
   const result = childProcess.spawnSync(
-    "make",
-    ["-C", root, `BOARD=${boardId}`, `PROFILE=${board.profile}`, "artifacts"],
-    { stdio: "inherit" },
+    frothyCLI,
+    ["build", "--project", projectDir, "--emit-contract", contractFile],
+    {
+      stdio: "inherit",
+      env: { ...process.env, FROTHY_SOURCE_ROOT: root },
+    },
   );
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${boardId}: firmware build failed`);
+  const contract = readTargetContract(contractFile, boardId, board);
 
   const buildRoot = path.join(root, "build", boardId);
   const argsFile = path.join(buildRoot, "flasher_args.json");
@@ -156,6 +214,7 @@ for (const entry of fs.readdirSync(boardsDir, { withFileTypes: true })
     builds.push({
       boardId,
       board,
+      contract,
       uf2: {
         file,
         md5: crypto.createHash("md5").update(data).digest("hex"),
@@ -201,18 +260,19 @@ for (const entry of fs.readdirSync(boardsDir, { withFileTypes: true })
   if (segments.length === 0) {
     throw new Error(`${boardId}: flasher_args.json lists no flash files`);
   }
-  builds.push({ boardId, board, segments });
+  builds.push({ boardId, board, contract, segments });
 }
 
 if (builds.length === 0) throw new Error("no official firmware boards found");
 
-const manifest = builds.map(({ boardId, board, segments, uf2 }) => {
+const manifest = builds.map(({ boardId, board, contract, segments, uf2 }) => {
   const row = {
     board: boardId,
     chip: board.chip,
     profile: board.profile,
     label: board.name,
     version,
+    contract,
   };
   if (uf2) {
     row.bootsel = board.bootsel;

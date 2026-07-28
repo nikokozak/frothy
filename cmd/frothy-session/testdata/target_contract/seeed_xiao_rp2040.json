@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "board": "seeed_xiao_rp2040",
+  "target": "arduino-rp2040",
+  "build_kind": "arduino-pico",
+  "profile": "rp2040_plain",
+  "capabilities": {
+    "adc": {
+      "available": true
+    },
+    "ble": {
+      "available": false,
+      "reason": "hardware_absent"
+    },
+    "cells": {
+      "available": true
+    },
+    "dual_core": {
+      "available": true
+    },
+    "gpio": {
+      "available": true
+    },
+    "i2c": {
+      "available": true
+    },
+    "i2s": {
+      "available": true
+    },
+    "net": {
+      "available": false,
+      "reason": "hardware_absent"
+    },
+    "pwm": {
+      "available": true
+    },
+    "text": {
+      "available": true
+    },
+    "uart": {
+      "available": false,
+      "reason": "target_unimplemented"
+    }
+  }
+}

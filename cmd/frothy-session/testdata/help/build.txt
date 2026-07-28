@@ -7,6 +7,8 @@ Examples:
       build the project in the current directory
 
 Flags:
+  -emit-contract string
+    	write the resolved target contract after a successful firmware build
   -no-make
     	validate and emit generators; do not compile firmware
   -project string
