@@ -22,7 +22,8 @@ jobs:
           path: |
             ~/.froth/sdk
             ~/.espressif
-          key: ${{ runner.os }}-esp-idf-v5.5-esp32-esp32c6-esp32s3
+            ~/.arduino15
+          key: ${{ runner.os }}-esp-idf-v5.5-esp32-esp32c6-esp32s3-arduino-pico-4.6.0
 
       - name: Install ESP-IDF
         run: tools/setup-esp-idf.sh
@@ -30,6 +31,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install Arduino-Pico
+        run: |
+          arduino-cli core install rp2040:rp2040@4.6.0 \
+            --additional-urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
 
       - name: Build web flasher bundle
         run: tools/build-flasher-bundle.sh dist-release
@@ -41,11 +49,13 @@ jobs:
         run: |
           cp editors/vscode/frothy-*.vsix dist-release/
           segment_count="$(find dist-release -maxdepth 1 -type f -name '*-*-0x*.bin' | wc -l | tr -d ' ')"
+          uf2_count="$(find dist-release -maxdepth 1 -type f -name '*.uf2' | wc -l | tr -d ' ')"
           vsix_count="$(find dist-release -maxdepth 1 -type f -name 'frothy-*.vsix' | wc -l | tr -d ' ')"
           test "$segment_count" = 9
+          test "$uf2_count" = 1
           test "$vsix_count" = 1
           test -f dist-release/manifest.json
-          firmware_files=(dist-release/*-*-0x*.bin)
+          firmware_files=(dist-release/*-*-0x*.bin dist-release/*.uf2)
           tar -czf "dist-release/frothy-firmware-${GITHUB_REF_NAME}.tar.gz" \
             -C dist-release manifest.json "${firmware_files[@]#dist-release/}"
           ls -l dist-release

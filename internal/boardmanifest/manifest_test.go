@@ -13,6 +13,7 @@ type manifest struct {
 	Chip        string         `json:"chip"`
 	Target      string         `json:"target"`
 	Profile     string         `json:"profile"`
+	Bootsel     string         `json:"bootsel"`
 	Peripherals []string       `json:"peripherals"`
 	Pins        map[string]int `json:"pins"`
 }
@@ -124,6 +125,9 @@ func TestArduinoNanoRp2040ConnectBoardManifest(t *testing.T) {
 	checkRequired(t, "arduino_nano_rp2040_connect", m)
 	if m.Chip != "rp2040" || m.Target != "arduino-rp2040" || m.Profile != "rp2040_plain" {
 		t.Errorf("arduino_nano_rp2040_connect: got chip=%q target=%q profile=%q", m.Chip, m.Target, m.Profile)
+	}
+	if m.Bootsel == "" {
+		t.Error("arduino_nano_rp2040_connect: bootsel instructions missing")
 	}
 	wantPins := map[string]int{
 		"$led_builtin": 6,

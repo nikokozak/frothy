@@ -34,6 +34,7 @@ TARGET_CC ?= cc
 BUILD_DIR ?= build/$(BOARD)
 ARTIFACT_ELF ?= $(BUILD_DIR)/frothy.elf
 ARTIFACT_HEX ?= $(BUILD_DIR)/frothy.hex
+ARTIFACT_UF2 ?=
 ARTIFACT_MAP ?= $(BUILD_DIR)/frothy.map
 ARTIFACT_SIZE ?= $(BUILD_DIR)/frothy.size
 
@@ -1000,6 +1001,7 @@ print-config: ## Print the selected board, target, profile, and build paths.
 	@printf 'BUILD_DIR=%s\n' "$(BUILD_DIR)"
 	@printf 'ARTIFACT_ELF=%s\n' "$(ARTIFACT_ELF)"
 	@printf 'ARTIFACT_HEX=%s\n' "$(ARTIFACT_HEX)"
+	@printf 'ARTIFACT_UF2=%s\n' "$(ARTIFACT_UF2)"
 	@printf 'ARTIFACT_SIZE=%s\n' "$(ARTIFACT_SIZE)"
 
 vsix: ## Build the VS Code extension package.
