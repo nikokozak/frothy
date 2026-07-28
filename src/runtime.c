@@ -51,6 +51,9 @@ fr_err_t fr_runtime_init(fr_runtime_t *runtime) {
   memset(&runtime->tcp_handles, 0, sizeof(runtime->tcp_handles));
 #endif
   runtime->interrupted = false;
+  /* Only here: the depth counts live C frames, so clearing the project --
+     which can only happen with none of them running -- must not touch it. */
+  runtime->execution_depth = 0;
   runtime->dispatching_event = false;
   runtime->install_tier = FR_INSTALL_TIER_USER;
   runtime->rescue_error = FR_OK;
@@ -145,6 +148,10 @@ fr_err_t fr_runtime_clear_project(fr_runtime_t *runtime) {
 
 fr_err_t fr_runtime_reset(fr_runtime_t *runtime) {
   return fr_runtime_clear_project(runtime);
+}
+
+bool fr_runtime_is_executing(const fr_runtime_t *runtime) {
+  return runtime != NULL && runtime->execution_depth > 0;
 }
 
 void fr_runtime_interrupt(fr_runtime_t *runtime) {

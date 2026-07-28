@@ -34,6 +34,9 @@ typedef enum fr_err_t {
   FR_ERR_BLE_TIMEOUT,
   FR_ERR_BLE_DISCONNECTED,
   FR_ERR_BUSY,
+  /* The word replaces the running program, so it only runs at the prompt
+     and never from inside an evaluation (ADR 0071). */
+  FR_ERR_PROMPT_ONLY,
 } fr_err_t;
 
 const char *fr_err_name(fr_err_t err);

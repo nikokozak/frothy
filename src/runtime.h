@@ -169,6 +169,11 @@ struct fr_runtime_t {
   fr_tcp_handle_state_t tcp_handles[FR_TCP_HANDLE_COUNT];
 #endif
   bool interrupted;
+  /* Live VM evaluations. Raised at each public VM entry and lowered on the
+     way out, so anything the VM is running -- a called word, an event
+     body, boot -- is visible to code that must not replace the program
+     underneath it (ADR 0071). */
+  uint16_t execution_depth;
 #if FR_FEATURE_HANDLES
   /* Borrowed for one tolerant save (ADR 0070): the slots it stores as nil
      while their handles keep running. The encoder writes nil for these
@@ -194,6 +199,9 @@ struct fr_runtime_t {
 fr_err_t fr_runtime_init(fr_runtime_t *runtime);
 fr_err_t fr_runtime_reset(fr_runtime_t *runtime);
 fr_err_t fr_runtime_clear_project(fr_runtime_t *runtime);
+/* True while the VM is running anything. Persistence asks before replacing
+   the program a frame is executing (ADR 0071). */
+bool fr_runtime_is_executing(const fr_runtime_t *runtime);
 void fr_runtime_interrupt(fr_runtime_t *runtime);
 void fr_runtime_clear_interrupt(fr_runtime_t *runtime);
 bool fr_runtime_is_interrupted(const fr_runtime_t *runtime);

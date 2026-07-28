@@ -295,7 +295,26 @@ static fr_err_t fr_persist_commit_image(fr_runtime_t *runtime) {
   return save_err;
 }
 
+/* ADR 0071. These entries replace the running program: they commit a new
+ * image, remount one, or reset the runtime. None of that can happen while
+ * the VM is executing, because every live frame is reading instructions
+ * out of the image and holding runtime-owned values that a replacement
+ * destroys. The check comes first in each entry, before any commit --
+ * stream begin erases the slot it picked, so a refusal that arrived later
+ * would already have destroyed what the frames are reading.
+ *
+ * The guard sits here rather than on the save/restore/wipe natives so a
+ * linked native calling these directly meets it too. C that goes around
+ * these entries stays trusted, as with every kernel API. */
+static fr_err_t fr_persist_check_prompt_only(const fr_runtime_t *runtime) {
+  if (fr_runtime_is_executing(runtime)) {
+    return FR_ERR_PROMPT_ONLY;
+  }
+  return FR_OK;
+}
+
 fr_err_t fr_persist_save(fr_runtime_t *runtime) {
+  FR_TRY(fr_persist_check_prompt_only(runtime));
   FR_TRY(fr_persist_commit_image(runtime));
   return fr_persist_remount(runtime, false);
 }
@@ -327,6 +346,7 @@ void fr_persist_note_save_rejection(fr_runtime_t *runtime, fr_err_t err) {
  * falls back to the strict save, so those responses stay exactly as they
  * were. */
 fr_err_t fr_persist_save_tolerant(fr_runtime_t *runtime) {
+  FR_TRY(fr_persist_check_prompt_only(runtime));
 #if FR_FEATURE_HANDLES
   fr_handle_hold_t held[FR_HANDLE_TABLE_CAPACITY];
   uint8_t held_count = 0;
@@ -391,6 +411,7 @@ fr_err_t fr_persist_save_tolerant(fr_runtime_t *runtime) {
  * base-image boundary and remounts saved code so code ids do not drift. The
  * no-payload path still skips reset so an empty restore cannot collapse L1. */
 fr_err_t fr_persist_restore(fr_runtime_t *runtime) {
+  FR_TRY(fr_persist_check_prompt_only(runtime));
   if (runtime == NULL) {
     return FR_ERR_INVALID;
   }
@@ -420,6 +441,7 @@ fr_err_t fr_persist_restore(fr_runtime_t *runtime) {
 }
 
 fr_err_t fr_persist_restore_library(fr_runtime_t *runtime) {
+  FR_TRY(fr_persist_check_prompt_only(runtime));
   fr_err_t err = FR_OK;
   uint16_t payload_length = 0;
 
@@ -439,6 +461,7 @@ fr_err_t fr_persist_restore_library(fr_runtime_t *runtime) {
 }
 
 fr_err_t fr_persist_restore_user(fr_runtime_t *runtime) {
+  FR_TRY(fr_persist_check_prompt_only(runtime));
   fr_err_t err = FR_OK;
 
   if (runtime == NULL) {
@@ -462,6 +485,7 @@ fr_err_t fr_persist_restore_user(fr_runtime_t *runtime) {
 }
 
 fr_err_t fr_persist_wipe(fr_runtime_t *runtime) {
+  FR_TRY(fr_persist_check_prompt_only(runtime));
   fr_err_t clear_err;
   fr_err_t restart_err;
 
@@ -488,6 +512,7 @@ fr_err_t fr_persist_wipe(fr_runtime_t *runtime) {
 extern void fr_persist_session_wipe_user_tier(fr_runtime_t *runtime);
 
 fr_err_t fr_persist_wipe_user(fr_runtime_t *runtime) {
+  FR_TRY(fr_persist_check_prompt_only(runtime));
   if (runtime == NULL) {
     return FR_ERR_INVALID;
   }
@@ -517,6 +542,7 @@ extern void fr_persist_session_wipe_library_tier(fr_runtime_t *runtime);
  * storage as it is typed — D3's "subsequent definitions are compiled,
  * installed, and persisted to NVS with tier tag L1"). */
 fr_err_t fr_persist_save_full(fr_runtime_t *runtime) {
+  FR_TRY(fr_persist_check_prompt_only(runtime));
   if (runtime == NULL) {
     return FR_ERR_INVALID;
   }
@@ -532,6 +558,7 @@ fr_err_t fr_persist_save_full(fr_runtime_t *runtime) {
  * the post-wipe runtime (L2 only at this point — definitions arriving after
  * receipt land in storage via the REPL compile path's own save_full call). */
 fr_err_t fr_persist_install_library(fr_runtime_t *runtime) {
+  FR_TRY(fr_persist_check_prompt_only(runtime));
   if (runtime == NULL) {
     return FR_ERR_INVALID;
   }

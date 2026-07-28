@@ -888,11 +888,24 @@ static fr_err_t fr_vm_run_code_object_depth(fr_runtime_t *runtime,
                                             out_tagged, call_depth);
 }
 
+/* The three public entries below are where an evaluation begins, so they
+ * are where it is counted. Each raises the depth, runs, and lowers it on
+ * every exit -- no FR_TRY between, or a failed run would leave the runtime
+ * looking busy forever. Nested calls go through the _depth helpers and
+ * stay under the entry that counted them (ADR 0071). */
 fr_err_t fr_vm_run_code_object(fr_runtime_t *runtime,
                                fr_code_object_id_t code_object_id,
                                fr_tagged_t *out_tagged) {
-  return fr_vm_run_code_object_depth(runtime, code_object_id, NULL, 0,
-                                     out_tagged, 0);
+  fr_err_t err = FR_OK;
+
+  if (runtime == NULL || out_tagged == NULL) {
+    return FR_ERR_INVALID;
+  }
+  runtime->execution_depth++;
+  err = fr_vm_run_code_object_depth(runtime, code_object_id, NULL, 0,
+                                    out_tagged, 0);
+  runtime->execution_depth--;
+  return err;
 }
 
 static fr_err_t fr_vm_run_slot_depth(fr_runtime_t *runtime,
@@ -920,7 +933,15 @@ static fr_err_t fr_vm_run_slot_depth(fr_runtime_t *runtime,
 
 fr_err_t fr_vm_run_slot(fr_runtime_t *runtime, fr_slot_id_t slot_id,
                         fr_tagged_t *out_tagged) {
-  return fr_vm_run_slot_depth(runtime, slot_id, NULL, 0, out_tagged, 0);
+  fr_err_t err = FR_OK;
+
+  if (runtime == NULL || out_tagged == NULL) {
+    return FR_ERR_INVALID;
+  }
+  runtime->execution_depth++;
+  err = fr_vm_run_slot_depth(runtime, slot_id, NULL, 0, out_tagged, 0);
+  runtime->execution_depth--;
+  return err;
 }
 
 static fr_err_t fr_vm_call_slot(fr_runtime_t *runtime,
@@ -2499,8 +2520,16 @@ static fr_err_t fr_vm_run_reader_code_object_depth(
 fr_err_t fr_vm_run_instruction_stream(fr_runtime_t *runtime,
                                       const fr_instruction_stream_t *view,
                                       fr_tagged_t *out_tagged) {
-  return fr_vm_run_instruction_stream_depth(runtime, view, NULL, 0, out_tagged,
-                                            0);
+  fr_err_t err = FR_OK;
+
+  if (runtime == NULL || out_tagged == NULL) {
+    return FR_ERR_INVALID;
+  }
+  runtime->execution_depth++;
+  err = fr_vm_run_instruction_stream_depth(runtime, view, NULL, 0, out_tagged,
+                                           0);
+  runtime->execution_depth--;
+  return err;
 }
 
 fr_err_t fr_vm_run_boot(fr_runtime_t *runtime, fr_tagged_t *out_tagged) {

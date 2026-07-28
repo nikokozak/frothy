@@ -54,6 +54,8 @@ const char *fr_err_name(fr_err_t err) {
     return "ble disconnected";
   case FR_ERR_BUSY:
     return "busy";
+  case FR_ERR_PROMPT_ONLY:
+    return "prompt only";
   case FR_OK:
   default:
     return NULL;

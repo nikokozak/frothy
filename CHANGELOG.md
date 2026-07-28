@@ -6,6 +6,24 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+### Changed
+
+- **`save`, `restore`, and `dangerous.wipe` are prompt words now.** Called
+  from inside a word, an event body, or `boot`, they answer
+  `error: prompt only (26)` and stop that form instead of running. They
+  replace the image the running program is executing from: on ESP32 the
+  old mapping is unmapped the moment the new one takes over, so the next
+  instruction the caller read was a fault; on the host the instructions
+  survived but the frame's own bytes, objects, and names did not. The
+  guide already gave this rule ("Do not hide this cycle inside one word")
+  — the runtime now keeps it.
+
+  This replaces a published contract: a nested `save:` used to raise
+  `not saved (13)` when a slot held a volatile value, and to *succeed*
+  otherwise. It now always refuses, with a reason that is true either way,
+  and stays catchable by `attempt`/`rescue`. The prompt is unchanged —
+  bare `save`/`save:` and the REPL commands behave exactly as before.
+
 ## [0.1.13] - 2026-07-26
 
 ### Changed

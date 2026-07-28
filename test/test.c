@@ -3264,21 +3264,20 @@ static void test_uart(void) {
   CHECK("programming continues after a save notice",
         fr_repl_eval_line(&runtime, "2 + 2", out, sizeof(out)) == FR_OK &&
             strcmp(out, "4\nok\n") == 0);
-  CHECK("nested save remains an error and aborts its form",
+  /* ADR 0071: save inside a word refuses before it looks at anything, so
+     the reason is where it was called from, not what the slots hold. */
+  CHECK("nested save refuses and aborts its form",
         fr_repl_eval_line(&runtime,
                           "save-more is fn [ save: ; 9 ]", out,
                           sizeof(out)) == FR_OK &&
             fr_repl_eval_line(&runtime, "save-more:", out, sizeof(out)) ==
-                FR_ERR_VOLATILE &&
-            strcmp(out,
-                   "error: not saved (13)\n"
-                   "detail: cannot save slot 'appuart' - bound to a live "
-                   "handle or buffer\n") == 0);
-  CHECK("caught save keeps code 13 and emits no notice",
+                FR_ERR_PROMPT_ONLY &&
+            strcmp(out, "error: prompt only (26)\n") == 0);
+  CHECK("caught save reports the prompt-only code",
         fr_repl_eval_line(&runtime,
                           "attempt [ save: ] rescue [ error.code ]", out,
                           sizeof(out)) == FR_OK &&
-            strcmp(out, "13\nok\n") == 0);
+            strcmp(out, "26\nok\n") == 0);
 #endif
   CHECK("uart repl close invalidates bound handle",
         fr_repl_eval_line(&runtime, "uart.close: appuart", out, sizeof(out)) ==
@@ -5969,6 +5968,180 @@ static void test_failed_remount_drops_the_hold(void) {
   CHECK("drop the held handle was closed by the recovery cleanup",
         fr_repl_eval_line(&runtime, "again is pwm.open: 20, 2000", out,
                           sizeof(out)) == FR_OK);
+  fr_handle_close_all(&runtime);
+}
+#endif
+
+#if FR_FEATURE_PERSISTENCE && FR_FEATURE_COMPILER && FR_FEATURE_EVENTS
+/* ADR 0071: nothing that replaces the running program may run inside it.
+ * Every live frame reads its instructions out of the mounted image and
+ * holds runtime-owned values a replacement destroys, so the persistence
+ * entries refuse while the VM is executing -- and refuse before they
+ * commit, since committing erases the slot the frames are reading. */
+static void test_program_replacement_is_prompt_only(void) {
+  fr_runtime_t runtime;
+  char out[192];
+
+  fr_platform_persist_clear();
+  CHECK("prompt-only base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("prompt-only the prompt itself still works",
+        fr_repl_eval_line(&runtime, "keep is fn [ 42 ]", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "ok\n") == 0 &&
+            fr_repl_eval_line(&runtime, "restore", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "keep:", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "42\nok\n") == 0);
+
+  /* All three words, from inside a called word: run_slot's shape. */
+  CHECK("prompt-only save refuses inside a word",
+        fr_repl_eval_line(&runtime, "s is fn [ save: ; 9 ]", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "s:", out, sizeof(out)) ==
+                FR_ERR_PROMPT_ONLY &&
+            strcmp(out, "error: prompt only (26)\n") == 0);
+  CHECK("prompt-only restore refuses inside a word",
+        fr_repl_eval_line(&runtime, "r is fn [ restore: ; 9 ]", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "r:", out, sizeof(out)) ==
+                FR_ERR_PROMPT_ONLY);
+  CHECK("prompt-only wipe refuses inside a word",
+        fr_repl_eval_line(&runtime, "w is fn [ dangerous.wipe: ; 9 ]", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "w:", out, sizeof(out)) ==
+                FR_ERR_PROMPT_ONLY);
+
+  /* The runtime-owned values a frame holds survive, because nothing was
+     replaced under it. This is the host repro of the original defect. */
+#if FR_FEATURE_BYTES
+  /* The refusal has to leave the frame intact, not merely report itself:
+     the frame reads its own bytes after catching it, which is the host
+     repro of the original defect. */
+  CHECK("prompt-only a frame keeps its own bytes",
+        fr_repl_eval_line(
+            &runtime,
+            "b is fn [ here t is bytes.from-text: \"abc\" ; "
+            "attempt [ save: ] rescue [ 0 ] ; bytes.length: t ]",
+            out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "b:", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "3\nok\n") == 0);
+#endif
+
+  /* The other two public VM entry shapes hold the depth up too. */
+  CHECK("prompt-only refuses under run_instruction_stream",
+        fr_repl_eval_line(&runtime, "1 + save:", out, sizeof(out)) ==
+            FR_ERR_PROMPT_ONLY);
+  CHECK("prompt-only refuses from boot",
+        fr_repl_eval_line(&runtime, "boot is fn [ save: ]", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "boot:", out, sizeof(out)) ==
+                FR_ERR_PROMPT_ONLY);
+  {
+    /* An event body runs through fr_vm_run_code_object. */
+    fr_err_t registered = fr_repl_eval_line(
+        &runtime, "beat is fn [ save: ]", out, sizeof(out));
+
+    CHECK("prompt-only event body refuses",
+          registered == FR_OK &&
+              fr_repl_eval_line(&runtime, "boot is fn [ every 50 [ beat: ] ]",
+                                out, sizeof(out)) == FR_OK &&
+              fr_repl_eval_line(&runtime, "boot:", out, sizeof(out)) == FR_OK &&
+              fr_platform_event_post_test_candidate(
+                  0, runtime.events.entries[0].generation, 50) == FR_OK &&
+              fr_event_drain(&runtime) == FR_OK &&
+              fr_event_dispatch(&runtime) == FR_ERR_PROMPT_ONLY);
+  }
+
+  /* The depth is what makes all of that work, so it has to come back to
+     zero however the evaluation ended. */
+  CHECK("prompt-only depth returns to zero after a returned error",
+        !fr_runtime_is_executing(&runtime));
+  CHECK("prompt-only depth returns to zero after a caught error",
+        fr_repl_eval_line(&runtime, "attempt [ save: ] rescue [ error.code ]",
+                          out, sizeof(out)) == FR_OK &&
+            strcmp(out, "26\nok\n") == 0 &&
+            !fr_runtime_is_executing(&runtime));
+  CHECK("prompt-only the prompt still works afterwards",
+        fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "ok\n") == 0);
+}
+
+/* The guard belongs to the persistence boundary, not to the three words:
+ * a linked native can call any of these directly. Each must refuse while
+ * a frame is live, and refuse before it touches anything -- wipe-user
+ * clears events and handles, install-library erases the library tier, and
+ * tolerant save captures and commits, all before reaching their inner
+ * save. */
+static void test_every_persistence_entry_is_prompt_only(void) {
+  fr_runtime_t runtime;
+  char out[128];
+
+  fr_platform_persist_clear();
+  CHECK("entries base image", fr_base_image_install(&runtime) == FR_OK);
+  /* Library-tier state too: install_library wipes that tier before it
+     reaches its inner save, so without its own guard the wipe would be
+     invisible to a user-tier-only fixture. */
+  CHECK("entries install a library word",
+        fr_repl_eval_line(&runtime, "install-library", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "shared is fn [ 5 ]", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "install-user", out, sizeof(out)) ==
+                FR_OK);
+  CHECK("entries save a program and open a resource",
+        fr_repl_eval_line(&runtime, "keep is fn [ 42 ]", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "mark is 7", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK);
+#if FR_FEATURE_PWM
+  CHECK("entries open a handle the guard must not disturb",
+        fr_repl_eval_line(&runtime, "led is pwm.open: 21, 1000", out,
+                          sizeof(out)) == FR_OK);
+#endif
+
+  /* Standing in for a native that calls persistence from inside a word. */
+  runtime.execution_depth = 1;
+  CHECK("entries save refuses",
+        fr_persist_save(&runtime) == FR_ERR_PROMPT_ONLY);
+  CHECK("entries tolerant save refuses",
+        fr_persist_save_tolerant(&runtime) == FR_ERR_PROMPT_ONLY);
+  CHECK("entries save_full refuses",
+        fr_persist_save_full(&runtime) == FR_ERR_PROMPT_ONLY);
+  CHECK("entries restore refuses",
+        fr_persist_restore(&runtime) == FR_ERR_PROMPT_ONLY);
+  CHECK("entries restore_library refuses",
+        fr_persist_restore_library(&runtime) == FR_ERR_PROMPT_ONLY);
+  CHECK("entries restore_user refuses",
+        fr_persist_restore_user(&runtime) == FR_ERR_PROMPT_ONLY);
+  CHECK("entries wipe refuses",
+        fr_persist_wipe(&runtime) == FR_ERR_PROMPT_ONLY);
+  CHECK("entries wipe_user refuses",
+        fr_persist_wipe_user(&runtime) == FR_ERR_PROMPT_ONLY);
+  CHECK("entries install_library refuses",
+        fr_persist_install_library(&runtime) == FR_ERR_PROMPT_ONLY);
+  runtime.execution_depth = 0;
+
+  /* Nothing was cleared, erased, or committed on the way to those
+     refusals: the runtime and the durable image are as they were. */
+  CHECK("entries left the runtime alone",
+        fr_repl_eval_line(&runtime, "keep:", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "42\nok\n") == 0 &&
+            fr_repl_eval_line(&runtime, "mark", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "7\nok\n") == 0);
+  CHECK("entries left the library tier alone",
+        fr_repl_eval_line(&runtime, "shared:", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "5\nok\n") == 0);
+#if FR_FEATURE_PWM
+  CHECK("entries left the open handle alone",
+        fr_repl_eval_line(&runtime, "pwm.write: led, 64", out, sizeof(out)) ==
+            FR_OK);
+#endif
+  CHECK("entries left the durable image alone",
+        fr_repl_eval_line(&runtime, "restore", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "keep:", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "42\nok\n") == 0);
   fr_handle_close_all(&runtime);
 }
 #endif
@@ -16710,6 +16883,10 @@ int main(void) {
   test_wipe_user_retries_failed_close();
   test_wipe_user_preserves_unclosable_handle();
   test_close_kind_preserves_failed_entry();
+#if FR_FEATURE_PERSISTENCE && FR_FEATURE_COMPILER && FR_FEATURE_EVENTS
+  test_program_replacement_is_prompt_only();
+  test_every_persistence_entry_is_prompt_only();
+#endif
 #if FR_FEATURE_PWM
   test_naming_a_handle_binds_it();
 #endif
