@@ -76,8 +76,8 @@ new native against it before adding the row:
 
 ## Releasing And Firmware Bundles
 
-The website and Frothy App consume the web flasher's firmware segments from
-this repo. Firmware files carry embedded build timestamps and are never
+The website and Frothy App consume the web flasher's firmware files from this
+repo. Firmware files carry embedded build timestamps and are never
 byte-identical between builds, so "update it" always means "rebuild and
 re-vendor", never "diff the bytes". Browser editor and serial-client source
 belong to Frothy App; its package builds produce the standalone bundles still
@@ -86,17 +86,16 @@ vendored by frothy.dev.
 **Version scheme.** `vX.Y.Z` git tags are the project release. The VS Code
 extension keeps its own `package.json` version.
 
-**Update the flasher firmware** on a site checkout (needs ESP-IDF once, via
-`frothy bootstrap`):
+**Update the flasher firmware** on a site checkout (needs ESP-IDF via
+`frothy bootstrap` and the pinned Arduino-Pico core):
 
 ```sh
 tools/build-flasher-bundle.sh ~/Developer/frothy-site/static/test/flash/firmware
 ```
 
-This discovers every official ESP-IDF board, runs its normal build, copies only
-the files listed by ESP-IDF's generated `flasher_args.json`, and writes their
-addresses plus the build version (from `git describe`) to one flasher
-`manifest.json`.
+This discovers every official firmware board, runs its normal build, packages
+either ESP-IDF's generated flash segments or the target's declared UF2, and
+writes one flasher `manifest.json` with the build version from `git describe`.
 
 This command writes firmware only. Refresh frothy.dev's serial-client bundle
 from Frothy App as documented beside the site's flasher assets.
@@ -109,9 +108,9 @@ git push origin v0.1.0
 ```
 
 The push triggers `.github/workflows/release.yml`, which builds the same
-segmented flasher bundle and `make vsix`, then attaches the manifest, firmware
-segments, and `.vsix` to a GitHub release. Re-vendor the site bundles from the
-tagged commit so the live site matches the release.
+flasher bundle and `make vsix`, then attaches the manifest, firmware files, and
+`.vsix` to a GitHub release. Re-vendor the site bundles from the tagged commit
+so the live site matches the release.
 
 **Publish the CLI through Homebrew** only after that tag archive is reachable.
 Render the proven formula template with the real release values:
@@ -133,11 +132,11 @@ brew style /tmp/frothy.rb
 ```
 
 Review `/tmp/frothy.rb`, then commit it as `Formula/frothy.rb` in the dedicated
-tap. The package installs `frothy`, `esptool`, and the release firmware, so
-`frothy flash BOARD` works without a source checkout. Firmware development and
-custom firmware builds still require the Frothy source and ESP-IDF. Publishing
-the tap is a separate authorized release action, never part of an ordinary code
-push.
+tap. The package installs `frothy`, `esptool`, `picotool`, and the release
+firmware, so `frothy flash BOARD` works without a source checkout. Firmware
+development and custom firmware builds still require the Frothy source and the
+selected board toolchain. Publishing the tap is a separate authorized release
+action, never part of an ordinary code push.
 
 ## Where To Talk
 

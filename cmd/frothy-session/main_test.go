@@ -675,6 +675,101 @@ func TestFrothyFlashUsesPackagedFirmwareWithoutSourceCheckout(t *testing.T) {
 	}
 }
 
+func TestFrothyFlashUsesPackagedRP2040UF2(t *testing.T) {
+	firmwareRoot := t.TempDir()
+	writeFile(t, filepath.Join(firmwareRoot, "frothy.uf2"), "uf2")
+	writeFile(t, filepath.Join(firmwareRoot, "manifest.json"), `[
+  {"board":"arduino_nano_rp2040_connect","chip":"rp2040",
+   "bootsel":"Double-press RESET.","uf2":{"file":"frothy.uf2"}}
+]`)
+
+	for _, test := range []struct {
+		name      string
+		args      []string
+		wantReset string
+	}{
+		{
+			name:      "running firmware resets over serial",
+			args:      []string{"--port", "/dev/cu.usbmodem101", "arduino_nano_rp2040_connect"},
+			wantReset: "/dev/cu.usbmodem101",
+		},
+		{
+			name: "manual BOOTSEL skips serial",
+			args: []string{"arduino_nano_rp2040_connect", "--bootsel"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var gotName string
+			var gotArgs []string
+			var gotReset string
+			runner := func(name string, args []string) error {
+				gotName = name
+				gotArgs = args
+				return nil
+			}
+			list := func() ([]string, error) {
+				t.Fatal("lister must not run")
+				return nil, nil
+			}
+			reset := func(port string) error {
+				gotReset = port
+				return nil
+			}
+
+			var stderr bytes.Buffer
+			code := runFlashCommandWithReset(test.args, "", firmwareRoot, io.Discard, &stderr,
+				list, runner, reset)
+			if code != 0 {
+				t.Fatalf("exit code %d, want 0; stderr=%q", code, stderr.String())
+			}
+			if gotReset != test.wantReset {
+				t.Fatalf("reset=%q, want %q", gotReset, test.wantReset)
+			}
+			if gotName != "picotool" {
+				t.Fatalf("ran %q, want picotool", gotName)
+			}
+			want := []string{"load", filepath.Join(firmwareRoot, "frothy.uf2"), "-v", "-x"}
+			if strings.Join(gotArgs, " ") != strings.Join(want, " ") {
+				t.Fatalf("argv=%q, want %q", gotArgs, want)
+			}
+		})
+	}
+}
+
+func TestWaitForRP2040PollsUntilReady(t *testing.T) {
+	probes := 0
+	var sleeps []time.Duration
+	ready := waitForRP2040(func() bool {
+		probes++
+		return probes == 3
+	}, func(duration time.Duration) {
+		sleeps = append(sleeps, duration)
+	})
+
+	if !ready || probes != 3 || len(sleeps) != 2 {
+		t.Fatalf("ready=%v probes=%d sleeps=%d, want true, 3, 2", ready, probes, len(sleeps))
+	}
+	for _, duration := range sleeps {
+		if duration != 500*time.Millisecond {
+			t.Fatalf("poll duration=%s, want 500ms", duration)
+		}
+	}
+}
+
+func TestLoadPackagedFirmwareRejectsMixedFormats(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "frothy.uf2"), "uf2")
+	writeFile(t, filepath.Join(root, "frothy.bin"), "bin")
+	writeFile(t, filepath.Join(root, "manifest.json"), `[
+  {"board":"mixed","chip":"rp2040","bootsel":"Press BOOT.",
+   "segments":[{"address":0,"file":"frothy.bin"}],"uf2":{"file":"frothy.uf2"}}
+]`)
+
+	if _, err := loadPackagedFirmware(root, "mixed"); err == nil {
+		t.Fatal("mixed segmented and UF2 firmware accepted")
+	}
+}
+
 func TestFrothyFlashSuggestsStopWhenPortLooksBusy(t *testing.T) {
 	root := makeFlashTestRoot(t)
 	runner := func(string, []string) error {
