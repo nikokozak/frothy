@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +13,9 @@ import (
 
 type capabilityReason string
 
+// These tokens are part of target-contract schema 1. New reasons may be added
+// without changing the schema; renaming, removing, or changing the meaning of
+// an existing reason requires a new schema.
 const (
 	capabilityHardwareAbsent      capabilityReason = "hardware_absent"
 	capabilityTargetUnimplemented capabilityReason = "target_unimplemented"
@@ -31,6 +35,74 @@ type targetContract struct {
 	profile      string
 	wordBits     int
 	capabilities map[string]capabilityStatus
+}
+
+const targetContractSchema = 1
+
+type publishedCapabilityStatus struct {
+	Available bool             `json:"available"`
+	Reason    capabilityReason `json:"reason,omitempty"`
+}
+
+type publishedTargetContract struct {
+	Schema       int                                  `json:"schema"`
+	Board        string                               `json:"board"`
+	Target       string                               `json:"target"`
+	BuildKind    string                               `json:"build_kind"`
+	Profile      string                               `json:"profile"`
+	Capabilities map[string]publishedCapabilityStatus `json:"capabilities"`
+}
+
+func publishTargetContract(contract targetContract) publishedTargetContract {
+	statuses := make(map[string]publishedCapabilityStatus, len(contract.capabilities))
+	for name, status := range contract.capabilities {
+		statuses[name] = publishedCapabilityStatus{
+			Available: status.available,
+			Reason:    status.reason,
+		}
+	}
+	return publishedTargetContract{
+		Schema:       targetContractSchema,
+		Board:        contract.board,
+		Target:       contract.target,
+		BuildKind:    contract.buildKind,
+		Profile:      contract.profile,
+		Capabilities: statuses,
+	}
+}
+
+func encodeTargetContract(contract targetContract) ([]byte, error) {
+	encoded, err := json.MarshalIndent(publishTargetContract(contract), "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(encoded, '\n'), nil
+}
+
+func emitTargetContract(path string, contract targetContract) error {
+	encoded, err := encodeTargetContract(contract)
+	if err != nil {
+		return fmt.Errorf("encode target contract: %w", err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create target contract: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err = tmp.Chmod(0o644); err == nil {
+		_, err = tmp.Write(encoded)
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(tmpPath, path)
+	}
+	if err != nil {
+		return fmt.Errorf("write target contract: %w", err)
+	}
+	return nil
 }
 
 func resolveTargetContract(sourceRoot, board string, selected map[string]bool,

@@ -16,6 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
       - name: Cache ESP-IDF
         uses: actions/cache@v4
         with:
@@ -53,8 +59,16 @@ jobs:
           segment_count="$(find dist-release -maxdepth 1 -type f -name '*-*-0x*.bin' | wc -l | tr -d ' ')"
           uf2_count="$(find dist-release -maxdepth 1 -type f -name '*.uf2' | wc -l | tr -d ' ')"
           vsix_count="$(find dist-release -maxdepth 1 -type f -name 'frothy-*.vsix' | wc -l | tr -d ' ')"
-          test "$segment_count" = 9
-          test "$uf2_count" = 1
+          manifest_counts="$(node -e '
+            const rows = require("./dist-release/manifest.json");
+            console.log(
+              rows.reduce((n, row) => n + (row.segments?.length ?? 0), 0),
+              rows.filter((row) => row.uf2).length
+            );
+          ')"
+          set -- $manifest_counts
+          test "$segment_count" = "$1"
+          test "$uf2_count" = "$2"
           test "$vsix_count" = 1
           test -f dist-release/manifest.json
           firmware_files=(dist-release/*-*-0x*.bin dist-release/*.uf2)

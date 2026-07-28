@@ -1,11 +1,35 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestTargetContractJSONGolden(t *testing.T) {
+	root, err := resolveFrothySourceRoot(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	contract, err := resolveTargetContract(root, "seeed_xiao_rp2040", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := encodeTargetContract(contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join(
+		"testdata", "target_contract", "seeed_xiao_rp2040.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("target contract JSON drifted\n--- got ---\n%s", got)
+	}
+}
 
 func TestResolveTargetContracts(t *testing.T) {
 	root, err := resolveFrothySourceRoot(".")
