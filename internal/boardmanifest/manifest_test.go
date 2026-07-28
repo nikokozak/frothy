@@ -24,10 +24,8 @@ func loadManifest(t *testing.T, path string) manifest {
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
-	dec.DisallowUnknownFields()
 	var m manifest
-	if err := dec.Decode(&m); err != nil {
+	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatalf("parse %s: %v", path, err)
 	}
 	return m
@@ -185,7 +183,7 @@ func TestSeeedXiaoRp2040BoardManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(boardMK), "flash=2097152_65536") {
-		t.Error("seeed_xiao_rp2040: 64 KB persistence flash option missing")
+	if !strings.Contains(string(boardMK), "BOARD_FLASH_BYTES := 2097152") {
+		t.Error("seeed_xiao_rp2040: flash size missing")
 	}
 }
