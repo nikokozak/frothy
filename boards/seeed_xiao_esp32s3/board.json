@@ -3,9 +3,16 @@
   "chip": "esp32s3",
   "target": "esp-idf",
   "profile": "esp32_plain",
+  "console": {
+    "kind": "usb_serial_jtag"
+  },
+  "target_options": {
+    "ESP_IDF_TARGET": "esp32s3"
+  },
   "peripherals": ["gpio", "adc", "uart", "pwm", "i2c", "trace", "pulse"],
   "pins": {
     "$led_builtin": 21,
+    "$led_active_level": 0,
     "$boot_button": 0,
     "$a0": 1,
     "$sda": 5,

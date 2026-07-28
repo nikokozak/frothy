@@ -26,6 +26,8 @@ jobs:
           cache: npm
           cache-dependency-path: editors/vscode/package-lock.json
 
+      - run: node --test tools/gen-boards.test.mjs
+      - run: node tools/gen-boards.mjs --check
       - run: make test
       - run: make test-unity
       - run: make test-host-normal-transcript

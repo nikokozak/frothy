@@ -1,3 +1,4 @@
+/* Generated from board.json by tools/gen-boards.mjs. Do not edit. */
 #pragma once
 
 #define FR_BOARD_CONSOLE_USB_SERIAL_JTAG 1

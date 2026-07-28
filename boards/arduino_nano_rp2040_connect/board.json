@@ -3,10 +3,20 @@
   "chip": "rp2040",
   "target": "arduino-rp2040",
   "profile": "rp2040_nina",
+  "console": {
+    "kind": "usb_cdc"
+  },
+  "target_options": {
+    "ARDUINO_FQBN": "rp2040:rp2040:arduino_nano_connect",
+    "ARDUINO_OPTIONS": "freq=133,opt=Small,usbstack=picosdk",
+    "HAS_NINA": 1
+  },
+  "flash_bytes": 16777216,
   "bootsel": "Double-press RESET to make the RPI-RP2 drive appear.",
   "peripherals": ["gpio", "adc", "pwm", "i2c", "net", "ble"],
   "pins": {
     "$led_builtin": 6,
+    "$led_active_level": 1,
     "$a0": 26,
     "$sda": 12,
     "$scl": 13

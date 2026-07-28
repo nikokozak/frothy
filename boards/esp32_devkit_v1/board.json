@@ -3,9 +3,17 @@
   "chip": "esp32",
   "target": "esp-idf",
   "profile": "esp32_plain",
+  "console": {
+    "kind": "uart",
+    "port": 0
+  },
+  "target_options": {
+    "ESP_IDF_TARGET": "esp32"
+  },
   "peripherals": ["gpio", "adc", "uart", "pwm", "i2c", "trace", "pulse"],
   "pins": {
     "$led_builtin": 2,
+    "$led_active_level": 1,
     "$boot_button": 0,
     "$a0": 34,
     "$sda": 21,

@@ -1,3 +1,4 @@
+/* Generated from board.json by tools/gen-boards.mjs. Do not edit. */
 #include "base_defs.h"
 
 #include "board.h"
