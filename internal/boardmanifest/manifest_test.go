@@ -14,6 +14,7 @@ type manifest struct {
 	Target      string         `json:"target"`
 	Profile     string         `json:"profile"`
 	Bootsel     string         `json:"bootsel"`
+	Cores       int            `json:"cores"`
 	Peripherals []string       `json:"peripherals"`
 	Pins        map[string]int `json:"pins"`
 }
@@ -48,10 +49,8 @@ func checkRequired(t *testing.T, label string, m manifest) {
 	if m.Peripherals == nil {
 		t.Errorf("%s: peripherals missing (use [] if none)", label)
 	}
-	for _, p := range m.Peripherals {
-		if p == "pad" {
-			t.Errorf("%s: pad must not appear under peripherals (it is a runtime feature, not hardware)", label)
-		}
+	if m.Cores < 1 {
+		t.Errorf("%s: cores must be positive", label)
 	}
 	if m.Pins == nil {
 		t.Errorf("%s: pins missing (use {} if none)", label)

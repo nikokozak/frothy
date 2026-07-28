@@ -10,7 +10,8 @@
   "target_options": {
     "ESP_IDF_TARGET": "esp32"
   },
-  "peripherals": ["gpio", "adc", "uart", "pwm", "i2c", "trace", "pulse"],
+  "cores": 2,
+  "peripherals": ["gpio", "adc", "uart", "pwm", "i2c", "i2s", "net", "ble"],
   "pins": {
     "$led_builtin": 2,
     "$led_active_level": 1,

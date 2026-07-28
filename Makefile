@@ -19,6 +19,9 @@ ifeq ($(wildcard $(TARGET_MK)),)
 $(error unknown TARGET '$(TARGET)': missing $(TARGET_MK))
 endif
 include $(TARGET_MK)
+ifeq ($(strip $(TARGET_BUILD_KIND)),)
+$(error TARGET_BUILD_KIND is required in $(TARGET_MK))
+endif
 
 ifneq ($(wildcard $(PROFILE_MK)),)
 include $(PROFILE_MK)
@@ -31,6 +34,7 @@ PROFILE_HEADERS := $(wildcard profiles/*.h)
 PROFILE_MKS := $(wildcard profiles/*.mk)
 TARGET_MAIN_SOURCE ?= targets/common/repl_main.c
 TARGET_CC ?= cc
+PROFILE_REPORT_CC ?= cc
 BUILD_DIR ?= build/$(BOARD)
 ARTIFACT_ELF ?= $(BUILD_DIR)/frothy.elf
 ARTIFACT_HEX ?= $(BUILD_DIR)/frothy.hex
@@ -80,6 +84,22 @@ FROTHY_COMPOSITION_H ?=
 FROTHY_COMPOSITION_SDKCONFIG ?=
 ifneq ($(strip $(FROTHY_COMPOSITION_H)),)
 FR_CFLAGS += -DFR_COMPOSITION_HEADER=\"$(abspath $(FROTHY_COMPOSITION_H))\"
+endif
+
+# Profile reporting only needs contract includes and defines. Target compiler
+# options belong to the firmware compiler and must not leak into the portable
+# host preprocessor used by print-target-facts.
+PROFILE_REPORT_CFLAGS := \
+	-Isrc \
+	-Iprofiles \
+	-I$(TARGET_DIR) \
+	-I$(BOARD_DIR) \
+	-DFR_PROFILE_HEADER=\"$(PROFILE).h\" \
+	-DFR_PROFILE_NAME=\"$(PROFILE)\" \
+	$(filter -D% -I%,$(TARGET_CFLAGS) $(BOARD_CFLAGS))
+ifneq ($(strip $(FROTHY_COMPOSITION_H)),)
+PROFILE_REPORT_CFLAGS += \
+	-DFR_COMPOSITION_HEADER=\"$(abspath $(FROTHY_COMPOSITION_H))\"
 endif
 
 FR_LDFLAGS := $(TARGET_LDFLAGS) $(BOARD_LDFLAGS) $(LDFLAGS)
@@ -990,6 +1010,8 @@ print-config: ## Print the selected board, target, profile, and build paths.
 	@printf 'TARGET=%s\n' "$(TARGET)"
 	@printf 'TARGET_DIR=%s\n' "$(TARGET_DIR)"
 	@printf 'TARGET_MK=%s\n' "$(TARGET_MK)"
+	@printf 'TARGET_BUILD_KIND=%s\n' "$(TARGET_BUILD_KIND)"
+	@printf 'TARGET_CAPABILITIES=%s\n' "$(TARGET_CAPABILITIES)"
 	@printf 'TARGET_SOURCES=%s\n' "$(TARGET_SOURCES)"
 	@printf 'PROFILE=%s\n' "$(PROFILE)"
 	@printf 'PROFILE_MK=%s\n' "$(PROFILE_MK)"
@@ -1004,10 +1026,25 @@ print-config: ## Print the selected board, target, profile, and build paths.
 	@printf 'ARTIFACT_UF2=%s\n' "$(ARTIFACT_UF2)"
 	@printf 'ARTIFACT_SIZE=%s\n' "$(ARTIFACT_SIZE)"
 
+# Profile headers are portable contract data: they may depend on FR_* build
+# defines, not target compiler predefines or SDK headers. A host preprocessor
+# can therefore report the exact profile and composition selected by Make.
+print-target-facts:
+	@printf 'TARGET=%s\n' "$(TARGET)"
+	@printf 'TARGET_BUILD_KIND=%s\n' "$(TARGET_BUILD_KIND)"
+	@printf 'TARGET_CAPABILITIES=%s\n' "$(TARGET_CAPABILITIES)"
+	@printf 'PROFILE=%s\n' "$(PROFILE)"
+	@set -o pipefail; printf '#include "config.h"\n' | \
+		$(PROFILE_REPORT_CC) $(PROFILE_REPORT_CFLAGS) -dM -E -x c - | \
+		sed -n \
+			-e 's/^#define \(FR_WORD_SIZE\) \(.*\)$$/\1=\2/p' \
+			-e 's/^#define \(FR_FEATURE_[A-Z0-9_]*\) \(.*\)$$/\1=\2/p' | \
+		LC_ALL=C sort
+
 vsix: ## Build the VS Code extension package.
 	cd editors/vscode && npm ci && npm run build && npx vsce package
 
 clean: ## Remove generated build outputs.
 	rm -rf build frothy test/test test/test-host-normal test/fixtures/projects/*/.frothy
 
-.PHONY: test test-esp-idf-console-boundary test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config vsix clean
+.PHONY: test test-esp-idf-console-boundary test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config print-target-facts vsix clean

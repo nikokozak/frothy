@@ -6,60 +6,63 @@ import (
 	"strings"
 )
 
-// The offered capabilities are the gated features a custom firmware
-// composition may turn off. Public semantics live here — the name and the
-// off-bundle's top-level effects (the composition.h defines and sdkconfig
-// lines applied when the capability is disabled). The profile still owns the
-// concrete realization values that apply when the capability is on. v1 offers
-// one bundle; net follows after its own sdkconfig audit.
+// capability is the one vocabulary used by project toggles, library
+// requirements, and target resolution. Each row says which owners must
+// provide evidence before the capability is available. A toggleable row must
+// have a profile macro and header override; sdkconfig may only supplement it.
 type capability struct {
-	name         string
-	offDefines   []string
-	offSdkconfig []string
+	name            string
+	needsBoard      bool
+	boardPeripheral bool
+	needsTarget     bool
+	profileMacro    string
+	toggleable      bool
+	offDefines      []string
+	offSdkconfig    []string
 }
 
-var offeredCapabilities = []capability{
+var capabilities = []capability{
+	{name: "adc", needsBoard: true, boardPeripheral: true, needsTarget: true},
 	{
-		name:         "ble",
-		offDefines:   []string{"#define FR_FEATURE_BLE 0"},
-		offSdkconfig: []string{"CONFIG_BT_ENABLED=n"},
+		name:            "ble",
+		needsBoard:      true,
+		boardPeripheral: true,
+		needsTarget:     true,
+		profileMacro:    "FR_FEATURE_BLE",
+		toggleable:      true,
+		offDefines:      []string{"#define FR_FEATURE_BLE 0"},
+		offSdkconfig:    []string{"CONFIG_BT_ENABLED=n"},
 	},
+	{name: "cells", profileMacro: "FR_FEATURE_CELLS"},
+	{name: "dual_core", needsBoard: true},
+	{name: "gpio", needsBoard: true, boardPeripheral: true, needsTarget: true},
+	{name: "i2c", needsBoard: true, boardPeripheral: true, needsTarget: true, profileMacro: "FR_FEATURE_I2C"},
+	{name: "i2s", needsBoard: true, boardPeripheral: true, needsTarget: true},
 	{
 		// No sdkconfig lines: with FR_FEATURE_NET 0 nothing references
 		// esp_wifi/lwip, so the linker drops them (measured on esp32_devkit_v1:
 		// -608 KiB flash). Wi-Fi reserves no static RAM until initialized, so
 		// unlike BLE there is no controller config to flip.
-		name:       "net",
-		offDefines: []string{"#define FR_FEATURE_NET 0"},
+		name:            "net",
+		needsBoard:      true,
+		boardPeripheral: true,
+		needsTarget:     true,
+		profileMacro:    "FR_FEATURE_NET",
+		toggleable:      true,
+		offDefines:      []string{"#define FR_FEATURE_NET 0"},
 	},
+	{name: "pwm", needsBoard: true, boardPeripheral: true, needsTarget: true, profileMacro: "FR_FEATURE_PWM"},
+	{name: "text", profileMacro: "FR_FEATURE_TEXT"},
+	{name: "uart", needsBoard: true, boardPeripheral: true, needsTarget: true, profileMacro: "FR_FEATURE_UART"},
 }
 
-// knownCapabilities is the set of names a library may name in `requires`. It
-// is a superset of the offered names: always-on features like cells and i2c
-// are legitimate requirements but are not composition toggles, so they never
-// appear in offeredCapabilities. A library requiring an always-on capability
-// is always satisfied; a library requiring an offered one is satisfied unless
-// the composition disables it.
-var knownCapabilities = func() map[string]bool {
-	known := map[string]bool{
-		// Always-on requirement targets (not offerable toggles).
-		"cells": true,
-		"text":  true,
-		"i2c":   true,
-		"i2s":   true,
-		"pwm":   true,
-		"uart":  true,
-	}
-	for _, c := range offeredCapabilities {
-		known[c.name] = true
-	}
-	return known
-}()
-
-func isKnownCapability(name string) bool { return knownCapabilities[name] }
+func isKnownCapability(name string) bool {
+	_, ok := capabilityByName(name)
+	return ok
+}
 
 func capabilityByName(name string) (capability, bool) {
-	for _, c := range offeredCapabilities {
+	for _, c := range capabilities {
 		if c.name == name {
 			return c, true
 		}
@@ -67,13 +70,18 @@ func capabilityByName(name string) (capability, bool) {
 	return capability{}, false
 }
 
-// validateCapabilities rejects any name that is not an offered capability.
-// Non-boolean values are already rejected by TOML decoding into
-// map[string]bool. An explicit true is a no-op: the capability stays on.
+// validateCapabilities accepts only composition toggles. Non-boolean values
+// are already rejected by TOML decoding into map[string]bool. An explicit
+// true requests the profile default and is still subject to target resolution.
 func validateCapabilities(selected map[string]bool) error {
 	for name := range selected {
-		if _, ok := capabilityByName(name); !ok {
+		c, ok := capabilityByName(name)
+		if !ok {
 			return fmt.Errorf("unknown capability %q; offered: %s", name, offeredCapabilityNames())
+		}
+		if !c.toggleable {
+			return fmt.Errorf("capability %q is not configurable; offered: %s",
+				name, offeredCapabilityNames())
 		}
 	}
 	return nil
@@ -87,7 +95,7 @@ func disabledCapabilities(selected map[string]bool) []capability {
 		if enabled {
 			continue
 		}
-		if c, ok := capabilityByName(name); ok {
+		if c, ok := capabilityByName(name); ok && c.toggleable {
 			out = append(out, c)
 		}
 	}
@@ -120,9 +128,11 @@ func generatedCompositionSdkconfig(disabled []capability) string {
 }
 
 func offeredCapabilityNames() string {
-	names := make([]string, 0, len(offeredCapabilities))
-	for _, c := range offeredCapabilities {
-		names = append(names, c.name)
+	var names []string
+	for _, c := range capabilities {
+		if c.toggleable {
+			names = append(names, c.name)
+		}
 	}
 	sort.Strings(names)
 	return strings.Join(names, ", ")

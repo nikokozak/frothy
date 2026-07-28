@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -265,19 +266,33 @@ func TestRunBuild_PassesCompositionVarsToMake(t *testing.T) {
 	if os.PathSeparator == '\\' {
 		t.Skip("test uses a POSIX make stub")
 	}
+	sourceRoot, err := resolveFrothySourceRoot(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	realMake, err := exec.LookPath("make")
+	if err != nil {
+		t.Fatal(err)
+	}
 	project := makeTempProject(t,
 		"name = \"comp\"\nboard = \"host\"\n\n[capabilities]\nble = false\n", "", nil)
-	t.Setenv(frothySourceRootEnv, makeSourceRoot(t))
+	t.Setenv(frothySourceRootEnv, sourceRoot)
 	binDir := t.TempDir()
 	makePath := filepath.Join(binDir, "make")
-	writeFile(t, makePath, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n")
+	writeFile(t, makePath, "#!/bin/sh\n"+
+		"case \" $* \" in\n"+
+		"  *\" print-target-facts \"*) exec \""+
+		strings.ReplaceAll(realMake, "\"", "\\\"")+"\" \"$@\" ;;\n"+
+		"esac\n"+
+		"printf '%s\\n' \"$@\"\n")
 	if err := os.Chmod(makePath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	var stdout, stderr bytes.Buffer
-	if err := runBuild(buildOptions{projectDir: project}, &stdout, &stderr); err != nil {
+	if err := runBuild(
+		buildOptions{projectDir: project}, &stdout, &stderr); err != nil {
 		t.Fatalf("runBuild: %v\nstderr: %s", err, stderr.String())
 	}
 	out := filepath.Join(project, ".frothy", "build", "host")
@@ -292,6 +307,11 @@ func TestRunBuild_PassesCompositionVarsToMake(t *testing.T) {
 }
 
 func TestBuildEmitsCompositionFiles(t *testing.T) {
+	root, err := resolveFrothySourceRoot(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(frothySourceRootEnv, root)
 	dir := makeTempProject(t,
 		"name = \"comp\"\nboard = \"esp32_devkit_v1\"\n\n[capabilities]\nble = false\n", "", nil)
 	if rc := runBuildCommand([]string{"--project", dir, "--no-make"}, &bytes.Buffer{}, &bytes.Buffer{}); rc != 0 {
@@ -308,6 +328,11 @@ func TestBuildEmitsCompositionFiles(t *testing.T) {
 }
 
 func TestBuildDefaultCompositionRemovesStaleFiles(t *testing.T) {
+	root, err := resolveFrothySourceRoot(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(frothySourceRootEnv, root)
 	dir := makeTempProject(t,
 		"name = \"comp\"\nboard = \"esp32_devkit_v1\"\n\n[capabilities]\nble = false\n", "", nil)
 	if rc := runBuildCommand([]string{"--project", dir, "--no-make"}, &bytes.Buffer{}, &bytes.Buffer{}); rc != 0 {
@@ -333,6 +358,62 @@ func TestBuildRejectsUnknownCapability(t *testing.T) {
 		t.Fatal("expected nonzero exit for unknown capability")
 	} else if !strings.Contains(stderr.String(), "unknown capability") {
 		t.Fatalf("expected unknown-capability error, got: %s", stderr.String())
+	}
+}
+
+func TestBuildRejectsUnavailableEnabledCapability(t *testing.T) {
+	root, err := resolveFrothySourceRoot(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(frothySourceRootEnv, root)
+	dir := makeTempProject(t,
+		"name = \"comp\"\nboard = \"seeed_xiao_rp2040\"\n\n[capabilities]\nble = true\n", "", nil)
+	var stderr bytes.Buffer
+	if rc := runBuildCommand(
+		[]string{"--project", dir, "--no-make"}, &bytes.Buffer{}, &stderr); rc == 0 {
+		t.Fatal("expected nonzero exit for unavailable BLE")
+	} else if !strings.Contains(stderr.String(),
+		`capability "ble" is unavailable on board seeed_xiao_rp2040: hardware_absent`) {
+		t.Fatalf("expected hardware-absence error, got: %s", stderr.String())
+	}
+}
+
+func TestBuildGatesLibrariesWithResolvedCapabilities(t *testing.T) {
+	root, err := resolveFrothySourceRoot(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(frothySourceRootEnv, root)
+	tests := []struct {
+		board   string
+		wantErr string
+	}{
+		{board: "host", wantErr: "profile_disabled"},
+		{board: "esp32_devkit_v1"},
+	}
+	for _, test := range tests {
+		t.Run(test.board, func(t *testing.T) {
+			dir := makeTempProject(t,
+				"name = \"contract\"\nboard = \""+test.board+"\"\n\n"+
+					"[deps]\nsteps = { path = \"libs/steps\" }\n", "",
+				map[string]string{
+					"libs/steps/lib.fr": "",
+					"libs/steps/lib.toml": "name = \"steps\"\nboards = [\"" +
+						test.board + "\"]\nrequires = [\"cells\"]\n",
+				})
+			var stderr bytes.Buffer
+			rc := runBuildCommand(
+				[]string{"--project", dir, "--no-make"}, &bytes.Buffer{}, &stderr)
+			if test.wantErr == "" && rc != 0 {
+				t.Fatalf("build exited %d: %s", rc, stderr.String())
+			}
+			if test.wantErr != "" &&
+				(rc == 0 || !strings.Contains(stderr.String(), test.wantErr)) {
+				t.Fatalf("build exit/error = %d/%q, want %s",
+					rc, stderr.String(), test.wantErr)
+			}
+		})
 	}
 }
 

@@ -1,3 +1,7 @@
+# Build-service key for the Earle Philhower Arduino-Pico toolchain.
+TARGET_BUILD_KIND := arduino-pico
+# I2S is the toolchain's PIO-backed native-library surface.
+TARGET_CAPABILITIES := adc ble gpio i2c i2s net pwm
 TARGET_MAIN_SOURCE :=
 TARGET_SOURCES += \
 	targets/common/target_defs.c \
