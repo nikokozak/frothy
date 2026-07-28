@@ -3,9 +3,16 @@
   "chip": "esp32c6",
   "target": "esp-idf",
   "profile": "esp32_plain",
+  "console": {
+    "kind": "usb_serial_jtag"
+  },
+  "target_options": {
+    "ESP_IDF_TARGET": "esp32c6"
+  },
   "peripherals": ["gpio", "adc", "uart", "pwm", "i2c", "trace", "pulse"],
   "pins": {
     "$led_builtin": 15,
+    "$led_active_level": 0,
     "$boot_button": 9,
     "$a0": 0,
     "$sda": 22,

@@ -2,9 +2,13 @@
   "name": "Host",
   "chip": "host",
   "target": "host",
-  "profile": "host",
+  "profile": "host_small",
+  "console": {
+    "kind": "stdio"
+  },
   "peripherals": [],
   "pins": {
-    "$led_builtin": 13
+    "$led_builtin": 13,
+    "$led_active_level": 1
   }
 }

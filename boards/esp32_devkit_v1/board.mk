@@ -1,3 +1,4 @@
+# Generated from board.json by tools/gen-boards.mjs. Do not edit.
 BOARD_TARGET := esp-idf
 BOARD_PROFILE := esp32_plain
 BOARD_ESP_IDF_TARGET := esp32

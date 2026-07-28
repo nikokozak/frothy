@@ -20,6 +20,10 @@ extern "C" {
 #include <stdint.h>
 #include <string.h>
 
+#ifndef FR_BOARD_CONSOLE_USB_CDC
+#error "arduino-rp2040 requires a USB CDC console"
+#endif
+
 extern "C" uint8_t _FS_start[];
 extern "C" uint8_t _FS_end[];
 
