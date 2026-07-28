@@ -3767,7 +3767,7 @@ static void test_pwm(void) {
             strcmp(out,
                    "error: busy: 6 (25)\n"
                    "detail: gpio.write argument 1 was rejected -- pin is "
-                   "driven by an open pwm channel -- pwm.close it first\n") ==
+                   "in use by an open peripheral handle -- close it first\n") ==
                 0 &&
             fr_repl_eval_line(&runtime, "pwm.close: busypwm", out,
                               sizeof(out)) == FR_OK &&
