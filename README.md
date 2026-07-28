@@ -63,8 +63,15 @@ The Arduino Nano RP2040 Connect uses Arduino-Pico 4.6.0 instead of ESP-IDF:
 ```sh
 arduino-cli core install rp2040:rp2040@4.6.0 \
   --additional-urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+arduino-cli lib install \
+  WiFiNINA@2.1.1 ArduinoBLE@2.1.0 Arduino_SpiNINA@0.0.2
 frothy flash arduino_nano_rp2040_connect --port /dev/cu.usbmodem1101
 ```
+
+The Nano profile includes Wi-Fi, HTTP/TCP, and BLE observer/broadcaster words.
+BLE needs NINA firmware 3.0.0 or newer; update it with Arduino IDE's Firmware
+Updater if `ble.on:` reports `unsupported`. Plain RP2040 profiles do not pull
+in the NINA libraries.
 
 ## Write your first Frothy program
 

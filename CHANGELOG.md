@@ -6,6 +6,18 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+### Added
+
+- **The Arduino Nano RP2040 Connect has a packaged UF2.** `frothy flash`
+  builds or writes the board directly, release bundles validate and carry its
+  UF2, and the browser flasher downloads that same artifact for the native
+  `RPI-RP2` drag-and-drop flow.
+- **The Nano's NINA-W102 provides Wi-Fi and BLE.** Its board profile now
+  implements the existing Wi-Fi, HTTP, TCP, BLE observer, and BLE broadcaster
+  words with pinned WiFiNINA/ArduinoBLE libraries. BLE requires NINA firmware
+  3.0.0 or newer. A radio-free RP2040 build remains available for boards
+  without NINA hardware.
+
 ### Changed
 
 - **Every echoed diagnostic source line now carries a `source: ` prefix.**
