@@ -1,0 +1,15 @@
+{
+  "name": "Seeed Studio XIAO RP2040",
+  "chip": "rp2040",
+  "target": "arduino-rp2040",
+  "profile": "rp2040_plain",
+  "bootsel": "Hold BOOT, tap RESET, then release BOOT to make the RPI-RP2 drive appear.",
+  "peripherals": ["gpio", "adc", "pwm", "i2c"],
+  "pins": {
+    "$led_builtin": 17,
+    "$led_active_level": 0,
+    "$a0": 26,
+    "$sda": 6,
+    "$scl": 7
+  }
+}

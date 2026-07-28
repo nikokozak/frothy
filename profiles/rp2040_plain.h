@@ -1,16 +1,19 @@
 /*
  * Plain RP2040 profile.
  *
- * The Nano RP2040 Connect has enough room for the normal live language, while
- * its first port stays focused on local device work: USB serial, persistence,
- * GPIO, ADC, PWM, and I2C. The NINA radio is not part of this profile.
+ * The smallest supported RP2040 has 2 MB for the normal live language. This
+ * profile stays focused on local device work: USB serial, persistence, GPIO,
+ * ADC, PWM, and I2C. Boards with more flash override that capacity through
+ * BOARD_CFLAGS, and board-specific radios are layered on separately.
  */
 
 #pragma once
 
 #define FR_WORD_SIZE 32
 
-#define FR_PROFILE_TARGET_FLASH_BYTES 16777216u
+#ifndef FR_PROFILE_TARGET_FLASH_BYTES
+#define FR_PROFILE_TARGET_FLASH_BYTES 2097152u
+#endif
 #define FR_PROFILE_TARGET_SRAM_BYTES 270336u
 #define FR_PROFILE_MIN_STACK_RESERVE_BYTES 16384u
 

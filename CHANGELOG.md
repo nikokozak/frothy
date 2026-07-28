@@ -12,6 +12,9 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   builds or writes the board directly, release bundles validate and carry its
   UF2, and the browser flasher downloads that same artifact for the native
   `RPI-RP2` drag-and-drop flow.
+- **The Seeed Studio XIAO RP2040 is an official radio-free board.** It uses the
+  same Arduino-Pico target and packaged `RPI-RP2` UF2 flow as the Nano, with
+  its own flash size, active-low LED, analog, and I2C pin definitions.
 - **The Nano's NINA-W102 provides Wi-Fi and BLE.** Its board profile now
   implements the existing Wi-Fi, HTTP, TCP, BLE observer, and BLE broadcaster
   words with pinned WiFiNINA/ArduinoBLE libraries. BLE requires NINA firmware

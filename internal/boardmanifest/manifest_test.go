@@ -121,7 +121,8 @@ func TestSeeedXiaoEsp32s3BoardManifest(t *testing.T) {
 }
 
 func TestArduinoNanoRp2040ConnectBoardManifest(t *testing.T) {
-	m := loadManifest(t, filepath.Join(repoRoot(t), "boards", "arduino_nano_rp2040_connect", "board.json"))
+	boardDir := filepath.Join(repoRoot(t), "boards", "arduino_nano_rp2040_connect")
+	m := loadManifest(t, filepath.Join(boardDir, "board.json"))
 	checkRequired(t, "arduino_nano_rp2040_connect", m)
 	if m.Chip != "rp2040" || m.Target != "arduino-rp2040" || m.Profile != "rp2040_nina" {
 		t.Errorf("arduino_nano_rp2040_connect: got chip=%q target=%q profile=%q", m.Chip, m.Target, m.Profile)
@@ -139,5 +140,52 @@ func TestArduinoNanoRp2040ConnectBoardManifest(t *testing.T) {
 		if got, ok := m.Pins[key]; !ok || got != want {
 			t.Errorf("arduino_nano_rp2040_connect: pin %s = %d, want %d", key, got, want)
 		}
+	}
+	peripherals := strings.Join(m.Peripherals, ",")
+	if !strings.Contains(peripherals, "net") || !strings.Contains(peripherals, "ble") {
+		t.Errorf("arduino_nano_rp2040_connect: radio peripherals missing from %q", peripherals)
+	}
+	boardMK, err := os.ReadFile(filepath.Join(boardDir, "board.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(boardMK), "FR_PROFILE_TARGET_FLASH_BYTES=16777216u") {
+		t.Error("arduino_nano_rp2040_connect: 16 MB profile capacity override missing")
+	}
+}
+
+func TestSeeedXiaoRp2040BoardManifest(t *testing.T) {
+	boardDir := filepath.Join(repoRoot(t), "boards", "seeed_xiao_rp2040")
+	m := loadManifest(t, filepath.Join(boardDir, "board.json"))
+	checkRequired(t, "seeed_xiao_rp2040", m)
+	if m.Chip != "rp2040" || m.Target != "arduino-rp2040" || m.Profile != "rp2040_plain" {
+		t.Errorf("seeed_xiao_rp2040: got chip=%q target=%q profile=%q", m.Chip, m.Target, m.Profile)
+	}
+	if m.Bootsel == "" {
+		t.Error("seeed_xiao_rp2040: bootsel instructions missing")
+	}
+	wantPins := map[string]int{
+		"$led_builtin":      17,
+		"$led_active_level": 0,
+		"$a0":               26,
+		"$sda":              6,
+		"$scl":              7,
+	}
+	for key, want := range wantPins {
+		if got, ok := m.Pins[key]; !ok || got != want {
+			t.Errorf("seeed_xiao_rp2040: pin %s = %d, want %d", key, got, want)
+		}
+	}
+	for _, peripheral := range m.Peripherals {
+		if peripheral == "net" || peripheral == "ble" {
+			t.Errorf("seeed_xiao_rp2040: unexpected radio peripheral %q", peripheral)
+		}
+	}
+	boardMK, err := os.ReadFile(filepath.Join(boardDir, "board.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(boardMK), "flash=2097152_65536") {
+		t.Error("seeed_xiao_rp2040: 64 KB persistence flash option missing")
 	}
 }
