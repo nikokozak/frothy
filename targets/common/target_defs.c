@@ -179,7 +179,7 @@ static fr_err_t fr_native_gpio_mode(fr_runtime_t *runtime,
   if (err == FR_ERR_BUSY) {
     return fr_native_reject_arg_because(
         runtime, args, arg_count, 0, err,
-        "pin is driven by an open pwm channel -- pwm.close it first");
+        "pin is in use by an open peripheral handle -- close it first");
   }
   FR_TRY(err);
   *out = fr_tagged_nil();
@@ -202,7 +202,7 @@ static fr_err_t fr_native_gpio_write(fr_runtime_t *runtime,
   if (err == FR_ERR_BUSY) {
     return fr_native_reject_arg_because(
         runtime, args, arg_count, 0, err,
-        "pin is driven by an open pwm channel -- pwm.close it first");
+        "pin is in use by an open peripheral handle -- close it first");
   }
   FR_TRY(err);
   *out = fr_tagged_nil();

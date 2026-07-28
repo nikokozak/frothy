@@ -58,6 +58,14 @@ Stuck on any step? Run `frothy doctor` — it checks your setup and names the
 fix for each problem it finds. Most first-run snags (no board attached, wrong
 port, ESP-IDF not installed) show up there before anything else does.
 
+The Arduino Nano RP2040 Connect uses Arduino-Pico 4.6.0 instead of ESP-IDF:
+
+```sh
+arduino-cli core install rp2040:rp2040@4.6.0 \
+  --additional-urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+frothy flash arduino_nano_rp2040_connect --port /dev/cu.usbmodem1101
+```
+
 ## Write your first Frothy program
 
 ```sh
@@ -161,8 +169,8 @@ Frothy's runtime stays small enough to read end to end:
 
 - `src/`: core runtime, parser, compiler, VM, image, persistence, slots, tagged values.
 - `profiles/`: feature and capacity choices per target class.
-- `boards/`: board definitions (`esp32_devkit_v1`, `host`).
-- `targets/`: host and ESP-IDF platform glue.
+- `boards/`: physical board definitions and pins.
+- `targets/`: host, ESP-IDF, and Arduino-RP2040 platform glue.
 - `cmd/frothy-session/`: the `frothy` CLI (Go).
 - `editors/vscode/`: the VS Code extension for serial sessions and source tools.
 - `tools/build-flasher-bundle.sh`: builds firmware segments and their browser
