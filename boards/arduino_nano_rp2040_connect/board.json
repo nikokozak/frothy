@@ -2,9 +2,9 @@
   "name": "Arduino Nano RP2040 Connect",
   "chip": "rp2040",
   "target": "arduino-rp2040",
-  "profile": "rp2040_plain",
+  "profile": "rp2040_nina",
   "bootsel": "Double-press RESET to make the RPI-RP2 drive appear.",
-  "peripherals": ["gpio", "adc", "pwm", "i2c"],
+  "peripherals": ["gpio", "adc", "pwm", "i2c", "net", "ble"],
   "pins": {
     "$led_builtin": 6,
     "$a0": 26,

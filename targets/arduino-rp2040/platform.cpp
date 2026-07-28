@@ -23,6 +23,10 @@ extern "C" {
 extern "C" uint8_t _FS_start[];
 extern "C" uint8_t _FS_end[];
 
+#if FR_BOARD_HAS_NINA
+extern "C" void fr_nina_poll(void);
+#endif
+
 enum {
   FR_RP2040_GPIO_COUNT = 30,
   FR_RP2040_ADC_FIRST_PIN = 26,
@@ -180,6 +184,9 @@ static fr_err_t fr_rp2040_console_driver_read(uint8_t *out_byte,
     return FR_ERR_INVALID;
   }
   do {
+#if FR_BOARD_HAS_NINA
+    fr_nina_poll();
+#endif
     if (Serial.available() > 0) {
       int value = Serial.read();
 
@@ -442,6 +449,9 @@ fr_err_t fr_rp2040_platform_init(void) {
 
 fr_err_t fr_platform_delay_ms(uint16_t ms) {
   delay(ms);
+#if FR_BOARD_HAS_NINA
+  fr_nina_poll();
+#endif
   return FR_OK;
 }
 
@@ -466,7 +476,12 @@ fr_err_t fr_platform_micros(uint32_t *out_us) {
   return FR_OK;
 }
 
-void fr_platform_yield(void) { ::yield(); }
+void fr_platform_yield(void) {
+#if FR_BOARD_HAS_NINA
+  fr_nina_poll();
+#endif
+  ::yield();
+}
 
 fr_err_t fr_platform_restart(void) {
   rp2040.reboot();
@@ -571,6 +586,9 @@ fr_err_t fr_platform_poll_interrupt(fr_runtime_t *runtime) {
   if (runtime == NULL) {
     return FR_ERR_INVALID;
   }
+#if FR_BOARD_HAS_NINA
+  fr_nina_poll();
+#endif
   err = fr_rp2040_console_driver_read(&byte, 0);
   while (err == FR_OK) {
     if (byte == FR_RP2040_CTRL_C) {
@@ -613,6 +631,11 @@ fr_err_t fr_platform_handle_close(fr_handle_kind_t kind,
 #if FR_FEATURE_I2C
   if (kind == FR_HANDLE_KIND_I2C_BUS) {
     return fr_platform_i2c_close(platform_index);
+  }
+#endif
+#if FR_FEATURE_NET
+  if (kind == FR_HANDLE_KIND_TCP) {
+    return fr_platform_tcp_close(platform_index);
   }
 #endif
   (void)kind;

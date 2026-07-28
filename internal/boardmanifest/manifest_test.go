@@ -123,7 +123,7 @@ func TestSeeedXiaoEsp32s3BoardManifest(t *testing.T) {
 func TestArduinoNanoRp2040ConnectBoardManifest(t *testing.T) {
 	m := loadManifest(t, filepath.Join(repoRoot(t), "boards", "arduino_nano_rp2040_connect", "board.json"))
 	checkRequired(t, "arduino_nano_rp2040_connect", m)
-	if m.Chip != "rp2040" || m.Target != "arduino-rp2040" || m.Profile != "rp2040_plain" {
+	if m.Chip != "rp2040" || m.Target != "arduino-rp2040" || m.Profile != "rp2040_nina" {
 		t.Errorf("arduino_nano_rp2040_connect: got chip=%q target=%q profile=%q", m.Chip, m.Target, m.Profile)
 	}
 	if m.Bootsel == "" {
