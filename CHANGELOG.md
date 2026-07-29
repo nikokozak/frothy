@@ -6,6 +6,27 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+### Changed
+
+- **Every echoed diagnostic source line now carries a `source: ` prefix.**
+  It used to appear only when the echoed line began with `> ` or `! `, to
+  stop source text from imitating a prompt. Making it unconditional removes
+  that special case and leaves the body with exactly one unlabelled line —
+  the human message — so a host identifies each line by its own prefix
+  instead of counting from the caret. The caret is aligned to the prefixed
+  line, and stays best-effort: when the response buffer fills, the device
+  keeps the `source: ` line and drops the caret. Hosts must accept a body
+  with no caret.
+
+### Fixed
+
+- **A definition whose left side is not a name now says why.** `3 is 4`
+  answered a bare `error: invalid (8)` with no message, no source line, and
+  no caret, because the parser used a silent return to tell the reader
+  "this is not a definition, try an expression". It now records `expected a
+  word name` on that path; the fallback to the expression parser clears it,
+  so an ordinary expression is unaffected.
+
 ## [0.1.14] - 2026-07-28
 
 ### Changed

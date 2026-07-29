@@ -1352,13 +1352,12 @@ static fr_err_t fr_repl_write_error(fr_runtime_t *runtime, char *out,
     uint16_t caret_length = diag->span_length;
     bool has_caret = fr_repl_diagnostic_source_line(
         line, diag, &source_start, &source_length, &column);
-    bool escape_wire_source = source_length >= 2 &&
-                              (source_start[0] == '!' ||
-                               source_start[0] == '>') &&
-                              source_start[1] == ' ';
 
-    if ((escape_wire_source &&
-         fr_repl_append(out, out_cap, &used, source_prefix) != FR_OK) ||
+    /* Every echoed line carries the prefix. It keeps source text from ever
+     * imitating a prompt or an async line, and it leaves the message as the
+     * one unlabelled line in the body, which a host can find without
+     * counting from the caret. */
+    if (fr_repl_append(out, out_cap, &used, source_prefix) != FR_OK ||
         fr_repl_append_span(out, out_cap, &used, source_start, source_length) !=
             FR_OK ||
         fr_repl_append_char(out, out_cap, &used, '\n') != FR_OK) {
@@ -1374,11 +1373,7 @@ static fr_err_t fr_repl_write_error(fr_runtime_t *runtime, char *out,
         caret_length > (uint16_t)(source_length - column)) {
       caret_length = (uint16_t)(source_length - column);
     }
-    display_column = column;
-    if (escape_wire_source) {
-      display_column =
-          (uint16_t)(display_column + sizeof(source_prefix) - 1u);
-    }
+    display_column = (uint16_t)(column + sizeof(source_prefix) - 1u);
     if (has_caret &&
         fr_repl_append_caret_line(out, out_cap, &used, display_column,
                                   caret_length) != FR_OK) {

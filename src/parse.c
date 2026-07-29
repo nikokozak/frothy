@@ -1934,8 +1934,13 @@ fr_err_t fr_parse_line_with_diagnostic(const char *source, fr_parse_line_t *out,
     FR_TRY(fr_parse_function_value(&parser, &out->definition.value));
     return fr_parse_finish_line(&parser);
   }
+  /* Not a definition. The caller either falls back to the expression parser,
+   * which reports its own failure and clears this one, or already decided the
+   * line is definition-shaped - and then this note is the only thing that can
+   * say why `3 is 4` was rejected. */
   if (parser.token.kind != FR_TOKEN_NAME) {
-    return FR_ERR_INVALID;
+    return fr_parse_fail_token(&parser, FR_DIAG_MSG_PARSE_EXPECTED_WORD_NAME,
+                               FR_ERR_INVALID);
   }
   if (fr_parse_is_reserved_is_definition_name(parser.token.span)) {
     fr_parser_t lookahead = parser;

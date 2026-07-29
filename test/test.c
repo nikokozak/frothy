@@ -15067,7 +15067,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out, "error: not found (7)") &&
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "name: nope\n") != NULL &&
-            strstr(out, "1 + nope\n    ^^^^\n") != NULL);
+            strstr(out, "source: 1 + nope\n            ^^^^\n") != NULL);
 
   memset(out, 0, sizeof(out));
   CHECK("repl diagnostic escapes async-shaped source line",
@@ -15082,7 +15082,7 @@ static void test_repl_error_diagnostics(void) {
             strstr(out, "\n! missing\n") == NULL);
 
   memset(out, 0, sizeof(out));
-  CHECK("repl diagnostic preserves non-async bang source line",
+  CHECK("repl diagnostic prefixes a source line that needs no escaping",
         fr_base_image_install(&runtime) == FR_OK &&
             test_repl_run_lines(
                 &runtime, bang_source_lines,
@@ -15090,8 +15090,8 @@ static void test_repl_error_diagnostics(void) {
                           sizeof(bang_source_lines[0])),
                 out, (uint16_t)sizeof(out)) &&
             test_error_line_matches_wire_shape(out) &&
-            strstr(out, "\n!missing\n") != NULL &&
-            strstr(out, "source: !missing\n") == NULL);
+            strstr(out, "source: !missing\n") != NULL &&
+            strstr(out, "\n!missing\n") == NULL);
 
   memset(out, 0, sizeof(out));
   CHECK("repl diagnostic escapes prompt-shaped source line",
@@ -15211,7 +15211,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out, "error: invalid (8)") &&
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "expected 2 arguments, got 1\n") != NULL &&
-            strstr(out, "add2: 1\n^^^^\n") != NULL);
+            strstr(out, "source: add2: 1\n        ^^^^\n") != NULL);
 
   memset(out, 0, sizeof(out));
   CHECK("repl diagnostic renders too many args",
@@ -15224,7 +15224,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out, "error: invalid (8)") &&
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "expected 2 arguments, got 3\n") != NULL &&
-            strstr(out, "add2: 1, 2, 3\n^^^^\n") != NULL);
+            strstr(out, "source: add2: 1, 2, 3\n        ^^^^\n") != NULL);
 
   memset(out, 0, sizeof(out));
   CHECK("repl diagnostic renders param shadow",
@@ -15319,7 +15319,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "name: to\n") != NULL &&
             strstr(out, "expected a word name\n") == NULL &&
-            strstr(out, "to + 1\n^^\n") != NULL);
+            strstr(out, "source: to + 1\n        ^^\n") != NULL);
 
   memset(out, 0, sizeof(out));
   CHECK("repl diagnostic renders eof caret",
@@ -15331,7 +15331,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out, "error: invalid (8)") &&
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "unexpected token\n") != NULL &&
-            strstr(out, "1 +\n   ^\n") != NULL);
+            strstr(out, "source: 1 +\n           ^\n") != NULL);
 
   memset(out, 0, sizeof(out));
   CHECK("repl diagnostic renders missing colon",
@@ -15345,7 +15345,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_matches_wire_shape(out) &&
             strstr(out,
                    "expected ':' before the argument to a word\n") != NULL &&
-            strstr(out, "print 1\n      ^\n") != NULL);
+            strstr(out, "source: print 1\n              ^\n") != NULL);
 
 #if FR_FEATURE_TEXT
   memset(out, 0, sizeof(out));
@@ -15359,7 +15359,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out, "error: invalid (8)") &&
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "unterminated text literal\n") != NULL &&
-            strstr(out, "message is \"ready\n           ^\n") != NULL);
+            strstr(out, "source: message is \"ready\n                   ^\n") != NULL);
 #endif
 
   memset(out, 0, sizeof(out));
@@ -15373,7 +15373,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out, "error: invalid (8)") &&
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "expected ']' to close the block\n") != NULL &&
-            strstr(out, "to foo [ 1\n          ^\n") != NULL);
+            strstr(out, "source: to foo [ 1\n                  ^\n") != NULL);
 
   memset(out, 0, sizeof(out));
   CHECK("repl diagnostic renders expected block end",
@@ -15386,7 +15386,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out, "error: invalid (8)") &&
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "expected ']' to close the block\n") != NULL &&
-            strstr(out, "boot is fn [ one )\n                 ^\n") != NULL);
+            strstr(out, "source: boot is fn [ one )\n                         ^\n") != NULL);
 
   memset(out, 0, sizeof(out));
   CHECK("repl diagnostic renders reserved definition name",
@@ -15399,7 +15399,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out, "error: invalid (8)") &&
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "reserved word cannot be used as a name\n") != NULL &&
-            strstr(out, "true is 1\n^^^^\n") != NULL);
+            strstr(out, "source: true is 1\n        ^^^^\n") != NULL);
 
   memset(out, 0, sizeof(out));
   CHECK("repl diagnostic leaves nil is definition accepted",
@@ -15421,7 +15421,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out, "error: out of range (1)") &&
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "integer literal is out of range\n") != NULL &&
-            strstr(out, "1073741824\n^^^^^^^^^^\n") != NULL);
+            strstr(out, "source: 1073741824\n        ^^^^^^^^^^\n") != NULL);
 
 #if !FR_FEATURE_TEXT
   memset(out, 0, sizeof(out));
@@ -15435,7 +15435,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out, "error: unsupported (9)") &&
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "text is not enabled in this build\n") != NULL &&
-            strstr(out, "\"ready\"\n^\n") != NULL);
+            strstr(out, "source: \"ready\"\n        ^\n") != NULL);
 #endif
 
   memset(out, 0, sizeof(out));
@@ -15448,7 +15448,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out, "error: invalid (8)") &&
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "unexpected token\n") != NULL &&
-            strstr(out, "boot is nil now\n            ^^^\n") != NULL);
+            strstr(out, "source: boot is nil now\n                    ^^^\n") != NULL);
 
 #if FR_FEATURE_CELLS
   memset(out, 0, sizeof(out));
@@ -15461,7 +15461,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out, "error: not found (7)") &&
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "name: missing\n") != NULL &&
-            strstr(out, "missing[0]\n^^^^^^^\n") != NULL);
+            strstr(out, "source: missing[0]\n        ^^^^^^^\n") != NULL);
 #endif
 
   memset(out, 0, sizeof(out));
@@ -15475,7 +15475,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out, "error: not found (7)") &&
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "name: missing\n") != NULL &&
-            strstr(out, "set missing to 1\n    ^^^^^^^\n") != NULL);
+            strstr(out, "source: set missing to 1\n            ^^^^^^^\n") != NULL);
 
   memset(out, 0, sizeof(out));
   CHECK("repl diagnostic renders native arg type context without caret",
@@ -16492,7 +16492,7 @@ static void test_repl_pump(void) {
                     "to boot [ gpio.write: $led_builtin, 1 ; "
                     "gpio.write: $led_builtin, 0 ; one ]\n"
                     "ok\n> ok\n> error: not found (7)\n"
-                    "name: unknown\nunknown\n^^^^^^^\n> ") == 0);
+                    "name: unknown\nsource: unknown\n        ^^^^^^^\n> ") == 0);
 #elif FR_FEATURE_INTROSPECTION
   CHECK("repl pump transcript output without compiler",
         strcmp(out, "> " FR_TEST_WORDS
@@ -16586,7 +16586,7 @@ static void test_repl_source_form_wire(void) {
                           sizeof(diagnostic_lines[0])),
                 out, (uint16_t)sizeof(out)) &&
             test_error_line_equals(out, "error: not found (7)") &&
-            strstr(out, "name: missing\n  missing\n  ^^^^^^^\n") != NULL &&
+            strstr(out, "name: missing\nsource:   missing\n          ^^^^^^^\n") != NULL &&
             strstr(out, "to bad [\n") == NULL);
 }
 #endif

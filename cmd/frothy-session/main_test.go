@@ -176,13 +176,13 @@ func TestSerialReadUntilPromptAcceptsLegacyErrorStatus(t *testing.T) {
 }
 
 func TestSerialReadUntilPromptAcceptsRichErrorStatus(t *testing.T) {
-	dev := serialDeviceWithReadBytes("error: not found (7)\nname: missing\nmissing[0]\n^^^^^^^\n> ")
+	dev := serialDeviceWithReadBytes("error: not found (7)\nname: missing\nsource: missing[0]\n        ^^^^^^^\n> ")
 
 	response, err := dev.readUntilPrompt(time.Second, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := response, "error: not found (7)\nname: missing\nmissing[0]\n^^^^^^^\n"; got != want {
+	if got, want := response, "error: not found (7)\nname: missing\nsource: missing[0]\n        ^^^^^^^\n"; got != want {
 		t.Fatalf("response %q, want %q", got, want)
 	}
 	if got, want := responseStatus(response), "error: not found (7)"; got != want {
@@ -195,7 +195,7 @@ func TestSerialReadUntilPromptAcceptsRichErrorStatus(t *testing.T) {
 
 func TestSerialReadUntilPromptIgnoresPromptTextInsideDiagnosticLine(t *testing.T) {
 	want := "error: not found (7)\nname: nosuchword\n" +
-		"if 1 > 2 [ nosuchword ]\n           ^^^^^^^^^^\n"
+		"source: if 1 > 2 [ nosuchword ]\n                   ^^^^^^^^^^\n"
 	dev := serialDeviceWithReadBytes(want + "> ")
 
 	response, err := dev.readUntilPrompt(time.Second, true, nil)
@@ -1494,7 +1494,7 @@ func TestSerialDeviceCompilerModeSendsSource(t *testing.T) {
 func TestSerialFileStopsOnDeviceError(t *testing.T) {
 	dev := &fakeDevice{responses: []string{
 		statusResponse("device"),
-		"error: not found (7)\nname: ok\nok\n^^\n",
+		"error: not found (7)\nname: ok\nsource: ok\n        ^^\n",
 		"ok\n",
 	}}
 	var out strings.Builder
@@ -2264,7 +2264,7 @@ func TestRecordsDeviceCompilerDirectSend(t *testing.T) {
 func TestRecordsFileStopsOnDeviceError(t *testing.T) {
 	dev := &fakeDevice{responses: []string{
 		statusResponse("device"),
-		"error: not found (7)\nname: ok\nok\n^^\n",
+		"error: not found (7)\nname: ok\nsource: ok\n        ^^\n",
 		"ok\n",
 	}}
 	var out strings.Builder
