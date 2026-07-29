@@ -20,6 +20,14 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ### Fixed
 
+- **Two expressions on one line no longer ask for a bracket.** Inside a
+  block, `1 2` reported `expected ']' to close the block` with the caret on
+  the `2` — the caret was right, but the sentence sent the reader looking
+  for a missing bracket. It now reads `one expression ends here -- start the
+  next on a new line or after ';'`, which is the rule the block actually
+  enforces. A block that really is unclosed, and one closed with the wrong
+  bracket, keep the message they had.
+
 - **A definition whose left side is not a name now says why.** `3 is 4`
   answered a bare `error: invalid (8)` with no message, no source line, and
   no caret, because the parser used a silent return to tell the reader

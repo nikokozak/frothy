@@ -14956,6 +14956,7 @@ static void test_repl_error_diagnostics(void) {
 #endif
   const char *malformed_to_lines[] = {"to foo [ 1"};
   const char *expected_block_end_lines[] = {"boot is fn [ one )"};
+  const char *run_on_statement_lines[] = {"boot is fn [ 1 2 ]"};
   const char *reserved_name_lines[] = {"true is 1"};
   const char *nil_definition_lines[] = {"nil is 1"};
   const char *int_range_lines[] = {"1073741824"};
@@ -15387,6 +15388,24 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_matches_wire_shape(out) &&
             strstr(out, "expected ']' to close the block\n") != NULL &&
             strstr(out, "source: boot is fn [ one )\n                         ^\n") != NULL);
+
+  memset(out, 0, sizeof(out));
+  /* Two expressions on one line stop the block, but the reader's mistake is
+   * the missing separator, not a missing bracket. */
+  CHECK("repl diagnostic separates run-on statements from an unclosed block",
+        fr_base_image_install(&runtime) == FR_OK &&
+            test_repl_run_lines(
+                &runtime, run_on_statement_lines,
+                (uint8_t)(sizeof(run_on_statement_lines) /
+                          sizeof(run_on_statement_lines[0])),
+                out, (uint16_t)sizeof(out)) &&
+            test_error_line_equals(out, "error: invalid (8)") &&
+            test_error_line_matches_wire_shape(out) &&
+            strstr(out, "one expression ends here") != NULL &&
+            strstr(out, "close the block") == NULL &&
+            strstr(out,
+                   "source: boot is fn [ 1 2 ]\n"
+                   "                       ^\n") != NULL);
 
   memset(out, 0, sizeof(out));
   CHECK("repl diagnostic renders reserved definition name",
