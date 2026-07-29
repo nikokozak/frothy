@@ -28,6 +28,7 @@ enum {
   FR_NINA_WIFI_PASS_MAX = 64,
   FR_NINA_WIFI_CONNECT_TIMEOUT_MS = 30000,
   FR_NINA_WIFI_CONNECT_SLICE_MS = 1000,
+  FR_NINA_WIFI_STATUS_POLL_MS = 100,
   FR_NINA_HTTP_TIMEOUT_MS = 5000,
   FR_NINA_HTTP_LINE_BYTES = 256,
   FR_NINA_HOST_BYTES = 254,
@@ -401,12 +402,11 @@ fr_err_t fr_platform_wifi_connect(fr_runtime_t *runtime) {
   WiFi.setTimeout(FR_NINA_WIFI_CONNECT_SLICE_MS);
   (void)WiFi.disconnect();
   started = (uint32_t)millis();
+  /* WiFi.begin sends the association command before waiting for its timeout.
+   * Send it once: repeating begin restarts association before DHCP finishes. */
+  int status = credentials.pass_length == 0 ? WiFi.begin(ssid)
+                                            : WiFi.begin(ssid, pass);
   for (;;) {
-    /* ponytail: WiFiNINA owns this 1 s blocking slice; replace that library
-     * call only if hardware shows HCI report loss during association. */
-    int status = credentials.pass_length == 0 ? WiFi.begin(ssid)
-                                              : WiFi.begin(ssid, pass);
-
     if (status == WL_CONNECTED || fr_nina_wifi_ready()) {
       return FR_OK;
     }
@@ -417,7 +417,8 @@ fr_err_t fr_platform_wifi_connect(fr_runtime_t *runtime) {
     if ((uint32_t)(millis() - started) >= FR_NINA_WIFI_CONNECT_TIMEOUT_MS) {
       return FR_ERR_NET_TIMEOUT;
     }
-    delay(10);
+    delay(FR_NINA_WIFI_STATUS_POLL_MS);
+    status = WiFi.status();
   }
 }
 
