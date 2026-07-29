@@ -7178,6 +7178,77 @@ static void test_event_compile_timer_forms(void) {
             entry->generation == 1 && !entry->pending);
 }
 
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+static void test_event_compile_outer_name_diagnostic(void) {
+  fr_runtime_t runtime;
+  fr_compile_overlay_update_t update;
+  fr_diagnostic_t diag = {0};
+  fr_tagged_t result = 0;
+  fr_int_t decoded = 0;
+
+  CHECK("event every rejects an outer local without a global",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_compile_overlay_update_for_runtime_with_diagnostic(
+                &runtime, "boot is fn [ x is 1 ; every 1 [ x ] ]", &update,
+                &diag) == FR_ERR_NOT_FOUND &&
+            diag.kind == FR_DIAG_NAME &&
+            diag.message_id == FR_DIAG_MSG_COMPILE_EVENT_BODY_LOCAL);
+
+  diag = (fr_diagnostic_t){0};
+  CHECK("event after rejects an outer local before a global",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_compile_overlay_update_for_runtime(&runtime, "x is 9",
+                                                  &update) == FR_OK &&
+            fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
+            fr_compile_overlay_update_for_runtime_with_diagnostic(
+                &runtime, "boot is fn [ x is 1 ; after 1 [ x ] ]", &update,
+                &diag) == FR_ERR_NOT_FOUND &&
+            diag.kind == FR_DIAG_NAME &&
+            diag.message_id == FR_DIAG_MSG_COMPILE_EVENT_BODY_LOCAL);
+
+  diag = (fr_diagnostic_t){0};
+  CHECK("event on rejects an outer parameter before a global",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_compile_overlay_update_for_runtime(&runtime, "x is 9",
+                                                  &update) == FR_OK &&
+            fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
+            fr_compile_overlay_update_for_runtime_with_diagnostic(
+                &runtime, "boot is fn with x [ on 0 rising [ x ] ]", &update,
+                &diag) == FR_ERR_NOT_FOUND &&
+            diag.kind == FR_DIAG_NAME &&
+            diag.message_id == FR_DIAG_MSG_COMPILE_EVENT_BODY_LOCAL);
+
+  CHECK("an event body can read an unrelated global",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_compile_overlay_update_for_runtime(&runtime, "x is 9",
+                                                  &update) == FR_OK &&
+            fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
+            fr_compile_overlay_update_for_runtime(
+                &runtime, "boot is fn [ every 1 [ x ] ]", &update) == FR_OK);
+
+  CHECK("a definition local still shadows a global",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_compile_overlay_update_for_runtime(&runtime, "x is 9",
+                                                  &update) == FR_OK &&
+            fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
+            fr_compile_overlay_update_for_runtime(
+                &runtime, "boot is fn [ x is 1 ; x ]", &update) == FR_OK &&
+            fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
+            fr_vm_run_boot(&runtime, &result) == FR_OK &&
+            fr_tagged_decode_int(result, &decoded) == FR_OK && decoded == 1);
+
+  /* The body's own locals resolve before the outer-name check runs, so an
+   * event body keeps the right to declare a name the enclosing definition
+   * also uses. This is the one working shape the ADR 0073 check could have
+   * taken away. */
+  CHECK("an event body local of an outer name still compiles",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_compile_overlay_update_for_runtime(
+                &runtime, "boot is fn [ x is 1 ; every 1 [ here x is 2 ; x ] ]",
+                &update) == FR_OK);
+}
+#endif
+
 /* Compiles `cancel 0` and `cancel every 50` from `boot`. After boot runs, the
  * earlier registration is gone: slot is empty and the kind matcher returns
  * not-found for the same source. */
@@ -17074,6 +17145,9 @@ int main(void) {
 #if FR_FEATURE_COMPILER && FR_FEATURE_EVENTS
   test_event_compile_on_form();
   test_event_compile_timer_forms();
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  test_event_compile_outer_name_diagnostic();
+#endif
   test_event_compile_cancel_form();
 #endif
 #if FR_FEATURE_COMPILER && !FR_FEATURE_EVENTS

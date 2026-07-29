@@ -490,10 +490,6 @@ static void fr_compile_note_name_diagnostic(const fr_compile_context_t *ctx,
   ctx->diag->kind = FR_DIAG_NAME;
   ctx->diag->span_start = name.start;
   ctx->diag->span_length = name.length;
-  if (fr_compile_event_outer_name_matches(ctx, name)) {
-    ctx->diag->message_id = FR_DIAG_MSG_COMPILE_EVENT_BODY_LOCAL;
-    return;
-  }
   fr_compile_note_name_suggestion(ctx, name, call_position);
 }
 
@@ -516,7 +512,14 @@ static fr_err_t fr_compile_expr_slot_for_name(const fr_compile_context_t *ctx,
                                               fr_parse_span_t name,
                                               fr_slot_id_t *out_slot_id,
                                               bool call_position) {
-  fr_err_t err = fr_compile_slot_for_name(ctx, name, out_slot_id);
+  fr_err_t err = FR_OK;
+
+  if (fr_compile_event_outer_name_matches(ctx, name)) {
+    fr_compile_note_span_diagnostic(
+        ctx, FR_DIAG_NAME, FR_DIAG_MSG_COMPILE_EVENT_BODY_LOCAL, name);
+    return FR_ERR_NOT_FOUND;
+  }
+  err = fr_compile_slot_for_name(ctx, name, out_slot_id);
 
   if (err == FR_ERR_NOT_FOUND) {
     fr_compile_note_name_diagnostic(ctx, name, call_position);
