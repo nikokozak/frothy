@@ -5755,6 +5755,139 @@ static void test_close_kind_preserves_failed_entry(void) {
   fr_handle_close_all(&runtime);
 }
 
+#if FR_FEATURE_PWM && FR_FEATURE_COMPILER && FR_FEATURE_EVENTS &&              \
+    FR_BASE_IMAGE_INCLUDE_SYMBOLS
+static void test_close_handles_command(void) {
+  fr_runtime_t runtime;
+  fr_slot_id_t keep_slot = 0;
+  fr_code_object_id_t keep_body = 0;
+  fr_tagged_t keep_value = 0;
+  fr_event_binding_t event_before = {0};
+  fr_err_t close_arg_err = FR_OK;
+  fr_err_t wipe_arg_err = FR_OK;
+  char out[256];
+  char wipe_out[256];
+#if FR_FEATURE_UART
+  const char *closed_report = "closed 2 handles\nok\n";
+#else
+  const char *closed_report = "closed 1 handle\nok\n";
+#endif
+
+  CHECK("close-handles installs the base image",
+        fr_base_image_install(&runtime) == FR_OK);
+  CHECK("close-handles keeps a definition and event",
+        fr_repl_eval_line(&runtime, "keep is fn [ 42 ]", out, sizeof(out)) ==
+                FR_OK &&
+            fr_slot_id_for_name(&runtime, "keep", &keep_slot) == FR_OK &&
+            fr_slot_read(&runtime, keep_slot, &keep_value) == FR_OK &&
+            fr_tagged_decode_code_object_id(keep_value, &keep_body) == FR_OK &&
+            fr_event_register(&runtime, FR_EVENT_KIND_EVERY, 100, 0,
+                              keep_body) == FR_OK);
+  event_before = runtime.events.entries[0];
+  CHECK("close-handles opens pwm",
+        fr_repl_eval_line(&runtime, "led is pwm.open: 24, 1000", out,
+                          sizeof(out)) == FR_OK);
+#if FR_FEATURE_UART
+  CHECK("close-handles opens uart",
+        fr_repl_eval_line(&runtime, "port is uart.open: 0, 9600", out,
+                          sizeof(out)) == FR_OK);
+#endif
+  CHECK("close-handles reports every closed handle",
+        fr_repl_eval_line(&runtime, "close-handles", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, closed_report) == 0);
+  CHECK("close-handles leaves the handle slot stale",
+        fr_repl_eval_line(&runtime, "pwm.write: led, 1", out, sizeof(out)) ==
+                FR_ERR_HANDLE &&
+            strcmp(out,
+                   "error: bad handle: handle closed (14)\n"
+                   "detail: pwm.write argument 1 was rejected\n") == 0 &&
+            fr_repl_eval_line(&runtime, "see led", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "overlay volatile closed\nok\n") == 0);
+  CHECK("close-handles keeps definitions and names",
+        fr_repl_eval_line(&runtime, "keep:", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "42\nok\n") == 0);
+  CHECK("close-handles leaves events unchanged",
+        runtime.events.active_count == 1 &&
+            memcmp(&runtime.events.entries[0], &event_before,
+                   sizeof(event_before)) == 0);
+  CHECK("close-handles frees pwm for another open",
+        fr_repl_eval_line(&runtime, "pwm.open: 24, 1000", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "handle pwm\nok\n") == 0);
+#if FR_FEATURE_UART
+  CHECK("close-handles frees uart for another open",
+        fr_repl_eval_line(&runtime, "uart.open: 0, 9600", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "handle uart\nok\n") == 0);
+#endif
+  CHECK("close-handles closes the reopened resources",
+        fr_repl_eval_line(&runtime, "close-handles", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, closed_report) == 0);
+  CHECK("close-handles reports an empty table",
+        fr_repl_eval_line(&runtime, "close-handles", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "closed 0 handles\nok\n") == 0);
+
+  wipe_arg_err =
+      fr_repl_eval_line(&runtime, "wipe-user extra", wipe_out, sizeof(wipe_out));
+  close_arg_err =
+      fr_repl_eval_line(&runtime, "close-handles extra", out, sizeof(out));
+  CHECK("close-handles rejects an argument like wipe-user",
+        close_arg_err == FR_ERR_INVALID && close_arg_err == wipe_arg_err &&
+            strstr(out,
+                   "error: invalid (8)\n"
+                   "expected ':' before the argument to a word\n") == out &&
+            strstr(wipe_out,
+                   "error: invalid (8)\n"
+                   "expected ':' before the argument to a word\n") == wipe_out);
+}
+
+static void test_close_handles_reports_survivor(void) {
+  fr_runtime_t runtime;
+  fr_slot_id_t first_slot = 0;
+  fr_slot_id_t repeat_slot = 0;
+  fr_tagged_t first = 0;
+  fr_tagged_t repeat = 0;
+  char out[128];
+
+  CHECK("close-handles survivor installs the base image",
+        fr_base_image_install(&runtime) == FR_OK);
+  CHECK("close-handles survivor opens pwm",
+        fr_repl_eval_line(&runtime, "led is pwm.open: 25, 1000", out,
+                          sizeof(out)) == FR_OK);
+  fr_host_handle_fail_close(FR_ERR_IO, 255);
+  CHECK("close-handles names the surviving kind",
+        fr_repl_eval_line(&runtime, "close-handles", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out,
+                   "closed 0 handles\n"
+                   "still open: pwm\n"
+                   "ok\n") == 0);
+  CHECK("close-handles survivor answers an exact repeat",
+        fr_repl_eval_line(&runtime, "same is pwm.open: 25, 1000", out,
+                          sizeof(out)) == FR_OK &&
+            fr_slot_id_for_name(&runtime, "led", &first_slot) == FR_OK &&
+            fr_slot_id_for_name(&runtime, "same", &repeat_slot) == FR_OK &&
+            fr_slot_read(&runtime, first_slot, &first) == FR_OK &&
+            fr_slot_read(&runtime, repeat_slot, &repeat) == FR_OK &&
+            first == repeat);
+  fr_host_handle_fail_close(FR_OK, 0);
+  CHECK("close-handles later closes the survivor",
+        fr_repl_eval_line(&runtime, "close-handles", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "closed 1 handle\nok\n") == 0);
+  CHECK("close-handles survivor resource reopens with new settings",
+        fr_repl_eval_line(&runtime, "pwm.open: 25, 2000", out, sizeof(out)) ==
+            FR_OK);
+  CHECK("close-handles survivor test cleans up",
+        fr_repl_eval_line(&runtime, "close-handles", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "closed 1 handle\nok\n") == 0);
+}
+#endif
+
 #if FR_FEATURE_PERSISTENCE && FR_FEATURE_PWM
 /* ADR 0070: the prompt's own save stores slots holding handle values as
  * nil and keeps the handles running, so a live program can be saved
@@ -16902,6 +17035,11 @@ int main(void) {
   test_wipe_user_retries_failed_close();
   test_wipe_user_preserves_unclosable_handle();
   test_close_kind_preserves_failed_entry();
+#if FR_FEATURE_PWM && FR_FEATURE_COMPILER && FR_FEATURE_EVENTS &&              \
+    FR_BASE_IMAGE_INCLUDE_SYMBOLS
+  test_close_handles_command();
+  test_close_handles_reports_survivor();
+#endif
 #if FR_FEATURE_PERSISTENCE && FR_FEATURE_COMPILER && FR_FEATURE_EVENTS
   test_program_replacement_is_prompt_only();
   test_every_persistence_entry_is_prompt_only();

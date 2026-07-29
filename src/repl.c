@@ -56,6 +56,7 @@ typedef enum fr_repl_command_kind_t {
   FR_REPL_COMMAND_INSTALL_LIBRARY,
   FR_REPL_COMMAND_INSTALL_USER,
   FR_REPL_COMMAND_WIPE_USER,
+  FR_REPL_COMMAND_CLOSE_HANDLES,
   FR_REPL_COMMAND_MEM,
 } fr_repl_command_kind_t;
 
@@ -303,6 +304,12 @@ static fr_err_t fr_repl_parse_recognized_command(
   if (fr_repl_span_equals(start, token_len, "wipe-user")) {
     if (arg == end) {
       out->kind = FR_REPL_COMMAND_WIPE_USER;
+    }
+    return FR_OK;
+  }
+  if (fr_repl_span_equals(start, token_len, "close-handles")) {
+    if (arg == end) {
+      out->kind = FR_REPL_COMMAND_CLOSE_HANDLES;
     }
     return FR_OK;
   }
@@ -2413,6 +2420,56 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
   if (command.kind == FR_REPL_COMMAND_WIPE_USER) {
 #if FR_FEATURE_PERSISTENCE
     FR_TRY(fr_persist_wipe_user(runtime));
+    return fr_repl_writer_write(writer, "ok\n");
+#else
+    return FR_ERR_UNSUPPORTED;
+#endif
+  }
+
+  if (command.kind == FR_REPL_COMMAND_CLOSE_HANDLES) {
+#if FR_FEATURE_HANDLES
+    uint16_t before = 0;
+    uint16_t after = 0;
+    uint16_t closed = 0;
+    char number[6];
+
+    for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
+      const fr_handle_entry_t *entry = &runtime->handles.entries[i];
+
+      if (entry->kind != FR_HANDLE_KIND_NONE &&
+          entry->platform_index != FR_HANDLE_PLATFORM_NONE) {
+        before = (uint16_t)(before + 1u);
+      }
+    }
+    fr_handle_close_all(runtime);
+    for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
+      const fr_handle_entry_t *entry = &runtime->handles.entries[i];
+
+      if (entry->kind != FR_HANDLE_KIND_NONE &&
+          entry->platform_index != FR_HANDLE_PLATFORM_NONE) {
+        after = (uint16_t)(after + 1u);
+      }
+    }
+    closed = (uint16_t)(before - after);
+
+    FR_TRY(fr_repl_writer_write(writer, "closed "));
+    FR_TRY(
+        fr_repl_write_u16(number, (uint16_t)sizeof(number), closed));
+    FR_TRY(fr_repl_writer_write(writer, number));
+    FR_TRY(fr_repl_writer_write(
+        writer, closed == 1u ? " handle\n" : " handles\n"));
+    for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
+      const fr_handle_entry_t *entry = &runtime->handles.entries[i];
+
+      if (entry->kind == FR_HANDLE_KIND_NONE ||
+          entry->platform_index == FR_HANDLE_PLATFORM_NONE) {
+        continue;
+      }
+      FR_TRY(fr_repl_writer_write(writer, "still open: "));
+      FR_TRY(fr_repl_writer_write(writer,
+                                  fr_handle_kind_name(entry->kind)));
+      FR_TRY(fr_repl_writer_write(writer, "\n"));
+    }
     return fr_repl_writer_write(writer, "ok\n");
 #else
     return FR_ERR_UNSUPPORTED;
