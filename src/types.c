@@ -110,6 +110,8 @@ const char *fr_diag_message(uint16_t message_id) {
           "cells takes its length after ':' -- write cells: 3",
       [FR_DIAG_MSG_PARSE_CHAINED_COMPARISON] =
           "comparisons don't chain -- join two comparisons with and",
+      [FR_DIAG_MSG_PARSE_RUN_ON_STATEMENT] =
+          "one expression ends here -- start the next on a new line or after ';'",
       [FR_DIAG_MSG_COMPILE_EVENT_BODY_LOCAL] =
           "event bodies can't use the caller's locals -- lift it to a global",
       [FR_DIAG_MSG_COMPILE_CONTROL_FLOW_DISABLED] =

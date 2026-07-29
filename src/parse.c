@@ -1786,6 +1786,19 @@ static fr_err_t fr_parse_statement_list(fr_parser_t *parser,
                                    FR_ERR_INVALID);
       }
     } else if (!parser->token.leading_newline) {
+      /* The statement ended and nothing separates it from what follows. A
+       * `]` here is the ordinary end of a one-line block; EOF is a block that
+       * was never closed; a `)` is a block closed with the wrong bracket.
+       * The caller reports all three, and reports them well. Anything else
+       * is two expressions run together, and telling that reader to add a
+       * `]` sends them the wrong way. Noting it here wins, because the first
+       * note of a parse is the one that survives. */
+      if (parser->token.kind != FR_TOKEN_RBRACKET &&
+          parser->token.kind != FR_TOKEN_RPAREN &&
+          parser->token.kind != FR_TOKEN_EOF) {
+        fr_parse_note_span(parser, FR_DIAG_MSG_PARSE_RUN_ON_STATEMENT,
+                           parser->token.span);
+      }
       break;
     }
   }
