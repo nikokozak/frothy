@@ -86,15 +86,15 @@ fr_err_t fr_persist_format_read_header(const uint8_t *bytes,
   }
   if (memcmp(bytes, fr_persist_format_magic, sizeof(fr_persist_format_magic)) !=
       0) {
-    return FR_ERR_NOT_FOUND;
+    return FR_ERR_CORRUPT;
   }
   if (bytes[4] != FR_PERSIST_FORMAT_VERSION ||
       bytes[5] != FR_PERSIST_HEADER_BYTES) {
-    return FR_ERR_CORRUPT;
+    return FR_ERR_OTHER_RELEASE;
   }
   if (fr_persist_format_read_u32(&bytes[FR_PERSIST_PROFILE_HASH_OFFSET]) !=
       fr_profile_hash()) {
-    return FR_ERR_CORRUPT;
+    return FR_ERR_OTHER_RELEASE;
   }
 
   memcpy(scratch, bytes, sizeof(scratch));

@@ -56,6 +56,8 @@ const char *fr_err_name(fr_err_t err) {
     return "busy";
   case FR_ERR_PROMPT_ONLY:
     return "prompt only";
+  case FR_ERR_OTHER_RELEASE:
+    return "other release";
   case FR_OK:
   default:
     return NULL;

@@ -2489,6 +2489,7 @@ static fr_err_t fr_esp_persist_slot_info(const esp_partition_t *partition,
   uint8_t header[FR_PERSIST_HEADER_BYTES];
   fr_persist_format_info_t info = {0};
   uint32_t payload_crc = 0;
+  bool erased = true;
 
   if (partition == NULL || out == NULL) {
     return FR_ERR_INVALID;
@@ -2498,6 +2499,15 @@ static fr_err_t fr_esp_persist_slot_info(const esp_partition_t *partition,
   }
   FR_TRY(fr_esp_err(esp_partition_read(
       partition, fr_esp_persist_slot_offset(slot), header, sizeof(header))));
+  for (uint16_t i = 0; i < sizeof(header); i++) {
+    if (header[i] != 0xffu) {
+      erased = false;
+      break;
+    }
+  }
+  if (erased) {
+    return FR_ERR_NOT_FOUND;
+  }
   FR_TRY(fr_persist_format_read_header(header, &info));
   if (info.total_length > FR_ESP_PERSIST_SLOT_BYTES ||
       info.total_length > UINT16_MAX) {
@@ -2517,6 +2527,7 @@ static fr_err_t fr_esp_persist_pick_read_slot(
   fr_persist_format_info_t info[FR_ESP_PERSIST_SLOT_COUNT];
   bool valid[FR_ESP_PERSIST_SLOT_COUNT] = {false, false};
   bool saw_corrupt = false;
+  bool saw_other_release = false;
   uint8_t slots[FR_ESP_PERSIST_SLOT_COUNT] = {0, 1};
   uint8_t valid_count = 0;
 
@@ -2527,7 +2538,9 @@ static fr_err_t fr_esp_persist_pick_read_slot(
   for (uint8_t slot = 0; slot < FR_ESP_PERSIST_SLOT_COUNT; slot++) {
     fr_err_t err = fr_esp_persist_slot_info(partition, slot, &info[slot]);
     valid[slot] = err == FR_OK;
-    if (err != FR_OK && err != FR_ERR_NOT_FOUND) {
+    if (err == FR_ERR_OTHER_RELEASE) {
+      saw_other_release = true;
+    } else if (err != FR_OK && err != FR_ERR_NOT_FOUND) {
       saw_corrupt = true;
     }
   }
@@ -2544,7 +2557,10 @@ static fr_err_t fr_esp_persist_pick_read_slot(
   } else if (valid[0]) {
     valid_count = 1;
   } else {
-    return saw_corrupt ? FR_ERR_CORRUPT : FR_ERR_NOT_FOUND;
+    if (saw_corrupt) {
+      return FR_ERR_CORRUPT;
+    }
+    return saw_other_release ? FR_ERR_OTHER_RELEASE : FR_ERR_NOT_FOUND;
   }
 
   if (image_index >= valid_count) {

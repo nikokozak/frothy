@@ -282,7 +282,8 @@ static fr_err_t fr_persist_commit_image(fr_runtime_t *runtime) {
         old_payload_length = (uint16_t)info.payload_length;
       }
     }
-  } else if (read_err != FR_ERR_NOT_FOUND && read_err != FR_ERR_CORRUPT) {
+  } else if (read_err != FR_ERR_NOT_FOUND && read_err != FR_ERR_CORRUPT &&
+             read_err != FR_ERR_OTHER_RELEASE) {
     return read_err;
   }
   if (save_err == FR_OK) {
@@ -411,6 +412,8 @@ fr_err_t fr_persist_save_tolerant(fr_runtime_t *runtime) {
  * base-image boundary and remounts saved code so code ids do not drift. The
  * no-payload path still skips reset so an empty restore cannot collapse L1. */
 fr_err_t fr_persist_restore(fr_runtime_t *runtime) {
+  fr_err_t err = FR_OK;
+
   FR_TRY(fr_persist_check_prompt_only(runtime));
   if (runtime == NULL) {
     return FR_ERR_INVALID;
@@ -436,8 +439,15 @@ fr_err_t fr_persist_restore(fr_runtime_t *runtime) {
    * keeps its entry (ADR 0068) for the next cleanup to retry; the result
    * is not reported -- restore errors must mean restore. */
   fr_handle_close_all(runtime);
-  return fr_persist_restore_read_and_apply(
+  err = fr_persist_restore_read_and_apply(
       runtime, fr_persist_payload_restore_user_only, false, false, NULL);
+  if (err == FR_ERR_OTHER_RELEASE && runtime->diag != NULL &&
+      runtime->diag->kind == FR_DIAG_NONE) {
+    runtime->diag->kind = FR_DIAG_NOTE;
+    runtime->diag->note =
+        "the image comes from another release -- save writes a new one";
+  }
+  return err;
 }
 
 fr_err_t fr_persist_restore_library(fr_runtime_t *runtime) {

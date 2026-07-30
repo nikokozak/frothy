@@ -194,6 +194,10 @@ fr_err_t fr_platform_read_line(char *line, uint16_t cap, bool *out_eof);
 fr_err_t fr_platform_console_read_line(uint8_t *bytes, uint16_t cap,
                                        uint16_t *out_length);
 fr_err_t fr_platform_write_text(const char *text);
+#ifdef FR_HOST_TEST_HELPERS
+/* Test-only: capture platform text in out. NULL restores stdout. */
+void fr_host_capture_text(char *out, uint16_t cap);
+#endif
 /* Idle-servicing hook. The REPL registers a handler the platform calls while
  * read_line waits for the next byte, so timer and interrupt events fire at an
  * idle prompt instead of only while a program runs. A platform whose read

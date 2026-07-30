@@ -3125,6 +3125,21 @@ void fr_host_console_fail_next_switch(void) {
 #endif
 
 #if FR_FEATURE_REPL
+#ifdef FR_HOST_TEST_HELPERS
+static char *fr_host_text_capture;
+static uint16_t fr_host_text_capture_cap;
+static uint16_t fr_host_text_capture_used;
+
+void fr_host_capture_text(char *out, uint16_t cap) {
+  fr_host_text_capture = out;
+  fr_host_text_capture_cap = cap;
+  fr_host_text_capture_used = 0;
+  if (out != NULL && cap > 0) {
+    out[0] = '\0';
+  }
+}
+#endif
+
 /* Host read blocks on fgets with no poll loop, so there is no idle window in
  * which to service events; registration is a no-op. */
 void fr_platform_set_idle_handler(fr_platform_idle_fn handler, void *ctx) {
@@ -3191,6 +3206,22 @@ fr_err_t fr_platform_write_text(const char *text) {
   if (text == NULL) {
     return FR_ERR_INVALID;
   }
+#ifdef FR_HOST_TEST_HELPERS
+  if (fr_host_text_capture != NULL) {
+    size_t length = strlen(text);
+
+    if (fr_host_text_capture_used >= fr_host_text_capture_cap ||
+        length >=
+            (size_t)(fr_host_text_capture_cap - fr_host_text_capture_used)) {
+      return FR_ERR_RANGE;
+    }
+    memcpy(&fr_host_text_capture[fr_host_text_capture_used], text, length);
+    fr_host_text_capture_used =
+        (uint16_t)(fr_host_text_capture_used + length);
+    fr_host_text_capture[fr_host_text_capture_used] = '\0';
+    return FR_OK;
+  }
+#endif
   if (fputs(text, stdout) == EOF || fflush(stdout) == EOF) {
     return FR_ERR_IO;
   }
@@ -3537,6 +3568,7 @@ static fr_err_t fr_host_persist_pick_read_slot(
   fr_persist_format_info_t info[FR_HOST_PERSIST_SLOT_COUNT];
   bool valid[FR_HOST_PERSIST_SLOT_COUNT] = {false, false};
   bool saw_corrupt = false;
+  bool saw_other_release = false;
   uint8_t slots[FR_HOST_PERSIST_SLOT_COUNT] = {0, 1};
   uint8_t valid_count = 0;
 
@@ -3547,7 +3579,9 @@ static fr_err_t fr_host_persist_pick_read_slot(
   for (uint8_t slot = 0; slot < FR_HOST_PERSIST_SLOT_COUNT; slot++) {
     fr_err_t err = fr_host_persist_slot_info(slot, &info[slot]);
     valid[slot] = err == FR_OK;
-    if (err != FR_OK && err != FR_ERR_NOT_FOUND) {
+    if (err == FR_ERR_OTHER_RELEASE) {
+      saw_other_release = true;
+    } else if (err != FR_OK && err != FR_ERR_NOT_FOUND) {
       saw_corrupt = true;
     }
   }
@@ -3564,7 +3598,10 @@ static fr_err_t fr_host_persist_pick_read_slot(
   } else if (valid[0]) {
     valid_count = 1;
   } else {
-    return saw_corrupt ? FR_ERR_CORRUPT : FR_ERR_NOT_FOUND;
+    if (saw_corrupt) {
+      return FR_ERR_CORRUPT;
+    }
+    return saw_other_release ? FR_ERR_OTHER_RELEASE : FR_ERR_NOT_FOUND;
   }
 
   if (image_index >= valid_count) {

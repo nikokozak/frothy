@@ -379,6 +379,14 @@ static void write_u32_little_endian(uint8_t *bytes, uint32_t word) {
   bytes[3] = (uint8_t)((word >> 24) & 0xffu);
 }
 
+#if FR_FEATURE_PERSISTENCE
+static void write_persist_header_crc(uint8_t *bytes) {
+  memset(&bytes[FR_PERSIST_HEADER_CRC_OFFSET], 0, 4);
+  write_u32_little_endian(&bytes[FR_PERSIST_HEADER_CRC_OFFSET],
+                          fr_crc32(bytes, FR_PERSIST_HEADER_BYTES));
+}
+#endif
+
 static void write_overlay_crc(uint8_t *bytes, uint16_t length) {
   write_u32_little_endian(&bytes[length - 4u],
                           fr_crc32(bytes, (uint16_t)(length - 4u)));
@@ -684,15 +692,78 @@ static void test_profile_hash_word_size(void) {
 }
 
 #if FR_FEATURE_PERSISTENCE
+static void test_persist_header_refusal_classes(void) {
+  uint8_t original[FR_PERSIST_HEADER_BYTES + 1] = {0};
+  uint8_t image[sizeof(original)];
+  fr_persist_format_info_t info = {0};
+
+  original[FR_PERSIST_HEADER_BYTES] = 0x5a;
+  CHECK("persist refusal builds valid header",
+        fr_persist_format_build_header(
+            original, 1, fr_crc32(&original[FR_PERSIST_HEADER_BYTES], 1)) ==
+            FR_OK);
+
+  memcpy(image, original, sizeof(image));
+  write_u32_little_endian(&image[FR_PERSIST_PROFILE_HASH_OFFSET],
+                          fr_persist_debug_profile_hash() ^ 1u);
+  write_persist_header_crc(image);
+  CHECK("persist refusal classifies another profile",
+        fr_persist_format_read_header(image, &info) ==
+            FR_ERR_OTHER_RELEASE);
+
+  memcpy(image, original, sizeof(image));
+  image[4] ^= 1u;
+  write_persist_header_crc(image);
+  CHECK("persist refusal classifies another format version",
+        fr_persist_format_read_header(image, &info) ==
+            FR_ERR_OTHER_RELEASE);
+
+  memcpy(image, original, sizeof(image));
+  image[5] = (uint8_t)(FR_PERSIST_HEADER_BYTES - 1u);
+  write_persist_header_crc(image);
+  CHECK("persist refusal classifies another header size",
+        fr_persist_format_read_header(image, &info) ==
+            FR_ERR_OTHER_RELEASE);
+
+  memcpy(image, original, sizeof(image));
+  image[0] ^= 1u;
+  write_persist_header_crc(image);
+  CHECK("persist refusal keeps bad magic corrupt",
+        fr_persist_format_read_header(image, &info) == FR_ERR_CORRUPT);
+
+  memcpy(image, original, sizeof(image));
+  image[FR_PERSIST_HEADER_CRC_OFFSET] ^= 1u;
+  CHECK("persist refusal keeps bad header crc corrupt",
+        fr_persist_format_read_header(image, &info) == FR_ERR_CORRUPT);
+
+  memcpy(image, original, sizeof(image));
+  image[FR_PERSIST_HEADER_BYTES] ^= 1u;
+  CHECK("persist refusal keeps bad payload crc corrupt",
+        fr_persist_format_validate(image, (uint16_t)sizeof(image), &info) ==
+            FR_ERR_CORRUPT);
+
+  CHECK("persist refusal keeps truncated payload corrupt",
+        fr_persist_format_validate(original, FR_PERSIST_HEADER_BYTES, &info) ==
+            FR_ERR_CORRUPT);
+
+  memcpy(image, original, sizeof(image));
+  write_u32_little_endian(&image[FR_PERSIST_PAYLOAD_LENGTH_OFFSET],
+                          (uint32_t)FR_PERSIST_PAYLOAD_BYTES + 1u);
+  write_persist_header_crc(image);
+  CHECK("persist refusal keeps oversized payload length corrupt",
+        fr_persist_format_read_header(image, &info) == FR_ERR_CORRUPT);
+}
+
 /* A saved persist header carrying the opposite word size's profile hash
  * must be rejected outright, not silently restored. The gate is the hash
- * compare in fr_persist_header_parse. */
+ * compare in fr_persist_format_read_header. */
 static void test_persist_cross_width_header_rejection(void) {
   fr_runtime_t runtime;
   uint8_t image[FR_PROFILE_PERSISTENCE_BYTES];
   uint16_t image_length = 0;
   const uint16_t other = 16u;
 
+  fr_platform_persist_clear();
   CHECK("save populates storage for cross-width test",
         fr_base_image_install(&runtime) == FR_OK &&
             fr_persist_save(&runtime) == FR_OK);
@@ -711,8 +782,75 @@ static void test_persist_cross_width_header_rejection(void) {
             test_persist_commit_image(image, image_length) == FR_OK);
   CHECK("restore rejects header with opposite-width profile hash",
         fr_base_image_install(&runtime) == FR_OK &&
-            fr_persist_restore(&runtime) == FR_ERR_CORRUPT);
+            fr_persist_restore(&runtime) == FR_ERR_OTHER_RELEASE);
 }
+
+#if FR_FEATURE_COMPILER && FR_FEATURE_REPL && FR_BASE_IMAGE_INCLUDE_SYMBOLS && \
+    defined(FR_HOST_TEST_HELPERS)
+static void test_persist_other_release_reports_and_falls_back(void) {
+  fr_runtime_t runtime;
+  uint8_t image[FR_PERSIST_STORAGE_BYTES];
+  uint8_t other_image[FR_PERSIST_STORAGE_BYTES];
+  uint16_t image_length = 0;
+  char out[192];
+  char boot_out[192];
+
+  CHECK("other release saves source image",
+        fr_platform_persist_clear() == FR_OK &&
+            fr_base_image_install(&runtime) == FR_OK &&
+            fr_persist_save(&runtime) == FR_OK &&
+            fr_platform_persist_read(image, (uint16_t)sizeof(image),
+                                     &image_length, 0) == FR_OK);
+  write_u32_little_endian(&image[FR_PERSIST_PROFILE_HASH_OFFSET],
+                          fr_persist_debug_profile_hash() ^ 1u);
+  write_persist_header_crc(image);
+  CHECK("other release commits without fallback",
+        fr_platform_persist_clear() == FR_OK &&
+            test_persist_commit_image(image, image_length) == FR_OK);
+  CHECK("restore reports another release with its note",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime, "restore", out, sizeof(out)) ==
+                FR_ERR_OTHER_RELEASE &&
+            strcmp(out,
+                   "error: other release (27)\n"
+                   "note: the image comes from another release -- save writes "
+                   "a new one\n") == 0);
+
+  CHECK("other release boot starts from the base image",
+        fr_base_image_install(&runtime) == FR_OK);
+  fr_host_capture_text(boot_out, (uint16_t)sizeof(boot_out));
+  CHECK("boot completes without a loadable release",
+        fr_repl_startup_restore_and_boot(&runtime) == FR_OK);
+  fr_host_capture_text(NULL, 0);
+  CHECK("boot reports another release instead of corrupt data",
+        strstr(boot_out, "error: other release (27)\n") != NULL &&
+            strstr(boot_out, "corrupt data") == NULL);
+  CHECK("save replaces the image from another release",
+        fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "ok\n") == 0);
+
+  CHECK("other release fallback saves a valid older image",
+        fr_platform_persist_clear() == FR_OK &&
+            fr_base_image_install(&runtime) == FR_OK &&
+            fr_persist_save(&runtime) == FR_OK &&
+            fr_platform_persist_read(image, (uint16_t)sizeof(image),
+                                     &image_length, 0) == FR_OK);
+  memcpy(other_image, image, image_length);
+  write_u32_little_endian(&other_image[FR_PERSIST_PROFILE_HASH_OFFSET],
+                          fr_persist_debug_profile_hash() ^ 1u);
+  write_persist_header_crc(other_image);
+  CHECK("other release fallback commits a newer incompatible image",
+        test_persist_commit_image(other_image, image_length) == FR_OK);
+  CHECK("other release fallback starts from the base image",
+        fr_base_image_install(&runtime) == FR_OK);
+  fr_host_capture_text(boot_out, (uint16_t)sizeof(boot_out));
+  CHECK("boot restores the valid fallback",
+        fr_repl_startup_restore_and_boot(&runtime) == FR_OK);
+  fr_host_capture_text(NULL, 0);
+  CHECK("boot stays quiet when another slot is loadable",
+        strstr(boot_out, "error:") == NULL);
+}
+#endif
 
 static void test_persist_code_id_round_trip(void) {
   fr_runtime_t runtime;
@@ -2053,7 +2191,7 @@ static void test_persist_old_format_rejection(void) {
             test_persist_commit_image(image, image_length) == FR_OK);
   CHECK("old format restore rejects cleanly",
         fr_base_image_install(&runtime) == FR_OK &&
-            fr_persist_restore(&runtime) == FR_ERR_CORRUPT &&
+            fr_persist_restore(&runtime) == FR_ERR_OTHER_RELEASE &&
             fr_slot_id_for_name(&runtime, "answer", &slot_id) ==
                 FR_ERR_NOT_FOUND);
 }
@@ -2093,7 +2231,7 @@ static void test_persist_source_change_header_rejection(void) {
             test_persist_commit_image(image, image_length) == FR_OK);
   CHECK("restore rejects overlay saved under different source bytes",
         fr_base_image_install(&runtime) == FR_OK &&
-            fr_persist_restore(&runtime) == FR_ERR_CORRUPT);
+            fr_persist_restore(&runtime) == FR_ERR_OTHER_RELEASE);
 }
 #endif
 #endif
@@ -16750,12 +16888,14 @@ static void test_err_name(void) {
       {FR_ERR_BLE_BUSY, "ble busy"},
       {FR_ERR_BLE_TIMEOUT, "ble timed out"},
       {FR_ERR_BUSY, "busy"},
+      {FR_ERR_OTHER_RELEASE, "other release"},
   };
 
   CHECK("ble errors keep their serial ids",
         FR_ERR_BLE_NOT_READY == 21 && FR_ERR_BLE_BUSY == 22 &&
             FR_ERR_BLE_TIMEOUT == 23 && FR_ERR_BLE_DISCONNECTED == 24 &&
-            FR_ERR_BUSY == 25);
+            FR_ERR_BUSY == 25 && FR_ERR_PROMPT_ONLY == 26 &&
+            FR_ERR_OTHER_RELEASE == 27);
   for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
     const char *got = fr_err_name(cases[i].err);
     if (cases[i].name == NULL) {
@@ -17282,6 +17422,11 @@ int main(void) {
 #endif
 #endif
 #if FR_FEATURE_PERSISTENCE
+  test_persist_header_refusal_classes();
+#if FR_FEATURE_COMPILER && FR_FEATURE_REPL && FR_BASE_IMAGE_INCLUDE_SYMBOLS && \
+    defined(FR_HOST_TEST_HELPERS)
+  test_persist_other_release_reports_and_falls_back();
+#endif
   test_persist();
 #if FR_FEATURE_COMPILER && FR_BASE_IMAGE_INCLUDE_SYMBOLS
   test_persist_restore_with_live_overlay_code();

@@ -1324,6 +1324,10 @@ static fr_err_t fr_repl_write_error(fr_runtime_t *runtime, char *out,
                                             &wrote_context) != FR_OK) {
       fr_repl_truncate(out, &used, base_used);
     }
+    if (!wrote_context && diag->kind == FR_DIAG_NOTE && diag->note != NULL &&
+        fr_repl_append_note_line(out, out_cap, &used, diag->note) != FR_OK) {
+      fr_repl_truncate(out, &used, base_used);
+    }
     return FR_OK;
   }
 

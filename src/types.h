@@ -37,6 +37,7 @@ typedef enum fr_err_t {
   /* The word replaces the running program, so it only runs at the prompt
      and never from inside an evaluation (ADR 0071). */
   FR_ERR_PROMPT_ONLY,
+  FR_ERR_OTHER_RELEASE,
 } fr_err_t;
 
 const char *fr_err_name(fr_err_t err);
