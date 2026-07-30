@@ -6,6 +6,8 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-07-30
+
 ### Added
 
 - **The Arduino Nano RP2040 Connect has a packaged UF2.** `frothy flash`
