@@ -6,6 +6,64 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-07-30
+
+### Added
+
+- **`close-handles` closes every open handle from the prompt.** An interrupt
+  stops the running form but leaves its handles open, because a handle in a
+  global slot must outlive the form that opened it. The next program that
+  wants one of those pins got `busy`, and the only ways out were a close word
+  per kind, `wipe-user`, or a reset. `close-handles` is a zero-arity word that
+  keeps the definitions, the slot values, and the event bindings, and returns
+  the number it closed. When the platform still holds a handle, a notice names
+  each kind that stays open, because a bulk close preserves those entries and
+  silence about them would be false. It is a word rather than a prompt command
+  so that `words`, the editor's completions, and the word browser can all find
+  it. A profile without handles answers `unsupported`. A slot that held a
+  closed handle keeps the stale value and answers `bad handle` when a program
+  uses it.
+
+- **`commands` lists the prompt commands.** `words` reports the natives in the
+  base image, so a prompt command is invisible to it. `commands` names the ones
+  that remain, including itself, so the prompt can answer "what else can I type
+  here".
+
+### Changed
+
+- **A saved image from another release now says so.** A saved image carries the
+  profile hash and format version of the firmware that wrote it. A mismatch
+  used to report `corrupt data` — the same error a failed checksum uses — so a
+  board that had just taken a firmware update told its owner the data was
+  damaged. Nothing was damaged: the board wrote that image itself, one release
+  earlier. Both provenance checks now report the new **`other release` (27)**
+  with a note naming the remedy, while checksum and length failures keep
+  `corrupt data`. `save` no longer refuses an image it cannot read, because
+  replacing it is what the note tells the user to do.
+
+- **A bad magic number reports `corrupt data`, not `not found`.** Data that is
+  present and unreadable is not an empty slot. The ESP target tests for erased
+  flash before reading the magic, so a clean board still reports an empty slot.
+
+- **Saved images do not survive the upgrade to this release.** Adding a native
+  changes the profile hash, so a device rejects an image written by an earlier
+  release — with `other release (27)` now, rather than a false corruption
+  report. Save again after flashing. Frothy does not promise that images move
+  between releases.
+
+### Fixed
+
+- **An outer local no longer shadows a global inside an event body.** `here` is
+  optional, so `x is 1` declares a local inside a definition and a global at
+  the prompt. An event body cannot read the enclosing definition's locals, and
+  the compiler said so — but only after name resolution failed, and a global of
+  the same name answered first. The body then compiled against the global, and
+  the message never appeared. One definition had two meanings, chosen by state
+  the reader cannot see: with no global `bulb` it was an error, and with one it
+  drove that pin instead of the local. The check now runs before slot
+  resolution, for event bodies only; the body keeps its own locals and
+  parameters, which still resolve first.
+
 ## [0.1.15] - 2026-07-30
 
 ### Added
