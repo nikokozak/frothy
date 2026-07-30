@@ -12,7 +12,7 @@
     "HAS_NINA": 1
   },
   "flash_bytes": 16777216,
-  "bootsel": "Double-press RESET to make the RPI-RP2 drive appear.",
+  "bootsel": "With USB connected, connect REC to GND, press RESET, then remove the jumper when the RPI-RP2 drive appears.",
   "cores": 2,
   "peripherals": ["gpio", "adc", "uart", "pwm", "i2c", "i2s", "net", "ble"],
   "pins": {
