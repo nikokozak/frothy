@@ -49,6 +49,7 @@ typedef enum fr_repl_command_kind_t {
   FR_REPL_COMMAND_STATUS,
   FR_REPL_COMMAND_WORDS,
   FR_REPL_COMMAND_EVENTS,
+  FR_REPL_COMMAND_COMMANDS,
   FR_REPL_COMMAND_SEE,
   FR_REPL_COMMAND_CLEAR,
   FR_REPL_COMMAND_APPLY,
@@ -56,7 +57,6 @@ typedef enum fr_repl_command_kind_t {
   FR_REPL_COMMAND_INSTALL_LIBRARY,
   FR_REPL_COMMAND_INSTALL_USER,
   FR_REPL_COMMAND_WIPE_USER,
-  FR_REPL_COMMAND_CLOSE_HANDLES,
   FR_REPL_COMMAND_MEM,
 } fr_repl_command_kind_t;
 
@@ -183,6 +183,11 @@ static bool fr_repl_line_starts_definition(const char *line) {
 /* `line` is the NUL-terminated REPL line buffer. NONE also covers exact
  * no-argument command names followed by source tokens, such as `status is 1`.
  */
+/* Keep this list in the same order as the recognizer arms below. */
+static const char fr_repl_prompt_command_names[] =
+    "status words events commands clear see apply run install-library "
+    "install-user wipe-user mem\n";
+
 static fr_err_t fr_repl_parse_recognized_command(
     const char *line, fr_repl_command_t *out) {
   const char *start = line;
@@ -225,6 +230,7 @@ static fr_err_t fr_repl_parse_recognized_command(
     arg += 1;
   }
 
+  /* Keep the displayed list above in the same order as these arms. */
   if (fr_repl_span_equals(start, token_len, "status")) {
     if (arg == end) {
       out->kind = FR_REPL_COMMAND_STATUS;
@@ -240,6 +246,12 @@ static fr_err_t fr_repl_parse_recognized_command(
   if (fr_repl_span_equals(start, token_len, "events")) {
     if (arg == end) {
       out->kind = FR_REPL_COMMAND_EVENTS;
+    }
+    return FR_OK;
+  }
+  if (fr_repl_span_equals(start, token_len, "commands")) {
+    if (arg == end) {
+      out->kind = FR_REPL_COMMAND_COMMANDS;
     }
     return FR_OK;
   }
@@ -304,12 +316,6 @@ static fr_err_t fr_repl_parse_recognized_command(
   if (fr_repl_span_equals(start, token_len, "wipe-user")) {
     if (arg == end) {
       out->kind = FR_REPL_COMMAND_WIPE_USER;
-    }
-    return FR_OK;
-  }
-  if (fr_repl_span_equals(start, token_len, "close-handles")) {
-    if (arg == end) {
-      out->kind = FR_REPL_COMMAND_CLOSE_HANDLES;
     }
     return FR_OK;
   }
@@ -2194,6 +2200,57 @@ static fr_err_t fr_repl_write_save_advisory(const fr_repl_writer_t *writer,
 }
 #endif
 
+static bool
+fr_repl_diag_is_close_handles(const fr_diagnostic_t *diag) {
+  return diag != NULL && diag->kind == FR_DIAG_NOTE &&
+         diag->message_id == FR_DIAG_MSG_RUNTIME_CLOSE_HANDLES;
+}
+
+static fr_err_t
+fr_repl_write_close_handles_advisory(fr_runtime_t *runtime,
+                                     const fr_repl_writer_t *writer,
+                                     const fr_diagnostic_t *diag) {
+#if FR_FEATURE_HANDLES
+  bool named_kinds[FR_HANDLE_KIND_COUNT] = {false};
+  bool wrote_kind = false;
+  char number[6];
+
+  if (!fr_repl_diag_is_close_handles(diag) || diag->got <= 0) {
+    return FR_OK;
+  }
+  FR_TRY(fr_repl_writer_write(writer,
+                              "notice: handles are still open ("));
+  FR_TRY(fr_repl_write_u16(number, (uint16_t)sizeof(number),
+                           FR_REPL_NOTICE_HANDLES_STILL_OPEN));
+  FR_TRY(fr_repl_writer_write(writer, number));
+  FR_TRY(fr_repl_writer_write(writer, ")\ndetail: "));
+  for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
+    const fr_handle_entry_t *entry = &runtime->handles.entries[i];
+
+    if (entry->kind == FR_HANDLE_KIND_NONE ||
+        entry->platform_index == FR_HANDLE_PLATFORM_NONE ||
+        (entry->kind < FR_HANDLE_KIND_COUNT && named_kinds[entry->kind])) {
+      continue;
+    }
+    if (entry->kind < FR_HANDLE_KIND_COUNT) {
+      named_kinds[entry->kind] = true;
+    }
+    if (wrote_kind) {
+      FR_TRY(fr_repl_writer_write(writer, " "));
+    }
+    FR_TRY(
+        fr_repl_writer_write(writer, fr_handle_kind_name(entry->kind)));
+    wrote_kind = true;
+  }
+  return fr_repl_writer_write(writer, "\n");
+#else
+  (void)runtime;
+  (void)writer;
+  (void)diag;
+  return FR_OK;
+#endif
+}
+
 /* Both zero-arg call paths below are the prompt calling a word directly,
  * with no evaluation in progress around it. That is the one context where
  * `save` can hold live handles across the remount in its tail, so it is
@@ -2375,6 +2432,11 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
     return fr_repl_write_status(writer);
   }
 
+  if (command.kind == FR_REPL_COMMAND_COMMANDS) {
+    FR_TRY(fr_repl_writer_write(writer, fr_repl_prompt_command_names));
+    return fr_repl_writer_write(writer, "ok\n");
+  }
+
   if (command.kind == FR_REPL_COMMAND_SEE) {
 #if FR_FEATURE_INTROSPECTION
     return fr_repl_eval_see_arg(runtime, command.arg, command.arg_len, writer);
@@ -2426,56 +2488,6 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
 #endif
   }
 
-  if (command.kind == FR_REPL_COMMAND_CLOSE_HANDLES) {
-#if FR_FEATURE_HANDLES
-    uint16_t before = 0;
-    uint16_t after = 0;
-    uint16_t closed = 0;
-    char number[6];
-
-    for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
-      const fr_handle_entry_t *entry = &runtime->handles.entries[i];
-
-      if (entry->kind != FR_HANDLE_KIND_NONE &&
-          entry->platform_index != FR_HANDLE_PLATFORM_NONE) {
-        before = (uint16_t)(before + 1u);
-      }
-    }
-    fr_handle_close_all(runtime);
-    for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
-      const fr_handle_entry_t *entry = &runtime->handles.entries[i];
-
-      if (entry->kind != FR_HANDLE_KIND_NONE &&
-          entry->platform_index != FR_HANDLE_PLATFORM_NONE) {
-        after = (uint16_t)(after + 1u);
-      }
-    }
-    closed = (uint16_t)(before - after);
-
-    FR_TRY(fr_repl_writer_write(writer, "closed "));
-    FR_TRY(
-        fr_repl_write_u16(number, (uint16_t)sizeof(number), closed));
-    FR_TRY(fr_repl_writer_write(writer, number));
-    FR_TRY(fr_repl_writer_write(
-        writer, closed == 1u ? " handle\n" : " handles\n"));
-    for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
-      const fr_handle_entry_t *entry = &runtime->handles.entries[i];
-
-      if (entry->kind == FR_HANDLE_KIND_NONE ||
-          entry->platform_index == FR_HANDLE_PLATFORM_NONE) {
-        continue;
-      }
-      FR_TRY(fr_repl_writer_write(writer, "still open: "));
-      FR_TRY(fr_repl_writer_write(writer,
-                                  fr_handle_kind_name(entry->kind)));
-      FR_TRY(fr_repl_writer_write(writer, "\n"));
-    }
-    return fr_repl_writer_write(writer, "ok\n");
-#else
-    return FR_ERR_UNSUPPORTED;
-#endif
-  }
-
   if (command.kind == FR_REPL_COMMAND_WORDS) {
 #if FR_FEATURE_INTROSPECTION
     return fr_repl_write_words(runtime, writer);
@@ -2501,6 +2513,7 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
   if (matched) {
     *out_notice_allowed = ran_command;
     FR_TRY(err);
+    FR_TRY(fr_repl_write_close_handles_advisory(runtime, writer, diag));
 #if FR_FEATURE_PERSISTENCE
     FR_TRY(fr_repl_write_save_advisory(writer, diag));
 #endif
@@ -2513,10 +2526,14 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
   if (matched) {
     *out_notice_allowed = ran_command;
     FR_TRY(err);
+    FR_TRY(fr_repl_write_close_handles_advisory(runtime, writer, diag));
     if (ran_command) {
 #if FR_FEATURE_PERSISTENCE
       FR_TRY(fr_repl_write_save_advisory(writer, diag));
 #endif
+      if (fr_repl_diag_is_close_handles(diag)) {
+        return fr_repl_writer_write_tagged_response(writer, runtime, result);
+      }
       return fr_repl_writer_write(writer, "ok\n");
     }
     return fr_repl_writer_write_tagged_response(writer, runtime, result);

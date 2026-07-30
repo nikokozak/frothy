@@ -530,6 +530,7 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 	@out=$$(printf '%s\n' \
 		'status' \
 		'close-handles' \
+		'commands' \
 		'time is 200' \
 		'myblink is fn [ pin: $$led_builtin, 1; wait: time; pin: $$led_builtin, 0; wait: time ]' \
 		'blink_times is fn with count [ repeat count [ myblink: ] ]' \
@@ -587,13 +588,14 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 		'words' \
 		| build/host/frothy-host-normal); \
 	ok_count=$$(printf '%s\n' "$$out" | grep -c 'ok$$'); \
-	if [ "$$ok_count" != 57 ]; then \
+	if [ "$$ok_count" != 58 ]; then \
 		printf '%s\n' "$$out"; \
 		exit 1; \
 	fi; \
 	for expected in \
 		'profile=host_normal' \
-		'closed 0 handles' \
+		'> 0' \
+		'> status words events commands clear see apply run install-library install-user wipe-user mem' \
 		'compiler=device' \
 		'names=device' \
 		'storage=eeprom' \

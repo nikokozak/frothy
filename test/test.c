@@ -232,7 +232,7 @@ enum {
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
-              " $led_active_level" FR_TEST_SOURCE_WORDS "\nok\n"
+              " close-handles $led_active_level" FR_TEST_SOURCE_WORDS "\nok\n"
 #define FR_TEST_WORDS_WITH_LED                                                \
   "boot wait one gpio.write $led_builtin save restore dangerous.wipe gpio.mode "  \
   "gpio.read adc.read adc.above? millis micros" FR_TEST_UART_WORDS             \
@@ -243,7 +243,8 @@ enum {
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
-              " $led_active_level" FR_TEST_SOURCE_WORDS " led\nok\n"
+              " close-handles $led_active_level" FR_TEST_SOURCE_WORDS         \
+              " led\nok\n"
 #define FR_TEST_WORDS_WITH_LED_AND_MYBLINK                                    \
   "boot wait one gpio.write $led_builtin save restore dangerous.wipe gpio.mode "  \
   "gpio.read adc.read adc.above? millis micros" FR_TEST_UART_WORDS             \
@@ -254,9 +255,10 @@ enum {
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
-              " $led_active_level" FR_TEST_SOURCE_WORDS " led myblink\nok\n"
+              " close-handles $led_active_level" FR_TEST_SOURCE_WORDS         \
+              " led myblink\nok\n"
 #define FR_TEST_BASE_SLOT_COUNT                                               \
-  (15 + FR_TEST_UART_SLOT_COUNT + FR_TEST_RANDOM_SLOT_COUNT +                \
+  (16 + FR_TEST_UART_SLOT_COUNT + FR_TEST_RANDOM_SLOT_COUNT +                \
    FR_TEST_PWM_SLOT_COUNT + FR_TEST_I2C_SLOT_COUNT +                          \
    FR_TEST_MATH_SLOT_COUNT + FR_TEST_PAD_SLOT_COUNT +                         \
    FR_TEST_TEXT_SLOT_COUNT + FR_TEST_EVENT_REGISTER_SLOT_COUNT +              \
@@ -275,7 +277,7 @@ enum {
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
-              " $led_active_level" FR_TEST_SOURCE_WORDS "\nok\n"
+              " close-handles $led_active_level" FR_TEST_SOURCE_WORDS "\nok\n"
 #define FR_TEST_WORDS_WITH_LED                                                \
   "boot wait one gpio.write $led_builtin gpio.mode gpio.read adc.read "        \
   "adc.above? millis micros" FR_TEST_UART_WORDS FR_TEST_RANDOM_WORDS          \
@@ -285,7 +287,8 @@ enum {
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
-              " $led_active_level" FR_TEST_SOURCE_WORDS " led\nok\n"
+              " close-handles $led_active_level" FR_TEST_SOURCE_WORDS         \
+              " led\nok\n"
 #define FR_TEST_WORDS_WITH_LED_AND_MYBLINK                                    \
   "boot wait one gpio.write $led_builtin gpio.mode gpio.read adc.read "        \
   "adc.above? millis micros" FR_TEST_UART_WORDS FR_TEST_RANDOM_WORDS          \
@@ -295,9 +298,10 @@ enum {
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
-              " $led_active_level" FR_TEST_SOURCE_WORDS " led myblink\nok\n"
+              " close-handles $led_active_level" FR_TEST_SOURCE_WORDS         \
+              " led myblink\nok\n"
 #define FR_TEST_BASE_SLOT_COUNT                                               \
-  (12 + FR_TEST_UART_SLOT_COUNT + FR_TEST_RANDOM_SLOT_COUNT +                \
+  (13 + FR_TEST_UART_SLOT_COUNT + FR_TEST_RANDOM_SLOT_COUNT +                \
    FR_TEST_PWM_SLOT_COUNT + FR_TEST_I2C_SLOT_COUNT +                          \
    FR_TEST_MATH_SLOT_COUNT + FR_TEST_PAD_SLOT_COUNT +                         \
    FR_TEST_TEXT_SLOT_COUNT + FR_TEST_EVENT_REGISTER_SLOT_COUNT +              \
@@ -466,7 +470,7 @@ static void test_base_def_contract(void) {
   bool seen_slots[FR_PROFILE_MAX_SLOTS] = {0};
   uint16_t expected_layer_count = FR_FEATURE_PERSISTENCE ? 4 : 3;
   uint16_t expected_native_count =
-      (FR_FEATURE_PERSISTENCE ? 11 : 8) + (FR_FEATURE_UART ? 6 : 0) +
+      (FR_FEATURE_PERSISTENCE ? 12 : 9) + (FR_FEATURE_UART ? 6 : 0) +
       (FR_FEATURE_RANDOM ? 3 : 0) + (FR_FEATURE_PWM ? 3 : 0) +
       (FR_FEATURE_I2C ? 8 : 0) + (FR_FEATURE_NET ? 9 : 0) +
       (FR_FEATURE_POWER ? 4 : 0) + (FR_FEATURE_BYTES ? 8 : 0) +
@@ -508,8 +512,10 @@ static void test_base_def_contract(void) {
         FR_SLOT_FROTHY_RELEASE == FR_SLOT_AFTER_CONSOLE);
   CHECK("fire-event slot follows release slot",
         FR_SLOT_FIRE_EVENT == FR_SLOT_FROTHY_RELEASE + 1);
-  CHECK("board capability slot follows fire-event slot",
-        FR_SLOT_LED_ACTIVE_LEVEL == FR_SLOT_FIRE_EVENT + 1);
+  CHECK("close-handles slot follows fire-event slot",
+        FR_SLOT_CLOSE_HANDLES == FR_SLOT_FIRE_EVENT + 1);
+  CHECK("board capability slot follows close-handles slot",
+        FR_SLOT_LED_ACTIVE_LEVEL == FR_SLOT_CLOSE_HANDLES + 1);
   CHECK("board local slot ids follow board capability slots",
         FR_SLOT_BOARD_LOCAL_BASE == FR_SLOT_LED_ACTIVE_LEVEL + 1);
 #else
@@ -517,8 +523,10 @@ static void test_base_def_contract(void) {
         FR_SLOT_EVENT_CANCEL == FR_SLOT_EVENT_REGISTER + 1);
   CHECK("release slot follows protocol blocks",
         FR_SLOT_FROTHY_RELEASE == FR_SLOT_AFTER_CONSOLE);
-  CHECK("board capability slot follows release slot",
-        FR_SLOT_LED_ACTIVE_LEVEL == FR_SLOT_FROTHY_RELEASE + 1);
+  CHECK("close-handles slot follows release slot",
+        FR_SLOT_CLOSE_HANDLES == FR_SLOT_FROTHY_RELEASE + 1);
+  CHECK("board capability slot follows close-handles slot",
+        FR_SLOT_LED_ACTIVE_LEVEL == FR_SLOT_CLOSE_HANDLES + 1);
   CHECK("board local slot ids follow board capability slots",
         FR_SLOT_BOARD_LOCAL_BASE == FR_SLOT_LED_ACTIVE_LEVEL + 1);
 #endif
@@ -527,8 +535,10 @@ static void test_base_def_contract(void) {
         FR_SLOT_EVENT_REGISTER == FR_TEST_PAD_LAST_SLOT + 1);
   CHECK("event cancel slot follows event register slot",
         FR_SLOT_EVENT_CANCEL == FR_SLOT_EVENT_REGISTER + 1);
-  CHECK("board capability slot follows target capability blocks",
-        FR_SLOT_LED_ACTIVE_LEVEL == FR_SLOT_AFTER_CONSOLE);
+  CHECK("close-handles slot follows target capability blocks",
+        FR_SLOT_CLOSE_HANDLES == FR_SLOT_AFTER_CONSOLE);
+  CHECK("board capability slot follows close-handles slot",
+        FR_SLOT_LED_ACTIVE_LEVEL == FR_SLOT_CLOSE_HANDLES + 1);
   CHECK("board local slot ids follow board capability slots",
         FR_SLOT_BOARD_LOCAL_BASE == FR_SLOT_LED_ACTIVE_LEVEL + 1);
 #else
@@ -536,8 +546,10 @@ static void test_base_def_contract(void) {
         FR_SLOT_EVENT_REGISTER == FR_SLOT_AFTER_MATH);
   CHECK("event cancel slot follows event register slot",
         FR_SLOT_EVENT_CANCEL == FR_SLOT_EVENT_REGISTER + 1);
-  CHECK("board capability slot follows target capability blocks",
-        FR_SLOT_LED_ACTIVE_LEVEL == FR_SLOT_AFTER_CONSOLE);
+  CHECK("close-handles slot follows target capability blocks",
+        FR_SLOT_CLOSE_HANDLES == FR_SLOT_AFTER_CONSOLE);
+  CHECK("board capability slot follows close-handles slot",
+        FR_SLOT_LED_ACTIVE_LEVEL == FR_SLOT_CLOSE_HANDLES + 1);
   CHECK("board local slot ids follow board capability slots",
         FR_SLOT_BOARD_LOCAL_BASE == FR_SLOT_LED_ACTIVE_LEVEL + 1);
 #endif
@@ -5757,24 +5769,40 @@ static void test_close_kind_preserves_failed_entry(void) {
 
 #if FR_FEATURE_PWM && FR_FEATURE_COMPILER && FR_FEATURE_EVENTS &&              \
     FR_BASE_IMAGE_INCLUDE_SYMBOLS
-static void test_close_handles_command(void) {
+static void test_close_handles_word(void) {
   fr_runtime_t runtime;
+  const fr_native_entry_t *close_entry = NULL;
   fr_slot_id_t keep_slot = 0;
   fr_code_object_id_t keep_body = 0;
   fr_tagged_t keep_value = 0;
+  fr_tagged_t close_value = 0;
+  fr_tagged_t close_result = 0;
+  fr_native_id_t close_native_id = 0;
   fr_event_binding_t event_before = {0};
-  fr_err_t close_arg_err = FR_OK;
-  fr_err_t wipe_arg_err = FR_OK;
   char out[256];
-  char wipe_out[256];
 #if FR_FEATURE_UART
-  const char *closed_report = "closed 2 handles\nok\n";
+  const char *closed_report = "2\nok\n";
 #else
-  const char *closed_report = "closed 1 handle\nok\n";
+  const char *closed_report = "1\nok\n";
 #endif
 
   CHECK("close-handles installs the base image",
         fr_base_image_install(&runtime) == FR_OK);
+  CHECK("close-handles resolves to a zero-arity base native",
+        fr_slot_read(&runtime, FR_SLOT_CLOSE_HANDLES, &close_value) == FR_OK &&
+            fr_tagged_decode_native_id(close_value, &close_native_id) ==
+                FR_OK &&
+            fr_native_get(&runtime, close_native_id, &close_entry) == FR_OK &&
+            close_entry->arity == 0);
+#if FR_FEATURE_NATIVE_SIGNATURES
+  CHECK("close-handles exposes its result shape",
+        fr_repl_eval_line(&runtime, "see close-handles", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out,
+                   "close-handles() -> int\n"
+                   "close every open handle and return the number closed\n"
+                   "ok\n") == 0);
+#endif
   CHECK("close-handles keeps a definition and event",
         fr_repl_eval_line(&runtime, "keep is fn [ 42 ]", out, sizeof(out)) ==
                 FR_OK &&
@@ -5828,20 +5856,26 @@ static void test_close_handles_command(void) {
   CHECK("close-handles reports an empty table",
         fr_repl_eval_line(&runtime, "close-handles", out, sizeof(out)) ==
                 FR_OK &&
-            strcmp(out, "closed 0 handles\nok\n") == 0);
-
-  wipe_arg_err =
-      fr_repl_eval_line(&runtime, "wipe-user extra", wipe_out, sizeof(wipe_out));
-  close_arg_err =
-      fr_repl_eval_line(&runtime, "close-handles extra", out, sizeof(out));
-  CHECK("close-handles rejects an argument like wipe-user",
-        close_arg_err == FR_ERR_INVALID && close_arg_err == wipe_arg_err &&
-            strstr(out,
-                   "error: invalid (8)\n"
-                   "expected ':' before the argument to a word\n") == out &&
-            strstr(wipe_out,
-                   "error: invalid (8)\n"
-                   "expected ':' before the argument to a word\n") == wipe_out);
+            strcmp(out, "0\nok\n") == 0);
+  CHECK("close-handles refuses inside a running form",
+        fr_repl_eval_line(&runtime,
+                          "nested-close is fn [ close-handles: ; 9 ]", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "nested-close:", out, sizeof(out)) ==
+                FR_ERR_PROMPT_ONLY &&
+            strcmp(out, "error: prompt only (26)\n") == 0);
+  CHECK("close-handles guard keeps an open resource",
+        fr_repl_eval_line(&runtime, "guarded is pwm.open: 26, 1000", out,
+                          sizeof(out)) == FR_OK);
+  runtime.execution_depth = 1;
+  CHECK("close-handles guard works at the native boundary",
+        fr_native_call(&runtime, close_entry, NULL, 0, &close_result) ==
+            FR_ERR_PROMPT_ONLY);
+  runtime.execution_depth = 0;
+  CHECK("close-handles closes the resource after the guard clears",
+        fr_repl_eval_line(&runtime, "close-handles", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "1\nok\n") == 0);
 }
 
 static void test_close_handles_reports_survivor(void) {
@@ -5862,8 +5896,9 @@ static void test_close_handles_reports_survivor(void) {
         fr_repl_eval_line(&runtime, "close-handles", out, sizeof(out)) ==
                 FR_OK &&
             strcmp(out,
-                   "closed 0 handles\n"
-                   "still open: pwm\n"
+                   "notice: handles are still open (101)\n"
+                   "detail: pwm\n"
+                   "0\n"
                    "ok\n") == 0);
   CHECK("close-handles survivor answers an exact repeat",
         fr_repl_eval_line(&runtime, "same is pwm.open: 25, 1000", out,
@@ -5877,16 +5912,67 @@ static void test_close_handles_reports_survivor(void) {
   CHECK("close-handles later closes the survivor",
         fr_repl_eval_line(&runtime, "close-handles", out, sizeof(out)) ==
                 FR_OK &&
-            strcmp(out, "closed 1 handle\nok\n") == 0);
+            strcmp(out, "1\nok\n") == 0);
   CHECK("close-handles survivor resource reopens with new settings",
         fr_repl_eval_line(&runtime, "pwm.open: 25, 2000", out, sizeof(out)) ==
             FR_OK);
   CHECK("close-handles survivor test cleans up",
         fr_repl_eval_line(&runtime, "close-handles", out, sizeof(out)) ==
                 FR_OK &&
-            strcmp(out, "closed 1 handle\nok\n") == 0);
+            strcmp(out, "1\nok\n") == 0);
 }
 #endif
+
+static void test_commands_command(void) {
+  static const char *const names[] = {
+      "status",          "words",        "events",       "commands",
+      "clear",           "see",          "apply",        "run",
+      "install-library", "install-user", "wipe-user",    "mem",
+  };
+  static const char expected[] =
+      "status words events commands clear see apply run install-library "
+      "install-user wipe-user mem\n"
+      "ok\n";
+  fr_runtime_t runtime;
+  fr_err_t commands_arg_err = FR_OK;
+  fr_err_t wipe_arg_err = FR_OK;
+  char out[2048];
+  char wipe_out[256];
+
+#if FR_FEATURE_PERSISTENCE
+  fr_platform_persist_clear();
+#endif
+  CHECK("commands installs the base image",
+        fr_base_image_install(&runtime) == FR_OK);
+  CHECK("commands writes the exact recognizer-order list",
+        fr_repl_eval_line(&runtime, "commands", out, sizeof(out)) == FR_OK &&
+            strcmp(out, expected) == 0);
+  CHECK("commands lists itself",
+        strstr(out, "events commands clear") != NULL);
+  for (uint16_t i = 0; i < (uint16_t)(sizeof(names) / sizeof(names[0])); i++) {
+    CHECK("commands lists only recognized command names",
+          fr_repl_eval_line(&runtime, names[i], out, sizeof(out)) !=
+              FR_ERR_NOT_FOUND);
+  }
+  commands_arg_err =
+      fr_repl_eval_line(&runtime, "commands extra", out, sizeof(out));
+  wipe_arg_err = fr_repl_eval_line(&runtime, "wipe-user extra", wipe_out,
+                                   sizeof(wipe_out));
+  CHECK("commands rejects an argument like wipe-user",
+        commands_arg_err == FR_ERR_INVALID &&
+            commands_arg_err == wipe_arg_err &&
+            strstr(out,
+                   "expected ':' before the argument to a word\n") != NULL &&
+            strstr(wipe_out,
+                   "expected ':' before the argument to a word\n") != NULL);
+  CHECK("commands omits close-handles",
+        strstr(expected, "close-handles") == NULL);
+#if FR_FEATURE_INTROSPECTION && FR_BASE_IMAGE_INCLUDE_SYMBOLS
+  CHECK("words includes close-handles",
+        fr_repl_eval_line(&runtime, "words", out, sizeof(out)) == FR_OK &&
+            strstr(out, " close-handles ") != NULL);
+#endif
+}
 
 #if FR_FEATURE_PERSISTENCE && FR_FEATURE_PWM
 /* ADR 0070: the prompt's own save stores slots holding handle values as
@@ -8307,6 +8393,11 @@ static void test_image(void) {
   CHECK("base image installs one tagged word",
         fr_slot_read(&runtime, FR_SLOT_ONE, &tagged) == FR_OK &&
             fr_tagged_decode_int(tagged, &decoded) == FR_OK && decoded == 1);
+  CHECK("base image installs close-handles native",
+        fr_slot_read(&runtime, FR_SLOT_CLOSE_HANDLES, &tagged) == FR_OK &&
+            fr_tagged_decode_native_id(tagged, &native_id) == FR_OK &&
+            fr_native_get(&runtime, native_id, &entry) == FR_OK &&
+            entry->arity == 0);
 #if FR_BASE_IMAGE_INCLUDE_SYMBOLS
   CHECK("base image exposes host slot names",
         fr_base_slot_count() == FR_TEST_BASE_SLOT_COUNT &&
@@ -8315,6 +8406,8 @@ static void test_image(void) {
             strcmp(fr_base_slot_name_at(2), "one") == 0 &&
             strcmp(fr_base_slot_name_at(3), "gpio.write") == 0 &&
             strcmp(fr_base_slot_name_at(4), "$led_builtin") == 0 &&
+            strcmp(fr_base_slot_name_at(FR_TEST_BASE_SLOT_COUNT - 2),
+                   "close-handles") == 0 &&
             strcmp(fr_base_slot_name_at(FR_TEST_BASE_SLOT_COUNT - 1),
                    "$led_active_level") == 0 &&
             fr_base_slot_name_at(FR_TEST_BASE_SLOT_COUNT) == NULL &&
@@ -8330,6 +8423,8 @@ static void test_image(void) {
             strcmp(fr_base_slot_name(FR_SLOT_MICROS), "micros") == 0 &&
             strcmp(fr_base_slot_name(FR_SLOT_LED_BUILTIN), "$led_builtin") ==
                 0 &&
+            strcmp(fr_base_slot_name(FR_SLOT_CLOSE_HANDLES),
+                   "close-handles") == 0 &&
             strcmp(fr_base_slot_name(FR_SLOT_LED_ACTIVE_LEVEL),
                    "$led_active_level") == 0);
 #if FR_FEATURE_SOURCE_BASE
@@ -8421,6 +8516,8 @@ static void test_image(void) {
             slot_id == FR_SLOT_LED_BUILTIN &&
             fr_base_slot_id_for_name("$led_active_level", &slot_id) == FR_OK &&
             slot_id == FR_SLOT_LED_ACTIVE_LEVEL &&
+            fr_base_slot_id_for_name("close-handles", &slot_id) == FR_OK &&
+            slot_id == FR_SLOT_CLOSE_HANDLES &&
             fr_base_slot_id_for_name("missing", &slot_id) == FR_ERR_NOT_FOUND);
 #if FR_FEATURE_TEXT && FR_FEATURE_REPL
   CHECK("base image looks up print slot name",
@@ -8467,10 +8564,13 @@ static void test_image(void) {
   CHECK("base image omits symbols",
         fr_base_slot_count() == 0 && fr_base_slot_name_at(0) == NULL &&
             fr_base_slot_name(FR_SLOT_BOOT) == NULL &&
+            fr_base_slot_name(FR_SLOT_CLOSE_HANDLES) == NULL &&
             fr_base_slot_id_for_name("boot", &slot_id) == FR_ERR_UNSUPPORTED);
 #endif
   CHECK("base image records native layer",
-        fr_base_slot_layer(FR_SLOT_WAIT, &layer) == FR_OK &&
+        fr_base_slot_layer(FR_SLOT_CLOSE_HANDLES, &layer) == FR_OK &&
+            layer == FR_BASE_LAYER_CORE &&
+            fr_base_slot_layer(FR_SLOT_WAIT, &layer) == FR_OK &&
             layer == FR_BASE_LAYER_TARGET &&
             fr_base_slot_layer(FR_SLOT_GPIO_WRITE, &layer) == FR_OK &&
             layer == FR_BASE_LAYER_TARGET &&
@@ -11198,7 +11298,7 @@ static void test_compile(void) {
             fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
             fr_vm_run_boot(&runtime, &tagged) == FR_OK &&
             fr_tagged_decode_native_id(tagged, &native_id) == FR_OK &&
-            native_id == 0);
+            native_id == 1);
   CHECK("compiled one slot function uses base slot",
         fr_compile_overlay_update("boot is fn [ one ]", &update) == FR_OK &&
             update.slot_inits[0].slot_id == FR_SLOT_BOOT &&
@@ -14399,10 +14499,10 @@ static void test_repl(void) {
             strcmp(out, FR_TEST_WORDS_WITH_LED) == 0);
   CHECK("repl displays gpio.write native value",
         fr_repl_eval_line(&runtime, "gpio.write", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "native 1\nok\n") == 0);
+            strcmp(out, "native 2\nok\n") == 0);
   CHECK("repl displays pin sugar native value",
         fr_repl_eval_line(&runtime, "pin", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "native 1\nok\n") == 0);
+            strcmp(out, "native 2\nok\n") == 0);
   CHECK("repl see base nil",
         fr_repl_eval_line(&runtime, "see boot", out, sizeof(out)) == FR_OK &&
             strcmp(out, "base core nil\nok\n") == 0);
@@ -14825,10 +14925,10 @@ static void test_repl(void) {
 #if FR_BASE_IMAGE_INCLUDE_SYMBOLS
   CHECK("repl displays gpio.write native value without compiler",
         fr_repl_eval_line(&runtime, "gpio.write", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "native 1\nok\n") == 0);
+            strcmp(out, "native 2\nok\n") == 0);
   CHECK("repl displays pin sugar native value without compiler",
         fr_repl_eval_line(&runtime, "pin", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "native 1\nok\n") == 0);
+            strcmp(out, "native 2\nok\n") == 0);
 #endif
 #if FR_FEATURE_INTROSPECTION
   CHECK("repl see base nil without compiler",
@@ -17108,9 +17208,10 @@ int main(void) {
   test_close_kind_preserves_failed_entry();
 #if FR_FEATURE_PWM && FR_FEATURE_COMPILER && FR_FEATURE_EVENTS &&              \
     FR_BASE_IMAGE_INCLUDE_SYMBOLS
-  test_close_handles_command();
+  test_close_handles_word();
   test_close_handles_reports_survivor();
 #endif
+  test_commands_command();
 #if FR_FEATURE_PERSISTENCE && FR_FEATURE_COMPILER && FR_FEATURE_EVENTS
   test_program_replacement_is_prompt_only();
   test_every_persistence_entry_is_prompt_only();

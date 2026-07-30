@@ -1,8 +1,10 @@
 #include "base_defs.h"
 
+#include "handle.h"
 #if FR_FEATURE_PERSISTENCE
 #include "persist.h"
 #endif
+#include "runtime.h"
 #include "tagged.h"
 
 #include <stdbool.h>
@@ -12,6 +14,55 @@ enum {
   FR_BASE_REQUIRED_LAYER_COUNT = 3,
   FR_BASE_PERSISTENCE_LAYER_COUNT = FR_BASE_REQUIRED_LAYER_COUNT + 1,
 };
+
+static fr_err_t fr_native_close_handles(fr_runtime_t *runtime,
+                                        const fr_tagged_t *args,
+                                        uint8_t arg_count,
+                                        fr_tagged_t *out) {
+  if (runtime == NULL || out == NULL || (args == NULL && arg_count > 0)) {
+    return FR_ERR_INVALID;
+  }
+  if (arg_count != 0) {
+    return FR_ERR_INVALID;
+  }
+  if (runtime->diag != NULL) {
+    *runtime->diag = (fr_diagnostic_t){0};
+  }
+  if (fr_runtime_is_executing(runtime)) {
+    return FR_ERR_PROMPT_ONLY;
+  }
+
+#if FR_FEATURE_HANDLES
+  uint16_t before = 0;
+  uint16_t after = 0;
+
+  for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
+    const fr_handle_entry_t *entry = &runtime->handles.entries[i];
+
+    if (entry->kind != FR_HANDLE_KIND_NONE &&
+        entry->platform_index != FR_HANDLE_PLATFORM_NONE) {
+      before = (uint16_t)(before + 1u);
+    }
+  }
+  fr_handle_close_all(runtime);
+  for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
+    const fr_handle_entry_t *entry = &runtime->handles.entries[i];
+
+    if (entry->kind != FR_HANDLE_KIND_NONE &&
+        entry->platform_index != FR_HANDLE_PLATFORM_NONE) {
+      after = (uint16_t)(after + 1u);
+    }
+  }
+  if (runtime->diag != NULL) {
+    runtime->diag->kind = FR_DIAG_NOTE;
+    runtime->diag->message_id = FR_DIAG_MSG_RUNTIME_CLOSE_HANDLES;
+    runtime->diag->got = after;
+  }
+  return fr_tagged_encode_int((int32_t)(before - after), out);
+#else
+  return FR_ERR_UNSUPPORTED;
+#endif
+}
 
 #if FR_FEATURE_PERSISTENCE
 static fr_err_t fr_native_save(fr_runtime_t *runtime, const fr_tagged_t *args,
@@ -76,6 +127,15 @@ static fr_err_t fr_native_wipe(fr_runtime_t *runtime, const fr_tagged_t *args,
 }
 #endif
 
+#if FR_FEATURE_NATIVE_SIGNATURES
+static const fr_native_signature_t fr_native_close_handles_signature = {
+    .params = NULL,
+    .arg_count = 0,
+    .result = FR_NATIVE_VALUE_INT,
+    .help = "close every open handle and return the number closed",
+};
+#endif
+
 static const fr_base_def_t fr_core_base_defs[] = {
     {
         .slot_id = FR_SLOT_BOOT,
@@ -92,6 +152,18 @@ static const fr_base_def_t fr_core_base_defs[] = {
 #endif
         .kind = FR_BASE_DEF_LITERAL,
         .literal_tagged = FR_TAGGED_INT_LITERAL(1),
+    },
+    {
+        .slot_id = FR_SLOT_CLOSE_HANDLES,
+#if FR_BASE_IMAGE_INCLUDE_SYMBOLS
+        .name = "close-handles",
+#endif
+        .kind = FR_BASE_DEF_NATIVE,
+        .native_fn = fr_native_close_handles,
+        .native_arity = 0,
+#if FR_FEATURE_NATIVE_SIGNATURES
+        .native_signature = &fr_native_close_handles_signature,
+#endif
     },
 };
 
