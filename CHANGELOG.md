@@ -6,6 +6,23 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-07-30
+
+### Added
+
+- **RP2040 builds now support events.** The Nano RP2040 Connect and XIAO
+  RP2040 support timer and GPIO events. The Nano also supports Wi-Fi
+  disconnect and reconnect events through its NINA radio. The target uses
+  fixed storage and sends each handler through the existing safe-point
+  dispatcher. A `save` can delay timer delivery or miss a GPIO edge because
+  RP2040 flash writes disable interrupts briefly.
+
+### Fixed
+
+- **`events` now lists Wi-Fi lifecycle bindings.** The command previously
+  returned `invalid` when a Wi-Fi binding was active. It now prints
+  `on wifi.disconnected` and `on wifi.reconnected`.
+
 ## [0.1.16] - 2026-07-30
 
 ### Added

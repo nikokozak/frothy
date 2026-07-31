@@ -1573,6 +1573,10 @@ static const char *fr_repl_event_kind_name(fr_event_kind_t kind) {
   case FR_EVENT_KIND_GPIO_CHANGES: return "on changes";
   case FR_EVENT_KIND_EVERY:        return "every";
   case FR_EVENT_KIND_AFTER:        return "after";
+  case FR_EVENT_KIND_WIFI_DISCONNECTED:
+    return "on wifi.disconnected";
+  case FR_EVENT_KIND_WIFI_RECONNECTED:
+    return "on wifi.reconnected";
   default:                         return NULL;
   }
 }
@@ -1581,7 +1585,8 @@ static const char *fr_repl_event_kind_name(fr_event_kind_t kind) {
  * then `ok\n`. Empty binding table prints just `ok\n` — zero is a
  * valid count, so callers parse "lines before ok" as the table.
  *
- * Per-binding line: `<kind-name> <source>[ debounce <ms>]\n`
+ * GPIO and timer line: `<kind-name> <source>[ debounce <ms>]\n`
+ * Wi-Fi line: `<kind-name>\n`
  *   - kind-name: source spelling (`on rising`, `every`, ...) so the
  *     line round-trips back to parseable source if needed
  *   - source: pin number for GPIO, ms interval for timers (uint16
@@ -1612,6 +1617,11 @@ static fr_err_t fr_repl_write_events(fr_runtime_t *runtime,
       return FR_ERR_INVALID;
     }
     FR_TRY(fr_repl_writer_write(writer, kind_name));
+    if (entry->kind == FR_EVENT_KIND_WIFI_DISCONNECTED ||
+        entry->kind == FR_EVENT_KIND_WIFI_RECONNECTED) {
+      FR_TRY(fr_repl_writer_write(writer, "\n"));
+      continue;
+    }
     FR_TRY(fr_repl_writer_write(writer, " "));
     FR_TRY(fr_repl_write_u16(number, (uint16_t)sizeof(number),
                              entry->source));

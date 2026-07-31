@@ -13,6 +13,9 @@ extern "C" {
 #include <hardware/i2c.h>
 #include <hardware/pwm.h>
 #include <hardware/sync.h>
+#if FR_FEATURE_EVENTS
+#include <pico/critical_section.h>
+#endif
 #include <pico/stdlib.h>
 #include <pico/time.h>
 
@@ -46,6 +49,10 @@ enum {
   FR_RP2040_I2C_MAX = 2,
   FR_RP2040_I2C_MAX_HZ = 1000000,
   FR_RP2040_I2C_TIMEOUT_MS = 25,
+#endif
+#if FR_FEATURE_EVENTS
+  FR_RP2040_EVENT_QUEUE_CAP = FR_EVENT_BINDING_COUNT,
+  FR_RP2040_EVENT_TIMER_TICK_MS = 1,
 #endif
 #if FR_FEATURE_PERSISTENCE
   FR_RP2040_PERSIST_SLOT_COUNT = 2,
@@ -106,6 +113,113 @@ typedef struct fr_rp2040_i2c_t {
 } fr_rp2040_i2c_t;
 
 static fr_rp2040_i2c_t fr_rp2040_i2cs[FR_RP2040_I2C_MAX];
+#endif
+
+#if FR_FEATURE_EVENTS
+typedef struct fr_rp2040_gpio_event_t {
+  uint16_t binding_index;
+  uint16_t generation;
+  bool active;
+} fr_rp2040_gpio_event_t;
+
+typedef struct fr_rp2040_timer_event_t {
+  uint16_t generation;
+  uint16_t period_ms;
+  uint32_t deadline_ms;
+  fr_event_kind_t kind;
+  bool active;
+} fr_rp2040_timer_event_t;
+
+static critical_section_t fr_rp2040_event_lock;
+static fr_event_candidate_t fr_rp2040_event_queue[FR_RP2040_EVENT_QUEUE_CAP];
+static uint8_t fr_rp2040_event_queue_head;
+static uint8_t fr_rp2040_event_queue_count;
+static uint32_t fr_rp2040_event_overflow;
+static fr_rp2040_gpio_event_t fr_rp2040_gpio_events[FR_RP2040_GPIO_COUNT];
+static fr_rp2040_timer_event_t fr_rp2040_timer_events[FR_EVENT_BINDING_COUNT];
+static repeating_timer_t fr_rp2040_event_timer;
+static bool fr_rp2040_event_timer_running;
+
+static uint32_t fr_rp2040_event_millis_now(void) {
+  return (uint32_t)to_ms_since_boot(get_absolute_time());
+}
+
+static constexpr uint32_t fr_rp2040_event_next_deadline(uint32_t deadline_ms,
+                                                        uint16_t period_ms,
+                                                        uint32_t now_ms) {
+  return deadline_ms + ((now_ms - deadline_ms) / period_ms + 1u) * period_ms;
+}
+
+static_assert(fr_rp2040_event_next_deadline(100u, 10u, 100u) == 110u,
+              "an on-time event must advance one period");
+static_assert(fr_rp2040_event_next_deadline(100u, 10u, 125u) == 130u,
+              "a late event must skip missed periods");
+static_assert(fr_rp2040_event_next_deadline(UINT32_MAX - 4u, 10u, 1u) == 5u,
+              "an event deadline must wrap with the millisecond clock");
+
+static bool fr_rp2040_event_enqueue_locked(uint16_t binding_index,
+                                           uint16_t generation,
+                                           uint32_t timestamp_ms) {
+  uint8_t tail = 0;
+
+  if (fr_rp2040_event_queue_count == FR_RP2040_EVENT_QUEUE_CAP) {
+    fr_rp2040_event_overflow++;
+    return false;
+  }
+  tail = (uint8_t)((fr_rp2040_event_queue_head + fr_rp2040_event_queue_count) %
+                   FR_RP2040_EVENT_QUEUE_CAP);
+  fr_rp2040_event_queue[tail].binding_index = binding_index;
+  fr_rp2040_event_queue[tail].generation = generation;
+  fr_rp2040_event_queue[tail].timestamp_ms = timestamp_ms;
+  fr_rp2040_event_queue_count++;
+  return true;
+}
+
+static bool fr_rp2040_event_timers_active_locked(void) {
+  for (uint16_t i = 0; i < FR_EVENT_BINDING_COUNT; i++) {
+    if (fr_rp2040_timer_events[i].active) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static void fr_rp2040_event_gpio_callback(void *arg) {
+  const fr_rp2040_gpio_event_t *event = (const fr_rp2040_gpio_event_t *)arg;
+
+  critical_section_enter_blocking(&fr_rp2040_event_lock);
+  if (event->active) {
+    (void)fr_rp2040_event_enqueue_locked(
+        event->binding_index, event->generation, fr_rp2040_event_millis_now());
+  }
+  critical_section_exit(&fr_rp2040_event_lock);
+}
+
+static bool fr_rp2040_event_timer_callback(repeating_timer_t *timer) {
+  uint32_t now_ms = fr_rp2040_event_millis_now();
+  bool keep_running = false;
+
+  (void)timer;
+  critical_section_enter_blocking(&fr_rp2040_event_lock);
+  for (uint16_t i = 0; i < FR_EVENT_BINDING_COUNT; i++) {
+    fr_rp2040_timer_event_t *event = &fr_rp2040_timer_events[i];
+
+    if (!event->active || (int32_t)(now_ms - event->deadline_ms) < 0) {
+      continue;
+    }
+    if (event->kind == FR_EVENT_KIND_EVERY) {
+      event->deadline_ms = fr_rp2040_event_next_deadline(
+          event->deadline_ms, event->period_ms, now_ms);
+    } else {
+      event->active = false;
+    }
+    (void)fr_rp2040_event_enqueue_locked(i, event->generation, now_ms);
+  }
+  keep_running = fr_rp2040_event_timers_active_locked();
+  fr_rp2040_event_timer_running = keep_running;
+  critical_section_exit(&fr_rp2040_event_lock);
+  return keep_running;
+}
 #endif
 
 #if FR_FEATURE_PERSISTENCE
@@ -429,6 +543,19 @@ static fr_err_t fr_rp2040_persist_flush_page(void) {
 
 extern "C" {
 
+#if FR_FEATURE_EVENTS
+bool fr_rp2040_event_enqueue(uint16_t binding_index, uint16_t generation,
+                             uint32_t timestamp_ms) {
+  bool queued = false;
+
+  critical_section_enter_blocking(&fr_rp2040_event_lock);
+  queued =
+      fr_rp2040_event_enqueue_locked(binding_index, generation, timestamp_ms);
+  critical_section_exit(&fr_rp2040_event_lock);
+  return queued;
+}
+#endif
+
 fr_err_t fr_rp2040_platform_init(void) {
 #if FR_FEATURE_PERSISTENCE
   uintptr_t fs_start = (uintptr_t)_FS_start;
@@ -447,6 +574,9 @@ fr_err_t fr_rp2040_platform_init(void) {
 #endif
   Serial.begin(115200);
   fr_rp2040_typeahead_clear();
+#if FR_FEATURE_EVENTS
+  critical_section_init(&fr_rp2040_event_lock);
+#endif
   fr_rp2040_initialized = true;
   return FR_OK;
 }
@@ -650,30 +780,133 @@ fr_err_t fr_platform_handle_close(fr_handle_kind_t kind,
 fr_err_t fr_platform_event_gpio_install(fr_event_kind_t kind, uint16_t pin,
                                         uint16_t binding_index,
                                         uint16_t generation) {
+#if FR_FEATURE_EVENTS
+  PinStatus mode = CHANGE;
+
+  if (!fr_rp2040_gpio_valid(pin)) {
+    return FR_ERR_DOMAIN;
+  }
+  if (binding_index >= FR_EVENT_BINDING_COUNT) {
+    return FR_ERR_INVALID;
+  }
+  switch (kind) {
+  case FR_EVENT_KIND_GPIO_RISING:
+    mode = RISING;
+    break;
+  case FR_EVENT_KIND_GPIO_FALLING:
+    mode = FALLING;
+    break;
+  case FR_EVENT_KIND_GPIO_CHANGES:
+    mode = CHANGE;
+    break;
+  default:
+    return FR_ERR_INVALID;
+  }
+
+  detachInterrupt(pin);
+  attachInterruptParam(pin, fr_rp2040_event_gpio_callback, mode,
+                       &fr_rp2040_gpio_events[pin]);
+  critical_section_enter_blocking(&fr_rp2040_event_lock);
+  fr_rp2040_gpio_events[pin].binding_index = binding_index;
+  fr_rp2040_gpio_events[pin].generation = generation;
+  fr_rp2040_gpio_events[pin].active = true;
+  critical_section_exit(&fr_rp2040_event_lock);
+  return FR_OK;
+#else
   (void)kind;
   (void)pin;
   (void)binding_index;
   (void)generation;
   return FR_ERR_UNSUPPORTED;
+#endif
 }
 
 fr_err_t fr_platform_event_gpio_remove(uint16_t pin) {
+#if FR_FEATURE_EVENTS
+  if (!fr_rp2040_gpio_valid(pin)) {
+    return FR_ERR_DOMAIN;
+  }
+  detachInterrupt(pin);
+  critical_section_enter_blocking(&fr_rp2040_event_lock);
+  fr_rp2040_gpio_events[pin] = {};
+  critical_section_exit(&fr_rp2040_event_lock);
+#else
   (void)pin;
+#endif
   return FR_OK;
 }
 
 fr_err_t fr_platform_event_timer_install(fr_event_kind_t kind, uint32_t ms,
                                          uint16_t binding_index,
                                          uint16_t generation) {
+#if FR_FEATURE_EVENTS
+  fr_rp2040_timer_event_t previous = {};
+  bool start_timer = false;
+
+  if (kind != FR_EVENT_KIND_EVERY && kind != FR_EVENT_KIND_AFTER) {
+    return FR_ERR_INVALID;
+  }
+  if (binding_index >= FR_EVENT_BINDING_COUNT) {
+    return FR_ERR_INVALID;
+  }
+  if (ms == 0 || ms > UINT16_MAX) {
+    return FR_ERR_DOMAIN;
+  }
+
+  critical_section_enter_blocking(&fr_rp2040_event_lock);
+  previous = fr_rp2040_timer_events[binding_index];
+  fr_rp2040_timer_events[binding_index].generation = generation;
+  fr_rp2040_timer_events[binding_index].period_ms = (uint16_t)ms;
+  fr_rp2040_timer_events[binding_index].deadline_ms =
+      fr_rp2040_event_millis_now() + ms;
+  fr_rp2040_timer_events[binding_index].kind = kind;
+  fr_rp2040_timer_events[binding_index].active = true;
+  if (!fr_rp2040_event_timer_running) {
+    fr_rp2040_event_timer_running = true;
+    start_timer = true;
+  }
+  critical_section_exit(&fr_rp2040_event_lock);
+
+  if (start_timer && !add_repeating_timer_ms(-FR_RP2040_EVENT_TIMER_TICK_MS,
+                                             fr_rp2040_event_timer_callback,
+                                             NULL, &fr_rp2040_event_timer)) {
+    critical_section_enter_blocking(&fr_rp2040_event_lock);
+    fr_rp2040_timer_events[binding_index] = previous;
+    fr_rp2040_event_timer_running = false;
+    critical_section_exit(&fr_rp2040_event_lock);
+    return FR_ERR_CAPACITY;
+  }
+  return FR_OK;
+#else
   (void)kind;
   (void)ms;
   (void)binding_index;
   (void)generation;
   return FR_ERR_UNSUPPORTED;
+#endif
 }
 
 fr_err_t fr_platform_event_timer_remove(uint16_t binding_index) {
+#if FR_FEATURE_EVENTS
+  bool cancel_timer = false;
+
+  if (binding_index >= FR_EVENT_BINDING_COUNT) {
+    return FR_ERR_INVALID;
+  }
+  critical_section_enter_blocking(&fr_rp2040_event_lock);
+  fr_rp2040_timer_events[binding_index] = {};
+  if (fr_rp2040_event_timer_running &&
+      !fr_rp2040_event_timers_active_locked()) {
+    fr_rp2040_event_timer_running = false;
+    cancel_timer = true;
+  }
+  critical_section_exit(&fr_rp2040_event_lock);
+  if (cancel_timer) {
+    (void)cancel_repeating_timer(&fr_rp2040_event_timer);
+  }
+#else
   (void)binding_index;
+#endif
   return FR_OK;
 }
 
@@ -684,18 +917,39 @@ fr_err_t fr_platform_event_drain(fr_event_candidate_t *out_events,
       overflow_delta == NULL) {
     return FR_ERR_INVALID;
   }
+#if FR_FEATURE_EVENTS
+  critical_section_enter_blocking(&fr_rp2040_event_lock);
+  *out_count = 0;
+  while (*out_count < out_cap && fr_rp2040_event_queue_count > 0) {
+    out_events[*out_count] = fr_rp2040_event_queue[fr_rp2040_event_queue_head];
+    fr_rp2040_event_queue_head = (uint8_t)((fr_rp2040_event_queue_head + 1u) %
+                                           FR_RP2040_EVENT_QUEUE_CAP);
+    fr_rp2040_event_queue_count--;
+    (*out_count)++;
+  }
+  *overflow_delta = fr_rp2040_event_overflow;
+  fr_rp2040_event_overflow = 0;
+  critical_section_exit(&fr_rp2040_event_lock);
+#else
   *out_count = 0;
   *overflow_delta = 0;
+#endif
   return FR_OK;
 }
 
 fr_err_t fr_platform_event_post_test_candidate(uint16_t binding_index,
                                                uint16_t generation,
                                                uint32_t timestamp_ms) {
+#if FR_FEATURE_EVENTS
+  return fr_rp2040_event_enqueue(binding_index, generation, timestamp_ms)
+             ? FR_OK
+             : FR_ERR_CAPACITY;
+#else
   (void)binding_index;
   (void)generation;
   (void)timestamp_ms;
   return FR_ERR_UNSUPPORTED;
+#endif
 }
 
 #if FR_FEATURE_REPL
