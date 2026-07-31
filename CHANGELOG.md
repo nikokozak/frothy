@@ -6,6 +6,15 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-07-31
+
+### Fixed
+
+- **`see` now renders re-compilable Frothy source for compiled user words.**
+  The renderer handles zero-argument calls, record fields, `forever`, event
+  registration, and event cancellation. It keeps bytecode for unsupported
+  instruction streams.
+
 ## [0.1.18] - 2026-07-31
 
 ### Fixed
