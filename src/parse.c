@@ -933,6 +933,7 @@ static fr_err_t fr_parse_name_or_call(fr_parser_t *parser,
     FR_TRY(fr_parse_advance(parser));
     while (parser->token.kind != FR_TOKEN_EOF &&
            parser->token.kind != FR_TOKEN_RBRACKET &&
+           parser->token.kind != FR_TOKEN_RPAREN &&
            parser->token.kind != FR_TOKEN_LBRACKET &&
            parser->token.kind != FR_TOKEN_SEMICOLON &&
            !(call.child_count == 0 && parser->token.leading_newline)) {
@@ -1623,7 +1624,8 @@ static fr_err_t fr_parse_expression_inner(fr_parser_t *parser,
   if (parser->token.kind == FR_TOKEN_LPAREN) {
     FR_TRY(fr_parse_advance(parser));
     FR_TRY(fr_parse_expression(parser, out_id));
-    return fr_parse_expect(parser, FR_TOKEN_RPAREN);
+    FR_TRY(fr_parse_expect(parser, FR_TOKEN_RPAREN));
+    return fr_parse_field_postfix(parser, *out_id, out_id);
   }
 
   if (parser->token.kind == FR_TOKEN_INT) {
