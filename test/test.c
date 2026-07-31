@@ -1336,11 +1336,41 @@ static void test_persist_fake_non_xip_code_reader(void) {
   CHECK("nonxip source see uses reader scratch",
         fr_repl_eval_line(&fake, "see tail", out, sizeof(out)) == FR_OK &&
             strcmp(out, "overlay code\nto tail [ leaf: ]\nok\n") == 0);
-  CHECK("nonxip disassembly see uses reader scratch",
+  CHECK("nonxip source see renders non-tail call",
         fr_repl_eval_line(&fake, "see top", out, sizeof(out)) == FR_OK &&
-            strstr(out, "CALL_SLOT") != NULL);
+            strcmp(out, "overlay code\nto top [ mid: ; 9 ]\nok\n") == 0);
   CHECK("nonxip fake re-save reads through reader",
         fr_persist_save(&fake) == FR_OK);
+  fr_host_persist_debug_direct_code_pointers(true);
+}
+#endif
+
+#if FR_FEATURE_COMPILER && FR_FEATURE_PERSISTENCE &&                         \
+    FR_FEATURE_INTROSPECTION && FR_FEATURE_EVENTS &&                         \
+    FR_BASE_IMAGE_INCLUDE_SYMBOLS && FR_HOST_TEST_HELPERS &&                 \
+    FR_PROFILE_MAX_OVERLAY_NAMES > 0
+static void test_persist_fake_non_xip_event_source(void) {
+  fr_runtime_t saved;
+  fr_runtime_t fake;
+  char out[256];
+
+  fr_platform_persist_clear();
+  CHECK("nonxip event source base", fr_base_image_install(&saved) == FR_OK);
+  CHECK("nonxip event source word",
+        fr_repl_eval_line(&saved, "pulse is fn [ every 50 [ 1 ] ; 7 ]", out,
+                          sizeof(out)) == FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("nonxip event source save", fr_persist_save(&saved) == FR_OK);
+
+  fr_host_persist_debug_direct_code_pointers(false);
+  CHECK("nonxip event source restore",
+        fr_base_image_install(&fake) == FR_OK &&
+            fr_persist_restore(&fake) == FR_OK);
+  CHECK("nonxip event source restores parent instruction stream",
+        fr_repl_eval_line(&fake, "see pulse", out, sizeof(out)) == FR_OK &&
+            strcmp(out,
+                   "overlay code\nto pulse [ every 50 [ 1 ] ; 7 ]\nok\n") ==
+                0);
   fr_host_persist_debug_direct_code_pointers(true);
 }
 #endif
@@ -16357,9 +16387,10 @@ static void test_repl_diagnostic_suggests_restored_non_xip_name(void) {
 
 #if FR_FEATURE_COMPILER && FR_FEATURE_INTROSPECTION &&                         \
     FR_PROFILE_MAX_OVERLAY_NAMES > 0
-static bool test_see_round_trip_line_int(const char *source, const char *name,
-                                         const char *expected_line,
-                                         fr_int_t expected) {
+static bool test_see_round_trip_line(const char *setup, const char *source,
+                                     const char *name,
+                                     const char *expected_line,
+                                     bool check_result, fr_int_t expected) {
   fr_runtime_t original = {0};
   fr_runtime_t round_trip = {0};
   char out[1024];
@@ -16373,11 +16404,23 @@ static bool test_see_round_trip_line_int(const char *source, const char *name,
   fr_int_t decoded = 0;
 
   if (fr_runtime_init(&original) != FR_OK ||
-      fr_base_image_install(&original) != FR_OK ||
-      fr_repl_eval_line(&original, source, out, sizeof(out)) != FR_OK ||
-      fr_slot_id_for_name(&original, name, &slot_id) != FR_OK ||
-      fr_vm_run_slot(&original, slot_id, &tagged) != FR_OK ||
-      fr_tagged_decode_int(tagged, &decoded) != FR_OK || decoded != expected) {
+      fr_base_image_install(&original) != FR_OK) {
+    return false;
+  }
+  if (setup != NULL &&
+      (fr_repl_eval_line(&original, setup, out, sizeof(out)) != FR_OK ||
+       strcmp(out, "ok\n") != 0)) {
+    return false;
+  }
+  if (fr_repl_eval_line(&original, source, out, sizeof(out)) != FR_OK ||
+      strcmp(out, "ok\n") != 0) {
+    return false;
+  }
+  if (check_result &&
+      (fr_slot_id_for_name(&original, name, &slot_id) != FR_OK ||
+       fr_vm_run_slot(&original, slot_id, &tagged) != FR_OK ||
+       fr_tagged_decode_int(tagged, &decoded) != FR_OK ||
+       decoded != expected)) {
     return false;
   }
 
@@ -16405,14 +16448,32 @@ static bool test_see_round_trip_line_int(const char *source, const char *name,
   }
 
   if (fr_runtime_init(&round_trip) != FR_OK ||
-      fr_base_image_install(&round_trip) != FR_OK ||
-      fr_repl_eval_line(&round_trip, rendered, out, sizeof(out)) != FR_OK ||
-      fr_slot_id_for_name(&round_trip, name, &slot_id) != FR_OK ||
-      fr_vm_run_slot(&round_trip, slot_id, &tagged) != FR_OK ||
-      fr_tagged_decode_int(tagged, &decoded) != FR_OK) {
+      fr_base_image_install(&round_trip) != FR_OK) {
     return false;
   }
-  return decoded == expected;
+  if (setup != NULL &&
+      (fr_repl_eval_line(&round_trip, setup, out, sizeof(out)) != FR_OK ||
+       strcmp(out, "ok\n") != 0)) {
+    return false;
+  }
+  if (fr_repl_eval_line(&round_trip, rendered, out, sizeof(out)) != FR_OK ||
+      strcmp(out, "ok\n") != 0) {
+    return false;
+  }
+  if (!check_result) {
+    return true;
+  }
+  return fr_slot_id_for_name(&round_trip, name, &slot_id) == FR_OK &&
+         fr_vm_run_slot(&round_trip, slot_id, &tagged) == FR_OK &&
+         fr_tagged_decode_int(tagged, &decoded) == FR_OK &&
+         decoded == expected;
+}
+
+static bool test_see_round_trip_line_int(const char *source, const char *name,
+                                         const char *expected_line,
+                                         fr_int_t expected) {
+  return test_see_round_trip_line(NULL, source, name, expected_line, true,
+                                  expected);
 }
 
 /* A parameter + binop one-liner is the smallest body that exercises the source
@@ -16654,6 +16715,82 @@ static void test_repl_see_source_form(void) {
             "to sum-index [ local0 is 0 ; repeat 4 as local1 [ "
             "set local0 to local0 + local1 ] ; local0 ]",
             6));
+  CHECK("see round-trip forever with statements",
+        test_see_round_trip_line(
+            NULL, "spin is fn [ 0 ; forever [ 1 ; 2 ] ; 3 ]", "spin",
+            "to spin [ 0 ; forever [ 1 ; 2 ] ; 3 ]", false, 0));
+#if FR_FEATURE_RECORDS
+  CHECK("see round-trip record field read",
+        test_see_round_trip_line(
+            NULL, "get-x is fn with point [ point->x ]", "get-x",
+            "to get-x with point [ point->x ]", false, 0));
+  CHECK("see round-trip record field write",
+        test_see_round_trip_line(
+            NULL,
+            "set-x is fn with point, value [ set point->x to value ]",
+            "set-x",
+            "to set-x with point, value [ set point->x to value ]", false,
+            0));
+  CHECK("see round-trip record field after zero-argument call",
+        test_see_round_trip_line(
+            "give is fn [ nil ]",
+            "get-call-x is fn [ (give:)->x ]", "get-call-x",
+            "to get-call-x [ (give:)->x ]", false, 0));
+  CHECK("see round-trip nested record field",
+        test_see_round_trip_line(
+            NULL,
+            "get-deep is fn with point [ (point->inner)->x ]", "get-deep",
+            "to get-deep with point [ (point->inner)->x ]", false, 0));
+#endif
+#if FR_FEATURE_EVENTS
+  CHECK("see round-trip rising event with debounce",
+        test_see_round_trip_line(
+            "event-pin is fn [ 0 ]",
+            "watch-rise is fn [ on (event-pin:) rising debounce 30 [ 1 ] ; "
+            "7 ]",
+            "watch-rise",
+            "to watch-rise [ on (event-pin:) rising debounce 30 [ 1 ] ; 7 ]",
+            true, 7));
+  CHECK("see round-trip falling event",
+        test_see_round_trip_line(
+            NULL, "watch-fall is fn [ on 4 falling [ 1 ] ; 7 ]",
+            "watch-fall", "to watch-fall [ on 4 falling [ 1 ] ; 7 ]", true,
+            7));
+  CHECK("see round-trip changes event",
+        test_see_round_trip_line(
+            NULL, "watch-change is fn [ on 4 changes [ 1 ] ; 7 ]",
+            "watch-change",
+            "to watch-change [ on 4 changes [ 1 ] ; 7 ]", true, 7));
+  CHECK("see round-trip every event",
+        test_see_round_trip_line(
+            NULL, "pulse is fn [ every 50 [ 1 ] ; 7 ]", "pulse",
+            "to pulse [ every 50 [ 1 ] ; 7 ]", true, 7));
+  CHECK("see round-trip after event",
+        test_see_round_trip_line(
+            NULL, "later is fn [ after 50 [ 1 ] ; 7 ]", "later",
+            "to later [ after 50 [ 1 ] ; 7 ]", true, 7));
+  CHECK("see round-trip disconnected event",
+        test_see_round_trip_line(
+            NULL,
+            "lost is fn [ on wifi.disconnected [ 1 ] ; 7 ]", "lost",
+            "to lost [ on wifi.disconnected [ 1 ] ; 7 ]", false, 0));
+  CHECK("see round-trip reconnected event",
+        test_see_round_trip_line(
+            NULL,
+            "back is fn [ on wifi.reconnected [ 1 ] ; 7 ]", "back",
+            "to back [ on wifi.reconnected [ 1 ] ; 7 ]", false, 0));
+  CHECK("see round-trip public event cancellation",
+        test_see_round_trip_line(
+            NULL,
+            "stop-events is fn [ cancel 4 ; cancel every 50 ; "
+            "cancel after 60 ; cancel wifi.disconnected ; "
+            "cancel wifi.reconnected ; 7 ]",
+            "stop-events",
+            "to stop-events [ cancel 4 ; cancel every 50 ; "
+            "cancel after 60 ; cancel wifi.disconnected ; "
+            "cancel wifi.reconnected ; 7 ]",
+            false, 0));
+#endif
   /* Nested form: an if/else inside a while. The while body must reduce to one
    * fragment, and the if/else does, so the span walk renders both. Fresh
    * install for the overlay-name budget. */
@@ -16720,24 +16857,17 @@ static void test_repl_see_source_form(void) {
             strcmp(out,
                    "overlay code\nto dim with pin, lvl [ gpio.write: pin, lvl ]"
                    "\nok\n") == 0);
-  /* CALL before a DROP is not call-then-return, so it stays a fallback. Pin
-   * the marker, not the disassembly tail (which is opcode-encoding specific). */
-  {
-    char fallback[256];
-    const char *prefix = "overlay code\n;; source reconstruction unavailable\n";
-
-    CHECK("see source non-tail call falls back",
-          fr_base_image_install(&runtime) == FR_OK &&
-              fr_repl_eval_line(&runtime, "tick is fn [ 1 ]", fallback,
-                                sizeof(fallback)) == FR_OK &&
-              strcmp(fallback, "ok\n") == 0 &&
-              fr_repl_eval_line(&runtime, "tock is fn [ tick: ; 2 ]", fallback,
-                                sizeof(fallback)) == FR_OK &&
-              strcmp(fallback, "ok\n") == 0 &&
-              fr_repl_eval_line(&runtime, "see tock", fallback,
-                                sizeof(fallback)) == FR_OK &&
-              strncmp(fallback, prefix, strlen(prefix)) == 0);
-  }
+  CHECK("see round-trip non-tail zero-argument source call",
+        test_see_round_trip_line(
+            "tick is fn [ 1 ]", "tock is fn [ tick: ; 2 ]", "tock",
+            "to tock [ tick: ; 2 ]", true, 2));
+  CHECK("see round-trip non-tail zero-argument native call",
+        test_see_round_trip_line_int("now is fn [ millis: ; 2 ]", "now",
+                                     "to now [ millis: ; 2 ]", 2));
+  CHECK("see round-trip zero-argument call in expression",
+        test_see_round_trip_line(
+            "tick is fn [ 1 ]", "tock is fn [ (tick:) + 2 ]", "tock",
+            "to tock [ (tick:) + 2 ]", true, 3));
   CHECK("see source paren overrides precedence",
         fr_base_image_install(&runtime) == FR_OK &&
             fr_repl_eval_line(&runtime,
@@ -17491,6 +17621,12 @@ int main(void) {
 #if FR_FEATURE_COMPILER && FR_BASE_IMAGE_INCLUDE_SYMBOLS &&                  \
     FR_HOST_TEST_HELPERS && FR_PROFILE_MAX_OVERLAY_NAMES >= 6
   test_persist_fake_non_xip_code_reader();
+#endif
+#if FR_FEATURE_COMPILER && FR_FEATURE_PERSISTENCE &&                         \
+    FR_FEATURE_INTROSPECTION && FR_FEATURE_EVENTS &&                         \
+    FR_BASE_IMAGE_INCLUDE_SYMBOLS && FR_HOST_TEST_HELPERS &&                 \
+    FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  test_persist_fake_non_xip_event_source();
 #endif
 #if FR_FEATURE_COMPILER && FR_BASE_IMAGE_INCLUDE_SYMBOLS &&                  \
     FR_HOST_TEST_HELPERS && FR_PROFILE_MAX_OVERLAY_NAMES >= 11 &&           \

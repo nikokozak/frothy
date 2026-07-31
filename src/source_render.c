@@ -40,13 +40,21 @@ fr_err_t fr_source_render_instruction_view(fr_runtime_t *runtime,
   }
   FR_TRY(fr_code_read(runtime, code_object_id, 0,
                       fr_source_render_instruction_scratch, out_view->length));
-  return fr_instruction_stream_init(out_view, fr_source_render_instruction_scratch,
-                                    out_view->length);
+  FR_TRY(fr_instruction_stream_init(
+      out_view, fr_source_render_instruction_scratch, out_view->length));
+  out_view->code_id = code_object_id;
+  return FR_OK;
 }
+
+enum {
+  FR_SOURCE_FRAGMENT_UNMARKED = UINT16_MAX,
+  FR_SOURCE_FRAGMENT_EVENT_BODY = UINT16_MAX - 1u,
+};
 
 typedef struct fr_source_frag_t {
   uint16_t start;     /* offset of a NUL-terminated string in the arena */
-  bool parenthesize;  /* a binop result, wrapped when it feeds another binop */
+  uint16_t statement_start; /* a body start or an internal fragment marker */
+  bool parenthesize;  /* a compound form that needs a fence in another form */
   bool has_call;      /* an unfenced colon call; a reparse would let an
                        * operator or comma fall into its arguments, so
                        * operand and argument positions wrap it in parens */
@@ -149,6 +157,7 @@ static fr_err_t fr_source_seal_frag(fr_source_render_t *r, uint16_t start,
   }
   r->used = (uint16_t)(r->used + 1u);
   r->stack[r->depth].start = start;
+  r->stack[r->depth].statement_start = FR_SOURCE_FRAGMENT_UNMARKED;
   r->stack[r->depth].parenthesize = parenthesize;
   r->stack[r->depth].has_call = has_call;
   r->depth = (uint8_t)(r->depth + 1u);
@@ -245,15 +254,16 @@ static fr_err_t fr_source_reduce_call(fr_source_render_t *r,
   uint16_t start = r->used;
   uint8_t base = 0;
 
-  /* A zero-arg call reads as a bare name, indistinguishable from a load, so
-   * leave it to the fallback rather than emit ambiguous source. */
-  if (arg_count == 0 || r->depth < arg_count) {
+  if (r->depth < arg_count) {
     return FR_ERR_UNSUPPORTED;
   }
   base = (uint8_t)(r->depth - arg_count);
 
   FR_TRY(fr_source_put_name(r, name));
-  FR_TRY(fr_source_puts(r, ": "));
+  FR_TRY(fr_source_putc(r, ':'));
+  if (arg_count > 0) {
+    FR_TRY(fr_source_putc(r, ' '));
+  }
   for (uint8_t i = 0; i < arg_count; i++) {
     fr_source_frag_t arg = r->stack[base + i];
     /* An argument with an unfenced call inside is wrapped in parens: a
@@ -416,6 +426,11 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
                                       const fr_instruction_stream_t *view,
                                       const char *names, uint16_t names_len,
                                       fr_code_offset_t ip, fr_code_offset_t end);
+static fr_err_t fr_source_build(fr_source_render_t *r,
+                                fr_code_object_id_t code_object_id,
+                                fr_instruction_header_t *out_header,
+                                const char **out_names,
+                                uint16_t *out_names_len);
 
 /* A while closes its body with a JUMP back to the condition; if/else jumps
  * forward past the else. The JUMP sits at false_target-3 for both shapes. */
@@ -465,6 +480,28 @@ static fr_err_t fr_source_reduce_repeat(fr_source_render_t *r,
   }
   FR_TRY(fr_source_puts(r, " [ "));
   FR_TRY(fr_source_puts(r, &fr_source_render_arena[body_start]));
+  FR_TRY(fr_source_puts(r, " ]"));
+  return fr_source_seal(r, start, false);
+}
+
+static fr_err_t fr_source_join_statements(fr_source_render_t *r, uint8_t base);
+
+static fr_err_t fr_source_reduce_forever(fr_source_render_t *r,
+                                         uint8_t body_base) {
+  fr_source_frag_t body;
+  uint16_t start = 0;
+
+  if (r->depth <= body_base) {
+    return FR_ERR_UNSUPPORTED;
+  }
+  if (r->depth > (uint8_t)(body_base + 1u)) {
+    FR_TRY(fr_source_join_statements(r, body_base));
+  }
+  body = r->stack[body_base];
+  r->depth = body_base;
+  start = r->used;
+  FR_TRY(fr_source_puts(r, "forever [ "));
+  FR_TRY(fr_source_puts(r, &fr_source_render_arena[body.start]));
   FR_TRY(fr_source_puts(r, " ]"));
   return fr_source_seal(r, start, false);
 }
@@ -735,6 +772,53 @@ static fr_err_t fr_source_render_repeat(fr_source_render_t *r,
   return FR_OK;
 }
 
+/* The compiler ends a forever body with DROP, an optional bytes reset,
+ * a backward JUMP, and PUSH_NIL. The first body fragment keeps the jump
+ * target as its statement start. */
+static fr_err_t fr_source_render_forever(
+    fr_source_render_t *r, const fr_instruction_stream_t *view, uint8_t base,
+    fr_code_offset_t jump_ip, fr_code_offset_t end,
+    fr_code_offset_t *out_ip) {
+  fr_code_offset_t target = 0;
+  fr_code_offset_t drop_ip = 0;
+  uint8_t body_base = r->depth;
+
+  if (jump_ip < (fr_code_offset_t)(1u + FR_SOURCE_LOOP_RESET) ||
+      (fr_code_offset_t)(jump_ip + 3u) >= end ||
+      (fr_opcode_t)view->bytes[jump_ip] != FR_OP_JUMP ||
+      (fr_opcode_t)view->bytes[jump_ip + 3u] != FR_OP_PUSH_NIL) {
+    return FR_ERR_UNSUPPORTED;
+  }
+  drop_ip =
+      (fr_code_offset_t)(jump_ip - 1u - FR_SOURCE_LOOP_RESET);
+  if ((fr_opcode_t)view->bytes[drop_ip] != FR_OP_DROP) {
+    return FR_ERR_UNSUPPORTED;
+  }
+#if FR_FEATURE_BYTES
+  if ((fr_opcode_t)view->bytes[jump_ip - 1u] != FR_OP_BYTES_RESET) {
+    return FR_ERR_UNSUPPORTED;
+  }
+#endif
+  FR_TRY(fr_instruction_read_jump_operand(view, jump_ip, &target));
+  if (target >= jump_ip) {
+    return FR_ERR_UNSUPPORTED;
+  }
+  for (uint8_t i = base; i < r->depth; i++) {
+    if (r->stack[i].statement_start == target) {
+      body_base = i;
+      break;
+    }
+  }
+  if (body_base == r->depth) {
+    return FR_ERR_UNSUPPORTED;
+  }
+
+  FR_TRY(fr_source_reduce_forever(r, body_base));
+  r->stack[r->depth - 1u].statement_start = target;
+  *out_ip = (fr_code_offset_t)(jump_ip + 4u);
+  return FR_OK;
+}
+
 static fr_err_t fr_source_render_attempt(fr_source_render_t *r,
                                          const fr_instruction_stream_t *view,
                                          const char *names, uint16_t names_len,
@@ -771,11 +855,157 @@ static fr_err_t fr_source_render_attempt(fr_source_render_t *r,
   return FR_OK;
 }
 
+#if FR_FEATURE_EVENTS
+static bool fr_source_frag_digit(fr_source_frag_t frag, uint8_t *out_digit) {
+  const char *text = &fr_source_render_arena[frag.start];
+
+  if (text[0] < '0' || text[0] > '9' || text[1] != '\0') {
+    return false;
+  }
+  *out_digit = (uint8_t)(text[0] - '0');
+  return true;
+}
+
+static bool fr_source_frag_is_zero(fr_source_frag_t frag) {
+  uint8_t digit = 0;
+
+  return fr_source_frag_digit(frag, &digit) && digit == 0;
+}
+
+static fr_err_t fr_source_put_event_operand(fr_source_render_t *r,
+                                            fr_source_frag_t frag) {
+  return fr_source_emit_operand(
+      r, (fr_source_frag_t){
+             .start = frag.start,
+             .parenthesize = frag.parenthesize || frag.has_call,
+         });
+}
+
+static fr_err_t fr_source_reduce_event_register(fr_source_render_t *r) {
+  fr_source_frag_t kind_frag;
+  fr_source_frag_t source;
+  fr_source_frag_t debounce;
+  fr_source_frag_t body;
+  uint8_t kind = 0;
+  uint8_t base = 0;
+  uint16_t start = 0;
+
+  if (r->depth < 4) {
+    return FR_ERR_UNSUPPORTED;
+  }
+  base = (uint8_t)(r->depth - 4u);
+  kind_frag = r->stack[base];
+  source = r->stack[base + 1u];
+  debounce = r->stack[base + 2u];
+  body = r->stack[base + 3u];
+  if (!fr_source_frag_digit(kind_frag, &kind) ||
+      body.statement_start != FR_SOURCE_FRAGMENT_EVENT_BODY) {
+    return FR_ERR_UNSUPPORTED;
+  }
+  if ((kind == FR_EVENT_KIND_EVERY || kind == FR_EVENT_KIND_AFTER) &&
+      !fr_source_frag_is_zero(debounce)) {
+    return FR_ERR_UNSUPPORTED;
+  }
+  if ((kind == FR_EVENT_KIND_WIFI_DISCONNECTED ||
+       kind == FR_EVENT_KIND_WIFI_RECONNECTED) &&
+      (!fr_source_frag_is_zero(source) ||
+       !fr_source_frag_is_zero(debounce))) {
+    return FR_ERR_UNSUPPORTED;
+  }
+
+  start = r->used;
+  switch (kind) {
+  case FR_EVENT_KIND_GPIO_RISING:
+  case FR_EVENT_KIND_GPIO_FALLING:
+  case FR_EVENT_KIND_GPIO_CHANGES:
+    FR_TRY(fr_source_puts(r, "on "));
+    FR_TRY(fr_source_put_event_operand(r, source));
+    if (kind == FR_EVENT_KIND_GPIO_RISING) {
+      FR_TRY(fr_source_puts(r, " rising"));
+    } else if (kind == FR_EVENT_KIND_GPIO_FALLING) {
+      FR_TRY(fr_source_puts(r, " falling"));
+    } else {
+      FR_TRY(fr_source_puts(r, " changes"));
+    }
+    if (!fr_source_frag_is_zero(debounce)) {
+      FR_TRY(fr_source_puts(r, " debounce "));
+      FR_TRY(fr_source_put_event_operand(r, debounce));
+    }
+    break;
+  case FR_EVENT_KIND_EVERY:
+    FR_TRY(fr_source_puts(r, "every "));
+    FR_TRY(fr_source_put_event_operand(r, source));
+    break;
+  case FR_EVENT_KIND_AFTER:
+    FR_TRY(fr_source_puts(r, "after "));
+    FR_TRY(fr_source_put_event_operand(r, source));
+    break;
+  case FR_EVENT_KIND_WIFI_DISCONNECTED:
+    FR_TRY(fr_source_puts(r, "on wifi.disconnected"));
+    break;
+  case FR_EVENT_KIND_WIFI_RECONNECTED:
+    FR_TRY(fr_source_puts(r, "on wifi.reconnected"));
+    break;
+  default:
+    return FR_ERR_UNSUPPORTED;
+  }
+  FR_TRY(fr_source_puts(r, " [ "));
+  FR_TRY(fr_source_puts(r, &fr_source_render_arena[body.start]));
+  FR_TRY(fr_source_puts(r, " ]"));
+  r->depth = base;
+  return fr_source_seal(r, start, false);
+}
+
+static fr_err_t fr_source_reduce_event_cancel(fr_source_render_t *r) {
+  fr_source_frag_t kind_frag;
+  fr_source_frag_t source;
+  uint8_t kind = 0;
+  uint8_t base = 0;
+  uint16_t start = 0;
+
+  if (r->depth < 2) {
+    return FR_ERR_UNSUPPORTED;
+  }
+  base = (uint8_t)(r->depth - 2u);
+  kind_frag = r->stack[base];
+  source = r->stack[base + 1u];
+  if (!fr_source_frag_digit(kind_frag, &kind) ||
+      ((kind == FR_EVENT_KIND_WIFI_DISCONNECTED ||
+        kind == FR_EVENT_KIND_WIFI_RECONNECTED) &&
+       !fr_source_frag_is_zero(source))) {
+    return FR_ERR_UNSUPPORTED;
+  }
+  if (kind < FR_EVENT_KIND_GPIO_RISING ||
+      kind > FR_EVENT_KIND_WIFI_RECONNECTED) {
+    return FR_ERR_UNSUPPORTED;
+  }
+
+  start = r->used;
+  if (kind <= FR_EVENT_KIND_GPIO_CHANGES) {
+    FR_TRY(fr_source_puts(r, "cancel "));
+    FR_TRY(fr_source_put_event_operand(r, source));
+  } else if (kind == FR_EVENT_KIND_EVERY) {
+    FR_TRY(fr_source_puts(r, "cancel every "));
+    FR_TRY(fr_source_put_event_operand(r, source));
+  } else if (kind == FR_EVENT_KIND_AFTER) {
+    FR_TRY(fr_source_puts(r, "cancel after "));
+    FR_TRY(fr_source_put_event_operand(r, source));
+  } else if (kind == FR_EVENT_KIND_WIFI_DISCONNECTED) {
+    FR_TRY(fr_source_puts(r, "cancel wifi.disconnected"));
+  } else {
+    FR_TRY(fr_source_puts(r, "cancel wifi.reconnected"));
+  }
+  r->depth = base;
+  return fr_source_seal(r, start, false);
+}
+#endif
+
 static fr_err_t fr_source_render_span(fr_source_render_t *r,
                                       const fr_instruction_stream_t *view,
                                       const char *names, uint16_t names_len,
                                       fr_code_offset_t ip, fr_code_offset_t end) {
   uint8_t base = r->depth;
+  fr_code_offset_t statement_start = ip;
 
   while (ip < end) {
     switch ((fr_opcode_t)view->bytes[ip]) {
@@ -783,7 +1013,15 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
       /* Statement separator: the finished statement stays on the stack for
        * the join below. Control-flow constructs eat their own internal DROPs,
        * so any DROP reaching here sits between two body statements. */
+      if (r->depth <= base) {
+        return FR_ERR_UNSUPPORTED;
+      }
+      if (r->stack[r->depth - 1u].statement_start ==
+          FR_SOURCE_FRAGMENT_UNMARKED) {
+        r->stack[r->depth - 1u].statement_start = statement_start;
+      }
       ip = (fr_code_offset_t)(ip + 1u);
+      statement_start = ip;
       break;
     case FR_OP_PUSH_NIL:
       FR_TRY(fr_source_push_text(r, "nil"));
@@ -826,6 +1064,37 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
       ip = (fr_code_offset_t)(ip + FR_INSTRUCTION_PUSH_OBJECT_ID_SIZE);
       break;
     }
+#if FR_FEATURE_EVENTS
+    case FR_OP_PUSH_CODE_ID: {
+      fr_code_object_id_t body_code_id = 0;
+      fr_code_object_id_t parent_code_id = view->code_id;
+      fr_instruction_header_t body_header;
+      fr_instruction_stream_t restored;
+      const char *body_names = NULL;
+      uint16_t body_names_len = 0;
+
+      FR_TRY(
+          fr_instruction_read_code_id_operand(view, ip, &body_code_id));
+      FR_TRY(fr_source_build(r, body_code_id, &body_header, &body_names,
+                             &body_names_len));
+      if (body_header.arity != 0 || r->depth <= base) {
+        return FR_ERR_UNSUPPORTED;
+      }
+      r->stack[r->depth - 1u].statement_start =
+          FR_SOURCE_FRAGMENT_EVENT_BODY;
+
+      /* A non-XIP child replaces the shared instruction scratch. Reload the
+       * parent before this span reads its next instruction. */
+      FR_TRY(fr_source_render_instruction_view(r->runtime, parent_code_id,
+                                               &restored));
+      if (restored.code_id != parent_code_id ||
+          restored.length != view->length || restored.bytes != view->bytes) {
+        return FR_ERR_UNSUPPORTED;
+      }
+      ip = (fr_code_offset_t)(ip + FR_INSTRUCTION_PUSH_CODE_ID_SIZE);
+      break;
+    }
+#endif
     case FR_OP_LOAD_ARG: {
       uint8_t arg_index = 0;
       char canon[7];
@@ -950,6 +1219,67 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
       break;
     }
 #endif
+#if FR_FEATURE_RECORDS
+    case FR_OP_LOAD_FIELD: {
+      const uint8_t *field_bytes = NULL;
+      uint8_t field_length = 0;
+      fr_source_frag_t object;
+      fr_source_name_t field = {0};
+      uint16_t start = r->used;
+
+      FR_TRY(fr_instruction_read_field_operand(view, ip, &field_bytes,
+                                               &field_length));
+      if (r->depth < 1) {
+        return FR_ERR_UNSUPPORTED;
+      }
+      object = r->stack[r->depth - 1u];
+      r->depth = (uint8_t)(r->depth - 1u);
+      field.bytes = (const char *)field_bytes;
+      field.length = field_length;
+      FR_TRY(fr_source_emit_operand(
+          r, (fr_source_frag_t){
+                 .start = object.start,
+                 .parenthesize = object.parenthesize || object.has_call,
+             }));
+      FR_TRY(fr_source_puts(r, "->"));
+      FR_TRY(fr_source_put_name(r, field));
+      FR_TRY(fr_source_seal(r, start, true));
+      ip = (fr_code_offset_t)(ip + 2u + field_length);
+      break;
+    }
+    case FR_OP_STORE_FIELD: {
+      const uint8_t *field_bytes = NULL;
+      uint8_t field_length = 0;
+      fr_source_frag_t object;
+      fr_source_frag_t value;
+      fr_source_name_t field = {0};
+      uint16_t start = r->used;
+
+      FR_TRY(fr_instruction_read_field_operand(view, ip, &field_bytes,
+                                               &field_length));
+      if (r->depth < 2) {
+        return FR_ERR_UNSUPPORTED;
+      }
+      object = r->stack[r->depth - 2u];
+      value = r->stack[r->depth - 1u];
+      r->depth = (uint8_t)(r->depth - 2u);
+      field.bytes = (const char *)field_bytes;
+      field.length = field_length;
+      FR_TRY(fr_source_puts(r, "set "));
+      FR_TRY(fr_source_emit_operand(
+          r, (fr_source_frag_t){
+                 .start = object.start,
+                 .parenthesize = object.parenthesize || object.has_call,
+             }));
+      FR_TRY(fr_source_puts(r, "->"));
+      FR_TRY(fr_source_put_name(r, field));
+      FR_TRY(fr_source_puts(r, " to "));
+      FR_TRY(fr_source_puts(r, &fr_source_render_arena[value.start]));
+      FR_TRY(fr_source_seal(r, start, false));
+      ip = (fr_code_offset_t)(ip + 2u + field_length);
+      break;
+    }
+#endif
     case FR_OP_LOAD_LOCAL: {
       uint8_t local_index = 0;
       char canon[9];
@@ -1046,20 +1376,10 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
     case FR_OP_CALL_SLOT: {
       fr_slot_id_t slot_id = 0;
       fr_source_name_t name = {0};
-      uint16_t start = r->used;
 
-      /* A zero-arg call to a source-defined word: the opcode (not LOAD_SLOT)
-       * marks it a call, so the trailing colon is unambiguous. T7b renders
-       * only the tail call-then-return shape; any other zero-arg CALL_SLOT
-       * position falls back. */
-      if ((fr_code_offset_t)(ip + 3u) != end) {
-        return FR_ERR_UNSUPPORTED;
-      }
       FR_TRY(fr_instruction_read_slot_operand(view, ip, &slot_id));
       FR_TRY(fr_source_slot_name(r, slot_id, &name));
-      FR_TRY(fr_source_put_name(r, name));
-      FR_TRY(fr_source_putc(r, ':'));
-      FR_TRY(fr_source_seal(r, start, false));
+      FR_TRY(fr_source_reduce_call(r, name, 0));
       ip = (fr_code_offset_t)(ip + 3u);
       break;
     }
@@ -1074,6 +1394,19 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
 #if FR_FEATURE_MATH
       if (slot_id == FR_SLOT_MOD && arity == 2) {
         FR_TRY(fr_source_reduce_binop(r, "%"));
+      } else
+#endif
+#if FR_FEATURE_EVENTS
+      if (slot_id == FR_SLOT_EVENT_REGISTER) {
+        FR_TRY(fr_source_reduce_event_register(r));
+      } else if (slot_id == FR_SLOT_EVENT_CANCEL) {
+        fr_err_t event_err = fr_source_reduce_event_cancel(r);
+
+        if (event_err == FR_ERR_UNSUPPORTED) {
+          FR_TRY(fr_source_reduce_call(r, name, arity));
+        } else {
+          FR_TRY(event_err);
+        }
       } else
 #endif
       {
@@ -1094,6 +1427,25 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
       ip = (fr_code_offset_t)(ip + 4u);
       break;
     }
+    case FR_OP_BYTES_RESET:
+#if FR_FEATURE_BYTES
+      if ((fr_code_offset_t)(ip + 1u) >= end ||
+          (fr_opcode_t)view->bytes[ip + 1u] != FR_OP_JUMP) {
+        return FR_ERR_UNSUPPORTED;
+      }
+      FR_TRY(fr_source_render_forever(
+          r, view, base, (fr_code_offset_t)(ip + 1u), end, &ip));
+      break;
+#else
+      return FR_ERR_UNSUPPORTED;
+#endif
+    case FR_OP_JUMP:
+#if FR_FEATURE_BYTES
+      return FR_ERR_UNSUPPORTED;
+#else
+      FR_TRY(fr_source_render_forever(r, view, base, ip, end, &ip));
+      break;
+#endif
     case FR_OP_JUMP_IF_FALSY: {
       fr_code_offset_t false_target = 0;
 
@@ -1129,6 +1481,7 @@ static fr_err_t fr_source_build(fr_source_render_t *r,
                                 const char **out_names,
                                 uint16_t *out_names_len) {
   fr_instruction_stream_t view;
+  uint8_t base = r->depth;
 
   FR_TRY(fr_source_render_instruction_view(r->runtime, code_object_id, &view));
   FR_TRY(fr_instruction_read_header(&view, out_header));
@@ -1147,7 +1500,7 @@ static fr_err_t fr_source_build(fr_source_render_t *r,
   FR_TRY(fr_source_render_span(r, &view, *out_names, *out_names_len,
                                out_header->header_size,
                                (fr_code_offset_t)(view.length - 1u)));
-  if (r->depth != 1) {
+  if (r->depth != (uint8_t)(base + 1u)) {
     return FR_ERR_UNSUPPORTED;
   }
   return FR_OK;
