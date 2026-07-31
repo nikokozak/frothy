@@ -23,6 +23,12 @@ extern "C" {
 #include <stdlib.h>
 #include <string.h>
 
+#if FR_FEATURE_EVENTS
+extern "C" bool fr_rp2040_event_enqueue(uint16_t binding_index,
+                                        uint16_t generation,
+                                        uint32_t timestamp_ms);
+#endif
+
 enum {
   FR_NINA_WIFI_SSID_MAX = 32,
   FR_NINA_WIFI_PASS_MAX = 64,
@@ -66,6 +72,40 @@ typedef struct fr_nina_tcp_t {
 } fr_nina_tcp_t;
 
 static fr_nina_tcp_t fr_nina_tcps[FR_TCP_HANDLE_COUNT];
+#endif
+
+#if FR_FEATURE_NET && FR_FEATURE_EVENTS
+typedef struct fr_nina_wifi_event_t {
+  uint16_t binding_index;
+  uint16_t generation;
+  bool active;
+} fr_nina_wifi_event_t;
+
+static fr_nina_wifi_event_t fr_nina_wifi_events[2];
+static uint32_t fr_nina_wifi_last_poll_ms;
+static bool fr_nina_wifi_status_known;
+static bool fr_nina_wifi_connected;
+static bool fr_nina_wifi_was_connected;
+static bool fr_nina_wifi_reconfiguring;
+
+static uint8_t fr_nina_wifi_event_index(fr_event_kind_t kind) {
+  return kind == FR_EVENT_KIND_WIFI_DISCONNECTED ? 0u : 1u;
+}
+
+static bool fr_nina_wifi_events_active(void) {
+  return fr_nina_wifi_events[0].active || fr_nina_wifi_events[1].active;
+}
+
+static void fr_nina_wifi_event_enqueue(fr_event_kind_t kind,
+                                       uint32_t timestamp_ms) {
+  const fr_nina_wifi_event_t *event =
+      &fr_nina_wifi_events[fr_nina_wifi_event_index(kind)];
+
+  if (event->active) {
+    (void)fr_rp2040_event_enqueue(event->binding_index, event->generation,
+                                  timestamp_ms);
+  }
+}
 #endif
 
 #if FR_FEATURE_BLE
@@ -303,13 +343,41 @@ GAPClass &GAP = fr_nina_gap;
 extern "C" {
 
 void fr_nina_poll(void) {
-#if FR_FEATURE_BLE
+#if FR_FEATURE_BLE || (FR_FEATURE_NET && FR_FEATURE_EVENTS)
   uint32_t now = (uint32_t)millis();
-
+#endif
+#if FR_FEATURE_BLE
   if (fr_nina_ble.radio_state == FR_BLE_RADIO_READY &&
       (uint32_t)(now - fr_nina_ble_last_poll_ms) >= FR_NINA_BLE_POLL_MS) {
     fr_nina_ble_last_poll_ms = now;
     BLE.poll();
+  }
+#endif
+#if FR_FEATURE_NET && FR_FEATURE_EVENTS
+  if (!fr_nina_wifi_reconfiguring && fr_nina_wifi_events_active() &&
+      (uint32_t)(now - fr_nina_wifi_last_poll_ms) >=
+          FR_NINA_WIFI_STATUS_POLL_MS) {
+    bool connected = false;
+
+    fr_nina_wifi_last_poll_ms = now;
+    connected = WiFi.status() == WL_CONNECTED;
+    if (!fr_nina_wifi_status_known) {
+      fr_nina_wifi_status_known = true;
+      fr_nina_wifi_connected = connected;
+      if (connected) {
+        fr_nina_wifi_was_connected = true;
+      }
+    } else if (connected != fr_nina_wifi_connected) {
+      if (connected) {
+        if (fr_nina_wifi_was_connected) {
+          fr_nina_wifi_event_enqueue(FR_EVENT_KIND_WIFI_RECONNECTED, now);
+        }
+        fr_nina_wifi_was_connected = true;
+      } else if (fr_nina_wifi_was_connected) {
+        fr_nina_wifi_event_enqueue(FR_EVENT_KIND_WIFI_DISCONNECTED, now);
+      }
+      fr_nina_wifi_connected = connected;
+    }
   }
 #endif
 }
@@ -399,6 +467,9 @@ fr_err_t fr_platform_wifi_connect(fr_runtime_t *runtime) {
   memcpy(ssid, credentials.ssid, credentials.ssid_length);
   memcpy(pass, credentials.pass, credentials.pass_length);
 
+#if FR_FEATURE_EVENTS
+  fr_nina_wifi_reconfiguring = true;
+#endif
   WiFi.setTimeout(FR_NINA_WIFI_CONNECT_SLICE_MS);
   (void)WiFi.disconnect();
   started = (uint32_t)millis();
@@ -408,18 +479,30 @@ fr_err_t fr_platform_wifi_connect(fr_runtime_t *runtime) {
                                             : WiFi.begin(ssid, pass);
   for (;;) {
     if (status == WL_CONNECTED || fr_nina_wifi_ready()) {
-      return FR_OK;
+      err = FR_OK;
+      break;
     }
     err = fr_nina_poll_interrupt(runtime);
     if (err != FR_OK) {
-      return err;
+      break;
     }
     if ((uint32_t)(millis() - started) >= FR_NINA_WIFI_CONNECT_TIMEOUT_MS) {
-      return FR_ERR_NET_TIMEOUT;
+      err = FR_ERR_NET_TIMEOUT;
+      break;
     }
     delay(FR_NINA_WIFI_STATUS_POLL_MS);
     status = WiFi.status();
   }
+#if FR_FEATURE_EVENTS
+  fr_nina_wifi_reconfiguring = false;
+  fr_nina_wifi_status_known = false;
+  if (err == FR_OK) {
+    fr_nina_wifi_was_connected = true;
+  }
+  fr_nina_wifi_last_poll_ms =
+      (uint32_t)millis() - FR_NINA_WIFI_STATUS_POLL_MS;
+#endif
+  return err;
 }
 
 fr_err_t fr_platform_wifi_ready(bool *out_ready) {
@@ -433,14 +516,52 @@ fr_err_t fr_platform_wifi_ready(bool *out_ready) {
 fr_err_t fr_platform_event_wifi_install(fr_event_kind_t kind,
                                         uint16_t binding_index,
                                         uint16_t generation) {
+#if FR_FEATURE_EVENTS
+  bool had_active_event = fr_nina_wifi_events_active();
+  uint8_t index = 0;
+
+  if (kind != FR_EVENT_KIND_WIFI_DISCONNECTED &&
+      kind != FR_EVENT_KIND_WIFI_RECONNECTED) {
+    return FR_ERR_INVALID;
+  }
+  if (binding_index >= FR_EVENT_BINDING_COUNT) {
+    return FR_ERR_INVALID;
+  }
+  index = fr_nina_wifi_event_index(kind);
+  fr_nina_wifi_events[index].binding_index = binding_index;
+  fr_nina_wifi_events[index].generation = generation;
+  fr_nina_wifi_events[index].active = true;
+  if (!had_active_event) {
+    fr_nina_wifi_status_known = false;
+    fr_nina_wifi_last_poll_ms =
+        (uint32_t)millis() - FR_NINA_WIFI_STATUS_POLL_MS;
+  }
+  return FR_OK;
+#else
   (void)kind;
   (void)binding_index;
   (void)generation;
   return FR_ERR_UNSUPPORTED;
+#endif
 }
 
 fr_err_t fr_platform_event_wifi_remove(uint16_t binding_index) {
+#if FR_FEATURE_EVENTS
+  if (binding_index >= FR_EVENT_BINDING_COUNT) {
+    return FR_ERR_INVALID;
+  }
+  for (uint8_t i = 0; i < 2; i++) {
+    if (fr_nina_wifi_events[i].active &&
+        fr_nina_wifi_events[i].binding_index == binding_index) {
+      fr_nina_wifi_events[i] = {};
+    }
+  }
+  if (!fr_nina_wifi_events_active()) {
+    fr_nina_wifi_status_known = false;
+  }
+#else
   (void)binding_index;
+#endif
   return FR_OK;
 }
 
