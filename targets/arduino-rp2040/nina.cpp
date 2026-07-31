@@ -35,6 +35,7 @@ enum {
   FR_NINA_WIFI_CONNECT_TIMEOUT_MS = 30000,
   FR_NINA_WIFI_CONNECT_SLICE_MS = 1000,
   FR_NINA_WIFI_STATUS_POLL_MS = 100,
+  FR_NINA_WIFI_RECONNECT_MS = 5000,
   FR_NINA_HTTP_TIMEOUT_MS = 5000,
   FR_NINA_HTTP_LINE_BYTES = 256,
   FR_NINA_HOST_BYTES = 254,
@@ -66,12 +67,32 @@ typedef struct fr_nina_credentials_t {
 static_assert(sizeof(fr_nina_credentials_t) == 100,
               "NINA credential blob layout changed");
 
+static fr_nina_credentials_t fr_nina_wifi_active_credentials;
+static uint32_t fr_nina_wifi_last_poll_ms;
+static uint32_t fr_nina_wifi_last_reconnect_ms;
+static bool fr_nina_wifi_active_credentials_valid;
+static bool fr_nina_wifi_link_connected;
+static bool fr_nina_wifi_reconnect_pending;
+static bool fr_nina_wifi_reconfiguring;
+
 typedef struct fr_nina_tcp_t {
   WiFiClient client;
   bool in_use;
 } fr_nina_tcp_t;
 
 static fr_nina_tcp_t fr_nina_tcps[FR_TCP_HANDLE_COUNT];
+
+static int fr_nina_wifi_begin(const fr_nina_credentials_t *credentials,
+                              uint32_t timeout_ms) {
+  char ssid[FR_NINA_WIFI_SSID_MAX + 1] = {};
+  char pass[FR_NINA_WIFI_PASS_MAX + 1] = {};
+
+  memcpy(ssid, credentials->ssid, credentials->ssid_length);
+  memcpy(pass, credentials->pass, credentials->pass_length);
+  WiFi.setTimeout(timeout_ms);
+  return credentials->pass_length == 0 ? WiFi.begin(ssid)
+                                       : WiFi.begin(ssid, pass);
+}
 #endif
 
 #if FR_FEATURE_NET && FR_FEATURE_EVENTS
@@ -82,11 +103,9 @@ typedef struct fr_nina_wifi_event_t {
 } fr_nina_wifi_event_t;
 
 static fr_nina_wifi_event_t fr_nina_wifi_events[2];
-static uint32_t fr_nina_wifi_last_poll_ms;
 static bool fr_nina_wifi_status_known;
 static bool fr_nina_wifi_connected;
 static bool fr_nina_wifi_was_connected;
-static bool fr_nina_wifi_reconfiguring;
 
 static uint8_t fr_nina_wifi_event_index(fr_event_kind_t kind) {
   return kind == FR_EVENT_KIND_WIFI_DISCONNECTED ? 0u : 1u;
@@ -343,7 +362,7 @@ GAPClass &GAP = fr_nina_gap;
 extern "C" {
 
 void fr_nina_poll(void) {
-#if FR_FEATURE_BLE || (FR_FEATURE_NET && FR_FEATURE_EVENTS)
+#if FR_FEATURE_BLE || FR_FEATURE_NET
   uint32_t now = (uint32_t)millis();
 #endif
 #if FR_FEATURE_BLE
@@ -353,30 +372,55 @@ void fr_nina_poll(void) {
     BLE.poll();
   }
 #endif
-#if FR_FEATURE_NET && FR_FEATURE_EVENTS
-  if (!fr_nina_wifi_reconfiguring && fr_nina_wifi_events_active() &&
+#if FR_FEATURE_NET
+  bool wifi_poll_active = fr_nina_wifi_active_credentials_valid;
+#if FR_FEATURE_EVENTS
+  wifi_poll_active = wifi_poll_active || fr_nina_wifi_events_active();
+#endif
+  if (!fr_nina_wifi_reconfiguring && wifi_poll_active &&
       (uint32_t)(now - fr_nina_wifi_last_poll_ms) >=
           FR_NINA_WIFI_STATUS_POLL_MS) {
     bool connected = false;
 
     fr_nina_wifi_last_poll_ms = now;
     connected = WiFi.status() == WL_CONNECTED;
-    if (!fr_nina_wifi_status_known) {
-      fr_nina_wifi_status_known = true;
-      fr_nina_wifi_connected = connected;
-      if (connected) {
-        fr_nina_wifi_was_connected = true;
-      }
-    } else if (connected != fr_nina_wifi_connected) {
-      if (connected) {
-        if (fr_nina_wifi_was_connected) {
-          fr_nina_wifi_event_enqueue(FR_EVENT_KIND_WIFI_RECONNECTED, now);
+#if FR_FEATURE_EVENTS
+    if (fr_nina_wifi_events_active()) {
+      if (!fr_nina_wifi_status_known) {
+        fr_nina_wifi_status_known = true;
+        fr_nina_wifi_connected = connected;
+        if (connected) {
+          fr_nina_wifi_was_connected = true;
         }
-        fr_nina_wifi_was_connected = true;
-      } else if (fr_nina_wifi_was_connected) {
-        fr_nina_wifi_event_enqueue(FR_EVENT_KIND_WIFI_DISCONNECTED, now);
+      } else if (connected != fr_nina_wifi_connected) {
+        if (connected) {
+          if (fr_nina_wifi_was_connected) {
+            fr_nina_wifi_event_enqueue(FR_EVENT_KIND_WIFI_RECONNECTED, now);
+          }
+          fr_nina_wifi_was_connected = true;
+        } else if (fr_nina_wifi_was_connected) {
+          fr_nina_wifi_event_enqueue(FR_EVENT_KIND_WIFI_DISCONNECTED, now);
+        }
+        fr_nina_wifi_connected = connected;
       }
-      fr_nina_wifi_connected = connected;
+    }
+#endif
+    if (fr_nina_wifi_active_credentials_valid) {
+      if (connected) {
+        fr_nina_wifi_link_connected = true;
+        fr_nina_wifi_reconnect_pending = false;
+      } else if (fr_nina_wifi_link_connected) {
+        fr_nina_wifi_link_connected = false;
+        fr_nina_wifi_reconnect_pending = true;
+        fr_nina_wifi_last_reconnect_ms = now - FR_NINA_WIFI_RECONNECT_MS;
+      }
+    }
+    if (fr_nina_wifi_reconnect_pending &&
+        (uint32_t)(now - fr_nina_wifi_last_reconnect_ms) >=
+            FR_NINA_WIFI_RECONNECT_MS) {
+      fr_nina_wifi_last_reconnect_ms = now;
+      (void)fr_nina_wifi_begin(&fr_nina_wifi_active_credentials, 0);
+      WiFi.setTimeout(FR_NINA_WIFI_CONNECT_SLICE_MS);
     }
   }
 #endif
@@ -452,31 +496,29 @@ fr_err_t fr_platform_wifi_save(const char *ssid, const char *pass) {
 
 fr_err_t fr_platform_wifi_connect(fr_runtime_t *runtime) {
   fr_nina_credentials_t credentials = {};
-  char ssid[FR_NINA_WIFI_SSID_MAX + 1] = {};
-  char pass[FR_NINA_WIFI_PASS_MAX + 1] = {};
   uint32_t started = 0;
   fr_err_t err = FR_OK;
 
   if (runtime == NULL) {
     return FR_ERR_INVALID;
   }
+  fr_nina_wifi_reconfiguring = true;
+  memset(&fr_nina_wifi_active_credentials, 0,
+         sizeof(fr_nina_wifi_active_credentials));
+  fr_nina_wifi_active_credentials_valid = false;
+  fr_nina_wifi_link_connected = false;
+  fr_nina_wifi_reconnect_pending = false;
   err = fr_nina_credentials_read(&credentials);
   if (err != FR_OK) {
+    fr_nina_wifi_reconfiguring = false;
     return err == FR_ERR_CORRUPT ? err : FR_ERR_NET_DISCONNECTED;
   }
-  memcpy(ssid, credentials.ssid, credentials.ssid_length);
-  memcpy(pass, credentials.pass, credentials.pass_length);
 
-#if FR_FEATURE_EVENTS
-  fr_nina_wifi_reconfiguring = true;
-#endif
-  WiFi.setTimeout(FR_NINA_WIFI_CONNECT_SLICE_MS);
   (void)WiFi.disconnect();
   started = (uint32_t)millis();
   /* WiFi.begin sends the association command before waiting for its timeout.
    * Send it once: repeating begin restarts association before DHCP finishes. */
-  int status = credentials.pass_length == 0 ? WiFi.begin(ssid)
-                                            : WiFi.begin(ssid, pass);
+  int status = fr_nina_wifi_begin(&credentials, FR_NINA_WIFI_CONNECT_SLICE_MS);
   for (;;) {
     if (status == WL_CONNECTED || fr_nina_wifi_ready()) {
       err = FR_OK;
@@ -494,14 +536,18 @@ fr_err_t fr_platform_wifi_connect(fr_runtime_t *runtime) {
     status = WiFi.status();
   }
 #if FR_FEATURE_EVENTS
-  fr_nina_wifi_reconfiguring = false;
   fr_nina_wifi_status_known = false;
   if (err == FR_OK) {
     fr_nina_wifi_was_connected = true;
   }
-  fr_nina_wifi_last_poll_ms =
-      (uint32_t)millis() - FR_NINA_WIFI_STATUS_POLL_MS;
 #endif
+  if (err == FR_OK) {
+    fr_nina_wifi_active_credentials = credentials;
+    fr_nina_wifi_active_credentials_valid = true;
+    fr_nina_wifi_link_connected = true;
+  }
+  fr_nina_wifi_last_poll_ms = (uint32_t)millis() - FR_NINA_WIFI_STATUS_POLL_MS;
+  fr_nina_wifi_reconfiguring = false;
   return err;
 }
 

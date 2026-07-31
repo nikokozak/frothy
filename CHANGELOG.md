@@ -6,6 +6,16 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+## [0.1.18] - 2026-07-31
+
+### Fixed
+
+- **The Nano RP2040 Connect now restores Wi-Fi after an access point returns.**
+  The NINA radio does not retry a connection after the access point returns.
+  Frothy now sends a new association request every five seconds after a
+  connected network drops. `wifi.reconnected` runs when that request restores
+  the connection.
+
 ## [0.1.17] - 2026-07-30
 
 ### Added
