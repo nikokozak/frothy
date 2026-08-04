@@ -1,7 +1,7 @@
 /*
  * Unity tests for T15 Wi-Fi + HTTP natives.
  *
- * Drives the four natives through fr_repl_eval_line against the host stub,
+ * Drives the seven natives through fr_repl_eval_line against the host stub,
  * hits every reachable FR_ERR_NET_* path, exercises the HTTP cap overflow,
  * and proves wifi.disconnected / wifi.reconnected bindings dispatch when the
  * host event helper fires a candidate.
@@ -77,10 +77,12 @@ static void test_http_get_without_wifi_disconnected(void) {
                     eval_err("http.get: \"http://example.com/\""));
 }
 
-static void test_http_get_empty_url_protocol(void) {
+static void test_http_empty_url_protocol(void) {
   install_base();
   fr_host_wifi_set_connected(true);
   TEST_ASSERT_EQUAL(FR_ERR_NET_PROTOCOL, eval_err("http.get: \"\""));
+  TEST_ASSERT_EQUAL(FR_ERR_NET_PROTOCOL,
+                    eval_err("http.post: \"\", \"body\""));
 }
 
 static void test_http_get_no_response_refused(void) {
@@ -127,6 +129,94 @@ static void test_http_get_success_returns_body(void) {
                         "text.pack: http.get: \"http://example.com/\"",
                         out, sizeof(out)));
   TEST_ASSERT_EQUAL_STRING("\"hi\"\nok\n", out);
+}
+
+static void test_http_post_captures_body_and_returns_response(void) {
+  char out[64];
+  const uint8_t response[2] = {'o', 'k'};
+  uint8_t captured[16] = {0};
+  uint16_t captured_length = 0;
+
+  install_base();
+  fr_host_wifi_set_connected(true);
+  fr_host_http_queue_response(200, response, sizeof(response));
+  TEST_ASSERT_EQUAL(
+      FR_OK,
+      fr_repl_eval_line(
+          &s_runtime,
+          "text.pack: http.post: \"http://example.com/\", "
+          "(bytes.from-text: \"reading=42\")",
+          out, sizeof(out)));
+  TEST_ASSERT_EQUAL_STRING("\"ok\"\nok\n", out);
+  TEST_ASSERT_EQUAL(
+      FR_OK,
+      fr_host_http_last_post(captured, sizeof(captured), &captured_length));
+  TEST_ASSERT_EQUAL_UINT16(10, captured_length);
+  TEST_ASSERT_EQUAL_MEMORY("reading=42", captured, captured_length);
+}
+
+static void test_http_post_oversized_response_too_large(void) {
+  install_base();
+  fr_host_wifi_set_connected(true);
+  fr_host_http_queue_response(200, oversized_body,
+                              (uint16_t)(FR_HTTP_MAX_BODY + 1u));
+  TEST_ASSERT_EQUAL(
+      FR_ERR_NET_TOO_LARGE,
+      eval_err("http.post: \"http://example.com/\", \"reading\""));
+}
+
+static void test_wifi_host_sets_state_and_ready(void) {
+  char out[64];
+
+  install_base();
+  eval_ok("wifi.host: \"frothy\", \"\"");
+  TEST_ASSERT_TRUE(fr_host_wifi_is_hosting());
+  TEST_ASSERT_EQUAL_STRING("frothy", fr_host_wifi_host_ssid());
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_repl_eval_line(&s_runtime, "wifi.ready?:", out,
+                                      sizeof(out)));
+  TEST_ASSERT_EQUAL_STRING("true\nok\n", out);
+
+  eval_ok("wifi.host: \"frothy-two\", \"12345678\"");
+  TEST_ASSERT_TRUE(fr_host_wifi_is_hosting());
+  TEST_ASSERT_EQUAL_STRING("frothy-two", fr_host_wifi_host_ssid());
+}
+
+static void test_wifi_ip_in_station_and_host_modes(void) {
+  char out[64];
+
+  install_base();
+  TEST_ASSERT_EQUAL(FR_ERR_NET_DISCONNECTED, eval_err("wifi.ip:"));
+  eval_ok("wifi.save: \"my-ssid\", \"my-pass\"");
+  eval_ok("wifi.connect:");
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_repl_eval_line(&s_runtime, "wifi.ip:", out,
+                                      sizeof(out)));
+  TEST_ASSERT_EQUAL_STRING("\"192.168.1.100\"\nok\n", out);
+
+  eval_ok("wifi.host: \"frothy\", \"\"");
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_repl_eval_line(&s_runtime, "wifi.ip:", out,
+                                      sizeof(out)));
+  TEST_ASSERT_EQUAL_STRING("\"192.168.4.1\"\nok\n", out);
+
+  eval_ok("wifi.connect:");
+  TEST_ASSERT_FALSE(fr_host_wifi_is_hosting());
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_repl_eval_line(&s_runtime, "wifi.ip:", out,
+                                      sizeof(out)));
+  TEST_ASSERT_EQUAL_STRING("\"192.168.1.100\"\nok\n", out);
+}
+
+static void test_wifi_host_invalid_password_lengths_are_domain_errors(void) {
+  install_base();
+  TEST_ASSERT_EQUAL(FR_ERR_DOMAIN,
+                    eval_err("wifi.host: \"frothy\", \"1234567\""));
+  TEST_ASSERT_EQUAL(
+      FR_ERR_DOMAIN,
+      eval_err("wifi.host: \"frothy\", "
+               "\"1234567890123456789012345678901234567890123456789012345678901234\""));
+  TEST_ASSERT_FALSE(fr_host_wifi_is_hosting());
 }
 
 static void test_credentials_round_trip(void) {
@@ -196,11 +286,16 @@ int main(void) {
   RUN_TEST(test_wifi_ready_false_before_connect);
   RUN_TEST(test_wifi_connect_without_creds_disconnected);
   RUN_TEST(test_http_get_without_wifi_disconnected);
-  RUN_TEST(test_http_get_empty_url_protocol);
+  RUN_TEST(test_http_empty_url_protocol);
   RUN_TEST(test_http_get_no_response_refused);
   RUN_TEST(test_http_get_non_2xx_refused);
   RUN_TEST(test_http_get_oversized_too_large);
   RUN_TEST(test_http_get_success_returns_body);
+  RUN_TEST(test_http_post_captures_body_and_returns_response);
+  RUN_TEST(test_http_post_oversized_response_too_large);
+  RUN_TEST(test_wifi_host_sets_state_and_ready);
+  RUN_TEST(test_wifi_ip_in_station_and_host_modes);
+  RUN_TEST(test_wifi_host_invalid_password_lengths_are_domain_errors);
   RUN_TEST(test_credentials_round_trip);
   RUN_TEST(test_err_names_cover_all_six);
   RUN_TEST(test_wifi_disconnected_event_runs_body);

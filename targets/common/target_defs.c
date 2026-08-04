@@ -883,6 +883,7 @@ static fr_err_t fr_native_i2c_write_reg16(fr_runtime_t *runtime,
 enum {
   FR_NATIVE_WIFI_SSID_MAX = 32,
   FR_NATIVE_WIFI_PASS_MAX = 64,
+  FR_NATIVE_WIFI_IP_CAP = 16,
   /* RFC 1035 5.1 caps a DNS name at 253 octets; round up to leave room
    * for a future dotted-quad without changing the buffer. */
   FR_NATIVE_TCP_HOST_MAX = 255,
@@ -959,6 +960,45 @@ static fr_err_t fr_native_wifi_ready_p(fr_runtime_t *runtime,
   return fr_tagged_encode_bool(ready, out);
 }
 
+static fr_err_t fr_native_wifi_host(fr_runtime_t *runtime,
+                                    const fr_tagged_t *args,
+                                    uint8_t arg_count, fr_tagged_t *out) {
+  char ssid[FR_NATIVE_WIFI_SSID_MAX + 1];
+  char pass[FR_NATIVE_WIFI_PASS_MAX + 1];
+  size_t pass_length = 0;
+
+  if (runtime == NULL || args == NULL || arg_count != 2 || out == NULL) {
+    return FR_ERR_INVALID;
+  }
+  FR_TRY(fr_native_copy_text_cstring(runtime, args, arg_count, 0, ssid,
+                                     sizeof ssid));
+  FR_TRY(fr_native_copy_text_cstring(runtime, args, arg_count, 1, pass,
+                                     sizeof pass));
+  pass_length = strlen(pass);
+  if ((pass_length > 0 && pass_length < 8) || pass_length > 63) {
+    return fr_native_reject_arg(runtime, args, arg_count, 1, FR_ERR_DOMAIN);
+  }
+  FR_TRY(fr_platform_wifi_host(runtime, ssid, pass));
+  *out = fr_tagged_nil();
+  return FR_OK;
+}
+
+static fr_err_t fr_native_wifi_ip(fr_runtime_t *runtime,
+                                  const fr_tagged_t *args, uint8_t arg_count,
+                                  fr_tagged_t *out) {
+  char ip[FR_NATIVE_WIFI_IP_CAP];
+  fr_object_id_t object_id = 0;
+
+  (void)args;
+  if (runtime == NULL || arg_count != 0 || out == NULL) {
+    return FR_ERR_INVALID;
+  }
+  FR_TRY(fr_platform_wifi_ip(ip, sizeof ip));
+  FR_TRY(fr_text_install(runtime, (const uint8_t *)ip, (uint16_t)strlen(ip),
+                         &object_id));
+  return fr_tagged_encode_object_id(object_id, out);
+}
+
 static fr_err_t fr_native_http_get(fr_runtime_t *runtime,
                                    const fr_tagged_t *args, uint8_t arg_count,
                                    fr_tagged_t *out) {
@@ -976,12 +1016,42 @@ static fr_err_t fr_native_http_get(fr_runtime_t *runtime,
   return fr_bytes_install(runtime, body, length, out);
 }
 
+static fr_err_t fr_native_http_post(fr_runtime_t *runtime,
+                                    const fr_tagged_t *args,
+                                    uint8_t arg_count, fr_tagged_t *out) {
+  char url[FR_PROFILE_MAX_TEXT_LENGTH + 1];
+  const uint8_t *request_body = NULL;
+  uint16_t request_length = 0;
+  uint8_t response_body[FR_HTTP_MAX_BODY];
+  uint16_t response_length = 0;
+
+  if (runtime == NULL || args == NULL || arg_count != 2 || out == NULL) {
+    return FR_ERR_INVALID;
+  }
+  FR_TRY(fr_native_copy_text_cstring(runtime, args, arg_count, 0, url,
+                                     sizeof url));
+  FR_TRY(fr_native_decode_text_or_bytes_view(runtime, args, arg_count, 1,
+                                             &request_body, &request_length));
+  FR_TRY(fr_platform_http_post(url, request_body, request_length,
+                               response_body, FR_HTTP_MAX_BODY,
+                               &response_length));
+  return fr_bytes_install(runtime, response_body, response_length, out);
+}
+
 static fr_err_t fr_native_decode_tcp_handle(fr_runtime_t *runtime,
                                             const fr_tagged_t *args,
                                             uint8_t arg_count, uint8_t index,
                                             uint16_t *out_platform_index) {
   return fr_native_decode_handle_arg(runtime, args, arg_count, index,
                                      FR_HANDLE_KIND_TCP, NULL,
+                                     out_platform_index);
+}
+
+static fr_err_t fr_native_decode_tcp_server_handle(
+    fr_runtime_t *runtime, const fr_tagged_t *args, uint8_t arg_count,
+    uint8_t index, uint16_t *out_platform_index) {
+  return fr_native_decode_handle_arg(runtime, args, arg_count, index,
+                                     FR_HANDLE_KIND_TCP_SERVER, NULL,
                                      out_platform_index);
 }
 
@@ -1024,6 +1094,95 @@ static fr_err_t fr_native_tcp_open(fr_runtime_t *runtime,
     return err;
   }
 
+  *out = handle;
+  return FR_OK;
+}
+
+static fr_err_t fr_native_tcp_listen(fr_runtime_t *runtime,
+                                     const fr_tagged_t *args,
+                                     uint8_t arg_count, fr_tagged_t *out) {
+  fr_int_t port_in = 0;
+  fr_handle_ref_t ref = {0};
+  fr_tagged_t handle = 0;
+  uint16_t platform_index = 0;
+  fr_err_t err = FR_OK;
+
+  if (runtime == NULL || out == NULL) {
+    return FR_ERR_INVALID;
+  }
+  FR_TRY(fr_native_decode_nonnegative_int(runtime, args, arg_count, 0,
+                                          &port_in));
+  if (port_in == 0 || port_in > 0xFFFF) {
+    return fr_native_reject_arg(runtime, args, arg_count, 0, FR_ERR_DOMAIN);
+  }
+
+  err = fr_platform_tcp_listen(runtime, (uint16_t)port_in, &platform_index);
+  if (err == FR_ERR_BUSY) {
+    return fr_native_reject_arg(runtime, args, arg_count, 0, err);
+  }
+  if (err != FR_OK) {
+    return err;
+  }
+  err = fr_handle_find_active(runtime, FR_HANDLE_KIND_TCP_SERVER,
+                              platform_index, out);
+  if (err == FR_OK) {
+    return FR_OK;
+  }
+  if (err != FR_ERR_NOT_FOUND) {
+    (void)fr_platform_tcp_server_close(platform_index);
+    return err;
+  }
+
+  err = fr_handle_reserve(runtime, FR_HANDLE_KIND_TCP_SERVER, &ref, &handle);
+  if (err != FR_OK) {
+    (void)fr_platform_tcp_server_close(platform_index);
+    return err;
+  }
+  err = fr_handle_activate(runtime, ref, platform_index);
+  if (err != FR_OK) {
+    (void)fr_platform_tcp_server_close(platform_index);
+    (void)fr_handle_release_reserved(runtime, ref);
+    return err;
+  }
+  *out = handle;
+  return FR_OK;
+}
+
+static fr_err_t fr_native_tcp_accept(fr_runtime_t *runtime,
+                                     const fr_tagged_t *args,
+                                     uint8_t arg_count, fr_tagged_t *out) {
+  uint16_t listener_index = 0;
+  uint16_t connection_index = 0;
+  bool accepted = false;
+  fr_handle_ref_t ref = {0};
+  fr_tagged_t handle = 0;
+  fr_err_t err = FR_OK;
+
+  if (runtime == NULL || args == NULL || arg_count != 1 || out == NULL) {
+    return FR_ERR_INVALID;
+  }
+  FR_TRY(fr_native_decode_tcp_server_handle(runtime, args, arg_count, 0,
+                                             &listener_index));
+  err = fr_handle_reserve(runtime, FR_HANDLE_KIND_TCP, &ref, &handle);
+  if (err != FR_OK) {
+    return err;
+  }
+  err = fr_platform_tcp_accept(runtime, listener_index, &connection_index,
+                               &accepted);
+  if (err != FR_OK || !accepted) {
+    (void)fr_handle_release_reserved(runtime, ref);
+    if (err != FR_OK) {
+      return err;
+    }
+    *out = fr_tagged_nil();
+    return FR_OK;
+  }
+  err = fr_handle_activate(runtime, ref, connection_index);
+  if (err != FR_OK) {
+    (void)fr_platform_tcp_close(connection_index);
+    (void)fr_handle_release_reserved(runtime, ref);
+    return err;
+  }
   *out = handle;
   return FR_OK;
 }
@@ -1077,13 +1236,18 @@ static fr_err_t fr_native_tcp_close(fr_runtime_t *runtime,
                                     const fr_tagged_t *args, uint8_t arg_count,
                                     fr_tagged_t *out) {
   fr_handle_ref_t ref = {0};
+  fr_handle_kind_t kind = FR_HANDLE_KIND_NONE;
 
-  if (runtime == NULL || args == NULL || arg_count == 0 || out == NULL) {
+  if (runtime == NULL || args == NULL || arg_count != 1 || out == NULL) {
     return FR_ERR_INVALID;
   }
 
   FR_TRY(fr_native_decode_handle_arg(runtime, args, arg_count, 0,
-                                     FR_HANDLE_KIND_TCP, &ref, NULL));
+                                     FR_HANDLE_KIND_NONE, &ref, NULL));
+  FR_TRY(fr_handle_lookup(runtime, ref, FR_HANDLE_KIND_NONE, &kind, NULL));
+  if (kind != FR_HANDLE_KIND_TCP && kind != FR_HANDLE_KIND_TCP_SERVER) {
+    return fr_native_reject_arg(runtime, args, arg_count, 0, FR_ERR_TYPE);
+  }
   FR_TRY(fr_handle_close(runtime, ref));
   *out = fr_tagged_nil();
   return FR_OK;
@@ -5404,7 +5568,25 @@ static const fr_native_signature_t fr_native_wifi_ready_p_signature = {
     .params = NULL,
     .arg_count = 0,
     .result = FR_NATIVE_VALUE_ANY,
-    .help = "true when wifi is connected",
+    .help = "true when wifi is connected or hosting",
+};
+
+static const fr_native_param_t fr_native_wifi_host_params[] = {
+    {"ssid", FR_NATIVE_VALUE_TEXT},
+    {"pass", FR_NATIVE_VALUE_SECRET_TEXT},
+};
+static const fr_native_signature_t fr_native_wifi_host_signature = {
+    .params = fr_native_wifi_host_params,
+    .arg_count = 2,
+    .result = FR_NATIVE_VALUE_NIL,
+    .help = "start or reconfigure a wifi access point and captive dns",
+};
+
+static const fr_native_signature_t fr_native_wifi_ip_signature = {
+    .params = NULL,
+    .arg_count = 0,
+    .result = FR_NATIVE_VALUE_TEXT,
+    .help = "return the active wifi interface address",
 };
 
 static const fr_native_param_t fr_native_http_get_params[] = {
@@ -5417,6 +5599,17 @@ static const fr_native_signature_t fr_native_http_get_signature = {
     .help = "fetch a url and return the body up to the http body cap",
 };
 
+static const fr_native_param_t fr_native_http_post_params[] = {
+    {"url", FR_NATIVE_VALUE_TEXT},
+    {"body", FR_NATIVE_VALUE_TEXT_OR_BYTES},
+};
+static const fr_native_signature_t fr_native_http_post_signature = {
+    .params = fr_native_http_post_params,
+    .arg_count = 2,
+    .result = FR_NATIVE_VALUE_ANY,
+    .help = "post a text/plain body and return the response body",
+};
+
 static const fr_native_param_t fr_native_tcp_open_params[] = {
     {"host", FR_NATIVE_VALUE_TEXT},
     {"port", FR_NATIVE_VALUE_INT},
@@ -5426,6 +5619,26 @@ static const fr_native_signature_t fr_native_tcp_open_signature = {
     .arg_count = 2,
     .result = FR_NATIVE_VALUE_HANDLE,
     .help = "open a tcp connection to host:port",
+};
+
+static const fr_native_param_t fr_native_tcp_listen_params[] = {
+    {"port", FR_NATIVE_VALUE_INT},
+};
+static const fr_native_signature_t fr_native_tcp_listen_signature = {
+    .params = fr_native_tcp_listen_params,
+    .arg_count = 1,
+    .result = FR_NATIVE_VALUE_HANDLE,
+    .help = "listen for tcp connections on one port",
+};
+
+static const fr_native_param_t fr_native_tcp_accept_params[] = {
+    {"server", FR_NATIVE_VALUE_HANDLE},
+};
+static const fr_native_signature_t fr_native_tcp_accept_signature = {
+    .params = fr_native_tcp_accept_params,
+    .arg_count = 1,
+    .result = FR_NATIVE_VALUE_ANY,
+    .help = "accept one pending tcp connection or return nil",
 };
 
 static const fr_native_param_t fr_native_tcp_read_params[] = {
@@ -5457,7 +5670,7 @@ static const fr_native_signature_t fr_native_tcp_close_signature = {
     .params = fr_native_tcp_close_params,
     .arg_count = 1,
     .result = FR_NATIVE_VALUE_NIL,
-    .help = "close a tcp socket and release the handle",
+    .help = "close a tcp socket or listener and release the handle",
 };
 
 static const fr_native_param_t fr_native_tcp_bytes_ready_p_params[] = {
@@ -6202,6 +6415,30 @@ const fr_base_def_t fr_target_base_defs[] = {
 #endif
     },
     {
+        .slot_id = FR_SLOT_WIFI_HOST,
+#if FR_BASE_IMAGE_INCLUDE_SYMBOLS
+        .name = "wifi.host",
+#endif
+        .kind = FR_BASE_DEF_NATIVE,
+        .native_fn = fr_native_wifi_host,
+        .native_arity = 2,
+#if FR_FEATURE_NATIVE_SIGNATURES
+        .native_signature = &fr_native_wifi_host_signature,
+#endif
+    },
+    {
+        .slot_id = FR_SLOT_WIFI_IP,
+#if FR_BASE_IMAGE_INCLUDE_SYMBOLS
+        .name = "wifi.ip",
+#endif
+        .kind = FR_BASE_DEF_NATIVE,
+        .native_fn = fr_native_wifi_ip,
+        .native_arity = 0,
+#if FR_FEATURE_NATIVE_SIGNATURES
+        .native_signature = &fr_native_wifi_ip_signature,
+#endif
+    },
+    {
         .slot_id = FR_SLOT_HTTP_GET,
 #if FR_BASE_IMAGE_INCLUDE_SYMBOLS
         .name = "http.get",
@@ -6214,6 +6451,18 @@ const fr_base_def_t fr_target_base_defs[] = {
 #endif
     },
     {
+        .slot_id = FR_SLOT_HTTP_POST,
+#if FR_BASE_IMAGE_INCLUDE_SYMBOLS
+        .name = "http.post",
+#endif
+        .kind = FR_BASE_DEF_NATIVE,
+        .native_fn = fr_native_http_post,
+        .native_arity = 2,
+#if FR_FEATURE_NATIVE_SIGNATURES
+        .native_signature = &fr_native_http_post_signature,
+#endif
+    },
+    {
         .slot_id = FR_SLOT_TCP_OPEN,
 #if FR_BASE_IMAGE_INCLUDE_SYMBOLS
         .name = "tcp.open",
@@ -6223,6 +6472,30 @@ const fr_base_def_t fr_target_base_defs[] = {
         .native_arity = 2,
 #if FR_FEATURE_NATIVE_SIGNATURES
         .native_signature = &fr_native_tcp_open_signature,
+#endif
+    },
+    {
+        .slot_id = FR_SLOT_TCP_LISTEN,
+#if FR_BASE_IMAGE_INCLUDE_SYMBOLS
+        .name = "tcp.listen",
+#endif
+        .kind = FR_BASE_DEF_NATIVE,
+        .native_fn = fr_native_tcp_listen,
+        .native_arity = 1,
+#if FR_FEATURE_NATIVE_SIGNATURES
+        .native_signature = &fr_native_tcp_listen_signature,
+#endif
+    },
+    {
+        .slot_id = FR_SLOT_TCP_ACCEPT,
+#if FR_BASE_IMAGE_INCLUDE_SYMBOLS
+        .name = "tcp.accept",
+#endif
+        .kind = FR_BASE_DEF_NATIVE,
+        .native_fn = fr_native_tcp_accept,
+        .native_arity = 1,
+#if FR_FEATURE_NATIVE_SIGNATURES
+        .native_signature = &fr_native_tcp_accept_signature,
 #endif
     },
     {

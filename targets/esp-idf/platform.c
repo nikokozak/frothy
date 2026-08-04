@@ -1820,6 +1820,9 @@ fr_err_t fr_platform_handle_close(fr_handle_kind_t kind,
   if (kind == FR_HANDLE_KIND_TCP) {
     return fr_platform_tcp_close(platform_index);
   }
+  if (kind == FR_HANDLE_KIND_TCP_SERVER) {
+    return fr_platform_tcp_server_close(platform_index);
+  }
 #endif
 #if FR_FEATURE_BLE && (FR_BLE_ENABLE_CENTRAL || FR_BLE_ENABLE_PERIPHERAL)
   if (kind == FR_HANDLE_KIND_BLE_CONNECTION) {
@@ -3253,7 +3256,10 @@ fr_err_t fr_platform_event_post_test_candidate(uint16_t binding_index,
 #include "esp_wifi.h"
 #include "event.h"
 #include "lwip/netdb.h"
+#include "lwip/pbuf.h"
 #include "lwip/sockets.h"
+#include "lwip/tcpip.h"
+#include "lwip/udp.h"
 #include <fcntl.h>
 
 enum {
@@ -3265,6 +3271,11 @@ enum {
    * association's STA_DISCONNECTED event is delivered before we
    * set_config + connect a new association. */
   FR_ESP_WIFI_RECONFIG_SETTLE_MS = 100,
+  FR_ESP_WIFI_AP_MAX_CONNECTIONS = 4,
+  FR_ESP_DNS_PORT = 53,
+  FR_ESP_DNS_TTL_SECONDS = 30,
+  FR_ESP_DNS_HEADER_BYTES = 12,
+  FR_ESP_DNS_ANSWER_BYTES = 16,
   FR_ESP_HTTP_TIMEOUT_MS = 5000,
   /* D7 budgets. */
   FR_ESP_TCP_OPEN_TIMEOUT_MS = 10000,
@@ -3277,6 +3288,9 @@ enum {
 
 static bool fr_esp_wifi_initialized;
 static volatile bool fr_esp_wifi_ready;
+static volatile bool fr_esp_wifi_hosting;
+static esp_netif_t *fr_esp_wifi_sta_netif;
+static esp_netif_t *fr_esp_wifi_ap_netif;
 /* Suppresses the disconnect handler's auto-retry while user code is
  * tearing down and re-establishing the station association — held true
  * across the full disconnect → set_config → connect sequence. Without
@@ -3289,6 +3303,7 @@ static volatile bool fr_esp_wifi_reconfiguring;
  * connect (no wifi.reconnected event); a got_ip after disconnect is a
  * reconnect (wifi.reconnected fires). */
 static volatile bool fr_esp_wifi_was_connected;
+static volatile bool fr_esp_wifi_reconnect_pending;
 /* T15b D12: set when WIFI_EVENT_STA_DISCONNECTED fires outside the
  * reconfigure window; cleared on IP_EVENT_STA_GOT_IP. Any TCP native that
  * observes it returns FR_ERR_NET_DISCONNECTED and latches the per-handle
@@ -3300,6 +3315,10 @@ static volatile bool fr_esp_wifi_down;
  * one, so an idle handle that was open across a disconnect+reconnect
  * cycle still fails on its next use even after wifi_down clears. */
 static volatile uint32_t fr_esp_wifi_down_epoch;
+
+static bool fr_esp_wifi_active(void) {
+  return fr_esp_wifi_ready || fr_esp_wifi_hosting;
+}
 
 /* D19 parallel install/remove pair backing. One slot per wifi kind because
  * each kind has at most one binding and the wifi handler has no per-pin or
@@ -3356,20 +3375,26 @@ static void fr_esp_wifi_event_handler(void *arg, esp_event_base_t base,
      * issue its own esp_wifi_connect() once set_config completes. The
      * wifi_down flag is also gated: a reconfigure-driven drop should not
      * surface to in-flight TCP as a transport failure. */
-    if (!fr_esp_wifi_reconfiguring) {
+    if (!fr_esp_wifi_reconfiguring && !fr_esp_wifi_hosting) {
       fr_esp_wifi_down = true;
       fr_esp_wifi_down_epoch++;
       (void)esp_wifi_connect();
-    }
-    if (was_connected) {
-      fr_esp_wifi_enqueue(FR_EVENT_KIND_WIFI_DISCONNECTED);
+      if (was_connected) {
+        fr_esp_wifi_reconnect_pending = true;
+        fr_esp_wifi_enqueue(FR_EVENT_KIND_WIFI_DISCONNECTED);
+      }
     }
   } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
-    was_connected = fr_esp_wifi_was_connected;
+    /* A delayed station event belongs to the mode being replaced. Ignore it
+     * while reconfiguring and for the full lifetime of access-point mode. */
+    if (fr_esp_wifi_reconfiguring || fr_esp_wifi_hosting) {
+      return;
+    }
     fr_esp_wifi_ready = true;
     fr_esp_wifi_was_connected = true;
     fr_esp_wifi_down = false;
-    if (was_connected) {
+    if (fr_esp_wifi_reconnect_pending) {
+      fr_esp_wifi_reconnect_pending = false;
       fr_esp_wifi_enqueue(FR_EVENT_KIND_WIFI_RECONNECTED);
     }
   }
@@ -3384,7 +3409,9 @@ static fr_err_t fr_esp_wifi_init_once(void) {
   FR_TRY(fr_esp_nvs_init());
   FR_TRY(fr_esp_err(esp_netif_init()));
   FR_TRY(fr_esp_err(esp_event_loop_create_default()));
-  if (esp_netif_create_default_wifi_sta() == NULL) {
+  fr_esp_wifi_sta_netif = esp_netif_create_default_wifi_sta();
+  fr_esp_wifi_ap_netif = esp_netif_create_default_wifi_ap();
+  if (fr_esp_wifi_sta_netif == NULL || fr_esp_wifi_ap_netif == NULL) {
     return FR_ERR_CAPACITY;
   }
   FR_TRY(fr_esp_err(esp_wifi_init(&cfg)));
@@ -3403,6 +3430,148 @@ static fr_err_t fr_esp_wifi_init_once(void) {
   FR_TRY(fr_esp_err(esp_wifi_start()));
   fr_esp_wifi_initialized = true;
   return FR_OK;
+}
+
+static struct udp_pcb *fr_esp_dns_pcb;
+static uint8_t fr_esp_dns_address[4];
+static const uint8_t fr_esp_dns_answer[] = {
+    0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, FR_ESP_DNS_TTL_SECONDS, 0, 4,
+};
+
+/* Answer one standard A or ANY question. The TCP/IP task owns the pcb and
+ * calls this function, so the raw lwIP API needs no separate lock. */
+static void fr_esp_dns_receive(void *arg, struct udp_pcb *pcb, struct pbuf *p,
+                               const ip_addr_t *source, u16_t port) {
+  struct pbuf *reply = NULL;
+  uint16_t offset = FR_ESP_DNS_HEADER_BYTES;
+  uint16_t question_end;
+  uint16_t qtype;
+  uint8_t label_length;
+  (void)arg;
+
+  if (p == NULL) {
+    return;
+  }
+  if (p->tot_len < FR_ESP_DNS_HEADER_BYTES + 5u ||
+      (pbuf_get_at(p, 2) & 0xf8u) != 0u ||
+      (pbuf_get_at(p, 4) == 0u && pbuf_get_at(p, 5) == 0u)) {
+    goto done;
+  }
+  while (offset < p->tot_len) {
+    label_length = pbuf_get_at(p, offset);
+    offset++;
+    if (label_length == 0u) {
+      break;
+    }
+    if ((label_length & 0xc0u) != 0u || label_length > 63u ||
+        (uint32_t)offset + label_length > p->tot_len ||
+        (uint32_t)offset + label_length > FR_ESP_DNS_HEADER_BYTES + 255u) {
+      goto done;
+    }
+    offset = (uint16_t)(offset + label_length);
+  }
+  if ((uint32_t)offset + 4u > p->tot_len) {
+    goto done;
+  }
+  qtype = (uint16_t)(((uint16_t)pbuf_get_at(p, offset) << 8) |
+                     pbuf_get_at(p, (uint16_t)(offset + 1u)));
+  if ((qtype != 1u && qtype != 255u) ||
+      pbuf_get_at(p, (uint16_t)(offset + 2u)) != 0u ||
+      pbuf_get_at(p, (uint16_t)(offset + 3u)) != 1u) {
+    goto done;
+  }
+  question_end = (uint16_t)(offset + 4u);
+  reply = pbuf_alloc(PBUF_TRANSPORT,
+                     (u16_t)(question_end + FR_ESP_DNS_ANSWER_BYTES),
+                     PBUF_RAM);
+  if (reply == NULL ||
+      pbuf_copy_partial_pbuf(reply, p, question_end, 0) != ERR_OK) {
+    goto done;
+  }
+  const uint8_t header[] = {
+      (uint8_t)(0x84u | (pbuf_get_at(p, 2) & 0x01u)), 0, 0, 1, 0,
+      1,                                                   0, 0, 0, 0,
+  };
+  if (pbuf_take_at(reply, header, sizeof header, 2) != ERR_OK ||
+      pbuf_take_at(reply, fr_esp_dns_answer, sizeof fr_esp_dns_answer,
+                   question_end) != ERR_OK ||
+      pbuf_take_at(reply, fr_esp_dns_address, sizeof fr_esp_dns_address,
+                   (u16_t)(question_end + sizeof fr_esp_dns_answer)) !=
+          ERR_OK) {
+    goto done;
+  }
+  (void)udp_sendto(pcb, reply, source, port);
+
+done:
+  if (reply != NULL) {
+    pbuf_free(reply);
+  }
+  pbuf_free(p);
+}
+
+static void fr_esp_dns_start_on_tcpip(void *arg) {
+  err_t *result = (err_t *)arg;
+  fr_esp_dns_pcb = udp_new_ip_type(IPADDR_TYPE_V4);
+  if (fr_esp_dns_pcb == NULL) {
+    *result = ERR_MEM;
+    return;
+  }
+  *result = udp_bind(fr_esp_dns_pcb, IP4_ADDR_ANY, FR_ESP_DNS_PORT);
+  if (*result != ERR_OK) {
+    udp_remove(fr_esp_dns_pcb);
+    fr_esp_dns_pcb = NULL;
+    return;
+  }
+  udp_recv(fr_esp_dns_pcb, fr_esp_dns_receive, NULL);
+}
+
+static void fr_esp_dns_stop_on_tcpip(void *arg) {
+  (void)arg;
+  if (fr_esp_dns_pcb != NULL) {
+    udp_remove(fr_esp_dns_pcb);
+    fr_esp_dns_pcb = NULL;
+  }
+}
+
+static fr_err_t fr_esp_dns_lwip_error(err_t err) {
+  return err == ERR_OK ? FR_OK
+                       : (err == ERR_MEM ? FR_ERR_CAPACITY : FR_ERR_IO);
+}
+
+static fr_err_t fr_esp_dns_start(void) {
+  esp_netif_ip_info_t ip_info;
+  err_t result = ERR_OK;
+  err_t err;
+
+  FR_TRY(fr_esp_err(
+      esp_netif_get_ip_info(fr_esp_wifi_ap_netif, &ip_info)));
+  memcpy(fr_esp_dns_address, &ip_info.ip.addr, sizeof fr_esp_dns_address);
+  err = tcpip_callback_wait(fr_esp_dns_start_on_tcpip, &result);
+  return fr_esp_dns_lwip_error(err == ERR_OK ? result : err);
+}
+
+static fr_err_t fr_esp_dns_stop(void) {
+  return fr_esp_dns_lwip_error(
+      tcpip_callback_wait(fr_esp_dns_stop_on_tcpip, NULL));
+}
+
+/* Start one explicit mode change. The caller clears reconfiguring after it
+ * applies the mode-specific config. */
+static fr_err_t fr_esp_wifi_begin_reconfigure(wifi_mode_t mode) {
+  fr_err_t err;
+
+  FR_TRY(fr_esp_dns_stop());
+  fr_esp_wifi_reconfiguring = true;
+  fr_esp_wifi_ready = false;
+  fr_esp_wifi_hosting = false;
+  fr_esp_wifi_reconnect_pending = false;
+  (void)esp_wifi_disconnect();
+  vTaskDelay(pdMS_TO_TICKS(FR_ESP_WIFI_RECONFIG_SETTLE_MS));
+  err = fr_esp_err(esp_wifi_set_mode(mode));
+  if (err != FR_OK) {
+    fr_esp_wifi_reconfiguring = false;
+  }
+  return err;
 }
 
 /* D15: dedicated frothy_wifi namespace, parallel to the user-tier frothy
@@ -3464,11 +3633,15 @@ fr_err_t fr_platform_wifi_connect(fr_runtime_t *runtime) {
     return FR_ERR_INVALID;
   }
 
+  FR_TRY(fr_esp_wifi_init_once());
+  FR_TRY(fr_esp_wifi_begin_reconfigure(WIFI_MODE_STA));
   err = fr_esp_wifi_nvs_open(NVS_READONLY, &handle);
   if (err == FR_ERR_NOT_FOUND) {
+    fr_esp_wifi_reconfiguring = false;
     return FR_ERR_NET_DISCONNECTED;
   }
   if (err != FR_OK) {
+    fr_esp_wifi_reconfiguring = false;
     return err;
   }
   nvs_err = nvs_get_str(handle, "ssid", ssid, &ssid_len);
@@ -3477,24 +3650,14 @@ fr_err_t fr_platform_wifi_connect(fr_runtime_t *runtime) {
   }
   nvs_close(handle);
   if (nvs_err == ESP_ERR_NVS_NOT_FOUND) {
+    fr_esp_wifi_reconfiguring = false;
     return FR_ERR_NET_DISCONNECTED;
   }
-  FR_TRY(fr_esp_err(nvs_err));
-
-  FR_TRY(fr_esp_wifi_init_once());
-
-  fr_esp_wifi_ready = false;
-  /* Tear down any prior association before set_config + connect. Without
-   * this, calling wifi.connect: after a successful connection (or with
-   * fresh creds via wifi.save:) is rejected by esp_wifi with "sta is
-   * connected, disconnect before connecting to new ap" and the wait loop
-   * below times out. The reconfiguring flag suppresses the disconnect
-   * handler's auto-retry so it doesn't race set_config or undo our
-   * intended association. A small settle lets the disconnect propagate
-   * before we reconfigure. */
-  fr_esp_wifi_reconfiguring = true;
-  (void)esp_wifi_disconnect();
-  vTaskDelay(pdMS_TO_TICKS(FR_ESP_WIFI_RECONFIG_SETTLE_MS));
+  err = fr_esp_err(nvs_err);
+  if (err != FR_OK) {
+    fr_esp_wifi_reconfiguring = false;
+    return err;
+  }
   /* wifi_sta_config_t fields are byte arrays sized 32/64 (D15). NVS strings
    * are NUL-terminated; copy bytes without the terminator. */
   memcpy(wifi_config.sta.ssid, ssid, strlen(ssid));
@@ -3529,7 +3692,78 @@ fr_err_t fr_platform_wifi_ready(bool *out_ready) {
   if (out_ready == NULL) {
     return FR_ERR_INVALID;
   }
-  *out_ready = fr_esp_wifi_ready;
+  *out_ready = fr_esp_wifi_active();
+  return FR_OK;
+}
+
+fr_err_t fr_platform_wifi_host(fr_runtime_t *runtime, const char *ssid,
+                               const char *pass) {
+  wifi_config_t wifi_config = {0};
+  size_t ssid_len;
+  size_t pass_len;
+  fr_err_t err;
+
+  if (runtime == NULL || ssid == NULL || pass == NULL) {
+    return FR_ERR_INVALID;
+  }
+  ssid_len = strlen(ssid);
+  pass_len = strlen(pass);
+  if (ssid_len == 0 || ssid_len > FR_ESP_WIFI_SSID_MAX || pass_len > 63 ||
+      (pass_len > 0 && pass_len < 8)) {
+    return FR_ERR_DOMAIN;
+  }
+
+  FR_TRY(fr_esp_wifi_init_once());
+  memcpy(wifi_config.ap.ssid, ssid, ssid_len);
+  memcpy(wifi_config.ap.password, pass, pass_len);
+  wifi_config.ap.ssid_len = (uint8_t)ssid_len;
+  wifi_config.ap.channel = 1;
+  wifi_config.ap.max_connection = FR_ESP_WIFI_AP_MAX_CONNECTIONS;
+  wifi_config.ap.authmode =
+      pass_len == 0 ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
+
+  err = fr_esp_wifi_begin_reconfigure(WIFI_MODE_AP);
+  if (err == FR_OK) {
+    err = fr_esp_err(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+  }
+  if (err == FR_OK) {
+    err = fr_esp_dns_start();
+  }
+  if (err == FR_OK) {
+    fr_esp_wifi_down = false;
+    fr_esp_wifi_hosting = true;
+  } else {
+    (void)esp_wifi_set_mode(WIFI_MODE_STA);
+  }
+  fr_esp_wifi_reconfiguring = false;
+  return err;
+}
+
+fr_err_t fr_platform_wifi_ip(char *out, uint16_t cap) {
+  esp_netif_ip_info_t ip_info;
+  esp_netif_t *netif;
+  char ip[16];
+  size_t length;
+
+  if (out == NULL || cap == 0) {
+    return FR_ERR_INVALID;
+  }
+  if (!fr_esp_wifi_active()) {
+    return FR_ERR_NET_DISCONNECTED;
+  }
+  netif = fr_esp_wifi_hosting ? fr_esp_wifi_ap_netif : fr_esp_wifi_sta_netif;
+  if (netif == NULL) {
+    return FR_ERR_NET_DISCONNECTED;
+  }
+  FR_TRY(fr_esp_err(esp_netif_get_ip_info(netif, &ip_info)));
+  if (esp_ip4addr_ntoa(&ip_info.ip, ip, sizeof ip) == NULL) {
+    return FR_ERR_IO;
+  }
+  length = strlen(ip) + 1u;
+  if (length > cap) {
+    return FR_ERR_CAPACITY;
+  }
+  memcpy(out, ip, length);
   return FR_OK;
 }
 
@@ -3594,21 +3828,29 @@ static esp_err_t fr_esp_http_event(esp_http_client_event_t *evt) {
   return ESP_OK;
 }
 
-fr_err_t fr_platform_http_get(const char *url, uint8_t *out_body, uint16_t cap,
-                              uint16_t *out_length) {
+static fr_err_t fr_esp_http_request(esp_http_client_method_t method,
+                                    const char *url,
+                                    const uint8_t *request_body,
+                                    uint16_t request_length,
+                                    uint8_t *out_body, uint16_t cap,
+                                    uint16_t *out_length) {
   fr_esp_http_ctx_t ctx;
   esp_http_client_config_t config;
   esp_http_client_handle_t client;
   esp_err_t perform_err;
   int status;
 
-  if (url == NULL || url[0] == '\0' || out_body == NULL || out_length == NULL) {
+  if (url == NULL || (request_body == NULL && request_length > 0) ||
+      out_body == NULL || out_length == NULL) {
     return FR_ERR_INVALID;
+  }
+  if (url[0] == '\0') {
+    return FR_ERR_NET_PROTOCOL;
   }
   /* T15-hwfix: esp_http_client_perform calls into lwip; if the TCP/IP
    * stack isn't running yet (because wifi.connect: was never called) lwip
    * asserts with "Invalid mbox" and panics the device. Refuse early. */
-  if (!fr_esp_wifi_ready) {
+  if (!fr_esp_wifi_active()) {
     return FR_ERR_NET_DISCONNECTED;
   }
   *out_length = 0;
@@ -3620,13 +3862,23 @@ fr_err_t fr_platform_http_get(const char *url, uint8_t *out_body, uint16_t cap,
 
   memset(&config, 0, sizeof config);
   config.url = url;
-  config.method = HTTP_METHOD_GET;
+  config.method = method;
   config.timeout_ms = (int)FR_ESP_HTTP_TIMEOUT_MS;
   config.event_handler = fr_esp_http_event;
   config.user_data = &ctx;
 
   client = esp_http_client_init(&config);
   if (client == NULL) {
+    return FR_ERR_NET_PROTOCOL;
+  }
+  if (method == HTTP_METHOD_POST &&
+      (esp_http_client_set_header(client, "Content-Type", "text/plain") !=
+           ESP_OK ||
+       esp_http_client_set_post_field(
+           client,
+           request_length == 0 ? "" : (const char *)request_body,
+           request_length) != ESP_OK)) {
+    (void)esp_http_client_cleanup(client);
     return FR_ERR_NET_PROTOCOL;
   }
   perform_err = esp_http_client_perform(client);
@@ -3659,6 +3911,19 @@ fr_err_t fr_platform_http_get(const char *url, uint8_t *out_body, uint16_t cap,
   return FR_OK;
 }
 
+fr_err_t fr_platform_http_get(const char *url, uint8_t *out_body, uint16_t cap,
+                              uint16_t *out_length) {
+  return fr_esp_http_request(HTTP_METHOD_GET, url, NULL, 0, out_body, cap,
+                             out_length);
+}
+
+fr_err_t fr_platform_http_post(const char *url, const uint8_t *body,
+                               uint16_t body_length, uint8_t *out_body,
+                               uint16_t cap, uint16_t *out_length) {
+  return fr_esp_http_request(HTTP_METHOD_POST, url, body, body_length, out_body,
+                             cap, out_length);
+}
+
 /* D17: target-side per-handle TCP state. Parallel to the runtime array
  * declared in src/runtime.h: the runtime array carries the kernel-visible
  * failed flag (D12); this array carries the OS resource (lwip fd) so
@@ -3672,7 +3937,15 @@ typedef struct fr_esp_tcp_t {
   uint32_t open_epoch;
 } fr_esp_tcp_t;
 
+typedef struct fr_esp_tcp_listener_t {
+  bool in_use;
+  int fd;
+  uint16_t port;
+} fr_esp_tcp_listener_t;
+
 static fr_esp_tcp_t fr_esp_tcps[FR_TCP_HANDLE_COUNT];
+static fr_esp_tcp_listener_t
+    fr_esp_tcp_listeners[FR_TCP_LISTENER_COUNT];
 
 static fr_err_t fr_esp_tcp_entry(uint16_t platform_index,
                                  fr_esp_tcp_t **out_entry) {
@@ -3684,6 +3957,19 @@ static fr_err_t fr_esp_tcp_entry(uint16_t platform_index,
     return FR_ERR_HANDLE;
   }
   *out_entry = &fr_esp_tcps[platform_index];
+  return FR_OK;
+}
+
+static fr_err_t fr_esp_tcp_listener_entry(
+    uint16_t platform_index, fr_esp_tcp_listener_t **out_entry) {
+  if (out_entry == NULL) {
+    return FR_ERR_INVALID;
+  }
+  if (platform_index >= FR_TCP_LISTENER_COUNT ||
+      !fr_esp_tcp_listeners[platform_index].in_use) {
+    return FR_ERR_HANDLE;
+  }
+  *out_entry = &fr_esp_tcp_listeners[platform_index];
   return FR_OK;
 }
 
@@ -3720,6 +4006,119 @@ static fr_err_t fr_esp_tcp_set_rw_timeout(int fd) {
   return FR_OK;
 }
 
+fr_err_t fr_platform_tcp_listen(fr_runtime_t *runtime, uint16_t port,
+                                uint16_t *out_platform_index) {
+  struct sockaddr_in address;
+  uint16_t slot = 0;
+  bool slot_found = false;
+  int fd;
+  int flags;
+  int reuse = 1;
+
+  if (runtime == NULL || port == 0 || out_platform_index == NULL) {
+    return FR_ERR_INVALID;
+  }
+  for (uint16_t i = 0; i < FR_TCP_LISTENER_COUNT; i++) {
+    if (!fr_esp_tcp_listeners[i].in_use) {
+      slot = i;
+      slot_found = true;
+      continue;
+    }
+    if (fr_esp_tcp_listeners[i].port != port) {
+      return FR_ERR_BUSY;
+    }
+    *out_platform_index = i;
+    return FR_OK;
+  }
+  if (!slot_found) {
+    return FR_ERR_CAPACITY;
+  }
+  FR_TRY(fr_esp_wifi_init_once());
+  fd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+  if (fd < 0) {
+    return FR_ERR_NET_REFUSED;
+  }
+  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof reuse) < 0) {
+    (void)close(fd);
+    return FR_ERR_IO;
+  }
+  memset(&address, 0, sizeof address);
+  address.sin_family = AF_INET;
+  address.sin_addr.s_addr = htonl(INADDR_ANY);
+  address.sin_port = htons(port);
+  if (bind(fd, (struct sockaddr *)&address, sizeof address) < 0 ||
+      listen(fd, FR_TCP_HANDLE_COUNT) < 0) {
+    fr_err_t err = errno == EADDRINUSE ? FR_ERR_BUSY : FR_ERR_NET_REFUSED;
+    (void)close(fd);
+    return err;
+  }
+  flags = fcntl(fd, F_GETFL, 0);
+  if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+    (void)close(fd);
+    return FR_ERR_IO;
+  }
+  fr_esp_tcp_listeners[slot] = (fr_esp_tcp_listener_t){
+      .in_use = true,
+      .fd = fd,
+      .port = port,
+  };
+  *out_platform_index = slot;
+  return FR_OK;
+}
+
+fr_err_t fr_platform_tcp_accept(fr_runtime_t *runtime,
+                                uint16_t listener_index,
+                                uint16_t *out_conn_index,
+                                bool *out_accepted) {
+  fr_esp_tcp_listener_t *listener = NULL;
+  uint16_t slot = 0;
+  bool slot_found = false;
+  int fd;
+  int flags;
+  fr_err_t err;
+
+  if (runtime == NULL || out_conn_index == NULL || out_accepted == NULL) {
+    return FR_ERR_INVALID;
+  }
+  *out_accepted = false;
+  FR_TRY(fr_esp_tcp_listener_entry(listener_index, &listener));
+  fd = accept(listener->fd, NULL, NULL);
+  if (fd < 0) {
+    return errno == EAGAIN || errno == EWOULDBLOCK ? FR_OK
+                                                   : FR_ERR_NET_REFUSED;
+  }
+  for (uint16_t i = 0; i < FR_TCP_HANDLE_COUNT; i++) {
+    if (!fr_esp_tcps[i].in_use) {
+      slot = i;
+      slot_found = true;
+      break;
+    }
+  }
+  if (!slot_found) {
+    (void)close(fd);
+    return FR_ERR_CAPACITY;
+  }
+  flags = fcntl(fd, F_GETFL, 0);
+  if (flags < 0 || fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) < 0) {
+    (void)close(fd);
+    return FR_ERR_IO;
+  }
+  err = fr_esp_tcp_set_rw_timeout(fd);
+  if (err != FR_OK) {
+    (void)close(fd);
+    return err;
+  }
+  fr_esp_tcps[slot] = (fr_esp_tcp_t){
+      .in_use = true,
+      .fd = fd,
+      .open_epoch = fr_esp_wifi_down_epoch,
+  };
+  runtime->tcp_handles[slot].failed = false;
+  *out_conn_index = slot;
+  *out_accepted = true;
+  return FR_OK;
+}
+
 /* Strict-aliasing-clean port write for the AF_INET sockaddr that
  * getaddrinfo returns. */
 static void fr_esp_tcp_set_port(struct addrinfo *info, uint16_t port) {
@@ -3749,7 +4148,7 @@ fr_err_t fr_platform_tcp_open(fr_runtime_t *runtime, const char *host,
       out_platform_index == NULL) {
     return FR_ERR_INVALID;
   }
-  if (fr_esp_wifi_down || !fr_esp_wifi_ready) {
+  if (fr_esp_wifi_down || !fr_esp_wifi_active()) {
     return FR_ERR_NET_DISCONNECTED;
   }
   for (uint16_t i = 0; i < FR_TCP_HANDLE_COUNT; i++) {
@@ -3967,6 +4366,16 @@ fr_err_t fr_platform_tcp_close(uint16_t platform_index) {
   }
   (void)close(entry->fd);
   entry->in_use = false;
+  entry->fd = -1;
+  return FR_OK;
+}
+
+fr_err_t fr_platform_tcp_server_close(uint16_t platform_index) {
+  fr_esp_tcp_listener_t *entry = NULL;
+
+  FR_TRY(fr_esp_tcp_listener_entry(platform_index, &entry));
+  (void)close(entry->fd);
+  memset(entry, 0, sizeof(*entry));
   entry->fd = -1;
   return FR_OK;
 }

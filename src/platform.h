@@ -857,12 +857,25 @@ fr_err_t fr_platform_wifi_save(const char *ssid, const char *pass);
  * Ctrl-C, mirroring the `ms` native (targets/common/target_defs.c:54-61). */
 fr_err_t fr_platform_wifi_connect(fr_runtime_t *runtime);
 fr_err_t fr_platform_wifi_ready(bool *out_ready);
+/* ADR 0077 D2: start or reconfigure the access point and captive DNS.
+ * An empty password opens the network. Password lengths outside 8..63 return
+ * DOMAIN, which is the portable WPA2 passphrase range. */
+fr_err_t fr_platform_wifi_host(fr_runtime_t *runtime, const char *ssid,
+                               const char *pass);
+/* ADR 0077 D3: copy the active station or access-point dotted-quad.
+ * Return DISCONNECTED when neither interface is active. cap includes NUL. */
+fr_err_t fr_platform_wifi_ip(char *out, uint16_t cap);
 
 /* out_body buffer is caller-owned with size cap; out_length receives the byte
  * count written. Bodies larger than cap return FR_ERR_NET_TOO_LARGE with no
  * partial result (D5). */
 fr_err_t fr_platform_http_get(const char *url, uint8_t *out_body, uint16_t cap,
                               uint16_t *out_length);
+/* ADR 0077 D1: send a text/plain body. Response status, size, and timeout
+ * behavior match fr_platform_http_get. An oversized body has no result. */
+fr_err_t fr_platform_http_post(const char *url, const uint8_t *body,
+                               uint16_t body_length, uint8_t *out_body,
+                               uint16_t cap, uint16_t *out_length);
 
 /* T15b D17. host is a NUL-terminated DNS name or dotted-quad; the platform
  * resolves and connects under the D7 10 s budget. out_platform_index receives
@@ -871,6 +884,16 @@ fr_err_t fr_platform_http_get(const char *url, uint8_t *out_body, uint16_t cap,
  * source the connect poll loop reads. */
 fr_err_t fr_platform_tcp_open(fr_runtime_t *runtime, const char *host,
                               uint16_t port, uint16_t *out_platform_index);
+/* ADR 0077 D4: open one listener. An exact port repeat returns its existing
+ * platform index. A different port while it is open returns BUSY. */
+fr_err_t fr_platform_tcp_listen(fr_runtime_t *runtime, uint16_t port,
+                                uint16_t *out_platform_index);
+/* ADR 0077 D5: accept without blocking. out_accepted is false when idle.
+ * An accepted client uses a normal TCP platform index. */
+fr_err_t fr_platform_tcp_accept(fr_runtime_t *runtime,
+                                uint16_t listener_index,
+                                uint16_t *out_conn_index,
+                                bool *out_accepted);
 /* D8: blocks until >=1 byte / EOF / 5 s / Ctrl-C. EOF surfaces as FR_OK with
  * *out_length == 0, not as an error. */
 fr_err_t fr_platform_tcp_read(fr_runtime_t *runtime, uint16_t platform_index,
@@ -885,22 +908,27 @@ fr_err_t fr_platform_tcp_write(fr_runtime_t *runtime, uint16_t platform_index,
  * tracks the OS resource (lwip fd) in its own slot map so close does not
  * need runtime to find what to free. */
 fr_err_t fr_platform_tcp_close(uint16_t platform_index);
+/* Routed by fr_platform_handle_close for FR_HANDLE_KIND_TCP_SERVER. */
+fr_err_t fr_platform_tcp_server_close(uint16_t platform_index);
 /* D10: non-blocking receive-queue byte count. */
 fr_err_t fr_platform_tcp_bytes_ready(fr_runtime_t *runtime,
                                      uint16_t platform_index,
                                      uint16_t *out_count);
 
 #ifdef FR_HOST_TEST_HELPERS
-/* Host net fixtures (D16). wifi_set_connected flips the stub ready state.
- * http_queue_response enqueues one response that the next fr_platform_http_get
- * consumes. wifi_fire_event posts a candidate for the bound kind so the unity
- * test can exercise wifi.disconnected / wifi.reconnected delivery. */
+/* Host net fixtures (D16). wifi_set_connected flips the station ready state.
+ * http_queue_response supplies the next GET or POST response. The POST
+ * accessor copies the most recent request body without consuming it. */
 void fr_host_wifi_set_connected(bool connected);
 void fr_host_http_queue_response(uint16_t status, const uint8_t *body,
                                  uint16_t length);
+fr_err_t fr_host_http_last_post(uint8_t *out_body, uint16_t cap,
+                                uint16_t *out_length);
+bool fr_host_wifi_is_hosting(void);
+const char *fr_host_wifi_host_ssid(void);
 void fr_host_wifi_fire_event(fr_event_kind_t kind);
-/* Clears credential buffers, ready flag, queued response, wifi slot table,
- * and the host event queue so Unity tests start from a known state. */
+/* Clear credentials, interface state, HTTP state, TCP state, bindings, and
+ * the host event queue so each Unity test starts from a known state. */
 void fr_host_net_reset(void);
 
 /* T15b D18. queue_response stages bytes for the slot the next tcp.open: will
@@ -911,6 +939,7 @@ void fr_host_net_reset(void);
  * per D12 — no auto-close. */
 void fr_host_tcp_queue_response(uint16_t handle_platform_index,
                                 const uint8_t *bytes, uint16_t length);
+fr_err_t fr_host_tcp_queue_incoming(const uint8_t *bytes, uint16_t length);
 fr_err_t fr_host_tcp_drain_writes(uint16_t handle_platform_index,
                                   uint8_t *out_bytes, uint16_t cap,
                                   uint16_t *out_length);

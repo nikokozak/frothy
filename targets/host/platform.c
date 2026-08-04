@@ -444,6 +444,9 @@ fr_err_t fr_platform_handle_close(fr_handle_kind_t kind,
   if (kind == FR_HANDLE_KIND_TCP) {
     return fr_platform_tcp_close(platform_index);
   }
+  if (kind == FR_HANDLE_KIND_TCP_SERVER) {
+    return fr_platform_tcp_server_close(platform_index);
+  }
 #endif
 #if FR_FEATURE_BLE && (FR_BLE_ENABLE_CENTRAL || FR_BLE_ENABLE_PERIPHERAL)
   if (kind == FR_HANDLE_KIND_BLE_CONNECTION) {
@@ -4164,7 +4167,13 @@ enum {
 
 static char fr_host_wifi_ssid[FR_HOST_WIFI_SSID_CAP + 1];
 static char fr_host_wifi_pass[FR_HOST_WIFI_PASS_CAP + 1];
-static bool fr_host_wifi_ready_flag;
+static char fr_host_wifi_host_ssid_value[FR_HOST_WIFI_SSID_CAP + 1];
+static bool fr_host_wifi_connected;
+static bool fr_host_wifi_hosting;
+
+static bool fr_host_wifi_active(void) {
+  return fr_host_wifi_connected || fr_host_wifi_hosting;
+}
 
 typedef struct fr_host_http_response_t {
   bool queued;
@@ -4174,6 +4183,14 @@ typedef struct fr_host_http_response_t {
 } fr_host_http_response_t;
 
 static fr_host_http_response_t fr_host_http_response;
+
+typedef struct fr_host_http_post_t {
+  bool valid;
+  uint16_t length;
+  uint8_t body[FR_PROFILE_MAX_TEXT_LENGTH];
+} fr_host_http_post_t;
+
+static fr_host_http_post_t fr_host_http_post;
 
 fr_err_t fr_platform_wifi_save(const char *ssid, const char *pass) {
   if (ssid == NULL || pass == NULL) {
@@ -4198,10 +4215,13 @@ fr_err_t fr_platform_wifi_connect(fr_runtime_t *runtime) {
   if (runtime == NULL) {
     return FR_ERR_INVALID;
   }
+  fr_host_wifi_hosting = false;
+  fr_host_wifi_host_ssid_value[0] = '\0';
+  fr_host_wifi_connected = false;
   if (fr_host_wifi_ssid[0] == '\0') {
     return FR_ERR_NET_DISCONNECTED;
   }
-  fr_host_wifi_ready_flag = true;
+  fr_host_wifi_connected = true;
   return FR_OK;
 }
 
@@ -4209,7 +4229,49 @@ fr_err_t fr_platform_wifi_ready(bool *out_ready) {
   if (out_ready == NULL) {
     return FR_ERR_INVALID;
   }
-  *out_ready = fr_host_wifi_ready_flag;
+  *out_ready = fr_host_wifi_active();
+  return FR_OK;
+}
+
+fr_err_t fr_platform_wifi_host(fr_runtime_t *runtime, const char *ssid,
+                               const char *pass) {
+  size_t ssid_len = 0;
+  size_t pass_len = 0;
+
+  if (runtime == NULL || ssid == NULL || pass == NULL) {
+    return FR_ERR_INVALID;
+  }
+  ssid_len = strlen(ssid);
+  pass_len = strlen(pass);
+  if (ssid_len == 0 || ssid_len > FR_HOST_WIFI_SSID_CAP || pass_len > 63 ||
+      (pass_len > 0 && pass_len < 8)) {
+    return FR_ERR_DOMAIN;
+  }
+  memcpy(fr_host_wifi_host_ssid_value, ssid, ssid_len + 1u);
+  fr_host_wifi_connected = false;
+  fr_host_wifi_hosting = true;
+  return FR_OK;
+}
+
+fr_err_t fr_platform_wifi_ip(char *out, uint16_t cap) {
+  const char *ip = NULL;
+  size_t length = 0;
+
+  if (out == NULL || cap == 0) {
+    return FR_ERR_INVALID;
+  }
+  if (fr_host_wifi_hosting) {
+    ip = "192.168.4.1";
+  } else if (fr_host_wifi_connected) {
+    ip = "192.168.1.100";
+  } else {
+    return FR_ERR_NET_DISCONNECTED;
+  }
+  length = strlen(ip);
+  if (length + 1u > cap) {
+    return FR_ERR_CAPACITY;
+  }
+  memcpy(out, ip, length + 1u);
   return FR_OK;
 }
 
@@ -4221,7 +4283,7 @@ fr_err_t fr_platform_http_get(const char *url, uint8_t *out_body, uint16_t cap,
   if (url[0] == '\0') {
     return FR_ERR_NET_PROTOCOL;
   }
-  if (!fr_host_wifi_ready_flag) {
+  if (!fr_host_wifi_active()) {
     return FR_ERR_NET_DISCONNECTED;
   }
   if (!fr_host_http_response.queued) {
@@ -4247,6 +4309,30 @@ fr_err_t fr_platform_http_get(const char *url, uint8_t *out_body, uint16_t cap,
   return FR_OK;
 }
 
+fr_err_t fr_platform_http_post(const char *url, const uint8_t *body,
+                               uint16_t body_length, uint8_t *out_body,
+                               uint16_t cap, uint16_t *out_length) {
+  if (url == NULL || (body == NULL && body_length > 0) ||
+      out_length == NULL || (out_body == NULL && cap > 0)) {
+    return FR_ERR_INVALID;
+  }
+  if (url[0] == '\0') {
+    return FR_ERR_NET_PROTOCOL;
+  }
+  if (!fr_host_wifi_active()) {
+    return FR_ERR_NET_DISCONNECTED;
+  }
+  if (body_length > sizeof(fr_host_http_post.body)) {
+    return FR_ERR_CAPACITY;
+  }
+  fr_host_http_post.valid = true;
+  fr_host_http_post.length = body_length;
+  if (body_length > 0) {
+    memcpy(fr_host_http_post.body, body, body_length);
+  }
+  return fr_platform_http_get(url, out_body, cap, out_length);
+}
+
 /* T15b D17 host TCP. queued gates open success per the SPEC: a slot must be
  * pre-staged via fr_host_tcp_queue_response, otherwise open returns
  * FR_ERR_NET_REFUSED. Magic hostnames "fr.test.dns" / "fr.test.timeout"
@@ -4270,6 +4356,20 @@ typedef struct fr_host_tcp_t {
 } fr_host_tcp_t;
 
 static fr_host_tcp_t fr_host_tcps[FR_TCP_HANDLE_COUNT];
+
+typedef struct fr_host_tcp_listener_t {
+  bool in_use;
+  uint16_t port;
+} fr_host_tcp_listener_t;
+
+typedef struct fr_host_tcp_pending_t {
+  bool queued;
+  uint16_t length;
+  uint8_t body[FR_HOST_TCP_RING_CAP];
+} fr_host_tcp_pending_t;
+
+static fr_host_tcp_listener_t fr_host_tcp_listeners[FR_TCP_LISTENER_COUNT];
+static fr_host_tcp_pending_t fr_host_tcp_pending;
 
 static fr_err_t fr_host_tcp_check_alive(fr_runtime_t *runtime,
                                         uint16_t platform_index) {
@@ -4320,6 +4420,74 @@ fr_err_t fr_platform_tcp_open(fr_runtime_t *runtime, const char *host,
     if (!fr_host_tcps[i].in_use) {
       return FR_ERR_NET_REFUSED;
     }
+  }
+  return FR_ERR_CAPACITY;
+}
+
+fr_err_t fr_platform_tcp_listen(fr_runtime_t *runtime, uint16_t port,
+                                uint16_t *out_platform_index) {
+  if (runtime == NULL || out_platform_index == NULL) {
+    return FR_ERR_INVALID;
+  }
+  if (port == 0) {
+    return FR_ERR_DOMAIN;
+  }
+  for (uint16_t i = 0; i < FR_TCP_LISTENER_COUNT; i++) {
+    if (!fr_host_tcp_listeners[i].in_use) {
+      continue;
+    }
+    if (fr_host_tcp_listeners[i].port != port) {
+      return FR_ERR_BUSY;
+    }
+    *out_platform_index = i;
+    return FR_OK;
+  }
+  for (uint16_t i = 0; i < FR_TCP_LISTENER_COUNT; i++) {
+    if (fr_host_tcp_listeners[i].in_use) {
+      continue;
+    }
+    fr_host_tcp_listeners[i] = (fr_host_tcp_listener_t){
+        .in_use = true,
+        .port = port,
+    };
+    *out_platform_index = i;
+    return FR_OK;
+  }
+  return FR_ERR_CAPACITY;
+}
+
+fr_err_t fr_platform_tcp_accept(fr_runtime_t *runtime,
+                                uint16_t listener_index,
+                                uint16_t *out_conn_index,
+                                bool *out_accepted) {
+  if (runtime == NULL || out_conn_index == NULL || out_accepted == NULL) {
+    return FR_ERR_INVALID;
+  }
+  if (listener_index >= FR_TCP_LISTENER_COUNT ||
+      !fr_host_tcp_listeners[listener_index].in_use) {
+    return FR_ERR_HANDLE;
+  }
+  *out_accepted = false;
+  if (!fr_host_tcp_pending.queued) {
+    return FR_OK;
+  }
+  fr_host_tcp_pending.queued = false;
+  for (uint16_t i = 0; i < FR_TCP_HANDLE_COUNT; i++) {
+    fr_host_tcp_t *slot = &fr_host_tcps[i];
+
+    if (slot->in_use) {
+      continue;
+    }
+    memset(slot, 0, sizeof(*slot));
+    slot->in_use = true;
+    slot->rx_count = fr_host_tcp_pending.length;
+    if (slot->rx_count > 0) {
+      memcpy(slot->rx_ring, fr_host_tcp_pending.body, slot->rx_count);
+    }
+    runtime->tcp_handles[i].failed = false;
+    *out_conn_index = i;
+    *out_accepted = true;
+    return FR_OK;
   }
   return FR_ERR_CAPACITY;
 }
@@ -4382,6 +4550,15 @@ fr_err_t fr_platform_tcp_close(uint16_t platform_index) {
   return FR_OK;
 }
 
+fr_err_t fr_platform_tcp_server_close(uint16_t platform_index) {
+  if (platform_index < FR_TCP_LISTENER_COUNT) {
+    memset(&fr_host_tcp_listeners[platform_index], 0,
+           sizeof(fr_host_tcp_listeners[platform_index]));
+    memset(&fr_host_tcp_pending, 0, sizeof(fr_host_tcp_pending));
+  }
+  return FR_OK;
+}
+
 fr_err_t fr_platform_tcp_bytes_ready(fr_runtime_t *runtime,
                                      uint16_t platform_index,
                                      uint16_t *out_count) {
@@ -4436,7 +4613,11 @@ fr_err_t fr_platform_event_wifi_remove(uint16_t binding_index) {
 
 #ifdef FR_HOST_TEST_HELPERS
 void fr_host_wifi_set_connected(bool connected) {
-  fr_host_wifi_ready_flag = connected;
+  fr_host_wifi_connected = connected;
+  if (connected) {
+    fr_host_wifi_hosting = false;
+    fr_host_wifi_host_ssid_value[0] = '\0';
+  }
 }
 
 void fr_host_http_queue_response(uint16_t status, const uint8_t *body,
@@ -4449,6 +4630,31 @@ void fr_host_http_queue_response(uint16_t status, const uint8_t *body,
   if (copy > 0 && body != NULL) {
     memcpy(fr_host_http_response.body, body, copy);
   }
+}
+
+fr_err_t fr_host_http_last_post(uint8_t *out_body, uint16_t cap,
+                                uint16_t *out_length) {
+  if (out_length == NULL || (out_body == NULL && cap > 0)) {
+    return FR_ERR_INVALID;
+  }
+  if (!fr_host_http_post.valid) {
+    return FR_ERR_NOT_FOUND;
+  }
+  if (fr_host_http_post.length > cap) {
+    *out_length = 0;
+    return FR_ERR_CAPACITY;
+  }
+  if (fr_host_http_post.length > 0) {
+    memcpy(out_body, fr_host_http_post.body, fr_host_http_post.length);
+  }
+  *out_length = fr_host_http_post.length;
+  return FR_OK;
+}
+
+bool fr_host_wifi_is_hosting(void) { return fr_host_wifi_hosting; }
+
+const char *fr_host_wifi_host_ssid(void) {
+  return fr_host_wifi_host_ssid_value;
 }
 
 void fr_host_wifi_fire_event(fr_event_kind_t kind) {
@@ -4491,6 +4697,24 @@ void fr_host_tcp_queue_response(uint16_t handle_platform_index,
   }
 }
 
+fr_err_t fr_host_tcp_queue_incoming(const uint8_t *bytes, uint16_t length) {
+  if (bytes == NULL && length > 0) {
+    return FR_ERR_INVALID;
+  }
+  if (length > sizeof(fr_host_tcp_pending.body)) {
+    return FR_ERR_CAPACITY;
+  }
+  if (fr_host_tcp_pending.queued) {
+    return FR_ERR_CAPACITY;
+  }
+  fr_host_tcp_pending.queued = true;
+  fr_host_tcp_pending.length = length;
+  if (length > 0) {
+    memcpy(fr_host_tcp_pending.body, bytes, length);
+  }
+  return FR_OK;
+}
+
 fr_err_t fr_host_tcp_drain_writes(uint16_t handle_platform_index,
                                   uint8_t *out_bytes, uint16_t cap,
                                   uint16_t *out_length) {
@@ -4527,14 +4751,20 @@ void fr_host_net_reset(void) {
   uint8_t i;
   memset(fr_host_wifi_ssid, 0, sizeof(fr_host_wifi_ssid));
   memset(fr_host_wifi_pass, 0, sizeof(fr_host_wifi_pass));
-  fr_host_wifi_ready_flag = false;
+  memset(fr_host_wifi_host_ssid_value, 0,
+         sizeof(fr_host_wifi_host_ssid_value));
+  fr_host_wifi_connected = false;
+  fr_host_wifi_hosting = false;
   memset(&fr_host_http_response, 0, sizeof(fr_host_http_response));
+  memset(&fr_host_http_post, 0, sizeof(fr_host_http_post));
   for (i = 0; i < 2; i++) {
     fr_host_wifi_slots[i].binding_index = 0;
     fr_host_wifi_slots[i].generation = 0;
     fr_host_wifi_slots[i].active = false;
   }
   memset(fr_host_tcps, 0, sizeof(fr_host_tcps));
+  memset(fr_host_tcp_listeners, 0, sizeof(fr_host_tcp_listeners));
+  memset(&fr_host_tcp_pending, 0, sizeof(fr_host_tcp_pending));
   fr_host_event_queue_head = 0;
   fr_host_event_queue_count = 0;
   fr_host_event_overflow = 0;
