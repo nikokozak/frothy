@@ -1,0 +1,30 @@
+-- Captive Portal
+-- Hosts a Wi-Fi access point whose captive page serves a button that
+-- toggles the board's LED. Join the "frothy" network from a phone and the
+-- portal sheet opens on its own; every press of the button flips the LED.
+-- The page ships in two text values so each line stays inside the prompt's
+-- line budget, and the toggle is debounced because portal browsers like to
+-- fetch a page twice.
+-- @tag device hardware
+
+wifi.host: "frothy", ""
+server is tcp.listen: 80
+
+-- One cell of state: when the LED last toggled, in milliseconds.
+last is cells: 1
+set last[0] to 0
+
+p1 is "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n<html><head><title>frothy</title><meta name=viewport content=\"width=device-width, initial-scale=1\"></head><body style=\"text-align:center;font-family:sans-serif;margin:2em 1em\">"
+p2 is "<h1>frothy portal</h1><p>served straight from the ESP32 by a five-line frothy program.</p><a href=/toggle><button style=\"font-size:4em;padding:0.6em 0.8em;width:100%;border-radius:0.3em\">LED Toggle</button></a></body></html>"
+
+-- Byte 5 of "GET /toggle ..." is the t; "GET / ..." has a space there.
+-- attempt guards short requests, and the 800 ms window folds the double
+-- fetch some browsers send into one press.
+to handle with req [ attempt [ if (bytes.at: req, 5) = 116 [ t is millis:; if (t - last[0]) > 800 [ led.toggle:; set last[0] to t ] ] ] rescue [ 0 ] ]
+
+-- Read the whole request before closing: closing with unread bytes makes
+-- TCP reset the connection, and the reset can outrun the response.
+to serve [ c is tcp.accept: server; if c [ handle: (tcp.read: c, 1024); tcp.write: c, p1; tcp.write: c, p2; tcp.close: c ] ]
+
+to start-serving [ every 150 [ serve: ] ]
+start-serving:

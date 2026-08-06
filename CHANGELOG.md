@@ -14,6 +14,9 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   `tcp.listen` with `tcp.accept` serves clients through ordinary TCP handles.
   These five net-enabled words change the affected profile hashes, so saved
   images from older firmware must be saved again after flashing.
+- **A captive-portal example.** `examples/14-captive-portal.fr` hosts the
+  "frothy" access point and serves a page whose button toggles the LED,
+  hardware-tested end to end from a phone's portal sheet.
 
 ### Changed
 
