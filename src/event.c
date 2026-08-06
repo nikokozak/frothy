@@ -330,6 +330,11 @@ fr_err_t fr_event_dispatch(fr_runtime_t *runtime) {
 
 #if FR_FEATURE_BYTES
   runtime->bytes.eval_depth--;
+  /* Idle dispatch owns this evaluation. A dispatch inside the VM leaves
+   * cleanup to the running expression or its next loop back-edge. */
+  if (!fr_runtime_is_executing(runtime)) {
+    fr_bytes_reset_if_outermost(runtime);
+  }
 #endif
   runtime->dispatching_event = false;
   return first_err;

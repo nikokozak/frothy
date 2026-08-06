@@ -9,6 +9,7 @@
  */
 
 #include "base_image.h"
+#include "event.h"
 #include "handle.h"
 #include "platform.h"
 #include "repl.h"
@@ -219,6 +220,44 @@ static void test_platform_accept_drops_client_when_tcp_slots_full(void) {
   TEST_ASSERT_EQUAL(FR_OK, fr_platform_tcp_server_close(listener_index));
 }
 
+static void test_every_tcp_lifecycle_releases_transients(void) {
+  static const uint8_t request[] = {'G', 'E', 'T'};
+  fr_event_binding_t *binding = NULL;
+  fr_slot_id_t served_slot = 0;
+  fr_tagged_t served = fr_tagged_nil();
+  fr_int_t served_count = 0;
+
+  install_base();
+  eval_ok("server is tcp.listen: 80");
+  eval_ok("served is 0");
+  eval_ok("to serve [ c is tcp.accept: server; if c [ tcp.read: c, 1024; "
+          "tcp.write: c, \"OK\"; tcp.close: c; set served to served + 1 ] ]");
+  eval_ok("to start-serving [ every 1 [ serve: ] ]");
+  eval_ok("start-serving:");
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_slot_id_for_name(&s_runtime, "served", &served_slot));
+  binding = &s_runtime.events.entries[0];
+  TEST_ASSERT_EQUAL(FR_EVENT_KIND_EVERY, binding->kind);
+
+  for (uint16_t i = 0; i < FR_PROFILE_MAX_HANDLES + 1u; i++) {
+    TEST_ASSERT_EQUAL(FR_OK,
+                      fr_host_tcp_queue_incoming(request, sizeof(request)));
+    TEST_ASSERT_EQUAL(
+        FR_OK, fr_platform_event_post_test_candidate(
+                   0, binding->generation, (uint32_t)(i + 1u)));
+    TEST_ASSERT_EQUAL(FR_OK, fr_event_drain(&s_runtime));
+    TEST_ASSERT_EQUAL(FR_OK, fr_event_dispatch(&s_runtime));
+    TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, served_slot, &served));
+    TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_int(served, &served_count));
+    TEST_ASSERT_EQUAL_INT(i + 1, served_count);
+  }
+
+  TEST_ASSERT_EQUAL_UINT16(0, s_runtime.bytes.arena_used);
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_event_cancel(&s_runtime, FR_EVENT_KIND_EVERY, 1));
+  eval_expect_output("close-handles", "1\nok\n");
+}
+
 static void test_open_dns_failure(void) {
   install_base();
   TEST_ASSERT_EQUAL(FR_ERR_NET_DNS,
@@ -347,6 +386,7 @@ int main(void) {
   RUN_TEST(test_handle_table_exhaustion_does_not_accept_client);
   RUN_TEST(test_close_handles_closes_server_handle);
   RUN_TEST(test_platform_accept_drops_client_when_tcp_slots_full);
+  RUN_TEST(test_every_tcp_lifecycle_releases_transients);
   RUN_TEST(test_open_dns_failure);
   RUN_TEST(test_open_timeout);
   RUN_TEST(test_open_refused_without_queue);
