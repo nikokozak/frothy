@@ -6,6 +6,8 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+## [0.1.20] - 2026-08-07
+
 ### Added
 
 - **Frothy can post data and host a captive Wi-Fi service.** `http.post` sends
