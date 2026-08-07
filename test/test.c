@@ -140,9 +140,10 @@ static fr_err_t test_persist_apply_user_overlay(
  * src/base_defs.h FR_SLOT_AFTER_NET / _AFTER_POWER / _AFTER_BYTES. */
 #if FR_FEATURE_NET
 #define FR_TEST_NET_WORDS                                                    \
-  " wifi.save wifi.connect wifi.ready? http.get tcp.open tcp.read "          \
-  "tcp.write tcp.close tcp.available"
-#define FR_TEST_NET_SLOT_COUNT 9
+  " wifi.save wifi.connect wifi.ready? wifi.host wifi.ip http.get "          \
+  "http.post tcp.open tcp.listen tcp.accept tcp.read tcp.write tcp.close "   \
+  "tcp.available"
+#define FR_TEST_NET_SLOT_COUNT 14
 #else
 #define FR_TEST_NET_WORDS ""
 #define FR_TEST_NET_SLOT_COUNT 0
@@ -480,7 +481,7 @@ static void test_base_def_contract(void) {
   uint16_t expected_native_count =
       (FR_FEATURE_PERSISTENCE ? 12 : 9) + (FR_FEATURE_UART ? 6 : 0) +
       (FR_FEATURE_RANDOM ? 3 : 0) + (FR_FEATURE_PWM ? 3 : 0) +
-      (FR_FEATURE_I2C ? 8 : 0) + (FR_FEATURE_NET ? 9 : 0) +
+      (FR_FEATURE_I2C ? 8 : 0) + (FR_FEATURE_NET ? 14 : 0) +
       (FR_FEATURE_POWER ? 4 : 0) + (FR_FEATURE_BYTES ? 8 : 0) +
       (FR_FEATURE_TRACE ? 12 : 0) + (FR_FEATURE_PULSE ? 9 : 0) +
       FR_TEST_CONSOLE_INPUT_SLOT_COUNT +
@@ -3018,6 +3019,8 @@ static void test_handles(void) {
             strcmp(fr_handle_kind_name(FR_HANDLE_KIND_PULSE), "pulse") == 0 &&
             strcmp(fr_handle_kind_name(FR_HANDLE_KIND_BLE_CONNECTION),
                    "ble-connection") == 0 &&
+            strcmp(fr_handle_kind_name(FR_HANDLE_KIND_TCP_SERVER),
+                   "tcp-server") == 0 &&
             strcmp(fr_handle_kind_name(FR_HANDLE_KIND_COUNT), "unknown") ==
                 0 &&
             strcmp(fr_handle_kind_name(255), "unknown") == 0);

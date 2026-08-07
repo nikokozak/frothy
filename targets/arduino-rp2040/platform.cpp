@@ -771,6 +771,9 @@ fr_err_t fr_platform_handle_close(fr_handle_kind_t kind,
   if (kind == FR_HANDLE_KIND_TCP) {
     return fr_platform_tcp_close(platform_index);
   }
+  if (kind == FR_HANDLE_KIND_TCP_SERVER) {
+    return fr_platform_tcp_server_close(platform_index);
+  }
 #endif
   (void)kind;
   (void)platform_index;

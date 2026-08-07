@@ -6,6 +6,25 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+### Added
+
+- **Frothy can post data and host a captive Wi-Fi service.** `http.post` sends
+  text or bytes as `text/plain`; `wifi.host` creates an open or WPA2 access
+  point with captive DNS; `wifi.ip` reports its active address; and
+  `tcp.listen` with `tcp.accept` serves clients through ordinary TCP handles.
+  These five net-enabled words change the affected profile hashes, so saved
+  images from older firmware must be saved again after flashing.
+- **A captive-portal example.** `examples/14-captive-portal.fr` hosts the
+  "frothy" access point and serves a page whose button toggles the LED,
+  hardware-tested end to end from a phone's portal sheet.
+
+### Changed
+
+- **ESP32 portal servers can keep four TCP clients open.** The ESP32 TCP
+  handle count grows from two to four for browsers that make parallel
+  connections. The Nano RP2040 Connect remains at two for its NINA socket
+  budget.
+
 ## [0.1.19] - 2026-07-31
 
 ### Fixed

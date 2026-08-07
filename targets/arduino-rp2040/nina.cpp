@@ -15,6 +15,7 @@ extern "C" {
 #endif
 #if FR_FEATURE_NET
 #include <WiFiPreferences.h>
+#include <WiFiUdp.h>
 #endif
 
 #include <ctype.h>
@@ -36,6 +37,11 @@ enum {
   FR_NINA_WIFI_CONNECT_SLICE_MS = 1000,
   FR_NINA_WIFI_STATUS_POLL_MS = 100,
   FR_NINA_WIFI_RECONNECT_MS = 5000,
+  FR_NINA_DNS_PORT = 53,
+  FR_NINA_DNS_PACKET_BYTES = 288,
+  FR_NINA_DNS_HEADER_BYTES = 12,
+  FR_NINA_DNS_ANSWER_BYTES = 16,
+  FR_NINA_DNS_TTL_SECONDS = 30,
   FR_NINA_HTTP_TIMEOUT_MS = 5000,
   FR_NINA_HTTP_LINE_BYTES = 256,
   FR_NINA_HOST_BYTES = 254,
@@ -80,7 +86,23 @@ typedef struct fr_nina_tcp_t {
   bool in_use;
 } fr_nina_tcp_t;
 
+typedef struct fr_nina_tcp_listener_t {
+  WiFiServer server;
+  bool in_use;
+  uint16_t port;
+} fr_nina_tcp_listener_t;
+
+typedef struct fr_nina_dns_t {
+  WiFiUDP socket;
+  bool active;
+  uint8_t packet[FR_NINA_DNS_PACKET_BYTES];
+} fr_nina_dns_t;
+
 static fr_nina_tcp_t fr_nina_tcps[FR_TCP_HANDLE_COUNT];
+static fr_nina_tcp_listener_t
+    fr_nina_tcp_listeners[FR_TCP_LISTENER_COUNT];
+static fr_nina_dns_t fr_nina_dns;
+static bool fr_nina_wifi_hosting;
 
 static int fr_nina_wifi_begin(const fr_nina_credentials_t *credentials,
                               uint32_t timeout_ms) {
@@ -92,6 +114,97 @@ static int fr_nina_wifi_begin(const fr_nina_credentials_t *credentials,
   WiFi.setTimeout(timeout_ms);
   return credentials->pass_length == 0 ? WiFi.begin(ssid)
                                        : WiFi.begin(ssid, pass);
+}
+
+/* The Nano has no network task. The existing platform yield points call
+ * fr_nina_poll, which services one pending DNS packet here. */
+static void fr_nina_dns_poll(void) {
+  static const uint8_t answer[] = {
+      0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, FR_NINA_DNS_TTL_SECONDS, 0, 4,
+  };
+  IPAddress address;
+  IPAddress remote;
+  uint16_t offset = FR_NINA_DNS_HEADER_BYTES;
+  uint16_t question_end = 0;
+  uint16_t qtype = 0;
+  uint16_t remote_port = 0;
+  uint16_t response_length = 0;
+  int packet_length = 0;
+
+  if (!fr_nina_dns.active || !fr_nina_wifi_hosting) {
+    return;
+  }
+  packet_length = fr_nina_dns.socket.parsePacket();
+  if (packet_length < FR_NINA_DNS_HEADER_BYTES + 5 ||
+      packet_length > FR_NINA_DNS_PACKET_BYTES) {
+    return;
+  }
+  remote = fr_nina_dns.socket.remoteIP();
+  remote_port = fr_nina_dns.socket.remotePort();
+  if (fr_nina_dns.socket.read(fr_nina_dns.packet, (size_t)packet_length) !=
+          packet_length ||
+      (fr_nina_dns.packet[2] & 0xf8u) != 0u ||
+      (fr_nina_dns.packet[4] == 0u && fr_nina_dns.packet[5] == 0u)) {
+    return;
+  }
+  while (offset < (uint16_t)packet_length) {
+    uint8_t label_length = fr_nina_dns.packet[offset++];
+
+    if (label_length == 0u) {
+      break;
+    }
+    if ((label_length & 0xc0u) != 0u || label_length > 63u ||
+        (uint32_t)offset + label_length > (uint16_t)packet_length ||
+        (uint32_t)offset + label_length > FR_NINA_DNS_HEADER_BYTES + 255u) {
+      return;
+    }
+    offset = (uint16_t)(offset + label_length);
+  }
+  if ((uint32_t)offset + 4u > (uint16_t)packet_length) {
+    return;
+  }
+  qtype = (uint16_t)(((uint16_t)fr_nina_dns.packet[offset] << 8) |
+                     fr_nina_dns.packet[offset + 1u]);
+  if ((qtype != 1u && qtype != 255u) ||
+      fr_nina_dns.packet[offset + 2u] != 0u ||
+      fr_nina_dns.packet[offset + 3u] != 1u) {
+    return;
+  }
+  question_end = (uint16_t)(offset + 4u);
+  fr_nina_dns.packet[2] =
+      (uint8_t)(0x84u | (fr_nina_dns.packet[2] & 0x01u));
+  fr_nina_dns.packet[3] = 0;
+  fr_nina_dns.packet[4] = 0;
+  fr_nina_dns.packet[5] = 1;
+  fr_nina_dns.packet[6] = 0;
+  fr_nina_dns.packet[7] = 1;
+  memset(fr_nina_dns.packet + 8, 0, 4);
+  memcpy(fr_nina_dns.packet + question_end, answer, sizeof(answer));
+  address = WiFi.localIP();
+  for (uint8_t i = 0; i < 4; i++) {
+    fr_nina_dns.packet[question_end + sizeof(answer) + i] = address[i];
+  }
+  response_length = (uint16_t)(question_end + FR_NINA_DNS_ANSWER_BYTES);
+  if (fr_nina_dns.socket.beginPacket(remote, remote_port) == 1 &&
+      fr_nina_dns.socket.write(fr_nina_dns.packet, response_length) ==
+          (size_t)response_length) {
+    (void)fr_nina_dns.socket.endPacket();
+  }
+}
+
+static fr_err_t fr_nina_dns_start(void) {
+  if (fr_nina_dns.socket.begin(FR_NINA_DNS_PORT) == 0) {
+    return FR_ERR_CAPACITY;
+  }
+  fr_nina_dns.active = true;
+  return FR_OK;
+}
+
+static void fr_nina_dns_stop(void) {
+  if (fr_nina_dns.active) {
+    fr_nina_dns.active = false;
+    fr_nina_dns.socket.stop();
+  }
 }
 #endif
 
@@ -362,6 +475,9 @@ GAPClass &GAP = fr_nina_gap;
 extern "C" {
 
 void fr_nina_poll(void) {
+#if FR_FEATURE_NET
+  fr_nina_dns_poll();
+#endif
 #if FR_FEATURE_BLE || FR_FEATURE_NET
   uint32_t now = (uint32_t)millis();
 #endif
@@ -436,7 +552,23 @@ static fr_err_t fr_nina_poll_interrupt(fr_runtime_t *runtime) {
   return fr_runtime_is_interrupted(runtime) ? FR_ERR_INTERRUPTED : FR_OK;
 }
 
-static bool fr_nina_wifi_ready(void) { return WiFi.status() == WL_CONNECTED; }
+static bool fr_nina_wifi_station_ready(void) {
+  return WiFi.status() == WL_CONNECTED;
+}
+
+static bool fr_nina_wifi_ready(void) {
+  uint8_t status = WiFi.status();
+
+  return status == WL_CONNECTED ||
+         (fr_nina_wifi_hosting &&
+          (status == WL_AP_LISTENING || status == WL_AP_CONNECTED));
+}
+
+static void fr_nina_wifi_begin_reconfigure(void) {
+  fr_nina_dns_stop();
+  fr_nina_wifi_hosting = false;
+  (void)WiFi.disconnect();
+}
 
 static fr_err_t fr_nina_credentials_read(fr_nina_credentials_t *out) {
   Preferences preferences;
@@ -502,6 +634,7 @@ fr_err_t fr_platform_wifi_connect(fr_runtime_t *runtime) {
   if (runtime == NULL) {
     return FR_ERR_INVALID;
   }
+  fr_nina_wifi_begin_reconfigure();
   fr_nina_wifi_reconfiguring = true;
   memset(&fr_nina_wifi_active_credentials, 0,
          sizeof(fr_nina_wifi_active_credentials));
@@ -520,7 +653,7 @@ fr_err_t fr_platform_wifi_connect(fr_runtime_t *runtime) {
    * Send it once: repeating begin restarts association before DHCP finishes. */
   int status = fr_nina_wifi_begin(&credentials, FR_NINA_WIFI_CONNECT_SLICE_MS);
   for (;;) {
-    if (status == WL_CONNECTED || fr_nina_wifi_ready()) {
+    if (status == WL_CONNECTED || fr_nina_wifi_station_ready()) {
       err = FR_OK;
       break;
     }
@@ -557,6 +690,82 @@ fr_err_t fr_platform_wifi_ready(bool *out_ready) {
   }
   *out_ready = fr_nina_wifi_ready();
   return FR_OK;
+}
+
+fr_err_t fr_platform_wifi_host(fr_runtime_t *runtime, const char *ssid,
+                               const char *pass) {
+  size_t ssid_length = 0;
+  size_t pass_length = 0;
+  uint32_t started = 0;
+  uint8_t status = WL_IDLE_STATUS;
+  fr_err_t err = FR_OK;
+
+  if (runtime == NULL || ssid == NULL || pass == NULL) {
+    return FR_ERR_INVALID;
+  }
+  ssid_length = strlen(ssid);
+  pass_length = strlen(pass);
+  if (ssid_length == 0 || ssid_length > FR_NINA_WIFI_SSID_MAX ||
+      pass_length > WL_WPA_KEY_MAX_LENGTH ||
+      (pass_length > 0 && pass_length < 8)) {
+    return FR_ERR_DOMAIN;
+  }
+
+  fr_nina_wifi_begin_reconfigure();
+  WiFi.setTimeout(FR_NINA_WIFI_CONNECT_SLICE_MS);
+  started = (uint32_t)millis();
+  status = pass_length == 0 ? WiFi.beginAP(ssid) : WiFi.beginAP(ssid, pass);
+  for (;;) {
+    if (status == WL_AP_LISTENING || status == WL_AP_CONNECTED) {
+      break;
+    }
+    if (status == WL_AP_FAILED || status == WL_NO_MODULE ||
+        status == WL_CONNECT_FAILED || status == WL_CONNECTION_LOST ||
+        status == WL_DISCONNECTED || status == WL_CONNECTED) {
+      err = FR_ERR_IO;
+      break;
+    }
+    err = fr_nina_poll_interrupt(runtime);
+    if (err != FR_OK) {
+      break;
+    }
+    if ((uint32_t)(millis() - started) >= FR_NINA_WIFI_CONNECT_TIMEOUT_MS) {
+      err = FR_ERR_NET_TIMEOUT;
+      break;
+    }
+    delay(FR_NINA_WIFI_STATUS_POLL_MS);
+    status = WiFi.status();
+  }
+  if (err == FR_OK) {
+    err = fr_nina_dns_start();
+  }
+  if (err == FR_OK) {
+    fr_nina_wifi_hosting = true;
+  } else {
+    fr_nina_dns_stop();
+    (void)WiFi.disconnect();
+  }
+  return err;
+}
+
+fr_err_t fr_platform_wifi_ip(char *out, uint16_t capacity) {
+  IPAddress address;
+  int length = 0;
+
+  if (out == NULL || capacity == 0) {
+    return FR_ERR_INVALID;
+  }
+  if (!fr_nina_wifi_ready()) {
+    return FR_ERR_NET_DISCONNECTED;
+  }
+  address = WiFi.localIP();
+  length = snprintf(out, capacity, "%u.%u.%u.%u", (unsigned)address[0],
+                    (unsigned)address[1], (unsigned)address[2],
+                    (unsigned)address[3]);
+  if (length < 0) {
+    return FR_ERR_IO;
+  }
+  return (uint32_t)length >= capacity ? FR_ERR_CAPACITY : FR_OK;
 }
 
 fr_err_t fr_platform_event_wifi_install(fr_event_kind_t kind,
@@ -820,12 +1029,15 @@ static fr_err_t fr_nina_http_read_exact(WiFiClient *client, uint32_t started,
 
 static fr_err_t fr_nina_http_exchange(WiFiClient *client,
                                       const fr_nina_url_t *url,
+                                      bool post, const uint8_t *request_body,
+                                      uint16_t request_length,
                                       uint8_t *out_body, uint16_t capacity,
                                       uint16_t *out_length) {
   char line[FR_NINA_HTTP_LINE_BYTES];
   uint32_t started = (uint32_t)millis();
   uint32_t content_length = 0;
   uint32_t written = 0;
+  uint16_t request_written = 0;
   int status = 0;
   bool content_length_known = false;
   bool chunked = false;
@@ -836,16 +1048,33 @@ static fr_err_t fr_nina_http_exchange(WiFiClient *client,
     return url->tls ? FR_ERR_NET_PROTOCOL : FR_ERR_NET_REFUSED;
   }
 
-  if (client->print("GET ") == 0 ||
+  if (client->print(post ? "POST " : "GET ") == 0 ||
       (url->path[0] == '?' && client->print("/") == 0) ||
       client->print(url->path) == 0 ||
       client->print(" HTTP/1.1\r\nHost: ") == 0 ||
       client->print(url->host) == 0 ||
       ((url->tls ? url->port != 443 : url->port != 80) &&
        (client->print(":") == 0 || client->print(url->port) == 0)) ||
-      client->print("\r\nConnection: close\r\nUser-Agent: Frothy\r\n\r\n") ==
-          0) {
+      client->print("\r\nConnection: close\r\nUser-Agent: Frothy\r\n") == 0 ||
+      (post &&
+       (client->print("Content-Type: text/plain\r\nContent-Length: ") == 0 ||
+        client->print(request_length) == 0 || client->print("\r\n") == 0)) ||
+      client->print("\r\n") == 0) {
     return FR_ERR_NET_REFUSED;
+  }
+  while (request_written < request_length) {
+    uint16_t remaining = (uint16_t)(request_length - request_written);
+    uint16_t chunk = remaining > 256 ? 256 : remaining;
+    size_t sent = client->write(request_body + request_written, chunk);
+
+    if (sent == 0) {
+      return FR_ERR_NET_REFUSED;
+    }
+    request_written = (uint16_t)(request_written + (uint16_t)sent);
+    if ((uint32_t)(millis() - started) >= FR_NINA_HTTP_TIMEOUT_MS) {
+      return FR_ERR_NET_TIMEOUT;
+    }
+    fr_nina_poll();
   }
 
   {
@@ -968,15 +1197,22 @@ static fr_err_t fr_nina_http_exchange(WiFiClient *client,
   return FR_OK;
 }
 
-fr_err_t fr_platform_http_get(const char *url, uint8_t *out_body,
-                              uint16_t capacity, uint16_t *out_length) {
+static fr_err_t fr_nina_http_request(const char *url, bool post,
+                                     const uint8_t *request_body,
+                                     uint16_t request_length,
+                                     uint8_t *out_body, uint16_t capacity,
+                                     uint16_t *out_length) {
   fr_nina_url_t parsed = {};
   IPAddress address;
   WiFiClient client;
   fr_err_t result = FR_OK;
 
-  if (url == NULL || url[0] == '\0' || out_body == NULL || out_length == NULL) {
+  if (url == NULL || (request_body == NULL && request_length > 0) ||
+      out_body == NULL || out_length == NULL) {
     return FR_ERR_INVALID;
+  }
+  if (url[0] == '\0') {
+    return FR_ERR_NET_PROTOCOL;
   }
   *out_length = 0;
   if (!fr_nina_wifi_ready()) {
@@ -987,14 +1223,28 @@ fr_err_t fr_platform_http_get(const char *url, uint8_t *out_body,
     result = FR_ERR_NET_DNS;
   }
   if (result == FR_OK) {
-    result =
-        fr_nina_http_exchange(&client, &parsed, out_body, capacity, out_length);
+    result = fr_nina_http_exchange(&client, &parsed, post, request_body,
+                                   request_length, out_body, capacity,
+                                   out_length);
   }
   client.stop();
   if (result != FR_OK) {
     *out_length = 0;
   }
   return result;
+}
+
+fr_err_t fr_platform_http_get(const char *url, uint8_t *out_body,
+                              uint16_t capacity, uint16_t *out_length) {
+  return fr_nina_http_request(url, false, NULL, 0, out_body, capacity,
+                              out_length);
+}
+
+fr_err_t fr_platform_http_post(const char *url, const uint8_t *body,
+                               uint16_t body_length, uint8_t *out_body,
+                               uint16_t capacity, uint16_t *out_length) {
+  return fr_nina_http_request(url, true, body, body_length, out_body, capacity,
+                              out_length);
 }
 
 static fr_err_t fr_nina_tcp_entry(uint16_t platform_index,
@@ -1010,6 +1260,19 @@ static fr_err_t fr_nina_tcp_entry(uint16_t platform_index,
   return FR_OK;
 }
 
+static fr_err_t fr_nina_tcp_listener_entry(
+    uint16_t platform_index, fr_nina_tcp_listener_t **out_entry) {
+  if (out_entry == NULL) {
+    return FR_ERR_INVALID;
+  }
+  if (platform_index >= FR_TCP_LISTENER_COUNT ||
+      !fr_nina_tcp_listeners[platform_index].in_use) {
+    return FR_ERR_HANDLE;
+  }
+  *out_entry = &fr_nina_tcp_listeners[platform_index];
+  return FR_OK;
+}
+
 static fr_err_t fr_nina_tcp_check_alive(fr_runtime_t *runtime,
                                         uint16_t platform_index) {
   if (runtime == NULL || platform_index >= FR_TCP_HANDLE_COUNT) {
@@ -1020,6 +1283,77 @@ static fr_err_t fr_nina_tcp_check_alive(fr_runtime_t *runtime,
   }
   return runtime->tcp_handles[platform_index].failed ? FR_ERR_NET_DISCONNECTED
                                                      : FR_OK;
+}
+
+fr_err_t fr_platform_tcp_listen(fr_runtime_t *runtime, uint16_t port,
+                                uint16_t *out_platform_index) {
+  uint16_t slot = FR_TCP_LISTENER_COUNT;
+
+  if (runtime == NULL || port == 0 || out_platform_index == NULL) {
+    return FR_ERR_INVALID;
+  }
+  for (uint16_t i = 0; i < FR_TCP_LISTENER_COUNT; i++) {
+    if (!fr_nina_tcp_listeners[i].in_use) {
+      slot = i;
+      continue;
+    }
+    if (fr_nina_tcp_listeners[i].port != port) {
+      return FR_ERR_BUSY;
+    }
+    *out_platform_index = i;
+    return FR_OK;
+  }
+  if (slot == FR_TCP_LISTENER_COUNT) {
+    return FR_ERR_CAPACITY;
+  }
+  fr_nina_tcp_listeners[slot].server.begin(port);
+  if (!fr_nina_tcp_listeners[slot].server) {
+    return FR_ERR_CAPACITY;
+  }
+  fr_nina_tcp_listeners[slot].in_use = true;
+  fr_nina_tcp_listeners[slot].port = port;
+  *out_platform_index = slot;
+  return FR_OK;
+}
+
+fr_err_t fr_platform_tcp_accept(fr_runtime_t *runtime,
+                                uint16_t listener_index,
+                                uint16_t *out_conn_index,
+                                bool *out_accepted) {
+  fr_nina_tcp_listener_t *listener = NULL;
+  WiFiClient client;
+  uint16_t slot = FR_TCP_HANDLE_COUNT;
+
+  if (runtime == NULL || out_conn_index == NULL || out_accepted == NULL) {
+    return FR_ERR_INVALID;
+  }
+  *out_accepted = false;
+  {
+    fr_err_t err = fr_nina_tcp_listener_entry(listener_index, &listener);
+    if (err != FR_OK) {
+      return err;
+    }
+  }
+  client = listener->server.accept();
+  if (!client) {
+    return FR_OK;
+  }
+  for (uint16_t i = 0; i < FR_TCP_HANDLE_COUNT; i++) {
+    if (!fr_nina_tcps[i].in_use) {
+      slot = i;
+      break;
+    }
+  }
+  if (slot == FR_TCP_HANDLE_COUNT) {
+    client.stop();
+    return FR_ERR_CAPACITY;
+  }
+  fr_nina_tcps[slot].client = client;
+  fr_nina_tcps[slot].in_use = true;
+  runtime->tcp_handles[slot].failed = false;
+  *out_conn_index = slot;
+  *out_accepted = true;
+  return FR_OK;
 }
 
 fr_err_t fr_platform_tcp_open(fr_runtime_t *runtime, const char *host,
@@ -1193,6 +1527,21 @@ fr_err_t fr_platform_tcp_close(uint16_t platform_index) {
   }
   entry->client.stop();
   entry->in_use = false;
+  return FR_OK;
+}
+
+fr_err_t fr_platform_tcp_server_close(uint16_t platform_index) {
+  fr_nina_tcp_listener_t *entry = NULL;
+
+  {
+    fr_err_t err = fr_nina_tcp_listener_entry(platform_index, &entry);
+    if (err != FR_OK) {
+      return err;
+    }
+  }
+  entry->server.end();
+  entry->in_use = false;
+  entry->port = 0;
   return FR_OK;
 }
 
