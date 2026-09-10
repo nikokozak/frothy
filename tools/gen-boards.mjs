@@ -137,10 +137,12 @@ export function validateBoard(boardId, board) {
     if (!knownPins.has(name)) fail(boardId, `unknown pin ${name}`);
     requireInteger(boardId, value, `pin ${name}`);
   }
-  for (const name of ["$led_builtin", "$led_active_level"]) {
-    if (!(name in board.pins)) fail(boardId, `pin ${name} is required`);
+  const ledPinCount = ["$led_builtin", "$led_active_level"]
+    .filter((name) => name in board.pins).length;
+  if (ledPinCount !== 0 && ledPinCount !== 2) {
+    fail(boardId, "pins $led_builtin and $led_active_level must be declared together");
   }
-  if (![0, 1].includes(board.pins.$led_active_level)) {
+  if (ledPinCount === 2 && ![0, 1].includes(board.pins.$led_active_level)) {
     fail(boardId, "pin $led_active_level must be 0 or 1");
   }
   const i2cPinCount = ["$sda", "$scl"]
@@ -266,13 +268,15 @@ function renderDefinition(pin) {
     `        .name = "${pin.name}",`,
     "#endif",
     "        .kind = FR_BASE_DEF_LITERAL,",
-    `        .literal_tagged = FR_TAGGED_INT_LITERAL(${pin.macro}),`,
+    `        .literal_tagged = ${pin.literal},`,
     "    },",
   ];
 }
 
 function renderDefinitions(board) {
-  const pins = pinDefinitions.filter(({ name }) => name in board.pins);
+  // Keep the LED slots available to base/core.frothy on boards without an LED.
+  const pins = pinDefinitions.filter(({ name, slot }) =>
+    slot !== undefined || name in board.pins);
   const localPins = pins
     .filter(({ slot }) => slot === undefined)
     .map((pin, index) => ({
@@ -286,6 +290,9 @@ function renderDefinitions(board) {
   const resolvedPins = pins.map((pin) => ({
     ...pin,
     slot: pin.slot ?? slotsByName.get(pin.name),
+    literal: pin.name in board.pins
+      ? `FR_TAGGED_INT_LITERAL(${pin.macro})`
+      : "FR_TAGGED_NIL",
   }));
 
   const lines = [

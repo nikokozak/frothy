@@ -82,6 +82,12 @@ func TestResolveTargetContracts(t *testing.T) {
 			},
 		},
 		{
+			board:     "seeed_xiao_esp32c3",
+			buildKind: "esp-idf",
+			available: []string{"ble", "cells", "i2s", "net", "pwm", "uart"},
+			missing:   map[string]capabilityReason{"dual_core": capabilityHardwareAbsent},
+		},
+		{
 			board:     "seeed_xiao_esp32c6",
 			buildKind: "esp-idf",
 			available: []string{"ble", "cells", "i2s", "net", "pwm", "uart"},

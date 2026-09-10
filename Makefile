@@ -918,6 +918,26 @@ test-seeed-xiao-host-transcript: seeed-xiao-host ## Prove XIAO logical LED level
 	fi; \
 	printf 'XIAO logical LED transcript ok\n'
 
+.PHONY: test-seeed-xiao-esp32c3-host-transcript
+test-seeed-xiao-esp32c3-host-transcript: ## Check the C3 base image and hardware limits on the host.
+	$(MAKE) BOARD=seeed_xiao_esp32c3 TARGET=host \
+		BUILD_DIR=build/seeed_xiao_esp32c3-host artifacts
+	@out=$$(printf '%s\n' \
+		'$$led_builtin' '$$led_active_level' '$$a0' '$$sda' '$$scl' '$$boot_button' \
+		'led.on:' 'see trace.open' '42 + 1' \
+		| build/seeed_xiao_esp32c3-host/frothy.elf); \
+	expected=$$(printf '%s\n' \
+		'boot: Ctrl-C or BOOT skips saved code' \
+		'> nil' 'ok' '> nil' 'ok' '> 2' 'ok' '> 6' 'ok' '> 7' 'ok' '> 9' 'ok' \
+		'> error: wrong type: nil (2)' \
+		'gpio.write argument 1 expects an int, got nil' \
+		'> error: not found (7)' '> 43' 'ok' '> '); \
+	if [ "$$out" != "$$expected" ]; then \
+		printf '%s\nXIAO ESP32C3 transcript did not match\n' "$$out"; \
+		exit 1; \
+	fi; \
+	printf 'XIAO ESP32C3 host transcript ok\n'
+
 frothy-host-command: ## Build the user-facing frothy CLI binary.
 	GOCACHE=$(GO_CACHE) go build -o $(FROTHY_HOST_COMMAND_BINARY) ./cmd/frothy-session
 

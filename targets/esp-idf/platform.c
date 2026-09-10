@@ -4494,6 +4494,14 @@ fr_err_t fr_platform_sleep_deep(uint32_t ms) {
             1ULL << fr_esp_sleep_pending_pin, mode) != ESP_OK) {
       return FR_ERR_IO;
     }
+#elif SOC_GPIO_SUPPORT_DEEPSLEEP_WAKEUP
+    esp_deepsleep_gpio_wake_up_mode_t mode =
+        fr_esp_sleep_pending_level ? ESP_GPIO_WAKEUP_GPIO_HIGH
+                                   : ESP_GPIO_WAKEUP_GPIO_LOW;
+    if (esp_deep_sleep_enable_gpio_wakeup(
+            1ULL << fr_esp_sleep_pending_pin, mode) != ESP_OK) {
+      return FR_ERR_IO;
+    }
 #else
 #error "FR_FEATURE_POWER requires GPIO wake support"
 #endif

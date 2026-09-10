@@ -1,0 +1,5 @@
+# Generated from board.json by tools/gen-boards.mjs. Do not edit.
+BOARD_TARGET := esp-idf
+BOARD_PROFILE := esp32c3_plain
+BOARD_ESP_IDF_TARGET := esp32c3
+BOARD_SOURCES += boards/seeed_xiao_esp32c3/board_defs.c

@@ -58,6 +58,38 @@ Stuck on any step? Run `frothy doctor` — it checks your setup and names the
 fix for each problem it finds. Most first-run snags (no board attached, wrong
 port, ESP-IDF not installed) show up there before anything else does.
 
+The Seeed Studio XIAO ESP32C3 uses its USB Serial/JTAG console:
+
+```sh
+frothy flash seeed_xiao_esp32c3 --port /dev/cu.usbmodem1101
+```
+
+Replace the example port with the board's port. If the board does not appear,
+hold BOOT, press RESET, then release BOOT to enter download mode.
+
+The `esp32c3_plain` profile includes Wi-Fi, BLE, GPIO, ADC, PWM, I2C, UART,
+and pulse output. Trace capture is unavailable because the C3 has no MCPWM
+capture peripheral. Libraries that require two CPU cores are unavailable.
+The profile disables Wi-Fi speed optimizations to leave RAM for Wi-Fi and BLE.
+This reduces Wi-Fi throughput.
+
+Wi-Fi access-point connections can be unstable while BLE is active.
+Call `ble.off:` before `wifi.host:` when the board hosts an access point.
+For simultaneous Wi-Fi and BLE use, prefer Wi-Fi station mode.
+See the [ESP-IDF coexistence limits](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32c3/api-guides/coexist.html).
+Simultaneous Wi-Fi and BLE use leaves little free heap. HTTPS/TLS is unverified.
+Use `mem heap` to check available memory before network operations.
+
+Deep-sleep GPIO wake supports GPIO0 through GPIO5. `$boot_button` cannot wake
+the C3 from deep sleep.
+See the [ESP-IDF sleep modes](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32c3/api-reference/system/sleep_modes.html#gpio-wakeup).
+
+The XIAO ESP32C3 has no programmable LED. `$led_builtin` and
+`$led_active_level` return `nil`; `led.on:` reports a type error.
+Use `blink` with an external LED and its GPIO number. The board defines
+`$a0` as GPIO2, `$sda` as GPIO6, `$scl` as GPIO7, and `$boot_button` as GPIO9.
+See the [Seeed pin map](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/).
+
 The RP2040 boards use Arduino-Pico 4.6.0 instead of ESP-IDF:
 
 ```sh

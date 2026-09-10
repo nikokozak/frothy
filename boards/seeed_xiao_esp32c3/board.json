@@ -1,0 +1,23 @@
+{
+  "name": "Seeed Studio XIAO ESP32C3",
+  "chip": "esp32c3",
+  "target": "esp-idf",
+  "profile": "esp32c3_plain",
+  "console": {
+    "kind": "usb_serial_jtag"
+  },
+  "target_options": {
+    "ESP_IDF_TARGET": "esp32c3"
+  },
+  "cores": 1,
+  "peripherals": ["gpio", "adc", "uart", "pwm", "i2c", "i2s", "net", "ble"],
+  "pins": {
+    "$boot_button": 9,
+    "$a0": 2,
+    "$sda": 6,
+    "$scl": 7,
+    "uart_tx": 21,
+    "uart_rx": 20,
+    "uart_baud": 115200
+  }
+}

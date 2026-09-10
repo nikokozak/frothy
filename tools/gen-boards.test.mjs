@@ -50,3 +50,23 @@ test("board generation protects Make values and stable board slots", () => {
     /FR_SLOT_SDA = FR_SLOT_BOARD_LOCAL_BASE \+ 1/,
   );
 });
+
+test("the XIAO ESP32C3 uses USB serial and has no programmable LED", () => {
+  const board = readBoard("seeed_xiao_esp32c3");
+  assert.equal(board.chip, "esp32c3");
+  assert.equal(board.cores, 1);
+  assert.deepEqual(board.pins, {
+    $boot_button: 9, $a0: 2, $sda: 6, $scl: 7,
+    uart_tx: 21, uart_rx: 20, uart_baud: 115200,
+  });
+  const generated = renderBoard("seeed_xiao_esp32c3", board);
+  assert.match(generated.get("board.h"), /FR_BOARD_CONSOLE_USB_SERIAL_JTAG 1/);
+  assert.doesNotMatch(generated.get("board.h"), /FR_BOARD_LED/);
+  assert.equal(generated.get("board_defs.c").match(/FR_TAGGED_NIL/g).length, 2);
+  assert.match(generated.get("board.mk"), /BOARD_PROFILE := esp32c3_plain/);
+  assert.match(generated.get("board.mk"), /BOARD_ESP_IDF_TARGET := esp32c3/);
+
+  board.pins.$led_builtin = 0;
+  assert.throws(() => validateBoard("seeed_xiao_esp32c3", board),
+    /pins \$led_builtin and \$led_active_level must be declared together/);
+});

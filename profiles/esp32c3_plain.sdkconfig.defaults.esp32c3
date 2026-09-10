@@ -1,0 +1,9 @@
+# esp32c3_plain.sdkconfig.defaults links to the shared esp32_plain defaults.
+# These overrides select the C3's single CPU core and 160 MHz clock.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y
+CONFIG_BT_NIMBLE_PINNED_TO_CORE_1=n
+CONFIG_BT_NIMBLE_PINNED_TO_CORE_0=y
+
+# Keep RAM available for Wi-Fi and BLE at the cost of Wi-Fi throughput.
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n

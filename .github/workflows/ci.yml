@@ -32,6 +32,7 @@ jobs:
       - run: make test-unity
       - run: make test-host-normal-transcript
       - run: make test-esp32-plain-host-transcript
+      - run: make test-seeed-xiao-esp32c3-host-transcript
       - run: make test-lib-e2e
       - run: make examples
       - run: make check-examples-manifest
@@ -56,6 +57,7 @@ jobs:
       matrix:
         board:
           - esp32_devkit_v1
+          - seeed_xiao_esp32c3
           - seeed_xiao_esp32c6
           - seeed_xiao_esp32s3
     steps:
@@ -67,7 +69,7 @@ jobs:
           path: |
             ~/.froth/sdk
             ~/.espressif
-          key: ${{ runner.os }}-esp-idf-v5.5-esp32-esp32c6-esp32s3
+          key: ${{ runner.os }}-esp-idf-v5.5-esp32-esp32c3-esp32c6-esp32s3
 
       - name: Install ESP-IDF
         run: tools/setup-esp-idf.sh
