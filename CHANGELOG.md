@@ -6,6 +6,15 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+## [0.1.21] - 2026-09-10
+
+### Added
+
+- The Seeed Studio XIAO ESP32C3 now has an official board target and firmware bundle.
+  It supports USB serial, GPIO, ADC, PWM, I2C, UART, I2S, Wi-Fi, and BLE.
+  Pulse capture and dual-core libraries are unavailable.
+  Concurrent Wi-Fi access point and BLE connections remain unstable.
+
 ## [0.1.20] - 2026-08-07
 
 ### Added
