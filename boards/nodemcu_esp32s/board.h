@@ -1,0 +1,13 @@
+/* Generated from board.json by tools/gen-boards.mjs. Do not edit. */
+#pragma once
+
+#define FR_BOARD_UART_PORT 0
+#define FR_BOARD_UART_BAUD 115200
+#define FR_BOARD_UART_TX 1
+#define FR_BOARD_UART_RX 3
+#define FR_BOARD_CONSOLE_UART 1
+
+#define FR_BOARD_A0 34u
+#define FR_BOARD_BOOT_BUTTON 0u
+#define FR_BOARD_I2C_SDA 21u
+#define FR_BOARD_I2C_SCL 22u
