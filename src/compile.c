@@ -70,7 +70,7 @@ typedef enum fr_compile_source_feature_t {
   FR_COMPILE_SOURCE_EVENTS,
 } fr_compile_source_feature_t;
 
-/* ponytail: one compile at a time; add per-task workspaces if background
+/* One compile at a time; add per-task workspaces if background
  * compiles ever run concurrently. */
 static fr_compile_overlay_update_t fr_compile_shared_overlay_workspace;
 static bool fr_compile_shared_overlay_workspace_in_use;

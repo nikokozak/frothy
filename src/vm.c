@@ -870,7 +870,7 @@ static fr_err_t fr_vm_run_code_object_depth(fr_runtime_t *runtime,
     return FR_ERR_INVALID;
   }
 
-  /* ponytail: two opcode runners on purpose. The direct runner keeps the
+  /* Two opcode runners serve different storage types. The direct runner keeps the
    * borrowed-pointer hot loop (view->bytes[ip]) untouched so XIP/RAM code pays
    * zero per-op overhead; the reader runner exists only for non-XIP backends
    * that cannot lend a stable pointer. The decision is hoisted here, once per
