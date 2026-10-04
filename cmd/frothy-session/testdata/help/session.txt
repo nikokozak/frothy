@@ -13,7 +13,7 @@ Flags:
   -baud int
     	serial baud rate (default 115200)
   -file string
-	load source lines from a file, applying boot definitions last
+	load source lines from a file, applying boot definitions last, but never after a save
   -port string
     	serial port, for example /dev/cu.usbmodem101
   -records

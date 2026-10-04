@@ -2608,3 +2608,55 @@ func TestRecordsReportRefusedFormAsSourceFailure(t *testing.T) {
 		t.Fatalf("session_error = %v, want code %q", record, recordErrorSourceFailed)
 	}
 }
+
+func TestIsSaveForm(t *testing.T) {
+	tests := []struct {
+		form string
+		want bool
+	}{
+		{form: "save", want: true},
+		{form: "  save:  ", want: true},
+		{form: "save -- keep it", want: true},
+		{form: "save: 1", want: false},
+		{form: "saved", want: false},
+		{form: "to save [ 1 ]", want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.form, func(t *testing.T) {
+			if got := isSaveForm(test.form); got != test.want {
+				t.Fatalf("isSaveForm(%q) = %v, want %v", test.form, got, test.want)
+			}
+		})
+	}
+}
+
+func TestReadFileLinesKeepsBootDefinitionsBeforeSave(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "main.fr")
+	source := strings.Join([]string{
+		"boot is fn [ blink: ]",
+		"blink is fn [ one ]",
+		"save",
+		"later is 2",
+		"boot is fn [ later ]",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	lines, err := readFileLines(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first boot form stays before the save, after the word it calls.
+	// The second boot form follows the save, as the file wrote it.
+	want := []string{
+		"blink is fn [ one ]",
+		"boot is fn [ blink: ]",
+		"save",
+		"later is 2",
+		"boot is fn [ later ]",
+	}
+	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("readFileLines() = %#v, want %#v", lines, want)
+	}
+}

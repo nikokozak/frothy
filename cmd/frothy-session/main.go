@@ -875,22 +875,36 @@ func isBootDefinition(line string) bool {
 	return len(fields) >= 2 && fields[0] == "boot" && fields[1] == "is"
 }
 
+// isSaveForm reports whether a form is the bare word `save` or `save:`.
+func isSaveForm(form string) bool {
+	inBlockComment := false
+	fields := strings.Fields(stripFrothyComments(form, &inBlockComment))
+	return len(fields) == 1 && (fields[0] == "save" || fields[0] == "save:")
+}
+
+// sourceFormsFromText splits text into forms and moves each `boot is` form
+// after the forms around it, so a file may call words it defines further down.
+// A boot form never moves past a `save`: the save must store it.
 func sourceFormsFromText(text string) ([]string, error) {
 	forms, err := collectSourceForms(strings.NewReader(text))
 	if err != nil {
 		return nil, err
 	}
 
-	var nonBoot []string
+	var ordered []string
 	var boot []string
 	for _, form := range forms {
-		if isBootDefinition(form) {
+		switch {
+		case isBootDefinition(form):
 			boot = append(boot, form)
-		} else {
-			nonBoot = append(nonBoot, form)
+		case isSaveForm(form):
+			ordered = append(append(ordered, boot...), form)
+			boot = nil
+		default:
+			ordered = append(ordered, form)
 		}
 	}
-	return append(nonBoot, boot...), nil
+	return append(ordered, boot...), nil
 }
 
 func readFileLines(path string) ([]string, error) {
@@ -2453,7 +2467,7 @@ func runSessionMain() int {
 	var (
 		port       = flag.String("port", "", "serial port, for example /dev/cu.usbmodem101")
 		baud       = flag.Int("baud", 115200, "serial baud rate")
-		filePath   = flag.String("file", "", "load source lines from a file, applying boot definitions last")
+		filePath   = flag.String("file", "", "load source lines from a file, applying boot definitions last, but never after a save")
 		records    = flag.Bool("records", false, "emit NDJSON session records on stdout")
 		transcript = flag.String("transcript", "", "write NDJSON session records to a file; requires --records")
 		replay     = flag.String("replay", "", "replay accepted source from an NDJSON record transcript")
