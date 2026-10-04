@@ -1449,11 +1449,12 @@ func runSerial(input io.Reader, output io.Writer, dev sessionDevice, timeout tim
 	if err != nil {
 		return err
 	}
-	return runSerialWithInterrupts(input, output, dev, timeout, nil, true)
+	return runSerialWithInterrupts(input, output, dev, timeout, nil, true, 0)
 }
 
-func runSerialWithInterrupts(input io.Reader, output io.Writer, dev sessionDevice, timeout time.Duration, interrupts *interruptTracker, failOnDeviceError bool) error {
+func runSerialWithInterrupts(input io.Reader, output io.Writer, dev sessionDevice, timeout time.Duration, interrupts *interruptTracker, failOnDeviceError bool, formTotal int) error {
 	reader := newSessionSourceFormReader(input)
+	sent := 0
 	for {
 		read, ok, err := reader.next(output, interrupts)
 		if err != nil {
@@ -1465,6 +1466,7 @@ func runSerialWithInterrupts(input io.Reader, output io.Writer, dev sessionDevic
 		if read.sourceBlockEnd {
 			continue
 		}
+		sent++
 
 		interrupted := false
 		promptSeen := false
@@ -1497,9 +1499,33 @@ func runSerialWithInterrupts(input io.Reader, output io.Writer, dev sessionDevic
 			continue
 		}
 		if failOnDeviceError && !responseSettledAfterInterrupt(response) {
-			return fmt.Errorf("device returned %s", responseStatus(response))
+			return deviceResponseError(response, sent, formTotal, read.source)
 		}
 	}
+}
+
+// deviceResponseError reports a device error. In a file send (formTotal > 0)
+// it names the form by its place in the send order, which can differ from the
+// file order, gives the first line of the form, and repeats the device's lines
+// from the error on. It gives no advice: the failed form can have changed
+// device state.
+func deviceResponseError(response string, sent int, formTotal int, source string) error {
+	status := responseStatus(response)
+	if formTotal == 0 {
+		return fmt.Errorf("device returned %s", status)
+	}
+	head, _, _ := strings.Cut(source, "\n")
+	// The first line equal to the status is the line that responseStatus
+	// chose. With no such line, the status came from the first line.
+	lines := strings.Split(strings.TrimRight(normalizeResponseText(response), "\n"), "\n")
+	for i, line := range lines {
+		if line == status {
+			lines = lines[i:]
+			break
+		}
+	}
+	return fmt.Errorf("form %d of %d (as sent): %s\n%s", sent, formTotal, head,
+		strings.Join(lines, "\n"))
 }
 
 func handleSignalInterrupt(response string) error {
@@ -1509,12 +1535,13 @@ func handleSignalInterrupt(response string) error {
 	return nil
 }
 
-func runSerialRecords(input io.Reader, records *recordWriter, dev sessionDevice, timeout time.Duration, interrupts *interruptTracker, failOnDeviceError bool) error {
+func runSerialRecords(input io.Reader, records *recordWriter, dev sessionDevice, timeout time.Duration, interrupts *interruptTracker, failOnDeviceError bool, formTotal int) error {
 	if interrupts == nil {
 		return errors.New("record session requires interrupt tracker")
 	}
 
 	reader := newSessionSourceFormReader(input)
+	sent := 0
 	for {
 		read, ok, err := reader.next(nil, interrupts)
 		if err != nil {
@@ -1534,6 +1561,7 @@ func runSerialRecords(input io.Reader, records *recordWriter, dev sessionDevice,
 		if err := records.send(read.source); err != nil {
 			return err
 		}
+		sent++
 
 		interrupted := false
 		promptSeen := false
@@ -1569,7 +1597,7 @@ func runSerialRecords(input io.Reader, records *recordWriter, dev sessionDevice,
 			return err
 		}
 		if failOnDeviceError && !responseOK(response) {
-			err := fmt.Errorf("device returned %s", responseStatus(response))
+			err := deviceResponseError(response, sent, formTotal, read.source)
 			_ = records.sessionError(recordStateError, recordErrorSourceFailed, err.Error())
 			return err
 		}
@@ -2566,14 +2594,14 @@ func runSessionMain() int {
 			fmt.Fprintf(os.Stderr, "records: %v\n", err)
 			os.Exit(1)
 		}
-		if err := runSerialRecords(input, recordOutput, dev, *timeout, tracker, failOnDeviceError); err != nil {
+		if err := runSerialRecords(input, recordOutput, dev, *timeout, tracker, failOnDeviceError, len(fileForms)); err != nil {
 			fmt.Fprintf(os.Stderr, "session: %v\n", err)
 			os.Exit(1)
 		}
 		return 0
 	}
 
-	if err := runSerialWithInterrupts(input, os.Stdout, dev, *timeout, tracker, failOnDeviceError); err != nil {
+	if err := runSerialWithInterrupts(input, os.Stdout, dev, *timeout, tracker, failOnDeviceError, len(fileForms)); err != nil {
 		fmt.Fprintf(os.Stderr, "session: %v\n", err)
 		os.Exit(1)
 	}

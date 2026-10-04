@@ -1746,7 +1746,7 @@ func TestSerialSignalInterruptUsesTracker(t *testing.T) {
 	}
 	var out strings.Builder
 
-	err := runSerialWithInterrupts(strings.NewReader("forever [ 1 ]\nblink:\n"), &out, dev, time.Second, tracker, false)
+	err := runSerialWithInterrupts(strings.NewReader("forever [ 1 ]\nblink:\n"), &out, dev, time.Second, tracker, false, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1782,7 +1782,7 @@ func TestSerialFileInterruptContinues(t *testing.T) {
 			}
 			var out strings.Builder
 
-			err := runSerialWithInterrupts(strings.NewReader("forever [ 1 ]\nblink:\n"), &out, dev, time.Second, tracker, true)
+			err := runSerialWithInterrupts(strings.NewReader("forever [ 1 ]\nblink:\n"), &out, dev, time.Second, tracker, true, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1885,7 +1885,7 @@ func runRecordsTestSession(t *testing.T, input io.Reader, output io.Writer, dev 
 	if err := records.status(status); err != nil {
 		t.Fatal(err)
 	}
-	return runSerialRecords(input, records, dev, timeout, tracker, false)
+	return runSerialRecords(input, records, dev, timeout, tracker, false, 0)
 }
 
 func TestOpenRecordOutputWritesTranscriptCopy(t *testing.T) {
@@ -2375,7 +2375,7 @@ func TestRecordsFileStopsOnDeviceError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = runSerialRecords(strings.NewReader("ok\n2 + 2\n"), records, dev, time.Second, &interruptTracker{}, true)
+	err = runSerialRecords(strings.NewReader("ok\n2 + 2\n"), records, dev, time.Second, &interruptTracker{}, true, 0)
 	if err == nil || err.Error() != "device returned error: not found (7)" {
 		t.Fatalf("error = %v, want device response error", err)
 	}
@@ -2462,7 +2462,7 @@ func TestRecordsFileInterruptContinues(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = runSerialRecords(strings.NewReader("forever [ 1 ]\nblink:\n"), writer, dev, time.Second, tracker, true)
+			err = runSerialRecords(strings.NewReader("forever [ 1 ]\nblink:\n"), writer, dev, time.Second, tracker, true, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2658,5 +2658,57 @@ func TestReadFileLinesKeepsBootDefinitionsBeforeSave(t *testing.T) {
 	}
 	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("readFileLines() = %#v, want %#v", lines, want)
+	}
+}
+
+// fileFormsWithMovedBoot gives five forms. The boot form moves last, so the
+// failing form is third as sent but fourth in the file.
+func fileFormsWithMovedBoot(t *testing.T) []string {
+	t.Helper()
+	forms, err := sourceFormsFromText("boot is fn [ blink: ]\na is 1\nb is 2\nto fail [\n  1 / 0\n]\nc is 3\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return forms
+}
+
+const failedFormResponse = "error: capacity exceeded (4)\nnote: pending code is full (limit 687 bytes) -- a save that succeeds frees it\n"
+
+const failedFormReport = "form 3 of 5 (as sent): to fail [\n" +
+	"error: capacity exceeded (4)\nnote: pending code is full (limit 687 bytes) -- a save that succeeds frees it"
+
+func TestFileSendNamesTheFailedForm(t *testing.T) {
+	forms := fileFormsWithMovedBoot(t)
+	dev := &fakeDevice{responses: []string{"ok\n", "ok\n", "printed error: capacity exceeded (4) example\n> error: capacity exceeded (4)\n" + failedFormResponse, "ok\n", "ok\n"}}
+	var out bytes.Buffer
+
+	err := runSerialWithInterrupts(readerFromLines(forms), &out, dev, time.Second, nil, true, len(forms))
+	if err == nil || err.Error() != failedFormReport {
+		t.Fatalf("error = %v, want %q", err, failedFormReport)
+	}
+	if len(dev.sent) != 3 {
+		t.Fatalf("sent %q, want no form after the third", dev.sent)
+	}
+	if !strings.Contains(out.String(), failedFormResponse) {
+		t.Fatalf("output %q does not show the device response", out.String())
+	}
+}
+
+func TestRecordsFileSendNamesTheFailedForm(t *testing.T) {
+	forms := fileFormsWithMovedBoot(t)
+	dev := &fakeDevice{responses: []string{"ok\n", "ok\n", failedFormResponse, "ok\n", "ok\n"}}
+	var out strings.Builder
+	records := newRecordWriter(&out, "s1")
+
+	err := runSerialRecords(readerFromLines(forms), records, dev, time.Second, &interruptTracker{}, true, len(forms))
+	if err == nil || err.Error() != failedFormReport {
+		t.Fatalf("error = %v, want %q", err, failedFormReport)
+	}
+	if len(dev.sent) != 3 {
+		t.Fatalf("sent %q, want no form after the third", dev.sent)
+	}
+	sessionError := recordWithKind(decodeRecords(t, out.String()), "session_error")
+	if sessionError["code"] != "source_failed" || sessionError["message"] != failedFormReport {
+		t.Fatalf("session_error record = %#v", sessionError)
 	}
 }
