@@ -442,3 +442,26 @@ func TestConnectControllerIdleFireRedraws(t *testing.T) {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 }
+
+func TestConnectControllerRefusesFormLongerThanDeviceLine(t *testing.T) {
+	var out bytes.Buffer
+	var sent [][]byte
+	c := newConnectController(&out, func(b []byte) error {
+		sent = append(sent, b)
+		return nil
+	})
+	c.terminal = false
+	c.lineBytes = 511
+	c.writePrompt()
+	c.onInput(inputPrintable{Bytes: []byte(strings.Repeat("x", 600))})
+	c.onInput(inputSubmit{})
+	if len(sent) != 0 {
+		t.Fatalf("sent %d writes, want none", len(sent))
+	}
+	if !strings.Contains(out.String(), "the device reads at most 511 bytes in one line") {
+		t.Fatalf("output %q does not show the refusal", out.String())
+	}
+	if c.awaitingPrompt {
+		t.Fatal("controller waits for a device prompt after a refused form")
+	}
+}

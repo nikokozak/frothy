@@ -103,6 +103,15 @@ func runInstallCommand(args []string, stdout io.Writer, stderr io.Writer, list p
 		fmt.Fprintf(stderr, "install: %v\n", err)
 		return 1
 	}
+	status, err := readDeviceStatus(dev, timeout)
+	if err != nil {
+		fmt.Fprintf(stderr, "install: %v\n", err)
+		return 1
+	}
+	if err := checkFormsFit(lines, int(status.lineBytes)); err != nil {
+		fmt.Fprintf(stderr, "install: %v\n", err)
+		return 1
+	}
 
 	response, err := dev.sendLine("install-library", timeout, nil)
 	if err != nil {

@@ -125,6 +125,7 @@ func runConnectInteractiveBase(dev *serialDevice, stdin io.Reader, stdout io.Wri
 	go runSerialEventPump(dev.readCh, dev.errCh, devices, stop)
 
 	c := newConnectController(stdout, dev.writeBytes)
+	c.lineBytes = dev.lineBytes
 	c.terminal = terminal
 	c.sendInterrupt = dev.sendInterrupt
 	if hist.enabled {
@@ -144,6 +145,7 @@ type connectController struct {
 	sendInterrupt          func() error
 	now                    func() time.Time
 	terminal               bool
+	lineBytes              int // the device's line limit; zero checks nothing
 	historyOn              bool
 	history                []string
 	histIdx                int // -1 = editing current line; >=0 = replayed entry index
@@ -350,6 +352,11 @@ func (c *connectController) onInput(ev inputEvent) (exit bool, code int) {
 		if source, complete := c.form.appendLine(line); complete {
 			if c.historyOn && !strings.ContainsAny(source, "\r\n") {
 				c.history = appendHistory(c.history, source)
+			}
+			if err := checkFormsFit([]string{source}, c.lineBytes); err != nil {
+				fmt.Fprintf(c.out, "connect: %v%s", err, c.lineBreak())
+				c.writePrompt()
+				return false, 0
 			}
 			sent := []byte(wireRequest(source) + "\n")
 			if err := c.sendLine(sent); err == nil {

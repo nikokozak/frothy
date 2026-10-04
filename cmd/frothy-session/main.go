@@ -42,6 +42,9 @@ type deviceStatus struct {
 	intMin      int64
 	intMax      int64
 	applyBytes  uint16
+	// lineBytes is the longest request line, in bytes without the LF, that the
+	// device reads. Zero means the firmware does not report it.
+	lineBytes uint16
 }
 
 var errPromptTimeout = errors.New("timed out waiting for prompt")
@@ -61,6 +64,9 @@ type serialDevice struct {
 	readCh  chan byte
 	errCh   chan error
 	writeMu sync.Mutex
+	// lineBytes comes from the last successful status read; zero means the
+	// device did not report a limit, and sendLine checks nothing.
+	lineBytes int
 }
 
 func configureSerial(file *os.File, baud int) error {
@@ -178,6 +184,9 @@ func (d *serialDevice) readUntilPrompt(timeout time.Duration, requireStatus bool
 }
 
 func (d *serialDevice) sendLine(line string, timeout time.Duration, promptSeen func()) (string, error) {
+	if err := checkFormsFit([]string{line}, d.lineBytes); err != nil {
+		return "", err
+	}
 	if err := d.writeBytes([]byte(wireRequest(line) + "\n")); err != nil {
 		return "", err
 	}
@@ -205,6 +214,34 @@ func wireRequest(source string) string {
 		}
 	}
 	return request.String()
+}
+
+// errFormTooLong means a source form needs more wire bytes than the device
+// reads in one line. The host does not send it.
+type errFormTooLong struct {
+	head      string
+	wireBytes int
+	limit     int
+}
+
+func (e errFormTooLong) Error() string {
+	return fmt.Sprintf("form %q is %d bytes on the wire; the device reads at most %d bytes in one line",
+		e.head, e.wireBytes, e.limit)
+}
+
+// checkFormsFit returns the first form whose wire line is longer than limit.
+// A limit of zero means the device did not report one.
+func checkFormsFit(forms []string, limit int) error {
+	if limit <= 0 {
+		return nil
+	}
+	for _, form := range forms {
+		if n := len(wireRequest(form)); n > limit {
+			head, _, _ := strings.Cut(form, "\n")
+			return errFormTooLong{head: head, wireBytes: n, limit: limit}
+		}
+	}
+	return nil
 }
 
 func sourceNeedsEnvelope(source string) bool {
@@ -409,6 +446,13 @@ func parseDeviceStatus(response string) (deviceStatus, error) {
 		if err != nil {
 			return deviceStatus{}, err
 		}
+		lineBytes := uint16(0) // firmware before v0.1.22 does not report it
+		if values["line_bytes"] != "" {
+			lineBytes, err = parseUint16Field(values, "line_bytes")
+			if err != nil {
+				return deviceStatus{}, err
+			}
+		}
 		wordSize, err := parseUint16Field(values, "word_size")
 		if err != nil {
 			return deviceStatus{}, err
@@ -433,6 +477,7 @@ func parseDeviceStatus(response string) (deviceStatus, error) {
 			intMin:      intMin,
 			intMax:      intMax,
 			applyBytes:  applyBytes,
+			lineBytes:   lineBytes,
 		}
 		if status.profile == "" || status.profile == "unknown" {
 			return deviceStatus{}, errors.New("status missing profile")
@@ -1493,6 +1538,11 @@ func runSerialRecords(input io.Reader, records *recordWriter, dev sessionDevice,
 				}
 				continue
 			}
+			var tooLong errFormTooLong
+			if errors.As(err, &tooLong) {
+				_ = records.sessionError(recordStateError, recordErrorSourceFailed, err.Error())
+				return err
+			}
 			return handleRecordDeviceError(records, err)
 		}
 		if interrupted || responseStatus(response) == deviceInterruptedStatus {
@@ -2422,6 +2472,7 @@ func runSessionMain() int {
 	}
 
 	input := io.Reader(os.Stdin)
+	var fileForms []string
 	if *replay != "" {
 		lines, err := readReplayLines(*replay)
 		if err != nil {
@@ -2435,6 +2486,7 @@ func runSessionMain() int {
 			fmt.Fprintf(os.Stderr, "file: %v\n", err)
 			os.Exit(1)
 		}
+		fileForms = lines
 		input = readerFromLines(lines)
 	}
 
@@ -2481,6 +2533,16 @@ func runSessionMain() int {
 			_ = recordOutput.sessionError(recordStateError, recordErrorStatusFailed, err.Error())
 		}
 		fmt.Fprintf(os.Stderr, "status: device silent or wedged; %s: %v\n", wipeRecoveryHint(chosen), err)
+		os.Exit(1)
+	}
+	dev.lineBytes = int(status.lineBytes)
+	// Check every form before the first send, so that a file that cannot fit
+	// leaves the device as it was instead of half loaded.
+	if err := checkFormsFit(fileForms, dev.lineBytes); err != nil {
+		if recordOutput != nil {
+			_ = recordOutput.sessionError(recordStateError, recordErrorSourceFailed, err.Error())
+		}
+		fmt.Fprintf(os.Stderr, "file: %v\n", err)
 		os.Exit(1)
 	}
 

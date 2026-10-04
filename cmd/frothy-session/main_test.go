@@ -2518,3 +2518,93 @@ func TestRecordsUnsettledSignalInterruptFails(t *testing.T) {
 		t.Fatalf("session_error record = %#v", sessionError)
 	}
 }
+
+func TestParseDeviceStatusLineBytes(t *testing.T) {
+	status, err := parseDeviceStatus(statusResponse32("device"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.lineBytes != 0 {
+		t.Fatalf("lineBytes = %d for firmware that does not report it, want 0", status.lineBytes)
+	}
+
+	reported := strings.Replace(statusResponse32("device"), "apply_bytes=128",
+		"apply_bytes=128 line_bytes=511", 1)
+	status, err = parseDeviceStatus(reported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.lineBytes != 511 {
+		t.Fatalf("lineBytes = %d, want 511", status.lineBytes)
+	}
+}
+
+func TestCheckFormsFit(t *testing.T) {
+	short := "led is $led_builtin"
+	long := "to blinky [\n" + strings.Repeat("  led.on:\n", 60) + "]"
+
+	if err := checkFormsFit([]string{short, long}, 0); err != nil {
+		t.Fatalf("limit 0 means unknown, got %v", err)
+	}
+	if err := checkFormsFit([]string{short}, 511); err != nil {
+		t.Fatalf("short form: %v", err)
+	}
+	err := checkFormsFit([]string{short, long}, 511)
+	var tooLong errFormTooLong
+	if !errors.As(err, &tooLong) {
+		t.Fatalf("err = %v, want errFormTooLong", err)
+	}
+	if tooLong.head != "to blinky [" || tooLong.limit != 511 ||
+		tooLong.wireBytes != len(wireRequest(long)) {
+		t.Fatalf("tooLong = %+v", tooLong)
+	}
+	if !strings.Contains(err.Error(), "to blinky [") || !strings.Contains(err.Error(), "511") {
+		t.Fatalf("message %q does not name the form and the limit", err.Error())
+	}
+}
+
+// A form longer than the device line never reaches the wire; firmware that
+// reports no limit gets the form as before.
+func TestSendLineRefusesFormLongerThanDeviceLine(t *testing.T) {
+	long := "to longword with p [\n" + strings.Repeat("  gpio.write: p, 1\n", 40) + "]"
+	for _, tc := range []struct {
+		limit   int
+		refused bool
+	}{{limit: 511, refused: true}, {limit: 0, refused: false}} {
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		dev := &serialDevice{file: w, lineBytes: tc.limit}
+		_, sendErr := dev.sendLine(long, 10*time.Millisecond, nil)
+		w.Close()
+		written, _ := io.ReadAll(r)
+		r.Close()
+		var tooLong errFormTooLong
+		if tc.refused {
+			if !errors.As(sendErr, &tooLong) || len(written) != 0 {
+				t.Fatalf("limit %d: err = %v, wrote %d bytes; want errFormTooLong and no bytes", tc.limit, sendErr, len(written))
+			}
+		} else if len(written) != len(wireRequest(long))+1 {
+			t.Fatalf("limit %d: wrote %d bytes, want the whole form", tc.limit, len(written))
+		}
+	}
+}
+
+// A form that the host refuses is a source failure, not a lost device.
+func TestRecordsReportRefusedFormAsSourceFailure(t *testing.T) {
+	tooLong := errFormTooLong{head: "to longword [", wireBytes: 763, limit: 511}
+	dev := &fakeDevice{
+		responses:    []string{statusResponse32("device"), ""},
+		responseErrs: []error{nil, tooLong},
+	}
+	var output strings.Builder
+	err := runRecordsTestSession(t, strings.NewReader("to longword [ 1 ]\n"), &output, dev, time.Second, &interruptTracker{})
+	if !errors.As(err, &tooLong) {
+		t.Fatalf("err = %v, want errFormTooLong", err)
+	}
+	record := recordWithKind(decodeRecords(t, output.String()), "session_error")
+	if record == nil || record["code"] != recordErrorSourceFailed {
+		t.Fatalf("session_error = %v, want code %q", record, recordErrorSourceFailed)
+	}
+}
