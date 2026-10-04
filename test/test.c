@@ -17356,6 +17356,59 @@ static void test_repl_capacity_notes(void) {
 #endif
   (void)fr_platform_persist_clear();
 #endif
+#if FR_FEATURE_BYTES && FR_FEATURE_TEXT
+  /* Two 2,048-byte copies and their join need more than the arena. */
+  snprintf(expected, sizeof(expected),
+           "note: Bytes arena is full (limit %u bytes)\n",
+           (unsigned)FR_PROFILE_BYTES_ARENA_BYTES);
+  CHECK("capacity notes install for Bytes",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime, "t is \"x\"", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime,
+                              "repeat 11 [ set t to text.concat: t, t ]", out,
+                              sizeof(out)) == FR_OK);
+  CHECK("Bytes arena full names the store and its limit",
+        fr_repl_eval_line(&runtime,
+                          "bytes.length: (bytes.concat: (bytes.from-text: t), "
+                          "(bytes.from-text: t))",
+                          out, sizeof(out)) == FR_ERR_CAPACITY &&
+            strstr(out, expected) != NULL);
+
+  /* An entry retires at its last generation, so many short uses fill the
+     table. */
+  snprintf(expected, sizeof(expected),
+           "note: Bytes table is full (limit %u)\n",
+           (unsigned)FR_PROFILE_BYTES_COUNT);
+  CHECK("Bytes table full names the store and its limit",
+        fr_repl_eval_line(&runtime,
+                          "repeat 2000 [ bytes.length: (bytes.from-int: 1) ]",
+                          out, sizeof(out)) == FR_ERR_CAPACITY &&
+            strstr(out, expected) != NULL);
+#endif
+
+#if FR_FEATURE_PAD
+  char line_buffer[64];
+
+  CHECK("capacity notes install for PAD",
+        fr_base_image_install(&runtime) == FR_OK);
+  snprintf(expected, sizeof(expected),
+           "note: PAD is full (limit %u bytes) -- pad.reset empties it\n",
+           (unsigned)FR_PROFILE_PAD_BYTES);
+  snprintf(line_buffer, sizeof(line_buffer),
+           "repeat %u [ pad.emit-byte: 65 ]",
+           (unsigned)(FR_PROFILE_PAD_BYTES + 1u));
+  CHECK("PAD full names the store and its limit",
+        fr_repl_eval_line(&runtime, line_buffer, out, sizeof(out)) ==
+                FR_ERR_CAPACITY &&
+            strstr(out, expected) != NULL);
+  snprintf(line_buffer, sizeof(line_buffer),
+           "repeat %u [ pad.emit-byte: 65 ]", (unsigned)FR_PROFILE_PAD_BYTES);
+  CHECK("pad.reset empties PAD, as the note says",
+        fr_repl_eval_line(&runtime, "pad.reset:", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, line_buffer, out, sizeof(out)) ==
+                FR_OK);
+#endif
 }
 
 /* A reader who types a comment gets an answer that names no mistake. Raw

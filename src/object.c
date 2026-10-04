@@ -1603,6 +1603,9 @@ fr_err_t fr_bytes_install(fr_runtime_t *runtime, const uint8_t *bytes,
   }
   if ((uint32_t)runtime->bytes.arena_used + length >
       FR_PROFILE_BYTES_ARENA_BYTES) {
+    fr_diag_note_capacity(runtime->diag, "Bytes arena",
+                          FR_PROFILE_BYTES_ARENA_BYTES, FR_DIAG_UNIT_BYTES,
+                          NULL);
     return FR_ERR_CAPACITY;
   }
 
@@ -1630,6 +1633,8 @@ fr_err_t fr_bytes_install(fr_runtime_t *runtime, const uint8_t *bytes,
     fr_bytes_ref_t ref = {.id = i, .generation = entry->generation};
     return fr_tagged_encode_bytes_ref(ref, out_tagged);
   }
+  fr_diag_note_capacity(runtime->diag, "Bytes table", FR_PROFILE_BYTES_COUNT,
+                        FR_DIAG_UNIT_COUNT, NULL);
   return FR_ERR_CAPACITY;
 #else
   (void)runtime;

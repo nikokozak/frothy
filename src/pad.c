@@ -17,6 +17,8 @@ fr_err_t fr_pad_emit_byte(fr_runtime_t *runtime, uint8_t byte) {
     return FR_ERR_INVALID;
   }
   if (runtime->pad.length >= FR_PROFILE_PAD_BYTES) {
+    fr_diag_note_capacity(runtime->diag, "PAD", FR_PROFILE_PAD_BYTES,
+                          FR_DIAG_UNIT_BYTES, "pad.reset empties it");
     return FR_ERR_CAPACITY;
   }
 
