@@ -17496,6 +17496,85 @@ static void test_repl_capacity_notes(void) {
                                 sizeof(out)) == FR_OK &&
               strcmp(out, expected) == 0);
   }
+
+#if FR_FEATURE_EVENTS
+  CHECK("capacity notes install for the event table",
+        fr_base_image_install(&runtime) == FR_OK);
+  for (uint16_t i = 0; i < FR_EVENT_BINDING_COUNT; i++) {
+    CHECK("event table fills",
+          fr_event_register(&runtime, FR_EVENT_KIND_GPIO_RISING,
+                            (uint16_t)(20 + i), 0, 1) == FR_OK);
+  }
+  snprintf(expected, sizeof(expected),
+           "note: event table is full (limit %u)\n",
+           (unsigned)FR_EVENT_BINDING_COUNT);
+  CHECK("a full event table names the store and its limit",
+        fr_repl_eval_line(&runtime, "tick is fn [ every 1000 [ 1 ] ]", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "tick:", out, sizeof(out)) ==
+                FR_ERR_CAPACITY &&
+            strstr(out, expected) != NULL);
+  CHECK("event table test clears its bindings",
+        fr_runtime_clear_project(&runtime) == FR_OK);
+#endif
+
+#if FR_FEATURE_HANDLES && FR_FEATURE_UART
+  {
+    fr_handle_ref_t ref = {0};
+    fr_tagged_t handle = 0;
+
+    CHECK("capacity notes install for the handle table",
+          fr_base_image_install(&runtime) == FR_OK);
+    for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
+      CHECK("handle table fills",
+            fr_handle_reserve(&runtime, FR_TEST_SYNTHETIC_HANDLE_KIND, &ref,
+                              &handle) == FR_OK);
+    }
+    snprintf(expected, sizeof(expected),
+             "note: handle table is full (limit %u)\n",
+             (unsigned)FR_PROFILE_MAX_HANDLES);
+    CHECK("a full handle table names the store and its limit",
+          fr_repl_eval_line(&runtime, "u is uart.open: 0, $baud_9600", out,
+                            sizeof(out)) == FR_ERR_CAPACITY &&
+              strstr(out, expected) != NULL);
+  }
+#endif
+
+  {
+    static const fr_image_native_t natives[FR_PROFILE_NATIVE_TABLE_SIZE];
+    fr_diagnostic_t diag = {0};
+    fr_native_id_t native_id = 0;
+
+    /* Natives are added at startup, from the base image, the libraries and
+     * image updates; no line at the prompt adds one. */
+    CHECK("capacity notes install for the native table",
+          fr_base_image_install(&runtime) == FR_OK);
+    runtime.diag = &diag;
+    err = fr_overlay_apply(
+        &runtime,
+        &(const fr_overlay_update_t){
+            .natives = natives,
+            .native_count = (uint16_t)(FR_PROFILE_NATIVE_TABLE_SIZE -
+                                       runtime.natives.count + 1u),
+        });
+    CHECK("an update with too many natives names the native table",
+          err == FR_ERR_CAPACITY && diag.kind == FR_DIAG_LIMIT &&
+              diag.context_name != NULL &&
+              strcmp(diag.context_name, "native table") == 0 &&
+              diag.expected == FR_PROFILE_NATIVE_TABLE_SIZE &&
+              diag.unit == FR_DIAG_UNIT_COUNT && diag.note == NULL);
+    diag = (fr_diagnostic_t){0};
+    do {
+      err = fr_native_install(&runtime, test_native_one, 0, NULL, &native_id);
+    } while (err == FR_OK);
+    CHECK("a full native table names the store and its limit",
+          err == FR_ERR_CAPACITY && diag.kind == FR_DIAG_LIMIT &&
+              diag.context_name != NULL &&
+              strcmp(diag.context_name, "native table") == 0 &&
+              diag.expected == FR_PROFILE_NATIVE_TABLE_SIZE &&
+              diag.unit == FR_DIAG_UNIT_COUNT && diag.note == NULL);
+    runtime.diag = NULL;
+  }
 }
 
 /* A reader who types a comment gets an answer that names no mistake. Raw

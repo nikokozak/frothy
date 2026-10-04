@@ -188,6 +188,8 @@ fr_err_t fr_handle_reserve(fr_runtime_t *runtime, fr_handle_kind_t kind,
     FR_TRY(fr_tagged_encode_handle_ref(*out_ref, out_tagged));
     return FR_OK;
   }
+  fr_diag_note_capacity(runtime->diag, "handle table", FR_PROFILE_MAX_HANDLES,
+                        FR_DIAG_UNIT_COUNT, NULL);
   return FR_ERR_CAPACITY;
 #else
   (void)runtime;

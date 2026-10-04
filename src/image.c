@@ -650,6 +650,9 @@ static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
   }
   if ((uint32_t)runtime->natives.count + records->native_count >
       FR_PROFILE_NATIVE_TABLE_SIZE) {
+    fr_diag_note_capacity(runtime->diag, "native table",
+                          FR_PROFILE_NATIVE_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
+                          NULL);
     return FR_ERR_CAPACITY;
   }
 

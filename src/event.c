@@ -124,6 +124,8 @@ fr_err_t fr_event_register(fr_runtime_t *runtime, fr_event_kind_t kind,
     }
   }
   if (target == FR_EVENT_BINDING_COUNT) {
+    fr_diag_note_capacity(runtime->diag, "event table", FR_EVENT_BINDING_COUNT,
+                          FR_DIAG_UNIT_COUNT, NULL);
     return FR_ERR_CAPACITY;
   }
 
