@@ -16743,13 +16743,13 @@ static void test_repl_see_source_form(void) {
   CHECK("see source while",
         fr_base_image_install(&runtime) == FR_OK &&
             fr_repl_eval_line(
-                &runtime, "wait is fn with p [ while gpio.read: p [ wait: 1 ] ]",
+                &runtime, "hold is fn with p [ while gpio.read: p [ wait: 1 ] ]",
                 out, sizeof(out)) == FR_OK &&
             strcmp(out, "ok\n") == 0 &&
-            fr_repl_eval_line(&runtime, "see wait", out, sizeof(out)) ==
+            fr_repl_eval_line(&runtime, "see hold", out, sizeof(out)) ==
                 FR_OK &&
             strcmp(out, "overlay code\n"
-                        "to wait with p [ while gpio.read: p [ wait: 1 ] ]\n"
+                        "to hold with p [ while gpio.read: p [ wait: 1 ] ]\n"
                         "ok\n") == 0);
   /* repeat count: a blink-shaped body that drives a pin a fixed number of
    * passes. Fresh install for the same overlay-name budget reason. */
@@ -17611,6 +17611,90 @@ static void test_repl_capacity_notes(void) {
   }
 }
 
+/* A binding that replaces a base word says so once (ADR 0079, notice 103). */
+static void test_repl_base_word_notice(void) {
+  fr_runtime_t runtime;
+  char out[256] = {0};
+  static const char replaced[] =
+      "notice: base word replaced (103)\n"
+      "detail: wait was a base word -- use another name to keep it\n"
+      "ok\n";
+
+  CHECK("base word notice install", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("a new name prints no notice",
+        fr_repl_eval_line(&runtime, "fresh is 5", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("binding a base word to itself prints no notice",
+        fr_repl_eval_line(&runtime, "wait is wait", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("a failed binding prints no notice",
+        fr_repl_eval_line(&runtime, "wait is no-such-word", out,
+                          sizeof(out)) == FR_ERR_NOT_FOUND &&
+            strstr(out, "(103)") == NULL);
+  CHECK("replacing a base word prints notice 103",
+        fr_repl_eval_line(&runtime, "wait is 5", out, sizeof(out)) == FR_OK &&
+            strcmp(out, replaced) == 0);
+  CHECK("a second binding prints no notice",
+        fr_repl_eval_line(&runtime, "wait is 6", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("replacing a base word with a call result prints notice 103",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime, "wait is gpio.read: $led_builtin", out,
+                              sizeof(out)) == FR_OK &&
+            strcmp(out, replaced) == 0);
+  CHECK("boot prints no notice",
+        fr_repl_eval_line(&runtime, "boot is fn [ 1 ]", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0);
+
+#if FR_FEATURE_PERSISTENCE
+  /* A library session saves each binding, and that save moves the base. */
+  fr_platform_persist_clear();
+  CHECK("a library that replaces a base word prints notice 103",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime, "install-library", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "wait is 5", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, replaced) == 0);
+  fr_platform_persist_clear();
+  CHECK("a library that replaces a base word with a call result prints "
+        "notice 103",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime, "install-library", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "wait is gpio.read: $led_builtin",
+                              out, sizeof(out)) == FR_OK &&
+            strcmp(out, replaced) == 0);
+
+  /* A library can install a boot value and its own words. */
+  fr_platform_persist_clear();
+  CHECK("a library installs a boot value and a word",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime, "install-library", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "libword is fn [ 1 ]", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "boot is fn [ 2 ]", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "install-user", out, sizeof(out)) ==
+                FR_OK);
+  CHECK("boot prints no notice after a library set it",
+        fr_repl_eval_line(&runtime, "boot is fn [ 3 ]", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("replacing a library word prints notice 103",
+        fr_repl_eval_line(&runtime, "libword is 5", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "notice: base word replaced (103)\n"
+                        "detail: libword was a base word -- use another "
+                        "name to keep it\nok\n") == 0);
+  fr_platform_persist_clear();
+#endif
+}
+
 /* A reader who types a comment gets an answer that names no mistake. Raw
  * serial is the first interface, so the device says it, not the tool. */
 static void test_repl_input_mistakes(void) {
@@ -18308,6 +18392,7 @@ int main(void) {
   test_repl_overlong_line_recovers();
   test_repl_capacity_notes();
   test_repl_input_mistakes();
+  test_repl_base_word_notice();
   test_repl_source_form_wire();
 #endif
 #if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0

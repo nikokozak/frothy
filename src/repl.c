@@ -2457,6 +2457,49 @@ static fr_err_t fr_repl_eval_bare_word(fr_runtime_t *runtime, const char *line,
 }
 
 #if FR_FEATURE_COMPILER
+/* Notice 103 (ADR 0079): true when the slot still holds the base or library
+ * word that it started with. boot is left out: every program binds it. */
+static bool fr_repl_slot_holds_base_word(const fr_runtime_t *runtime,
+                                         fr_slot_id_t slot_id) {
+  fr_tagged_t base = 0;
+  fr_code_object_id_t code_object_id = 0;
+  fr_native_id_t native_id = 0;
+
+  if (slot_id == FR_SLOT_BOOT || slot_id >= FR_PROFILE_MAX_SLOTS ||
+      runtime->slots.base_tier[slot_id] == FR_INSTALL_TIER_USER) {
+    return false;
+  }
+  base = runtime->slots.base[slot_id];
+  return runtime->slots.current[slot_id] == base &&
+         (fr_tagged_decode_code_object_id(base, &code_object_id) == FR_OK ||
+          fr_tagged_decode_native_id(base, &native_id) == FR_OK);
+}
+
+/* Writes notice 103. The caller decides right after the binding, before a
+ * library session saves it: that save moves the base to the new value. */
+static fr_err_t fr_repl_write_base_word_notice(const fr_repl_writer_t *writer,
+                                              const fr_runtime_t *runtime,
+                                              fr_slot_id_t slot_id) {
+  char notice[FR_REPL_OUTPUT_BYTES];
+  uint16_t used = 0;
+  const char *name = fr_slot_name(runtime, slot_id);
+
+  if (name == NULL) {
+    return FR_OK;
+  }
+  notice[0] = '\0';
+  FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                        "notice: base word replaced ("));
+  FR_TRY(fr_repl_append_u16(notice, (uint16_t)sizeof(notice), &used,
+                            FR_REPL_NOTICE_BASE_WORD_REPLACED));
+  FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                        ")\ndetail: "));
+  FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used, name));
+  FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                        " was a base word -- use another name to keep it\n"));
+  return fr_repl_writer_write(writer, notice);
+}
+
 static fr_err_t
 fr_repl_eval_value_binding(fr_runtime_t *runtime,
                            const fr_compile_value_binding_t *binding,
@@ -2669,7 +2712,13 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
         runtime, line, compiled, diag);
 
     if (err == FR_OK) {
+      fr_slot_id_t slot_id = compiled->slot_inits[0].slot_id;
+      bool replaced = fr_repl_slot_holds_base_word(runtime, slot_id);
+
       err = fr_overlay_apply(runtime, &compiled->overlay_update);
+      replaced =
+          replaced && err == FR_OK &&
+          runtime->slots.current[slot_id] != runtime->slots.base[slot_id];
 #if FR_FEATURE_PERSISTENCE
       if (err == FR_OK) {
         fr_persist_session_install_tier_stamp_overlay(
@@ -2679,6 +2728,9 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
         }
       }
 #endif
+      if (err == FR_OK && replaced) {
+        err = fr_repl_write_base_word_notice(writer, runtime, slot_id);
+      }
       if (err == FR_OK) {
         err = fr_repl_writer_write(writer, "ok\n");
       }
@@ -2697,13 +2749,21 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
           runtime, line, &binding, diag);
 
       if (bind_err == FR_OK) {
+        bool replaced = fr_repl_slot_holds_base_word(runtime, binding.slot_id);
+
         FR_TRY(fr_repl_eval_value_binding(runtime, &binding, &result));
+        replaced = replaced && runtime->slots.current[binding.slot_id] !=
+                                   runtime->slots.base[binding.slot_id];
 #if FR_FEATURE_PERSISTENCE
         fr_persist_session_install_tier_stamp_slot(runtime, binding.slot_id);
         if (runtime->install_tier == FR_INSTALL_TIER_LIBRARY) {
           FR_TRY(fr_persist_save_full(runtime));
         }
 #endif
+        if (replaced) {
+          FR_TRY(fr_repl_write_base_word_notice(writer, runtime,
+                                                binding.slot_id));
+        }
         return fr_repl_writer_write(writer, "ok\n");
       }
       if (bind_err != FR_ERR_UNSUPPORTED) {

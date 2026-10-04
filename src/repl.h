@@ -16,6 +16,7 @@ enum {
   FR_REPL_NOTICE_SAVED_HANDLES_AS_NIL = 100,
   FR_REPL_NOTICE_HANDLES_STILL_OPEN = 101,
   FR_REPL_NOTICE_WORD_NOT_CALLED = 102,
+  FR_REPL_NOTICE_BASE_WORD_REPLACED = 103,
 };
 
 typedef fr_err_t (*fr_repl_read_line_fn)(char *line, uint16_t cap,
