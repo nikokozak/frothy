@@ -17277,6 +17277,85 @@ static void test_repl_capacity_notes(void) {
         err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
   (void)fr_platform_persist_clear();
 #endif
+
+#if FR_FEATURE_TEXT
+  /* Short texts fill the object table before the Text pool. */
+  snprintf(expected, sizeof(expected),
+           "note: object table (cells, text and records) is full (limit %u)\n",
+           (unsigned)FR_PROFILE_OBJECT_TABLE_SIZE);
+  CHECK("capacity notes install for objects",
+        fr_base_image_install(&runtime) == FR_OK);
+  for (int i = 0; i <= FR_PROFILE_OBJECT_TABLE_SIZE; i++) {
+    char line[48];
+
+    snprintf(line, sizeof(line), "t is text.from-int: %d", i);
+    err = fr_repl_eval_line(&runtime, line, out, sizeof(out));
+    if (err != FR_OK) {
+      break;
+    }
+  }
+  CHECK("object table full names the store and its limit",
+        err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
+
+  /* Long texts fill the Text pool before the object table. */
+  snprintf(expected, sizeof(expected),
+           "note: Text pool is full (limit %u bytes) -- a save that succeeds "
+           "frees what the program no longer uses\n",
+           (unsigned)FR_TEXT_BYTE_CAPACITY);
+  (void)fr_platform_persist_clear();
+  CHECK("capacity notes install for text",
+        fr_base_image_install(&runtime) == FR_OK);
+  {
+    char line[160] = {0};
+
+    for (int i = 0; i < FR_PROFILE_OBJECT_TABLE_SIZE; i++) {
+      snprintf(line, sizeof(line),
+               "t is text.concat: \"%0100d\", (text.from-int: %d)", 0, i);
+      err = fr_repl_eval_line(&runtime, line, out, sizeof(out));
+      if (err != FR_OK) {
+        break;
+      }
+    }
+    CHECK("Text pool full names the store and its limit",
+          err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
+#if FR_FEATURE_PERSISTENCE
+    /* The same line that failed fits after a save. */
+    CHECK("save frees the Text that the program no longer uses",
+          fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+              fr_repl_eval_line(&runtime, line, out, sizeof(out)) == FR_OK);
+#endif
+  }
+  (void)fr_platform_persist_clear();
+#endif
+
+#if FR_FEATURE_CELLS
+  /* Large cells fill cell storage before the object table. */
+  snprintf(expected, sizeof(expected),
+           "note: cell storage is full (limit %u words) -- a save that "
+           "succeeds frees what the program no longer uses\n",
+           (unsigned)FR_PROFILE_MAX_CELL_WORDS);
+  CHECK("capacity notes install for cells",
+        fr_base_image_install(&runtime) == FR_OK);
+  for (int i = 0; i < FR_PROFILE_MAX_CELL_WORDS; i++) {
+    char line[48];
+
+    snprintf(line, sizeof(line), "c is cells: %d",
+             (int)FR_PROFILE_MAX_CELL_LENGTH);
+    err = fr_repl_eval_line(&runtime, line, out, sizeof(out));
+    if (err != FR_OK) {
+      break;
+    }
+  }
+  CHECK("cell storage full names the store and its limit",
+        err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
+#if FR_FEATURE_PERSISTENCE
+  CHECK("save frees the cells that the program no longer uses",
+        fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "c is cells: 1", out, sizeof(out)) ==
+                FR_OK);
+#endif
+  (void)fr_platform_persist_clear();
+#endif
 }
 
 /* A reader who types a comment gets an answer that names no mistake. Raw

@@ -639,11 +639,17 @@ static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
     return FR_ERR_CAPACITY;
   }
   if ((uint32_t)runtime->objects.count + records->cell_object_count +
-              new_text_objects + new_record_shape_objects +
-              records->record_object_count >
-          FR_PROFILE_OBJECT_TABLE_SIZE ||
-      (uint32_t)runtime->natives.count + records->native_count >
-          FR_PROFILE_NATIVE_TABLE_SIZE) {
+          new_text_objects + new_record_shape_objects +
+          records->record_object_count >
+      FR_PROFILE_OBJECT_TABLE_SIZE) {
+    fr_diag_note_capacity(runtime->diag,
+                          "object table (cells, text and records)",
+                          FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
+                          NULL);
+    return FR_ERR_CAPACITY;
+  }
+  if ((uint32_t)runtime->natives.count + records->native_count >
+      FR_PROFILE_NATIVE_TABLE_SIZE) {
     return FR_ERR_CAPACITY;
   }
 
@@ -681,6 +687,9 @@ static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
                                   records->cell_objects[i].initial_values));
     if (used_cell_words + records->cell_objects[i].length >
         FR_PROFILE_MAX_CELL_WORDS) {
+      fr_diag_note_capacity(runtime->diag, "cell storage",
+                            FR_PROFILE_MAX_CELL_WORDS, FR_DIAG_UNIT_WORDS,
+                            "a save that succeeds frees what the program no longer uses");
       return FR_ERR_CAPACITY;
     }
     used_cell_words += records->cell_objects[i].length;
@@ -692,6 +701,9 @@ static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
 #if FR_FEATURE_TEXT
   if ((uint32_t)runtime->objects.used_text_bytes + new_text_bytes >
       FR_TEXT_BYTE_CAPACITY) {
+    fr_diag_note_capacity(runtime->diag, "Text pool", FR_TEXT_BYTE_CAPACITY,
+                          FR_DIAG_UNIT_BYTES,
+                          "a save that succeeds frees what the program no longer uses");
     return FR_ERR_CAPACITY;
   }
 #else
