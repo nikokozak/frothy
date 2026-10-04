@@ -2566,6 +2566,50 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
       }
       return fr_repl_writer_write(writer, "ok\n");
     }
+    {
+      /* A bare word that names a word shows its value and runs nothing,
+       * because the call needs a colon. Say so. A name with bytes that the
+       * ESP console drops gets no notice. */
+      fr_code_object_id_t code_object_id = 0;
+      fr_native_id_t native_id = 0;
+      const char *name = line;
+      uint16_t name_length = 0;
+      bool printable = true;
+
+      while (fr_repl_is_space(*name)) {
+        name += 1;
+      }
+      while (name[name_length] != '\0' &&
+             !fr_repl_is_space(name[name_length])) {
+        printable = printable && name[name_length] >= 0x21 &&
+                    name[name_length] <= 0x7e;
+        name_length += 1;
+      }
+      if (printable &&
+          (fr_tagged_decode_code_object_id(result, &code_object_id) ==
+               FR_OK ||
+           fr_tagged_decode_native_id(result, &native_id) == FR_OK)) {
+        char notice[FR_REPL_OUTPUT_BYTES];
+        uint16_t used = 0;
+
+        notice[0] = '\0';
+        FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                              "notice: word not called ("));
+        FR_TRY(fr_repl_append_u16(notice, (uint16_t)sizeof(notice), &used,
+                                  FR_REPL_NOTICE_WORD_NOT_CALLED));
+        FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                              ")\ndetail: "));
+        FR_TRY(fr_repl_append_span(notice, (uint16_t)sizeof(notice), &used,
+                                   name, name_length));
+        FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                              " is a word -- write "));
+        FR_TRY(fr_repl_append_span(notice, (uint16_t)sizeof(notice), &used,
+                                   name, name_length));
+        FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                              ": to call it\n"));
+        FR_TRY(fr_repl_writer_write(writer, notice));
+      }
+    }
     return fr_repl_writer_write_tagged_response(writer, runtime, result);
   }
   FR_TRY(err);

@@ -14679,10 +14679,14 @@ static void test_repl(void) {
             strcmp(out, FR_TEST_WORDS_WITH_LED) == 0);
   CHECK("repl displays gpio.write native value",
         fr_repl_eval_line(&runtime, "gpio.write", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "native 2\nok\n") == 0);
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: gpio.write is a word -- write gpio.write: to call it\n"
+                   "native 2\nok\n") == 0);
   CHECK("repl displays pin sugar native value",
         fr_repl_eval_line(&runtime, "pin", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "native 2\nok\n") == 0);
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: pin is a word -- write pin: to call it\n"
+                   "native 2\nok\n") == 0);
   CHECK("repl see base nil",
         fr_repl_eval_line(&runtime, "see boot", out, sizeof(out)) == FR_OK &&
             strcmp(out, "base core nil\nok\n") == 0);
@@ -14933,11 +14937,15 @@ static void test_repl(void) {
      id is the source-word count (15 today). */
   CHECK("repl displays bare compiled boot",
         fr_repl_eval_line(&runtime, "boot", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "code 15\nok\n") == 0);
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: boot is a word -- write boot: to call it\n"
+                   "code 15\nok\n") == 0);
 #else
   CHECK("repl displays bare compiled boot",
         fr_repl_eval_line(&runtime, "boot", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "code 0\nok\n") == 0);
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: boot is a word -- write boot: to call it\n"
+                   "code 0\nok\n") == 0);
 #endif
   CHECK("repl see overlay code",
         fr_repl_eval_line(&runtime, "see boot", out, sizeof(out)) == FR_OK &&
@@ -15105,10 +15113,14 @@ static void test_repl(void) {
 #if FR_BASE_IMAGE_INCLUDE_SYMBOLS
   CHECK("repl displays gpio.write native value without compiler",
         fr_repl_eval_line(&runtime, "gpio.write", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "native 2\nok\n") == 0);
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: gpio.write is a word -- write gpio.write: to call it\n"
+                   "native 2\nok\n") == 0);
   CHECK("repl displays pin sugar native value without compiler",
         fr_repl_eval_line(&runtime, "pin", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "native 2\nok\n") == 0);
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: pin is a word -- write pin: to call it\n"
+                   "native 2\nok\n") == 0);
 #endif
 #if FR_FEATURE_INTROSPECTION
   CHECK("repl see base nil without compiler",
@@ -17222,6 +17234,20 @@ static void test_repl_input_mistakes(void) {
                 FR_ERR_INVALID &&
             strstr(out, "Frothy has whole numbers only") != NULL &&
             strstr(out, "source: x is 3.14\n             ^^^^\n") != NULL);
+  CHECK("repl says a bare word names a word and was not called",
+        fr_repl_eval_line(&runtime, "gpio.write", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: gpio.write is a word -- write gpio.write: to call it\n"
+                   "native 2\nok\n") == 0);
+  CHECK("repl names the word when a comment follows it",
+        fr_repl_eval_line(&runtime, "gpio.write -- note", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: gpio.write is a word -- write gpio.write: to call it\n"
+                   "native 2\nok\n") == 0);
+  CHECK("repl keeps a bare value free of the word notice",
+        fr_repl_eval_line(&runtime, "one", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "1\nok\n") == 0);
   CHECK("repl renders the == message under the operator",
         fr_repl_eval_line(&runtime, "1 == 1", out, sizeof(out)) ==
                 FR_ERR_INVALID &&
