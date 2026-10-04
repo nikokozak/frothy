@@ -211,7 +211,12 @@ static fr_err_t fr_repl_parse_recognized_command(
   while (end > start && fr_repl_is_space(end[-1])) {
     end -= 1;
   }
-  if (start == end) {
+  if (start == end
+#if FR_FEATURE_COMPILER
+      /* A line of only comments holds no form, the same as an empty line. */
+      || fr_parse_source_is_blank(start)
+#endif
+  ) {
     out->kind = FR_REPL_COMMAND_BLANK;
     return FR_OK;
   }

@@ -100,6 +100,9 @@ typedef struct fr_parse_line_t {
 } fr_parse_line_t;
 
 bool fr_parse_span_equals(fr_parse_span_t span, const char *text);
+/* True when source holds only spaces and comments, so it holds no form. An
+ * unfinished block comment is not blank: the parser reports it. */
+bool fr_parse_source_is_blank(const char *source);
 fr_err_t fr_parse_expression_line(const char *source, fr_parse_line_t *out,
                                   fr_parse_expr_id_t *out_expr);
 fr_err_t fr_parse_expression_line_with_diagnostic(

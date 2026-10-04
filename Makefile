@@ -633,6 +633,12 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 		printf '%s\nmissing recovery command output\n' "$$err_out"; \
 		exit 1; \
 	fi; \
+	comment_out=$$(printf -- '-- note\n1 + 1\n' | build/host/frothy-host-normal); \
+	if ! printf '%s\n' "$$comment_out" | grep -qxF '> ok' || \
+		! printf '%s\n' "$$comment_out" | grep -qF '> 2'; then \
+		printf '%s\ncomment line transcript failed\n' "$$comment_out"; \
+		exit 1; \
+	fi; \
 	overlong_out=$$(awk 'BEGIN { for (i = 0; i < 600; i++) printf "x"; print ""; for (i = 0; i < 506; i++) printf " "; print "1 + 1" }' \
 		| build/host/frothy-host-normal); \
 	overlong_error_count=$$(printf '%s\n' "$$overlong_out" | grep -c 'error:'); \

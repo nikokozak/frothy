@@ -550,6 +550,17 @@ static fr_err_t fr_parse_advance(fr_parser_t *parser) {
   return fr_parse_read_token(parser);
 }
 
+bool fr_parse_source_is_blank(const char *source) {
+  fr_parser_t parser = {0};
+
+  if (source == NULL) {
+    return false;
+  }
+  parser.cursor = source;
+  return fr_parse_read_token(&parser) == FR_OK &&
+         parser.token.kind == FR_TOKEN_EOF;
+}
+
 static uint16_t fr_parse_expected_message(fr_token_kind_t kind) {
   switch (kind) {
   case FR_TOKEN_LBRACKET:

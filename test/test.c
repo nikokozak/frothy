@@ -17134,6 +17134,38 @@ static void test_repl_overlong_line_recovers(void) {
             strcmp(out, expected) == 0);
 }
 
+/* A reader who types a comment gets an answer that names no mistake. Raw
+ * serial is the first interface, so the device says it, not the tool. */
+static void test_repl_input_mistakes(void) {
+  fr_runtime_t runtime;
+  char out[512] = {0};
+
+  CHECK("source of only comments is blank",
+        fr_parse_source_is_blank("-- just a note") &&
+            fr_parse_source_is_blank("  -* note *-  ") &&
+            fr_parse_source_is_blank("   ") &&
+            !fr_parse_source_is_blank("1 -- not blank") &&
+            !fr_parse_source_is_blank("-* never closed"));
+
+  CHECK("repl install for input mistakes",
+        fr_base_image_install(&runtime) == FR_OK);
+  CHECK("repl answers ok to a line that holds only a comment",
+        fr_repl_eval_line(&runtime, "-- just a note", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("repl answers ok to a line that holds only a block comment",
+        fr_repl_eval_line(&runtime, "  -* note *-", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("repl still rejects a block comment that never closes",
+        fr_repl_eval_line(&runtime, "-* never closed", out, sizeof(out)) ==
+            FR_ERR_INVALID);
+  CHECK("repl still runs code that ends in a comment",
+        fr_repl_eval_line(&runtime, "1 + 1 -- two", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "2\nok\n") == 0);
+}
+
 static void test_repl_source_form_wire(void) {
   fr_runtime_t runtime;
   char out[1024] = {0};
@@ -17687,6 +17719,7 @@ int main(void) {
   test_repl_pump();
 #if FR_FEATURE_COMPILER
   test_repl_overlong_line_recovers();
+  test_repl_input_mistakes();
   test_repl_source_form_wire();
 #endif
 #if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0
