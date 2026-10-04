@@ -17146,6 +17146,94 @@ static void test_repl_overlong_line_recovers(void) {
             strcmp(out, expected) == 0);
 }
 
+/* A full store names itself and its limit, and a note that gives a remedy
+ * gives one that works. */
+static void test_repl_capacity_notes(void) {
+  fr_runtime_t runtime;
+  char out[512] = {0};
+  char expected[160];
+  uint16_t pending_limit = 0;
+  fr_err_t err = FR_OK;
+
+  CHECK("capacity notes install", fr_base_image_install(&runtime) == FR_OK);
+  pending_limit =
+      (uint16_t)(sizeof(runtime.code.overlay_instruction_bytes) -
+                 runtime.code.base_ram_used_instruction_bytes);
+  snprintf(expected, sizeof(expected),
+           "code.pending.used 0\ncode.pending.total %u\nok\n",
+           (unsigned)pending_limit);
+  CHECK("mem code reports pending code for user code only",
+        fr_repl_eval_line(&runtime, "mem code", out, sizeof(out)) == FR_OK &&
+            strcmp(out, expected) == 0);
+
+  for (int i = 0; i < 1000; i++) {
+    err = fr_repl_eval_line(&runtime, "to w with p [ p + 1 ]", out,
+                            sizeof(out));
+    if (err != FR_OK) {
+      break;
+    }
+  }
+  snprintf(expected, sizeof(expected),
+           "note: pending code is full (limit %u bytes) -- a save that "
+           "succeeds frees it\n",
+           (unsigned)pending_limit);
+  CHECK("pending code full names the store and its limit",
+        err == FR_ERR_CAPACITY &&
+            strstr(out, "error: capacity exceeded (4)\n") == out &&
+            strstr(out, expected) != NULL);
+#if FR_FEATURE_PERSISTENCE
+  (void)fr_platform_persist_clear();
+  CHECK("save frees pending code, as the note says",
+        fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "to w with p [ p + 1 ]", out,
+                              sizeof(out)) == FR_OK);
+
+  (void)fr_platform_persist_clear();
+#endif
+
+#if FR_FEATURE_PERSISTENCE && FR_FEATURE_EVENTS
+  /* A word with an event body holds two code objects. The bodies differ,
+   * because a saved image shares equal code. A save frees pending code on the
+   * way. */
+  snprintf(expected, sizeof(expected),
+           "note: code object table is full (limit %u) -- saved words count "
+           "too\n",
+           (unsigned)FR_PROFILE_CODE_OBJECT_TABLE_SIZE);
+  /* Clearing storage drops the image that the runtime mounted, so start a
+   * fresh runtime after it. */
+  (void)fr_platform_persist_clear();
+  CHECK("capacity notes reinstall", fr_base_image_install(&runtime) == FR_OK);
+  {
+    bool names_full = false;
+
+    /* Where the name table fills first (host_small), a redefinition adds
+     * code objects with no new name. */
+    for (int i = 0; i < 2 * FR_PROFILE_CODE_OBJECT_TABLE_SIZE; i++) {
+      char line[48];
+
+      snprintf(line, sizeof(line), "to e%d [ every 1000 [ %d ] ]",
+               names_full ? 0 : i, i);
+      err = fr_repl_eval_line(&runtime, line, out, sizeof(out));
+      if (err == FR_ERR_CAPACITY && strstr(out, "pending code") != NULL &&
+          fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK) {
+        err = fr_repl_eval_line(&runtime, line, out, sizeof(out));
+      }
+      if (err == FR_ERR_CAPACITY && !names_full &&
+          strstr(out, "code object table") == NULL) {
+        names_full = true;
+        continue;
+      }
+      if (err != FR_OK) {
+        break;
+      }
+    }
+  }
+  (void)fr_platform_persist_clear();
+  CHECK("code object table full names the store and its limit",
+        err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
+#endif
+}
+
 /* A reader who types a comment gets an answer that names no mistake. Raw
  * serial is the first interface, so the device says it, not the tool. */
 static void test_repl_input_mistakes(void) {
@@ -17837,6 +17925,7 @@ int main(void) {
   test_repl_pump();
 #if FR_FEATURE_COMPILER
   test_repl_overlong_line_recovers();
+  test_repl_capacity_notes();
   test_repl_input_mistakes();
   test_repl_source_form_wire();
 #endif

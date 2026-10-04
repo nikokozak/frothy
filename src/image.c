@@ -632,8 +632,13 @@ static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
       &new_record_shape_fields, &new_record_name_bytes));
 #endif
   if ((uint32_t)runtime->code.count + records->code_object_count >
-          FR_PROFILE_CODE_OBJECT_TABLE_SIZE ||
-      (uint32_t)runtime->objects.count + records->cell_object_count +
+      FR_PROFILE_CODE_OBJECT_TABLE_SIZE) {
+    fr_diag_note_capacity(runtime->diag, "code object table",
+                          FR_PROFILE_CODE_OBJECT_TABLE_SIZE,
+                          FR_DIAG_UNIT_COUNT, "saved words count too");
+    return FR_ERR_CAPACITY;
+  }
+  if ((uint32_t)runtime->objects.count + records->cell_object_count +
               new_text_objects + new_record_shape_objects +
               records->record_object_count >
           FR_PROFILE_OBJECT_TABLE_SIZE ||
@@ -659,6 +664,11 @@ static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
     }
     FR_TRY(fr_instruction_read_header(instructions, &header));
     if (used_instruction_bytes + instructions->length > instruction_capacity) {
+      fr_diag_note_capacity(
+          runtime->diag, "pending code",
+          (fr_int_t)(instruction_capacity -
+                     runtime->code.base_ram_used_instruction_bytes),
+          FR_DIAG_UNIT_BYTES, "a save that succeeds frees it");
       return FR_ERR_CAPACITY;
     }
     used_instruction_bytes += instructions->length;

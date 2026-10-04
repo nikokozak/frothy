@@ -104,6 +104,9 @@ typedef enum fr_diag_message_id_t {
   /* Appended in v0.1.22. */
   FR_DIAG_MSG_PARSE_DOUBLE_EQUALS,
   FR_DIAG_MSG_PARSE_FLOAT_LITERAL,
+  /* A fixed store is full: context_name names it, expected holds its limit,
+   * unit says what the limit counts, note holds a remedy or NULL. */
+  FR_DIAG_MSG_RUNTIME_CAPACITY,
 } fr_diag_message_id_t;
 
 const char *fr_diag_message(uint16_t message_id);
@@ -161,6 +164,12 @@ typedef enum fr_diag_unpersistable_reason_t {
   FR_DIAG_UNPERSISTABLE_VOLATILE_VALUE,
 } fr_diag_unpersistable_reason_t;
 
+typedef enum fr_diag_unit_t {
+  FR_DIAG_UNIT_COUNT = 0,
+  FR_DIAG_UNIT_BYTES,
+  FR_DIAG_UNIT_WORDS,
+} fr_diag_unit_t;
+
 typedef struct fr_diagnostic_t {
   fr_diag_kind_t kind;
   const char *span_start;
@@ -172,6 +181,8 @@ typedef struct fr_diagnostic_t {
   fr_diag_actual_state_t actual_state;
   uint16_t index;
   fr_diag_presentation_t presentation;
+  /* fr_diag_unit_t of a capacity note: what its limit counts. */
+  uint8_t unit;
   /* May point into suggestion_text; do not copy a populated diagnostic. */
   const char *context_name;
   /* Always a static string literal or NULL; never owned, never copied. */
@@ -180,6 +191,13 @@ typedef struct fr_diagnostic_t {
   uint16_t suggestion_length;
   char suggestion_text[FR_PROFILE_PARSE_MAX_TOKEN_BYTES + 1];
 } fr_diagnostic_t;
+
+/* A fixed store is full: `store` is a static noun phrase ("pending code"),
+ * `limit` the size the user can reach, `remedy` a static hint or NULL. The
+ * first diagnostic wins, so a deeper site never hides a better one. */
+void fr_diag_note_capacity(fr_diagnostic_t *diag, const char *store,
+                           fr_int_t limit, fr_diag_unit_t unit,
+                           const char *remedy);
 
 typedef uint16_t fr_slot_id_t;
 typedef uint16_t fr_code_object_id_t;

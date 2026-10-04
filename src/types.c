@@ -150,6 +150,20 @@ const char *fr_diag_message(uint16_t message_id) {
   return messages[message_id];
 }
 
+void fr_diag_note_capacity(fr_diagnostic_t *diag, const char *store,
+                           fr_int_t limit, fr_diag_unit_t unit,
+                           const char *remedy) {
+  if (diag == NULL || diag->kind != FR_DIAG_NONE) {
+    return;
+  }
+  diag->kind = FR_DIAG_LIMIT;
+  diag->message_id = FR_DIAG_MSG_RUNTIME_CAPACITY;
+  diag->context_name = store;
+  diag->expected = limit;
+  diag->unit = (uint8_t)unit;
+  diag->note = remedy;
+}
+
 const char *fr_diag_value_kind_name(uint16_t value_kind) {
   switch ((fr_diag_value_kind_t)value_kind) {
   case FR_DIAG_VALUE_INT:

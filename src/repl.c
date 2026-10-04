@@ -1234,6 +1234,26 @@ static fr_err_t fr_repl_append_runtime_context_line(
                           "detail: value cannot be stored in "));
     FR_TRY(fr_repl_append(out, out_cap, used, diag->context_name));
     return fr_repl_append_char(out, out_cap, used, '\n');
+  case FR_DIAG_MSG_RUNTIME_CAPACITY:
+    if (diag->context_name == NULL) {
+      return FR_OK;
+    }
+    *out_wrote = true;
+    FR_TRY(fr_repl_append(out, out_cap, used, "note: "));
+    FR_TRY(fr_repl_append(out, out_cap, used, diag->context_name));
+    FR_TRY(fr_repl_append(out, out_cap, used, " is full (limit "));
+    FR_TRY(fr_repl_append_int(out, out_cap, used, diag->expected));
+    if (diag->unit == FR_DIAG_UNIT_BYTES) {
+      FR_TRY(fr_repl_append(out, out_cap, used, " bytes"));
+    } else if (diag->unit == FR_DIAG_UNIT_WORDS) {
+      FR_TRY(fr_repl_append(out, out_cap, used, " words"));
+    }
+    FR_TRY(fr_repl_append_char(out, out_cap, used, ')'));
+    if (diag->note != NULL) {
+      FR_TRY(fr_repl_append(out, out_cap, used, " -- "));
+      FR_TRY(fr_repl_append(out, out_cap, used, diag->note));
+    }
+    return fr_repl_append_char(out, out_cap, used, '\n');
   case FR_DIAG_MSG_RUNTIME_STACK_OVERFLOW:
   case FR_DIAG_MSG_RUNTIME_STACK_UNDERFLOW:
   case FR_DIAG_MSG_RUNTIME_INTEGER_OVERFLOW:
@@ -1756,6 +1776,16 @@ static fr_err_t fr_repl_write_mem(fr_runtime_t *runtime, const char *arg,
   if (arg_len == 0) {
     FR_TRY(fr_repl_write_mem_heap(writer));
     FR_TRY(fr_repl_write_mem_slots(runtime, writer));
+    /* Pending code: the user code that the next `save` writes and frees,
+     * without the base library's share of the same area. */
+    FR_TRY(fr_repl_write_mem_pair(
+        writer, "code.pending.used",
+        (uint32_t)(runtime->code.overlay_used_instruction_bytes -
+                   runtime->code.base_ram_used_instruction_bytes)));
+    FR_TRY(fr_repl_write_mem_pair(
+        writer, "code.pending.total",
+        (uint32_t)(sizeof(runtime->code.overlay_instruction_bytes) -
+                   runtime->code.base_ram_used_instruction_bytes)));
     FR_TRY(fr_repl_write_mem_objects(runtime, writer));
     FR_TRY(fr_repl_write_mem_events(runtime, writer));
     return fr_repl_writer_write(writer, "ok\n");
@@ -1766,6 +1796,17 @@ static fr_err_t fr_repl_write_mem(fr_runtime_t *runtime, const char *arg,
   }
   if (fr_repl_span_equals(arg, arg_len, "slots")) {
     FR_TRY(fr_repl_write_mem_slots(runtime, writer));
+    return fr_repl_writer_write(writer, "ok\n");
+  }
+  if (fr_repl_span_equals(arg, arg_len, "code")) {
+    FR_TRY(fr_repl_write_mem_pair(
+        writer, "code.pending.used",
+        (uint32_t)(runtime->code.overlay_used_instruction_bytes -
+                   runtime->code.base_ram_used_instruction_bytes)));
+    FR_TRY(fr_repl_write_mem_pair(
+        writer, "code.pending.total",
+        (uint32_t)(sizeof(runtime->code.overlay_instruction_bytes) -
+                   runtime->code.base_ram_used_instruction_bytes)));
     return fr_repl_writer_write(writer, "ok\n");
   }
   if (fr_repl_span_equals(arg, arg_len, "objects")) {
