@@ -17104,6 +17104,27 @@ static void test_repl_pump(void) {
 }
 
 #if FR_FEATURE_COMPILER
+static void test_repl_overlong_line_recovers(void) {
+  fr_runtime_t runtime;
+  char overlong[FR_REPL_LINE_BYTES + 1];
+  char out[128] = {0};
+  char expected[128];
+  const char *lines[] = {overlong, "1 + 1"};
+
+  memset(overlong, 'x', FR_REPL_LINE_BYTES);
+  overlong[FR_REPL_LINE_BYTES] = '\0';
+  snprintf(expected, sizeof(expected),
+           "> error: capacity exceeded (4)\n"
+           "note: the line limit is %u bytes\n"
+           "> 2\nok\n> ",
+           (unsigned)(FR_REPL_LINE_BYTES - 1u));
+  CHECK("repl drains an overlong line and continues",
+        fr_base_image_install(&runtime) == FR_OK &&
+            test_repl_run_lines(&runtime, lines, 2, out,
+                                (uint16_t)sizeof(out)) &&
+            strcmp(out, expected) == 0);
+}
+
 static void test_repl_source_form_wire(void) {
   fr_runtime_t runtime;
   char out[1024] = {0};
@@ -17656,6 +17677,7 @@ int main(void) {
 #endif
   test_repl_pump();
 #if FR_FEATURE_COMPILER
+  test_repl_overlong_line_recovers();
   test_repl_source_form_wire();
 #endif
 #if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0

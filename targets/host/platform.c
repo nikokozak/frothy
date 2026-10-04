@@ -3150,10 +3150,17 @@ void fr_platform_set_idle_handler(fr_platform_idle_fn handler, void *ctx) {
   (void)ctx;
 }
 
+/* The last line ended at CR or at Ctrl-C: an LF that comes next belongs to
+ * it. The reader never waits for that LF, so an interactive line ends at once. */
+static bool fr_host_skip_lf = false;
+
+/* Reads one line byte by byte, as the device readers do: CR or LF ends it, and
+ * an overlong line is drained to its terminator before RANGE returns. */
 static fr_err_t fr_host_read_line(char *line, uint16_t cap,
                                   bool interruptible, bool *out_eof,
                                   uint16_t *out_length) {
-  size_t length = 0;
+  uint16_t used = 0;
+  bool overlong = false;
 
   if (line == NULL || cap == 0 || out_eof == NULL || out_length == NULL) {
     return FR_ERR_INVALID;
@@ -3161,33 +3168,49 @@ static fr_err_t fr_host_read_line(char *line, uint16_t cap,
 
   *out_eof = false;
   *out_length = 0;
-  if (fgets(line, cap, stdin) == NULL) {
-    if (feof(stdin)) {
-      line[0] = '\0';
-      *out_eof = true;
-      return FR_OK;
-    }
-    return FR_ERR_IO;
-  }
+  line[0] = '\0';
+  for (;;) {
+    int byte = fgetc(stdin);
+    bool skip_lf = fr_host_skip_lf;
 
-  length = strlen(line);
-  if (length > 0 && line[length - 1] == '\n') {
-    line[length - 1] = '\0';
-    length -= 1;
+    fr_host_skip_lf = false;
+    if (byte == '\n' && skip_lf) {
+      continue;
+    }
+    if (byte == EOF) {
+      if (ferror(stdin)) {
+        return FR_ERR_IO;
+      }
+      if (used == 0 && !overlong) {
+        *out_eof = true;
+        return FR_OK;
+      }
+      break;
+    }
+    if (byte == '\r' || byte == '\n') {
+      fr_host_skip_lf = byte == '\r';
+      break;
+    }
+    if (interruptible && byte == 3) {
+      fr_host_skip_lf = true;
+      line[0] = '\0';
+      return FR_ERR_INTERRUPTED;
+    }
+    if (overlong) {
+      continue;
+    }
+    if ((uint16_t)(used + 1) >= cap) {
+      overlong = true;
+      continue;
+    }
+    line[used++] = (char)byte;
   }
-  if (length > 0 && line[length - 1] == '\r') {
-    line[length - 1] = '\0';
-    length -= 1;
-  }
-  if (length + 1 >= cap && !feof(stdin)) {
+  if (overlong) {
+    line[0] = '\0';
     return FR_ERR_RANGE;
   }
-  if (interruptible && memchr(line, 3, length) != NULL) {
-    line[0] = '\0';
-    return FR_ERR_INTERRUPTED;
-  }
-
-  *out_length = (uint16_t)length;
+  line[used] = '\0';
+  *out_length = used;
   return FR_OK;
 }
 

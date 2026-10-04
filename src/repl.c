@@ -2749,8 +2749,28 @@ fr_err_t fr_repl_run(fr_runtime_t *runtime, const fr_repl_io_t *io) {
   runtime->install_tier = FR_INSTALL_TIER_USER;
 
   while (true) {
+    fr_err_t read_err;
+
     FR_TRY(io->write_text("> "));
-    FR_TRY(io->read_line(line, (uint16_t)sizeof(line), &eof));
+    read_err = io->read_line(line, (uint16_t)sizeof(line), &eof);
+    if (read_err == FR_ERR_RANGE) {
+      char response[FR_REPL_OUTPUT_BYTES];
+      uint16_t used;
+
+      FR_TRY(fr_repl_write_error(runtime, response,
+                                 (uint16_t)sizeof(response), FR_ERR_CAPACITY,
+                                 NULL, NULL, false));
+      used = (uint16_t)strlen(response);
+      FR_TRY(fr_repl_append(response, (uint16_t)sizeof(response), &used,
+                            "note: the line limit is "));
+      FR_TRY(fr_repl_append_u16(response, (uint16_t)sizeof(response), &used,
+                                (uint16_t)(sizeof(line) - 1u)));
+      FR_TRY(fr_repl_append(response, (uint16_t)sizeof(response), &used,
+                            " bytes\n"));
+      FR_TRY(io->write_text(response));
+      continue;
+    }
+    FR_TRY(read_err);
     if (eof) {
       return FR_OK;
     }

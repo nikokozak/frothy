@@ -633,6 +633,56 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 		printf '%s\nmissing recovery command output\n' "$$err_out"; \
 		exit 1; \
 	fi; \
+	overlong_out=$$(awk 'BEGIN { for (i = 0; i < 600; i++) printf "x"; print ""; for (i = 0; i < 506; i++) printf " "; print "1 + 1" }' \
+		| build/host/frothy-host-normal); \
+	overlong_error_count=$$(printf '%s\n' "$$overlong_out" | grep -c 'error:'); \
+	if [ "$$overlong_error_count" != 1 ] || \
+		! printf '%s\n' "$$overlong_out" | grep -qF 'note: the line limit is 511 bytes' || \
+		! printf '%s\n' "$$overlong_out" | grep -qF '> 2'; then \
+		printf '%s\noverlong input transcript failed\n' "$$overlong_out"; \
+		exit 1; \
+	fi; \
+	exact_lf_out=$$(awk 'BEGIN { for (i = 0; i < 506; i++) printf " "; printf "1 + 1\n" }' \
+		| build/host/frothy-host-normal); \
+	exact_crlf_out=$$(awk 'BEGIN { for (i = 0; i < 506; i++) printf " "; printf "1 + 1\r\n" }' \
+		| build/host/frothy-host-normal); \
+	if ! printf '%s\n' "$$exact_lf_out" | grep -qF '> 2' || \
+		printf '%s\n' "$$exact_lf_out" | grep -qF 'error:' || \
+		! printf '%s\n' "$$exact_crlf_out" | grep -qF '> 2' || \
+		printf '%s\n' "$$exact_crlf_out" | grep -qF 'error:'; then \
+		printf '%s\n%s\nexact-fit input transcript failed\n' "$$exact_lf_out" "$$exact_crlf_out"; \
+		exit 1; \
+	fi; \
+	overlong_cr_out=$$(awk 'BEGIN { for (i = 0; i < 600; i++) printf "x"; printf "\r1 + 1\n" }' \
+		| build/host/frothy-host-normal); \
+	if ! printf '%s\n' "$$overlong_cr_out" | grep -qF 'note: the line limit is 511 bytes' || \
+		! printf '%s\n' "$$overlong_cr_out" | grep -qF '> 2'; then \
+		printf '%s\noverlong CR input transcript failed\n' "$$overlong_cr_out"; \
+		exit 1; \
+	fi; \
+	cr_boundary_out=$$(awk 'BEGIN { for (i = 0; i < 505; i++) printf " "; printf "1 + 1\r1 + 2\n" }' \
+		| build/host/frothy-host-normal); \
+	if printf '%s\n' "$$cr_boundary_out" | grep -qF 'error:' || \
+		! printf '%s\n' "$$cr_boundary_out" | grep -qF '> 2' || \
+		! printf '%s\n' "$$cr_boundary_out" | grep -qF '> 3'; then \
+		printf '%s\nCR at the line limit transcript failed\n' "$$cr_boundary_out"; \
+		exit 1; \
+	fi; \
+	cr_open_file=build/host/cr-open-stdin.txt; \
+	( { awk 'BEGIN { for (i = 0; i < 600; i++) printf "x"; printf "\r" }'; sleep 3; } \
+		| build/host/frothy-host-normal > $$cr_open_file 2>&1 & ); \
+	sleep 1; \
+	if ! grep -qF 'note: the line limit is 511 bytes' $$cr_open_file; then \
+		cat $$cr_open_file; printf 'a CR did not end the line at once\n'; \
+		exit 1; \
+	fi; \
+	overlong_ctrl_c_out=$$(awk 'BEGIN { print "console.read-line:"; for (i = 0; i < 600; i++) printf "x"; printf "%c\n1 + 1\n", 3 }' \
+		| build/host/frothy-host-normal); \
+	if ! printf '%s\n' "$$overlong_ctrl_c_out" | grep -qxF '> interrupted' || \
+		! printf '%s\n' "$$overlong_ctrl_c_out" | grep -qF '> 2'; then \
+		printf '%s\noverlong Ctrl-C input transcript failed\n' "$$overlong_ctrl_c_out"; \
+		exit 1; \
+	fi; \
 	notice_out=$$(printf '%s\n' \
 		'appuart is uart.open: 0, 9600' \
 		'uart.open: 0, 9600' \
