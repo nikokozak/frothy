@@ -2541,19 +2541,23 @@ static void test_refs(void) {
         handle_ref.id == 0 && handle_ref.generation == 0);
   CHECK("last handle encodes",
         fr_tagged_encode_handle_ref(
-            (fr_handle_ref_t){.id = 15, .generation = 15}, &tagged) == FR_OK);
+            (fr_handle_ref_t){.id = FR_TAGGED_HANDLE_MAX_ID,
+                              .generation = FR_TAGGED_HANDLE_MAX_GENERATION},
+            &tagged) == FR_OK);
   CHECK("last handle decodes",
         fr_tagged_decode_handle_ref(tagged, &handle_ref) == FR_OK);
   CHECK("last handle round trip",
-        handle_ref.id == 15 && handle_ref.generation == 15);
+        handle_ref.id == FR_TAGGED_HANDLE_MAX_ID &&
+            handle_ref.generation == FR_TAGGED_HANDLE_MAX_GENERATION);
   CHECK("handle rejects one past id",
         fr_tagged_encode_handle_ref(
             (fr_handle_ref_t){.id = 16, .generation = 0}, &tagged) ==
             FR_ERR_RANGE);
   CHECK("handle rejects one past generation",
         fr_tagged_encode_handle_ref(
-            (fr_handle_ref_t){.id = 0, .generation = 16}, &tagged) ==
-            FR_ERR_RANGE);
+            (fr_handle_ref_t){
+                .id = 0, .generation = FR_TAGGED_HANDLE_MAX_GENERATION + 1u},
+            &tagged) == FR_ERR_RANGE);
   CHECK("non-handle returns type",
         fr_tagged_decode_handle_ref(fr_tagged_nil(), &handle_ref) ==
             FR_ERR_TYPE);
@@ -3042,6 +3046,16 @@ static void test_handles(void) {
   CHECK("handles decode reserved tag",
         fr_tagged_decode_handle_ref(tagged, &stale_ref) == FR_OK &&
             stale_ref.id == ref.id && stale_ref.generation == ref.generation);
+  CHECK("handles fill the band below the Bytes band",
+        FR_TAGGED_HANDLE_END == (fr_tagged_t)0xF7FFFFFFu &&
+            FR_TAGGED_RESERVED_BASE == (fr_tagged_t)0xF8000000u &&
+            fr_tagged_encode_handle_ref(
+                (fr_handle_ref_t){
+                    .id = FR_TAGGED_HANDLE_MAX_ID,
+                    .generation = FR_TAGGED_HANDLE_MAX_GENERATION},
+                &next_tagged) == FR_OK &&
+            next_tagged == FR_TAGGED_HANDLE_END &&
+            fr_tagged_kind(FR_TAGGED_HANDLE_END + 1u) != FR_TAGGED_HANDLE);
   CHECK("handles reserved lookup is not active",
         fr_handle_lookup(&runtime, ref, FR_HANDLE_KIND_NONE, &kind,
                          &platform_index) == FR_ERR_HANDLE);
@@ -3096,15 +3110,15 @@ static void test_handles(void) {
 #if FR_PROFILE_MAX_HANDLES > 1
   CHECK("handles retire exhausted generations",
         fr_runtime_init(&runtime) == FR_OK);
-  for (uint8_t i = 0; i < 15; i++) {
-    CHECK("handles cycle one entry",
-          fr_handle_reserve(&runtime, FR_TEST_SYNTHETIC_HANDLE_KIND, &ref, &tagged) ==
-                  FR_OK &&
-              (i > 0 || (stale_ref = ref, true)) &&
-              ref.id == 0 &&
-              fr_handle_activate(&runtime, ref, 20) == FR_OK &&
-              fr_handle_close(&runtime, ref) == FR_OK);
-  }
+  runtime.handles.entries[0].generation =
+      (fr_handle_generation_t)(FR_TAGGED_HANDLE_MAX_GENERATION - 1u);
+  CHECK("handles open an entry at its last generation",
+        fr_handle_reserve(&runtime, FR_TEST_SYNTHETIC_HANDLE_KIND, &stale_ref,
+                          &tagged) == FR_OK &&
+            stale_ref.id == 0 &&
+            stale_ref.generation == FR_TAGGED_HANDLE_MAX_GENERATION &&
+            fr_handle_activate(&runtime, stale_ref, 20) == FR_OK &&
+            fr_handle_close(&runtime, stale_ref) == FR_OK);
   CHECK("handles do not wrap exhausted generation",
         fr_handle_reserve(&runtime, FR_TEST_SYNTHETIC_HANDLE_KIND, &ref, &tagged) ==
                 FR_OK &&
@@ -5822,6 +5836,29 @@ static void test_wipe_user_closes_handles(void) {
   CHECK("wipe-handles pin reopens after wipe",
         fr_repl_eval_line(&runtime, "h is pwm.open: 5, 1000", out,
                           sizeof(out)) == FR_OK);
+}
+
+/* Each open of a handle uses one generation of its entry. 1,000 opens and
+ * closes must not use up the table. */
+static void test_handles_last_many_opens(void) {
+  fr_runtime_t runtime;
+  char out[96];
+
+  CHECK("many-opens base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("1,000 opens and closes leave the handle table usable",
+        fr_repl_eval_line(&runtime,
+                          "cycle is fn [ here h is pwm.open: 2, 1000; "
+                          "pwm.close: h ]",
+                          out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "repeat 1000 [ cycle: ]", out,
+                              sizeof(out)) == FR_OK);
+  CHECK("a closed handle stays stale",
+        fr_repl_eval_line(&runtime, "h is pwm.open: 2, 1000", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "pwm.close: h", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "pwm.close: h", out, sizeof(out)) ==
+                FR_ERR_HANDLE);
 }
 
 #if FR_FEATURE_TEXT
@@ -18086,6 +18123,7 @@ int main(void) {
   test_event_register_cancel();
   test_wipe_user_clears_events();
   test_wipe_user_closes_handles();
+  test_handles_last_many_opens();
   test_bulk_close_preserves_failed_entries();
   test_wipe_user_retries_failed_close();
   test_wipe_user_preserves_unclosable_handle();

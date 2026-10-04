@@ -204,7 +204,7 @@ typedef uint16_t fr_code_object_id_t;
 typedef uint16_t fr_native_id_t;
 typedef uint16_t fr_object_id_t;
 typedef uint8_t fr_handle_id_t;
-typedef uint8_t fr_handle_generation_t;
+typedef uint32_t fr_handle_generation_t;
 typedef uint8_t fr_handle_kind_t;
 typedef uint16_t fr_code_offset_t;
 typedef uintptr_t fr_addr_t;

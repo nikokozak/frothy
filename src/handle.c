@@ -176,7 +176,7 @@ fr_err_t fr_handle_reserve(fr_runtime_t *runtime, fr_handle_kind_t kind,
     if (entry->kind != FR_HANDLE_KIND_NONE || entry->retired) {
       continue;
     }
-    if (entry->generation == 0x0fu) {
+    if (entry->generation == FR_TAGGED_HANDLE_MAX_GENERATION) {
       entry->retired = true;
       continue;
     }

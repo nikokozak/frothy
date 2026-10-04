@@ -34,10 +34,10 @@ typedef uint32_t fr_tagged_t;
 
 #if FR_FEATURE_HANDLES
 #define FR_TAGGED_HANDLE_BASE ((fr_tagged_t)0xF0000000u)
-#define FR_TAGGED_HANDLE_END ((fr_tagged_t)0xF00000FFu)
-#define FR_TAGGED_RESERVED_BASE ((fr_tagged_t)0xF0000100u)
+#define FR_TAGGED_HANDLE_END ((fr_tagged_t)0xF7FFFFFFu)
+#define FR_TAGGED_RESERVED_BASE ((fr_tagged_t)0xF8000000u)
 #define FR_TAGGED_HANDLE_MAX_ID ((fr_tagged_t)0x0Fu)
-#define FR_TAGGED_HANDLE_MAX_GENERATION ((fr_tagged_t)0x0Fu)
+#define FR_TAGGED_HANDLE_MAX_GENERATION ((fr_tagged_t)0x7FFFFFu)
 #define FR_TAGGED_HANDLE_GENERATION_SHIFT 4u
 #else
 #define FR_TAGGED_RESERVED_BASE ((fr_tagged_t)0xF0000000u)

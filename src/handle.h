@@ -28,9 +28,9 @@ enum {
 };
 
 typedef struct fr_handle_entry_t {
+  fr_handle_generation_t generation;
   uint16_t platform_index;
   fr_handle_kind_t kind;
-  fr_handle_generation_t generation;
   bool retired;
 } fr_handle_entry_t;
 
