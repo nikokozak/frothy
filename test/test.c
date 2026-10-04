@@ -17164,6 +17164,36 @@ static void test_repl_input_mistakes(void) {
         fr_repl_eval_line(&runtime, "1 + 1 -- two", out, sizeof(out)) ==
                 FR_OK &&
             strcmp(out, "2\nok\n") == 0);
+  CHECK("repl reads a bare word followed by a comment as the bare word",
+        fr_repl_eval_line(&runtime, "one -- note", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "1\nok\n") == 0);
+#if FR_FEATURE_PERSISTENCE
+  (void)fr_platform_persist_clear();
+  CHECK("repl saves when save is followed by a comment",
+        fr_repl_eval_line(&runtime, "kept is 5", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "save -- keep it", out,
+                              sizeof(out)) == FR_OK &&
+            strcmp(out, "ok\n") == 0 &&
+            fr_repl_eval_line(&runtime, "kept is 6", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "restore", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "kept", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "5\nok\n") == 0);
+  CHECK("repl saves when save: is followed by a comment",
+        fr_repl_eval_line(&runtime, "kept is 7", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "save: -- note", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0 &&
+            fr_repl_eval_line(&runtime, "kept is 8", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "restore", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "kept", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "7\nok\n") == 0);
+  (void)fr_platform_persist_clear();
+#endif
 }
 
 static void test_repl_source_form_wire(void) {

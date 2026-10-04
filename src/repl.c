@@ -78,6 +78,19 @@ static bool fr_repl_is_space(char ch) {
   return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r';
 }
 
+/* True when text holds nothing that runs: only spaces, and comments when the
+ * parser is present. */
+static bool fr_repl_text_is_blank(const char *text) {
+  while (fr_repl_is_space(*text)) {
+    text += 1;
+  }
+#if FR_FEATURE_COMPILER
+  return *text == '\0' || fr_parse_source_is_blank(text);
+#else
+  return *text == '\0';
+#endif
+}
+
 /* Tooling keeps the serial protocol one request per physical line. A
  * source-form request carries real source newlines as `\n` and protects a
  * literal backslash as `\\`; decode it over the prefix in the REPL's existing
@@ -211,12 +224,7 @@ static fr_err_t fr_repl_parse_recognized_command(
   while (end > start && fr_repl_is_space(end[-1])) {
     end -= 1;
   }
-  if (start == end
-#if FR_FEATURE_COMPILER
-      /* A line of only comments holds no form, the same as an empty line. */
-      || fr_parse_source_is_blank(start)
-#endif
-  ) {
+  if (fr_repl_text_is_blank(start)) {
     out->kind = FR_REPL_COMMAND_BLANK;
     return FR_OK;
   }
@@ -2160,10 +2168,7 @@ static fr_err_t fr_repl_zero_arg_call_slot(fr_runtime_t *runtime,
     return FR_ERR_RANGE;
   }
   cursor += 1;
-  while (fr_repl_is_space(*cursor)) {
-    cursor += 1;
-  }
-  if (*cursor != '\0') {
+  if (!fr_repl_text_is_blank(cursor)) {
     return FR_ERR_NOT_FOUND;
   }
 #if FR_FEATURE_NUMERIC_SLOT_CALLS
@@ -2380,10 +2385,7 @@ static fr_err_t fr_repl_eval_bare_word(fr_runtime_t *runtime, const char *line,
     end += 1;
   }
   name_len = (uint16_t)(end - start);
-  while (fr_repl_is_space(*end)) {
-    end += 1;
-  }
-  if (*end != '\0') {
+  if (!fr_repl_text_is_blank(end)) {
     return FR_OK;
   }
   if ((uint32_t)name_len + 1 > sizeof(name)) {
