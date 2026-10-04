@@ -674,6 +674,15 @@ static fr_err_t fr_repl_write_status(const fr_repl_writer_t *writer) {
                              FR_PROFILE_MAX_SOURCE_RENDER_BYTES));
     FR_TRY(fr_repl_writer_write(writer, bytes));
   }
+  /* The longest request line the device reads, not counting the LF. */
+  FR_TRY(fr_repl_writer_write(writer, " line_bytes="));
+  {
+    char bytes[6];
+
+    FR_TRY(fr_repl_write_u16(bytes, (uint16_t)sizeof(bytes),
+                             (uint16_t)(FR_REPL_LINE_BYTES - 1u)));
+    FR_TRY(fr_repl_writer_write(writer, bytes));
+  }
   return fr_repl_writer_write(writer, "\nok\n");
 }
 

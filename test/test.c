@@ -14530,6 +14530,15 @@ static void test_repl(void) {
             strstr(out, " definition_text_bytes=") != NULL &&
             strstr(out, " source_render_bytes=") != NULL &&
             strstr(out, "\nok\n") != NULL);
+  {
+    char line_field[32];
+
+    snprintf(line_field, sizeof(line_field), " line_bytes=%u\n",
+             (unsigned)(FR_REPL_LINE_BYTES - 1u));
+    CHECK("repl status reports the line limit",
+          fr_repl_eval_line(&runtime, "status", out, sizeof(out)) == FR_OK &&
+              strstr(out, line_field) != NULL);
+  }
   CHECK("repl trims status command",
         fr_repl_eval_line(&runtime, " \tstatus \t", out, sizeof(out)) ==
                 FR_OK &&
