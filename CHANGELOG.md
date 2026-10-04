@@ -25,8 +25,8 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   answer without a note.
 - **`mem` shows the pending code.** `code.pending.used` and
   `code.pending.total` give, in bytes, the user code that waits for the next
-  save and the room for it, without the base library. `mem` and `mem code`
-  both show them.
+  save and the room for it, without the base library. `mem` shows them, and
+  the new topic `mem code` shows only them.
 - **`frothy` names the form that failed.** When a device error stops a file
   send, the session error says `form <n> of <total> (as sent)` with the first
   line of that form, and repeats the device's error lines. Boot forms move
@@ -55,6 +55,10 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 - **A decimal fraction answers `invalid (8)`.** A token such as `3.14`
   answered `not found (7)` before. Names such as `2nd`, `500ms` and `v1.2`
   stay names.
+- **The session error of a failed file send changed.** It starts with
+  `form <n> of <total> (as sent):` instead of `device returned`. A script
+  that matched `device returned` after a `--file` send must match the new
+  text; stdin and replay sends keep `device returned`.
 - **`frothy` refuses a form longer than the device line.** The CLI reads
   `line_bytes` from `status`. It refuses a longer form before it writes a
   byte, and it checks every form of a file or a library before the first
