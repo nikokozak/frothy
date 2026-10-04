@@ -127,6 +127,9 @@ static fr_esp_app_uart_t
 enum {
   FR_ESP_I2C_MAX = SOC_I2C_NUM,
   FR_ESP_I2C_ADDR_MAX = 0x7F,
+  /* The longest wait for one bus event. The driver reads -1 as wait
+   * forever. */
+  FR_ESP_I2C_TIMEOUT_MS = 100,
 };
 
 typedef struct fr_esp_i2c_t {
@@ -2250,6 +2253,21 @@ fr_err_t fr_platform_pwm_close(uint16_t platform_index) {
 #endif
 
 #if FR_FEATURE_I2C
+/* A transfer returns ESP_ERR_INVALID_STATE for a NACK, an SCL timeout and
+ * lost arbitration. Each one is a bus failure, as on RP2040. */
+static fr_err_t fr_esp_i2c_err(esp_err_t err) {
+  switch (err) {
+  case ESP_OK:
+    return FR_OK;
+  case ESP_ERR_NO_MEM:
+    return FR_ERR_CAPACITY;
+  case ESP_ERR_INVALID_ARG:
+    return FR_ERR_INVALID;
+  default:
+    return FR_ERR_IO;
+  }
+}
+
 /* Per-write/read transactions construct a transient device on the bus using
  * the stored frequency as scl_speed_hz. Caching the device handle is a
  * deferred optimization. */
@@ -2320,7 +2338,8 @@ fr_err_t fr_platform_i2c_write(uint16_t platform_index, uint8_t addr,
   }
   FR_TRY(fr_esp_i2c_entry(platform_index, &i2c));
   FR_TRY(fr_esp_i2c_dev(i2c, addr, &dev));
-  err = fr_esp_err(i2c_master_transmit(dev, bytes, length, -1));
+  err = fr_esp_i2c_err(
+      i2c_master_transmit(dev, bytes, length, FR_ESP_I2C_TIMEOUT_MS));
   (void)i2c_master_bus_rm_device(dev);
   return err;
 }
@@ -2342,7 +2361,8 @@ fr_err_t fr_platform_i2c_read(uint16_t platform_index, uint8_t addr,
     return FR_OK;
   }
   FR_TRY(fr_esp_i2c_dev(i2c, addr, &dev));
-  err = fr_esp_err(i2c_master_receive(dev, bytes, length, -1));
+  err = fr_esp_i2c_err(
+      i2c_master_receive(dev, bytes, length, FR_ESP_I2C_TIMEOUT_MS));
   (void)i2c_master_bus_rm_device(dev);
   return err;
 }
@@ -2365,8 +2385,8 @@ fr_err_t fr_platform_i2c_write_read(uint16_t platform_index, uint8_t addr,
     return FR_OK;
   }
   FR_TRY(fr_esp_i2c_dev(i2c, addr, &dev));
-  err = fr_esp_err(
-      i2c_master_transmit_receive(dev, wbytes, wlength, rbytes, rlength, -1));
+  err = fr_esp_i2c_err(i2c_master_transmit_receive(
+      dev, wbytes, wlength, rbytes, rlength, FR_ESP_I2C_TIMEOUT_MS));
   (void)i2c_master_bus_rm_device(dev);
   return err;
 }

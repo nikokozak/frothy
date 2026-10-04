@@ -385,6 +385,12 @@ test-esp-idf-console-boundary: ## Check that common ESP-IDF I/O uses the selecte
 		END { if (begin_count != 1 || end_count != 1 || in_console) { print "console implementation markers are invalid"; bad = 1 } exit bad }' \
 		targets/esp-idf/platform.c
 
+test-esp-idf-i2c-timeout: ## Check that each ESP32 I2C transfer passes FR_ESP_I2C_TIMEOUT_MS.
+	@tr '\n' ' ' < targets/esp-idf/platform.c | \
+		grep -oE 'i2c_master_(transmit_receive|transmit|receive|probe)[(][^;]*;' | \
+		awk '{ n += 1; if ($$0 !~ /,[[:space:]]*FR_ESP_I2C_TIMEOUT_MS[[:space:]]*[)]/) { print "I2C transfer without FR_ESP_I2C_TIMEOUT_MS: " $$0; bad = 1 } } \
+		END { if (n < 3) { print "expected at least 3 I2C transfer calls, found " n; bad = 1 } exit bad }'
+
 test-unity: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TEST_BINARY) $(UNITY_PERSIST_TIER_TEST_BINARY) $(UNITY_T12_SERVO_TEST_BINARY) $(UNITY_T21_MEM_TEST_BINARY) $(UNITY_T15_NET_TEST_BINARY) $(UNITY_T15B_TCP_TEST_BINARY) $(UNITY_T14_POWER_TEST_BINARY) $(UNITY_T16_BYTES_TEST_BINARY) ## Run all Unity host binaries.
 	./$(UNITY_TEST_BINARY)
 	./$(UNITY_I2C_TEST_BINARY)
@@ -1127,4 +1133,4 @@ vsix: ## Build the VS Code extension package.
 clean: ## Remove generated build outputs.
 	rm -rf build frothy test/test test/test-host-normal test/fixtures/projects/*/.frothy
 
-.PHONY: test test-esp-idf-console-boundary test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config print-target-facts vsix clean
+.PHONY: test test-esp-idf-console-boundary test-esp-idf-i2c-timeout test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config print-target-facts vsix clean
