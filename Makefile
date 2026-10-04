@@ -1127,10 +1127,19 @@ print-target-facts:
 			-e 's/^#define \(FR_FEATURE_[A-Z0-9_]*\) \(.*\)$$/\1=\2/p' | \
 		LC_ALL=C sort
 
+print-native-budget: ## Print the base native rows and the table size for BOARD.
+	@rm -rf build/native-budget-$(BOARD)
+	@$(MAKE) --no-print-directory -s BOARD=$(BOARD) TARGET=host PROFILE=$(PROFILE) \
+		FROTHY_COMPOSITION_H=$(FROTHY_COMPOSITION_H) \
+		BUILD_DIR=build/native-budget-$(BOARD) \
+		TARGET_MAIN_SOURCE=tools/native-budget.c \
+		FROTHY_BINARY=build/native-budget-$(BOARD)/native-budget frothy >&2
+	@build/native-budget-$(BOARD)/native-budget
+
 vsix: ## Build the VS Code extension package.
 	cd editors/vscode && npm ci && npm run build && npx vsce package
 
 clean: ## Remove generated build outputs.
 	rm -rf build frothy test/test test/test-host-normal test/fixtures/projects/*/.frothy
 
-.PHONY: test test-esp-idf-console-boundary test-esp-idf-i2c-timeout test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config print-target-facts vsix clean
+.PHONY: print-native-budget test test-esp-idf-console-boundary test-esp-idf-i2c-timeout test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config print-target-facts vsix clean
