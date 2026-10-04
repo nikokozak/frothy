@@ -17409,6 +17409,93 @@ static void test_repl_capacity_notes(void) {
             fr_repl_eval_line(&runtime, line_buffer, out, sizeof(out)) ==
                 FR_OK);
 #endif
+
+#if FR_FEATURE_EVENTS
+  CHECK("capacity notes install for event bodies",
+        fr_base_image_install(&runtime) == FR_OK);
+  CHECK("a second event body in one word names the store and its limit",
+        fr_repl_eval_line(&runtime,
+                          "two is fn [ every 500 [ 1 ]; every 600 [ 2 ] ]",
+                          out, sizeof(out)) == FR_ERR_CAPACITY &&
+            strstr(out, "note: space for on, every and after bodies in one "
+                        "word is full (limit 1) -- start the second one from "
+                        "another word\n") != NULL);
+  CHECK("a second event body started from another word fits, as the note "
+        "says",
+        fr_repl_eval_line(&runtime, "second is fn [ every 600 [ 2 ] ]", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime,
+                              "two is fn [ every 500 [ 1 ]; second: ]", out,
+                              sizeof(out)) == FR_OK);
+#endif
+
+  {
+    char locals[512];
+    char line[600];
+    int used = 0;
+
+    /* A local binding and a named repeat index each take a local slot. */
+    for (int i = 0; i < FR_PARSE_MAX_LOCALS; i++) {
+      used += snprintf(locals + used, sizeof(locals) - (size_t)used,
+                       "%shere a%d is 1", i == 0 ? "" : "; ", i);
+    }
+    snprintf(expected, sizeof(expected),
+             "note: space for locals in one form is full (limit %u)\n",
+             (unsigned)FR_PARSE_MAX_LOCALS);
+    CHECK("capacity notes install for locals",
+          fr_base_image_install(&runtime) == FR_OK);
+    snprintf(line, sizeof(line), "many is fn [ %s; here extra is 1 ]",
+             locals);
+    CHECK("too many locals in a word name the store and its limit",
+          fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                  FR_ERR_CAPACITY &&
+              strstr(out, expected) != NULL);
+    snprintf(line, sizeof(line), "repeat 1 as i [ %s ]", locals);
+    CHECK("too many locals in an expression line name the store and its "
+          "limit",
+          fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                  FR_ERR_CAPACITY &&
+              strstr(out, expected) != NULL);
+    snprintf(line, sizeof(line), "v is max: (repeat 1 as i [ %s ]), 0",
+             locals);
+    CHECK("too many locals in a value binding name the store and its limit",
+          fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                  FR_ERR_CAPACITY &&
+              strstr(out, expected) != NULL);
+  }
+
+  {
+    /* N ones joined by + make 2N - 1 parse nodes. */
+    int ones = FR_PARSE_MAX_EXPR_NODES / 2 + 1;
+    int part_ones = (ones + 1) / 2;
+    char sum[300];
+    char line[340];
+    int used = 0;
+
+    for (int i = 0; i < ones; i++) {
+      used += snprintf(sum + used, sizeof(sum) - (size_t)used, "%s1",
+                       i == 0 ? "" : " + ");
+    }
+    snprintf(expected, sizeof(expected),
+             "note: space for parse nodes in one form is full (limit %u) -- "
+             "split it into smaller words\n",
+             (unsigned)FR_PARSE_MAX_EXPR_NODES);
+    CHECK("capacity notes install for parse nodes",
+          fr_base_image_install(&runtime) == FR_OK);
+    CHECK("too many parse nodes in one form name the store and its limit",
+          fr_repl_eval_line(&runtime, sum, out, sizeof(out)) ==
+                  FR_ERR_CAPACITY &&
+              strstr(out, expected) != NULL);
+    /* The first part_ones ones of the sum, then the same total from a word. */
+    snprintf(line, sizeof(line), "part is fn [ %.*s ]", 4 * part_ones - 3,
+             sum);
+    snprintf(expected, sizeof(expected), "%d\nok\n", ones);
+    CHECK("the same sum split into a smaller word fits, as the note says",
+          fr_repl_eval_line(&runtime, line, out, sizeof(out)) == FR_OK &&
+              fr_repl_eval_line(&runtime, "(part:) + (part:) - 1", out,
+                                sizeof(out)) == FR_OK &&
+              strcmp(out, expected) == 0);
+  }
 }
 
 /* A reader who types a comment gets an answer that names no mistake. Raw

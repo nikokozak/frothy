@@ -1528,6 +1528,10 @@ fr_compile_emit_event_register(const fr_compile_context_t *ctx,
   }
   body = ctx->event_body;
   if (body->used) {
+    fr_diag_note_capacity(ctx->diag,
+                          "space for on, every and after bodies in one word",
+                          1, FR_DIAG_UNIT_COUNT,
+                          "start the second one from another word");
     return FR_ERR_CAPACITY;
   }
 
@@ -2226,6 +2230,9 @@ static fr_err_t fr_compile_function(const fr_compile_context_t *ctx,
   arity = function->param_count;
   local_count = fr_compile_count_local_binds(parsed);
   if (local_count > FR_PARSE_MAX_LOCALS) {
+    fr_diag_note_capacity(ctx != NULL ? ctx->diag : NULL,
+                          "space for locals in one form", FR_PARSE_MAX_LOCALS,
+                          FR_DIAG_UNIT_COUNT, NULL);
     return FR_ERR_CAPACITY;
   }
   if ((uint16_t)arity + local_count > FR_PROFILE_MAX_STACK_DEPTH) {
@@ -2599,6 +2606,8 @@ fr_err_t fr_compile_value_binding_for_runtime_with_diagnostic(
 
   local_count = fr_compile_count_local_binds(&parsed);
   if (local_count > FR_PARSE_MAX_LOCALS) {
+    fr_diag_note_capacity(ctx.diag, "space for locals in one form",
+                          FR_PARSE_MAX_LOCALS, FR_DIAG_UNIT_COUNT, NULL);
     return FR_ERR_CAPACITY;
   }
   if (local_count > FR_PROFILE_MAX_STACK_DEPTH) {
@@ -2651,6 +2660,9 @@ fr_compile_expression_with_context(const fr_compile_context_t *ctx,
 
   local_count = fr_compile_count_local_binds(&parsed);
   if (local_count > FR_PARSE_MAX_LOCALS) {
+    fr_diag_note_capacity(ctx != NULL ? ctx->diag : NULL,
+                          "space for locals in one form", FR_PARSE_MAX_LOCALS,
+                          FR_DIAG_UNIT_COUNT, NULL);
     return FR_ERR_CAPACITY;
   }
   if (local_count > FR_PROFILE_MAX_STACK_DEPTH) {

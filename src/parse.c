@@ -681,6 +681,9 @@ static fr_err_t fr_parse_finish_line(fr_parser_t *parser) {
 static fr_err_t fr_parse_add_expr(fr_parser_t *parser, fr_parse_expr_t expr,
                                   fr_parse_expr_id_t *out_id) {
   if (parser->out->expr_count >= FR_PARSE_MAX_EXPR_NODES) {
+    fr_diag_note_capacity(parser->diag, "space for parse nodes in one form",
+                          FR_PARSE_MAX_EXPR_NODES, FR_DIAG_UNIT_COUNT,
+                          "split it into smaller words");
     return FR_ERR_CAPACITY;
   }
   *out_id = parser->out->expr_count;
