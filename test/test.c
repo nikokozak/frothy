@@ -17232,6 +17232,51 @@ static void test_repl_capacity_notes(void) {
   CHECK("code object table full names the store and its limit",
         err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
 #endif
+
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  snprintf(expected, sizeof(expected),
+           "note: name table is full (limit %u) -- saved names count too\n",
+           (unsigned)FR_PROFILE_MAX_OVERLAY_NAMES);
+  CHECK("capacity notes install for names",
+        fr_base_image_install(&runtime) == FR_OK);
+  for (int i = 0; i <= FR_PROFILE_MAX_OVERLAY_NAMES; i++) {
+    char line[32];
+
+    snprintf(line, sizeof(line), "n%d is %d", i, i);
+    err = fr_repl_eval_line(&runtime, line, out, sizeof(out));
+    if (err != FR_OK) {
+      break;
+    }
+  }
+  CHECK("name table full names the store and its limit",
+        err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
+#endif
+
+#if FR_FEATURE_PERSISTENCE && FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  /* A library slot made before a user wipe stays below the live user slot,
+   * so repeated installs fill the slot table while few names exist. */
+  snprintf(expected, sizeof(expected), "note: slot table is full (limit %u)\n",
+           (unsigned)FR_PROFILE_MAX_SLOTS);
+  (void)fr_platform_persist_clear();
+  CHECK("capacity notes install for slots",
+        fr_base_image_install(&runtime) == FR_OK);
+  for (int i = 0; i < FR_PROFILE_MAX_SLOTS; i++) {
+    if (fr_repl_eval_line(&runtime, "install-library", out, sizeof(out)) !=
+        FR_OK) {
+      break;
+    }
+    err = fr_repl_eval_line(&runtime, "l is 1", out, sizeof(out));
+    if (err != FR_OK) {
+      break;
+    }
+    (void)fr_repl_eval_line(&runtime, "install-user", out, sizeof(out));
+    (void)fr_repl_eval_line(&runtime, "wipe-user", out, sizeof(out));
+    (void)fr_repl_eval_line(&runtime, "u is 1", out, sizeof(out));
+  }
+  CHECK("slot table full names the store and its limit",
+        err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
+  (void)fr_platform_persist_clear();
+#endif
 }
 
 /* A reader who types a comment gets an answer that names no mistake. Raw
