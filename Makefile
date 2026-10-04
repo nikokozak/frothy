@@ -538,7 +538,7 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 		'close-handles' \
 		'commands' \
 		'time is 200' \
-		'myblink is fn [ pin: $$led_builtin, 1; wait: time; pin: $$led_builtin, 0; wait: time ]' \
+		'myblink is fn [ gpio.write: $$led_builtin, 1; wait: time; gpio.write: $$led_builtin, 0; wait: time ]' \
 		'blink_times is fn with count [ repeat count [ myblink: ] ]' \
 		'boot is fn [ blink_times: 3 ]' \
 		'gpio.high: $$led_builtin' \
@@ -627,7 +627,7 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 		fi; \
 	done; \
 	err_out=$$(printf '%s\n' \
-		'bad is fn [ pin: ]' \
+		'bad is fn [ gpio.write: ]' \
 		'time is 200' \
 		'words' \
 		| build/host/frothy-host-normal); \
@@ -890,14 +890,14 @@ test-esp32-plain-host-transcript: esp32-plain-host ## Replay the esp32_plain pro
 		'words' \
 		'$$led_builtin' \
 		'$$a0' \
-		'pin: $$led_builtin, 1' \
+		'gpio.write: $$led_builtin, 1' \
 		'gpio.read: $$led_builtin' \
 		'adc.read: $$a0' \
 		'message is "ready"' \
 		'message' \
 		'status is cells: 1' \
 		'set status[0] to message' \
-		'boot is fn [ pin: $$led_builtin, 1 ]' \
+		'boot is fn [ gpio.write: $$led_builtin, 1 ]' \
 		'gpio.write: $$led_builtin, 0' \
 		'gpio.high: $$led_builtin' \
 		'1000 + gpio.read: $$led_builtin' \

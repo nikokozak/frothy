@@ -405,7 +405,6 @@ static void fr_compile_note_name_suggestion(const fr_compile_context_t *ctx,
       continue;
     }
     fr_compile_consider_suggestion(name, def->name, &scan);
-    fr_compile_consider_suggestion(name, def->alias, &scan);
   }
 #endif
 

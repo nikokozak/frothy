@@ -5838,6 +5838,20 @@ static void test_wipe_user_closes_handles(void) {
                           sizeof(out)) == FR_OK);
 }
 
+#if FR_FEATURE_COMPILER
+/* `pin` is an ordinary name: binding it must not replace gpio.write. */
+static void test_pin_is_an_ordinary_name(void) {
+  fr_runtime_t runtime;
+  char out[64];
+
+  CHECK("pin base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("binding pin leaves gpio.write intact",
+        fr_repl_eval_line(&runtime, "pin is 5", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "gpio.write: 2, 1", out,
+                              sizeof(out)) == FR_OK);
+}
+#endif
+
 /* Each open of a handle uses one generation of its entry. 1,000 opens and
  * closes must not use up the table. */
 static void test_handles_last_many_opens(void) {
@@ -8706,8 +8720,7 @@ static void test_image(void) {
             slot_id == FR_SLOT_ONE &&
             fr_base_slot_id_for_name("gpio.write", &slot_id) == FR_OK &&
             slot_id == FR_SLOT_GPIO_WRITE &&
-            fr_base_slot_id_for_name("pin", &slot_id) == FR_OK &&
-            slot_id == FR_SLOT_GPIO_WRITE &&
+            fr_base_slot_id_for_name("pin", &slot_id) == FR_ERR_NOT_FOUND &&
             fr_base_slot_id_for_name("gpio.mode", &slot_id) == FR_OK &&
             slot_id == FR_SLOT_GPIO_MODE &&
             fr_base_slot_id_for_name("gpio.read", &slot_id) == FR_OK &&
@@ -10777,7 +10790,8 @@ static void test_compile(void) {
 #endif
   CHECK("compile runtime dynamic function",
         fr_compile_overlay_update_for_runtime(
-            &runtime, "myblink is fn [ pin: led, 1 ]", &update) == FR_OK &&
+            &runtime, "myblink is fn [ gpio.write: led, 1 ]", &update) ==
+                FR_OK &&
             update.slot_inits[0].slot_id == FR_TEST_FIRST_USER_SLOT + 1 &&
             update.overlay_update.slot_name_count == 1 &&
             strcmp(update.slot_name.name, "myblink") == 0 &&
@@ -10794,7 +10808,7 @@ static void test_compile(void) {
             fr_vm_run_slot(&runtime, slot_id, &tagged) == FR_OK &&
             fr_tagged_is_nil(tagged));
   CHECK("compile runtime expression uses overlay name",
-        fr_compile_expression_for_runtime(&runtime, "pin: led, 1",
+        fr_compile_expression_for_runtime(&runtime, "gpio.write: led, 1",
                                           &expression) == FR_OK &&
             expression.instruction_bytes[2] == FR_OP_LOAD_SLOT &&
             expression.instruction_bytes[3] == FR_TEST_FIRST_USER_SLOT &&
@@ -11440,8 +11454,8 @@ static void test_compile(void) {
             fr_tagged_decode_int(tagged, &decoded) == FR_OK && decoded == 1);
   CHECK("compiled mechanical boot owns instruction bytes",
         fr_compile_overlay_update(
-            "boot is fn [ pin: $led_builtin, 1; wait: 100; "
-            "pin: $led_builtin, 0; wait: 100 ]",
+            "boot is fn [ gpio.write: $led_builtin, 1; wait: 100; "
+            "gpio.write: $led_builtin, 0; wait: 100 ]",
             &update) == FR_OK &&
             update.code_object.instructions.length == 24u + (push_size * 4u) &&
             update.instruction_bytes[2] == FR_OP_LOAD_SLOT &&
@@ -11479,8 +11493,8 @@ static void test_compile(void) {
   CHECK("compiled mechanical boot runs",
         fr_base_image_install(&runtime) == FR_OK &&
             fr_compile_overlay_update(
-                "boot is fn [ pin: $led_builtin, 1; wait: 100; "
-                "pin: $led_builtin, 0; wait: 100 ]",
+                "boot is fn [ gpio.write: $led_builtin, 1; wait: 100; "
+                "gpio.write: $led_builtin, 0; wait: 100 ]",
                 &update) == FR_OK &&
             fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
             fr_vm_run_boot(&runtime, &tagged) == FR_OK &&
@@ -11490,10 +11504,11 @@ static void test_compile(void) {
             fr_compile_overlay_update("boot is fn [ wait: -1 ]", &update) == FR_OK &&
             fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
             fr_vm_run_boot(&runtime, &tagged) == FR_ERR_DOMAIN);
-  CHECK("compiled pin rejects negative value",
+  CHECK("compiled gpio.write rejects negative value",
         fr_base_image_install(&runtime) == FR_OK &&
-            fr_compile_overlay_update("boot is fn [ pin: $led_builtin, -1 ]",
-                              &update) == FR_OK &&
+            fr_compile_overlay_update(
+                "boot is fn [ gpio.write: $led_builtin, -1 ]", &update) ==
+                FR_OK &&
             fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
             fr_vm_run_boot(&runtime, &tagged) == FR_ERR_DOMAIN);
   CHECK("compiled bare native name reads base slot",
@@ -12030,7 +12045,8 @@ static void test_compile(void) {
                                          &tagged) == FR_OK &&
             fr_tagged_is_nil(tagged));
   CHECK("compiled expression supports native calls",
-        fr_compile_expression("pin: $led_builtin, 1", &expression) == FR_OK &&
+        fr_compile_expression("gpio.write: $led_builtin, 1", &expression) ==
+                FR_OK &&
             expression.instructions.bytes == expression.instruction_bytes &&
             expression.instructions.length == 9u + push_size &&
             expression.instruction_bytes[2] == FR_OP_LOAD_SLOT &&
@@ -12044,7 +12060,8 @@ static void test_compile(void) {
                 FR_SLOT_GPIO_WRITE &&
             expression.instruction_bytes[8u + push_size] == FR_OP_RETURN);
   CHECK("compiled expression accepts trailing semicolon",
-        fr_compile_expression("pin: $led_builtin, 1;", &expression) == FR_OK &&
+        fr_compile_expression("gpio.write: $led_builtin, 1;", &expression) ==
+                FR_OK &&
             expression.instructions.length == 9u + push_size &&
             expression.instruction_bytes[5u + push_size] ==
                 FR_OP_CALL_NATIVE_SLOT &&
@@ -12671,7 +12688,7 @@ static void test_compiler_overlay_wire_parity(void) {
   fr_tagged_t wire_result = 0;
   const char *sources[] = {
       "led is $led_builtin",
-      "myblink is fn [ pin: led, 1 ]",
+      "myblink is fn [ gpio.write: led, 1 ]",
       "boot is fn [ myblink: ]",
   };
 
@@ -12893,8 +12910,8 @@ static void test_persist(void) {
 #endif
   CHECK("persist save mechanical boot",
         fr_compile_overlay_update(
-            "boot is fn [ pin: $led_builtin, 1; wait: 100; "
-            "pin: $led_builtin, 0; wait: 100 ]",
+            "boot is fn [ gpio.write: $led_builtin, 1; wait: 100; "
+            "gpio.write: $led_builtin, 0; wait: 100 ]",
             &update) == FR_OK &&
             test_persist_apply_user_overlay(&runtime,
                                             &update.overlay_update) == FR_OK &&
@@ -13014,7 +13031,8 @@ static void test_persist(void) {
             test_persist_apply_user_overlay(&runtime,
                                             &update.overlay_update) == FR_OK &&
             fr_compile_overlay_update_for_runtime(
-                &runtime, "boot is fn [ pin: led, 1 ]", &update) == FR_OK &&
+                &runtime, "boot is fn [ gpio.write: led, 1 ]", &update) ==
+                FR_OK &&
             test_persist_apply_user_overlay(&runtime,
                                             &update.overlay_update) == FR_OK &&
             fr_persist_save(&runtime) == FR_OK &&
@@ -13073,11 +13091,13 @@ static void test_persist(void) {
             test_persist_apply_user_overlay(&runtime,
                                             &update.overlay_update) == FR_OK &&
             fr_compile_overlay_update_for_runtime(
-                &runtime, "boot is fn [ pin: led, 1 ]", &update) == FR_OK &&
+                &runtime, "boot is fn [ gpio.write: led, 1 ]", &update) ==
+                FR_OK &&
             test_persist_apply_user_overlay(&runtime,
                                             &update.overlay_update) == FR_OK &&
             fr_compile_overlay_update_for_runtime(
-                &runtime, "myblink is fn [ pin: led, 1 ]", &update) == FR_OK &&
+                &runtime, "myblink is fn [ gpio.write: led, 1 ]", &update) ==
+                FR_OK &&
             test_persist_apply_user_overlay(&runtime,
                                             &update.overlay_update) == FR_OK &&
             fr_persist_save(&runtime) == FR_OK &&
@@ -14719,11 +14739,6 @@ static void test_repl(void) {
             strcmp(out, "notice: word not called (102)\n"
                    "detail: gpio.write is a word -- write gpio.write: to call it\n"
                    "native 2\nok\n") == 0);
-  CHECK("repl displays pin sugar native value",
-        fr_repl_eval_line(&runtime, "pin", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "notice: word not called (102)\n"
-                   "detail: pin is a word -- write pin: to call it\n"
-                   "native 2\nok\n") == 0);
   CHECK("repl see base nil",
         fr_repl_eval_line(&runtime, "see boot", out, sizeof(out)) == FR_OK &&
             strcmp(out, "base core nil\nok\n") == 0);
@@ -14754,12 +14769,6 @@ static void test_repl(void) {
   CHECK("repl see gpio.write renders signature",
         fr_repl_eval_line(&runtime, "see gpio.write", out, sizeof(out)) ==
                 FR_OK &&
-            strcmp(out,
-                   "gpio.write(pin: int, level: int) -> nil\n"
-                   "set gpio pin to a level (0 or 1); busy if pwm holds the pin\n"
-                   "ok\n") == 0);
-  CHECK("repl see pin sugar renders signature under canonical name",
-        fr_repl_eval_line(&runtime, "see pin", out, sizeof(out)) == FR_OK &&
             strcmp(out,
                    "gpio.write(pin: int, level: int) -> nil\n"
                    "set gpio pin to a level (0 or 1); busy if pwm holds the pin\n"
@@ -14823,10 +14832,6 @@ static void test_repl(void) {
             strcmp(out, "base persistence native arity 0\nok\n") == 0);
 #endif
 #endif
-  CHECK("repl runs top-level native call",
-        fr_repl_eval_line(&runtime, "pin: $led_builtin, 1", out,
-                          sizeof(out)) == FR_OK &&
-            strcmp(out, "ok\n") == 0);
   CHECK("repl runs top-level gpio.write native call",
         fr_repl_eval_line(&runtime, "gpio.write: $led_builtin, 1", out,
                           sizeof(out)) == FR_OK &&
@@ -14834,13 +14839,13 @@ static void test_repl(void) {
 #if FR_TAGGED_INT_MAX > 65535
   CHECK("repl rejects oversized platform integer before cast",
         fr_platform_gpio_write(13, 0) == FR_OK &&
-            fr_repl_eval_line(&runtime, "pin: 65549, 1", out, sizeof(out)) ==
-                FR_ERR_DOMAIN &&
+            fr_repl_eval_line(&runtime, "gpio.write: 65549, 1", out,
+                              sizeof(out)) == FR_ERR_DOMAIN &&
             fr_platform_gpio_read(13, &gpio_value) == FR_OK &&
             gpio_value == 0);
 #endif
   CHECK("repl runs top-level native call with overlay alias",
-        fr_repl_eval_line(&runtime, "pin: led, 1", out, sizeof(out)) ==
+        fr_repl_eval_line(&runtime, "gpio.write: led, 1", out, sizeof(out)) ==
                 FR_OK &&
             strcmp(out, "ok\n") == 0);
   CHECK("repl runs gpio.mode native",
@@ -14991,7 +14996,7 @@ static void test_repl(void) {
         fr_repl_eval_line(&runtime, "see 0", out, sizeof(out)) == FR_OK &&
             strcmp(out, "overlay code\nto boot [ 1 ]\nok\n") == 0);
   CHECK("repl compiles dynamic function",
-        fr_repl_eval_line(&runtime, "myblink is fn [ pin: led, 1 ]", out,
+        fr_repl_eval_line(&runtime, "myblink is fn [ gpio.write: led, 1 ]", out,
                           sizeof(out)) == FR_OK &&
             strcmp(out, "ok\n") == 0);
   CHECK("repl runs dynamic function",
@@ -15153,11 +15158,6 @@ static void test_repl(void) {
             strcmp(out, "notice: word not called (102)\n"
                    "detail: gpio.write is a word -- write gpio.write: to call it\n"
                    "native 2\nok\n") == 0);
-  CHECK("repl displays pin sugar native value without compiler",
-        fr_repl_eval_line(&runtime, "pin", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "notice: word not called (102)\n"
-                   "detail: pin is a word -- write pin: to call it\n"
-                   "native 2\nok\n") == 0);
 #endif
 #if FR_FEATURE_INTROSPECTION
   CHECK("repl see base nil without compiler",
@@ -15177,9 +15177,6 @@ static void test_repl(void) {
         fr_repl_eval_line(&runtime, "see gpio.write", out, sizeof(out)) ==
                 FR_OK &&
             strcmp(out, "base target native arity 2\nok\n") == 0);
-  CHECK("repl see pin sugar native arity without compiler",
-        fr_repl_eval_line(&runtime, "see pin", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "base target native arity 2\nok\n") == 0);
 #if FR_FEATURE_PERSISTENCE
   CHECK("repl see persistence native owner without compiler",
         fr_repl_eval_line(&runtime, "see save", out, sizeof(out)) == FR_OK &&
@@ -15194,7 +15191,7 @@ static void test_repl(void) {
         fr_repl_eval_line(&runtime, "led is $led_builtin", out,
                           sizeof(out)) == FR_ERR_UNSUPPORTED);
   CHECK("repl rejects expression without compiler",
-        fr_repl_eval_line(&runtime, "pin: $led_builtin, 1", out,
+        fr_repl_eval_line(&runtime, "gpio.write: $led_builtin, 1", out,
                           sizeof(out)) == FR_ERR_UNSUPPORTED);
 #if FR_BASE_IMAGE_INCLUDE_SYMBOLS
   CHECK("repl boot colon nil",
@@ -17106,7 +17103,7 @@ static void test_repl_pump(void) {
 #if FR_FEATURE_COMPILER
   const char *lines[] = {
       "words",
-      "boot is fn [ pin: $led_builtin, 1; pin: $led_builtin, 0; one ]",
+      "boot is fn [ gpio.write: $led_builtin, 1; gpio.write: $led_builtin, 0; one ]",
       "see boot",
       "boot:",
       "unknown",
@@ -17890,16 +17887,16 @@ static void test_repl_transcript(void) {
   CHECK("repl transcript define mechanical boot",
         fr_repl_eval_line(
             &runtime,
-            "boot is fn [ pin: $led_builtin, 1; wait: 100; "
-            "pin: $led_builtin, 0; wait: 100 ]",
+            "boot is fn [ gpio.write: $led_builtin, 1; wait: 100; "
+            "gpio.write: $led_builtin, 0; wait: 100 ]",
             out, sizeof(out)) == FR_OK &&
             strcmp(out, "ok\n") == 0);
   CHECK("repl transcript direct pin on",
-        fr_repl_eval_line(&runtime, "pin: $led_builtin, 1", out,
+        fr_repl_eval_line(&runtime, "gpio.write: $led_builtin, 1", out,
                           sizeof(out)) == FR_OK &&
             strcmp(out, "ok\n") == 0);
   CHECK("repl transcript direct pin off",
-        fr_repl_eval_line(&runtime, "pin: $led_builtin, 0", out,
+        fr_repl_eval_line(&runtime, "gpio.write: $led_builtin, 0", out,
                           sizeof(out)) == FR_OK &&
             strcmp(out, "ok\n") == 0);
   CHECK("repl transcript run mechanical boot",
@@ -17909,11 +17906,11 @@ static void test_repl_transcript(void) {
   CHECK("repl transcript rejects definition without compiler",
         fr_repl_eval_line(
             &runtime,
-            "boot is fn [ pin: $led_builtin, 1; wait: 100; "
-            "pin: $led_builtin, 0; wait: 100 ]",
+            "boot is fn [ gpio.write: $led_builtin, 1; wait: 100; "
+            "gpio.write: $led_builtin, 0; wait: 100 ]",
             out, sizeof(out)) == FR_ERR_UNSUPPORTED);
   CHECK("repl transcript rejects direct pin without compiler",
-        fr_repl_eval_line(&runtime, "pin: $led_builtin, 1", out,
+        fr_repl_eval_line(&runtime, "gpio.write: $led_builtin, 1", out,
                           sizeof(out)) == FR_ERR_UNSUPPORTED);
 #endif
 #if FR_FEATURE_PERSISTENCE
@@ -18039,7 +18036,7 @@ static void test_repl_startup_restore_and_boot(void) {
             fr_platform_gpio_read(13, &gpio_value) == FR_OK &&
             gpio_value == 0);
   CHECK("startup boot saves boot overlay",
-        fr_repl_eval_line(&runtime, "boot is fn [ pin: 13, 1 ]", out,
+        fr_repl_eval_line(&runtime, "boot is fn [ gpio.write: 13, 1 ]", out,
                           sizeof(out)) == FR_OK &&
             strcmp(out, "ok\n") == 0 && fr_persist_save(&runtime) == FR_OK);
   CHECK("startup boot resets runtime and gpio",
@@ -18124,6 +18121,9 @@ int main(void) {
   test_wipe_user_clears_events();
   test_wipe_user_closes_handles();
   test_handles_last_many_opens();
+#if FR_FEATURE_COMPILER
+  test_pin_is_an_ordinary_name();
+#endif
   test_bulk_close_preserves_failed_entries();
   test_wipe_user_retries_failed_close();
   test_wipe_user_preserves_unclosable_handle();
