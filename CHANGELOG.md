@@ -6,6 +6,77 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+### Added
+
+- **`status` reports the input line limit.** The status line ends with
+  `line_bytes`: the longest request line that the device reads, without its
+  LF (511 on the profiles with a 512-byte buffer).
+- **The prompt explains four common mistakes.** A bare word such as `led.on`
+  answers `notice: word not called (102)` with a detail that says to write
+  `led.on:`. A binding that replaces a base or library word, such as
+  `wait is 5`, answers `notice: base word replaced (103)` with a detail that
+  says to use another name. `==` and a decimal fraction such as `3.14` get a
+  message that names the mistake.
+- **`capacity exceeded (4)` names the full store.** A note line names the
+  store and its limit, for example
+  `note: pending code is full (limit 687 bytes) -- a save that succeeds frees it`.
+  The note gives a remedy only when the remedy is always true. Record storage
+  and the target stores (pulse spans, trace edges, platform buffers) still
+  answer without a note.
+- **`mem` shows the pending code.** `code.pending.used` and
+  `code.pending.total` give, in bytes, the user code that waits for the next
+  save and the room for it, without the base library. `mem` and `mem code`
+  both show them.
+- **`frothy` names the form that failed.** When a device error stops a file
+  send, the session error says `form <n> of <total> (as sent)` with the first
+  line of that form, and repeats the device's error lines. Boot forms move
+  last, so the send order can differ from the file order.
+- **`frothy build` refuses libraries that do not fit.** It compares the
+  natives of the project's libraries with the free rows of the board's native
+  table before the firmware build. A full table stopped the board at boot.
+- **A failed start names its error.** ESP32 prints
+  `startup err: <name> (<code>)` once before it halts, and `repl err` now
+  also gives the name and the code. RP2040 repeats the same line once per
+  second.
+
+### Changed
+
+- **ESP32 I2C reports `i/o failed (12)` for an absent device.** A NACK, an
+  SCL timeout and lost arbitration answered `invalid (8)` before; RP2040
+  already answered `i/o failed (12)`. A program that tested for `invalid (8)`
+  after an I2C transfer must test for `i/o failed (12)`. Each transfer now
+  waits at most 100 ms for one bus event. A bus that a fault holds busy can
+  still stop a call.
+- **`pin` is an ordinary name.** The alias `pin` named the same slot as
+  `gpio.write`, so `pin is 5` replaced `gpio.write` too. Source that calls
+  `pin:` must call `gpio.write:`; `pin:` now answers `not found (7)`. Words
+  that a device saved before keep working. If you saved an image after
+  `pin is <value>`, run `wipe-user` to restore `gpio.write`.
+- **A decimal fraction answers `invalid (8)`.** A token such as `3.14`
+  answered `not found (7)` before. Names such as `2nd`, `500ms` and `v1.2`
+  stay names.
+- **`frothy` refuses a form longer than the device line.** The CLI reads
+  `line_bytes` from `status`. It refuses a longer form before it writes a
+  byte, and it checks every form of a file or a library before the first
+  send. Firmware that does not report `line_bytes` keeps the old behavior.
+
+### Fixed
+
+- **A long input line no longer stops the prompt.** The device reads and
+  drops the whole line, answers `capacity exceeded (4)` with
+  `note: the line limit is <n> bytes`, and reads the next line. Before, the
+  REPL stopped (`repl err` on ESP32, `frothy halt err 1` on RP2040).
+- **A line that holds only a comment answers `ok`.**
+- **`save -- note` saves.** A prompt word followed by a comment runs. Before,
+  `save -- keep it` printed the native and did not save.
+- **`frothy send` keeps a boot form before a later `save`.** A boot form
+  still moves after the forms around it, but never past a `save`, so the
+  save stores it.
+- **A handle lasts millions of opens.** Each open used one of 15 generations
+  of a table entry, so a loop that opened and closed a PWM channel failed
+  near the 241st open. An entry now has 8,388,607 generations. Saved images
+  do not change.
+
 ## [0.1.21] - 2026-09-10
 
 ### Added
