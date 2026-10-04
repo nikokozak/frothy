@@ -443,6 +443,13 @@ static fr_err_t fr_parse_read_token(fr_parser_t *parser) {
       parser->token.kind = FR_TOKEN_LT;
     } else if (c == '>') {
       parser->token.kind = FR_TOKEN_GT;
+    } else if (*parser->cursor == '=') {
+      /* No valid source holds two `=` side by side; the C spelling of
+       * equality is the usual cause. */
+      return fr_parse_fail_span(
+          parser, FR_DIAG_MSG_PARSE_DOUBLE_EQUALS,
+          (fr_parse_span_t){.start = span.start, .length = 2},
+          FR_ERR_INVALID);
     } else {
       parser->token.kind = FR_TOKEN_EQ;
     }

@@ -17168,6 +17168,29 @@ static void test_repl_input_mistakes(void) {
         fr_repl_eval_line(&runtime, "one -- note", out, sizeof(out)) ==
                 FR_OK &&
             strcmp(out, "1\nok\n") == 0);
+  {
+    fr_parse_line_t parsed;
+    fr_parse_expr_id_t expr_id = 0;
+    fr_diagnostic_t diag = {0};
+
+    CHECK("parse names == as the mistake",
+          fr_parse_expression_line_with_diagnostic("1 == 1", &parsed,
+                                                   &expr_id, &diag) ==
+                  FR_ERR_INVALID &&
+              diag.message_id == FR_DIAG_MSG_PARSE_DOUBLE_EQUALS &&
+              diag.span_length == 2);
+    CHECK("parse keeps one = as equality",
+          fr_parse_expression_line("1 = 1", &parsed, &expr_id) == FR_OK &&
+              parsed.exprs[expr_id].kind == FR_PARSE_EXPR_EQ);
+  }
+  CHECK("repl renders the == message under the operator",
+        fr_repl_eval_line(&runtime, "1 == 1", out, sizeof(out)) ==
+                FR_ERR_INVALID &&
+            strstr(out, "error: invalid (8)\n") == out &&
+            strstr(out,
+                   "compare with one '=' -- write a = b, not a == b\n") !=
+                NULL &&
+            strstr(out, "source: 1 == 1\n          ^^\n") != NULL);
 #if FR_FEATURE_PERSISTENCE
   (void)fr_platform_persist_clear();
   CHECK("repl saves when save is followed by a comment",

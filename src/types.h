@@ -101,6 +101,8 @@ typedef enum fr_diag_message_id_t {
   FR_DIAG_MSG_RUNTIME_VALUE_NOT_STORABLE,
   FR_DIAG_MSG_RUNTIME_SAVED_HANDLES_AS_NIL,
   FR_DIAG_MSG_RUNTIME_CLOSE_HANDLES,
+  /* Appended in v0.1.22. */
+  FR_DIAG_MSG_PARSE_DOUBLE_EQUALS,
 } fr_diag_message_id_t;
 
 const char *fr_diag_message(uint16_t message_id);
