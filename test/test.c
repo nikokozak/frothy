@@ -17183,6 +17183,45 @@ static void test_repl_input_mistakes(void) {
           fr_parse_expression_line("1 = 1", &parsed, &expr_id) == FR_OK &&
               parsed.exprs[expr_id].kind == FR_PARSE_EXPR_EQ);
   }
+  {
+    fr_parse_line_t parsed;
+    fr_parse_expr_id_t expr_id = 0;
+    fr_diagnostic_t diag = {0};
+    const char *names[] = {"2nd", "500ms", "v1.2", "1.", ".5"};
+    bool names_stay = true;
+
+    CHECK("parse names a decimal fraction as the mistake",
+          fr_parse_expression_line_with_diagnostic("3.14", &parsed, &expr_id,
+                                                   &diag) == FR_ERR_INVALID &&
+              diag.message_id == FR_DIAG_MSG_PARSE_FLOAT_LITERAL &&
+              diag.span_length == 4);
+    CHECK("parse names a negative decimal fraction as the mistake",
+          fr_parse_expression_line("-0.5", &parsed, &expr_id) ==
+              FR_ERR_INVALID);
+    diag = (fr_diagnostic_t){0};
+    CHECK("parse names a decimal fraction past the integer range",
+          fr_parse_expression_line_with_diagnostic(
+              "1073741824.5", &parsed, &expr_id, &diag) == FR_ERR_INVALID &&
+              diag.message_id == FR_DIAG_MSG_PARSE_FLOAT_LITERAL);
+    diag = (fr_diagnostic_t){0};
+    CHECK("parse names a negative decimal fraction past the integer range",
+          fr_parse_expression_line_with_diagnostic(
+              "-1073741825.5", &parsed, &expr_id, &diag) == FR_ERR_INVALID &&
+              diag.message_id == FR_DIAG_MSG_PARSE_FLOAT_LITERAL);
+    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+      names_stay = names_stay &&
+                   fr_parse_expression_line(names[i], &parsed, &expr_id) ==
+                       FR_OK &&
+                   parsed.exprs[expr_id].kind == FR_PARSE_EXPR_NAME;
+    }
+    CHECK("parse leaves names that only look like numbers as names",
+          names_stay);
+  }
+  CHECK("repl renders the whole-numbers message",
+        fr_repl_eval_line(&runtime, "x is 3.14", out, sizeof(out)) ==
+                FR_ERR_INVALID &&
+            strstr(out, "Frothy has whole numbers only") != NULL &&
+            strstr(out, "source: x is 3.14\n             ^^^^\n") != NULL);
   CHECK("repl renders the == message under the operator",
         fr_repl_eval_line(&runtime, "1 == 1", out, sizeof(out)) ==
                 FR_ERR_INVALID &&

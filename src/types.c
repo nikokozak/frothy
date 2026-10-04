@@ -116,6 +116,8 @@ const char *fr_diag_message(uint16_t message_id) {
           "one expression ends here -- start the next on a new line or after ';'",
       [FR_DIAG_MSG_PARSE_DOUBLE_EQUALS] =
           "compare with one '=' -- write a = b, not a == b",
+      [FR_DIAG_MSG_PARSE_FLOAT_LITERAL] =
+          "Frothy has whole numbers only -- scale the value, for example 314 for 3.14",
       [FR_DIAG_MSG_COMPILE_EVENT_BODY_LOCAL] =
           "event bodies can't use the caller's locals -- lift it to a global",
       [FR_DIAG_MSG_COMPILE_CONTROL_FLOW_DISABLED] =
