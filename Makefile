@@ -681,9 +681,12 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 		exit 1; \
 	fi; \
 	cr_open_file=build/host/cr-open-stdin.txt; \
-	( { awk 'BEGIN { for (i = 0; i < 600; i++) printf "x"; printf "\r" }'; sleep 3; } \
+	rm -f $$cr_open_file; \
+	( { awk 'BEGIN { for (i = 0; i < 600; i++) printf "x"; printf "\r" }'; sleep 10; } \
 		| build/host/frothy-host-normal > $$cr_open_file 2>&1 & ); \
-	sleep 1; \
+	cr_wait=0; \
+	while ! grep -qF 'note: the line limit is 511 bytes' $$cr_open_file 2>/dev/null && \
+		[ $$cr_wait -lt 50 ]; do sleep 0.1; cr_wait=$$((cr_wait + 1)); done; \
 	if ! grep -qF 'note: the line limit is 511 bytes' $$cr_open_file; then \
 		cat $$cr_open_file; printf 'a CR did not end the line at once\n'; \
 		exit 1; \
