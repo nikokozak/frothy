@@ -120,6 +120,8 @@ func runInstallCommand(args []string, stdout io.Writer, stderr io.Writer, list p
 		} else {
 			fmt.Fprintf(stderr, "install: %v\n", err)
 		}
+		// The device can be in library mode although its answer was lost.
+		_ = endLibraryMode(dev, timeout)
 		return 1
 	}
 	if !responseOK(response) {
@@ -132,13 +134,33 @@ func runInstallCommand(args []string, stdout io.Writer, stderr io.Writer, list p
 		response, err := dev.sendLine(line, timeout, nil)
 		if err != nil {
 			fmt.Fprintf(stderr, "install: %v\n", err)
+			_ = endLibraryMode(dev, timeout)
 			return 1
 		}
 		if !responseOK(response) {
 			fmt.Fprintf(stderr, "error: device returned %s\n", responseStatus(response))
+			_ = endLibraryMode(dev, timeout)
 			return 1
 		}
 		printDeviceResponse(stderr, responseNoticeText(response))
 	}
+	if err := endLibraryMode(dev, timeout); err != nil {
+		fmt.Fprintf(stderr, "install: %v\n", err)
+		return 1
+	}
 	return 0
+}
+
+// endLibraryMode returns the board to the user tier after install-library, so
+// that later definitions are user words. A failed install calls it too: in
+// library mode a definition after wipe-user can damage the saved state.
+func endLibraryMode(dev sessionDevice, timeout time.Duration) error {
+	response, err := dev.sendLine("install-user", timeout, nil)
+	if err != nil {
+		return err
+	}
+	if !responseOK(response) {
+		return fmt.Errorf("device returned %s", responseStatus(response))
+	}
+	return nil
 }

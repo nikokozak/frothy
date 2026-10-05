@@ -43,7 +43,7 @@ func TestRunInstallSendsLibraryThenExitsZero(t *testing.T) {
 	writeFrothyToml(t, projectDir, "esp32_devkit_v1")
 	writeLibraryFr(t, projectDir, "esp32_devkit_v1", "lib_word is fn [ 42 ]\n")
 
-	dev := &fakeDevice{responses: []string{statusResponse32("device"), "ok\n", "ok\n"}}
+	dev := &fakeDevice{responses: []string{statusResponse32("device"), "ok\n", "ok\n", "ok\n"}}
 	var stderr bytes.Buffer
 
 	code := runInstallCommand(
@@ -54,7 +54,9 @@ func TestRunInstallSendsLibraryThenExitsZero(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d (stderr=%q)", code, stderr.String())
 	}
-	want := []string{"status", "install-library", "lib_word is fn [ 42 ]"}
+	// install-user returns the board to the user tier, so later definitions
+	// are user words.
+	want := []string{"status", "install-library", "lib_word is fn [ 42 ]", "install-user"}
 	if len(dev.sent) != len(want) {
 		t.Fatalf("sent %v, want %v", dev.sent, want)
 	}
@@ -114,14 +116,42 @@ func TestRunInstallSurfacesDeviceErrorMidPipe(t *testing.T) {
 	if !strings.Contains(stderr.String(), "error: device returned error: unsupported (9)") {
 		t.Fatalf("expected surfaced device error, got %q", stderr.String())
 	}
-	wantSent := []string{"status", "install-library", "lib_one is fn [ 1 ]"}
+	// No further library line after the error, but install-user returns the
+	// board to the user tier: library mode must not outlive a failed install.
+	wantSent := []string{"status", "install-library", "lib_one is fn [ 1 ]", "install-user"}
 	if len(dev.sent) != len(wantSent) {
-		t.Fatalf("sent %v, want %v (no further writes after device error)", dev.sent, wantSent)
+		t.Fatalf("sent %v, want %v", dev.sent, wantSent)
 	}
 	for i, line := range wantSent {
 		if dev.sent[i] != line {
 			t.Fatalf("sent[%d]=%q, want %q (full=%v)", i, dev.sent[i], line, dev.sent)
 		}
+	}
+}
+
+// The device can enter library mode before its answer to install-library
+// reaches the host, so a timeout there also ends library mode.
+func TestRunInstallEndsLibraryModeAfterUnansweredInstallLibrary(t *testing.T) {
+	projectDir := t.TempDir()
+	writeFrothyToml(t, projectDir, "esp32_devkit_v1")
+	writeLibraryFr(t, projectDir, "esp32_devkit_v1", "lib_word is fn [ 42 ]\n")
+
+	dev := &fakeDevice{
+		responses:    []string{statusResponse32("device"), "", "ok\n"},
+		responseErrs: []error{nil, errPromptTimeout, nil},
+	}
+	var stderr bytes.Buffer
+
+	code := runInstallCommand(
+		[]string{"--port", "/dev/cu.usbserial-0001", "--project", projectDir},
+		io.Discard, &stderr, singlePortLister("/dev/cu.usbserial-0001"), fakeInstallFactory(dev),
+		115200, time.Second, 0,
+	)
+	if code != 1 {
+		t.Fatalf("expected exit 1, got %d (stderr=%q)", code, stderr.String())
+	}
+	if got, want := strings.Join(dev.sent, "\n"), "status\ninstall-library\ninstall-user"; got != want {
+		t.Fatalf("sent %q, want %q", got, want)
 	}
 }
 
@@ -134,7 +164,7 @@ func TestRunInstallReportsNoticeAndContinues(t *testing.T) {
 	notice := "notice: not saved (13)\n" +
 		"detail: cannot save slot 'appuart' - bound to a live handle or buffer\n" +
 		"ok\n"
-	dev := &fakeDevice{responses: []string{statusResponse32("device"), "ok\n", notice, "ok\n"}}
+	dev := &fakeDevice{responses: []string{statusResponse32("device"), "ok\n", notice, "ok\n", "ok\n"}}
 	var stderr bytes.Buffer
 
 	code := runInstallCommand(
@@ -151,7 +181,7 @@ func TestRunInstallReportsNoticeAndContinues(t *testing.T) {
 		t.Fatalf("stderr = %q, want raw notice %q", got, want)
 	}
 	if got, want := strings.Join(dev.sent, "\n"),
-		"status\ninstall-library\nsave\nlib_word is fn [ 42 ]"; got != want {
+		"status\ninstall-library\nsave\nlib_word is fn [ 42 ]\ninstall-user"; got != want {
 		t.Fatalf("sent forms = %q, want %q", got, want)
 	}
 }
