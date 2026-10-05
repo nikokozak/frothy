@@ -12,9 +12,13 @@ typedef struct fr_lib_native_def_t {
 } fr_lib_native_def_t;
 
 /* Resolved at link time. With no project driving the build, lib_native.c
-   ships weak empty defaults; the generator's output overrides them. */
+   ships strong empty defaults; the generator's output replaces them. */
 extern const fr_lib_native_def_t fr_lib_natives[];
 extern const uint16_t fr_lib_natives_count;
+
+/* Each library native needs one name record at boot; the record table holds
+   this many. frothy build checks a library set against it. */
+enum { FR_LIB_NATIVE_RECORD_MAX = 64 };
 
 /* Boot hook called once after fr_base_image_install. Empty table is a no-op. */
 fr_err_t fr_lib_natives_install(fr_runtime_t *runtime);

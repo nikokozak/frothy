@@ -19,7 +19,7 @@ func libWithNatives(name string, count int) resolvedLibrary {
 // stepper (15) and synth (8) cannot share a board with 21 free rows. The
 // message names the board, the free rows, and each library that asks for them.
 func TestCheckNativeBudgetRejectsLibrariesThatDoNotFit(t *testing.T) {
-	budget := nativeBudget{baseRows: 142, tableSize: 163}
+	budget := nativeBudget{baseRows: 142, tableSize: 163, libraryNames: 64}
 	libs := []resolvedLibrary{libWithNatives("stepper", 15), libWithNatives("synth", 8)}
 	want := "board esp32_devkit_v1 has 21 free native rows (the base uses 142 of 163) " +
 		"but the libraries need 23 (stepper 15, synth 8); remove a library\n" +
@@ -32,6 +32,29 @@ func TestCheckNativeBudgetRejectsLibrariesThatDoNotFit(t *testing.T) {
 	if err := checkNativeBudget("esp32_devkit_v1", budget, libs[:1]); err != nil {
 		t.Errorf("stepper alone should fit: %v", err)
 	}
+	// 73 natives also pass the 64 name records, so a larger table would not
+	// fit them: no note about the table size.
+	want73 := "board esp32_devkit_v1 has 21 free native rows (the base uses 142 of 163) " +
+		"but the libraries need 73 (fat 73); remove a library"
+	err = checkNativeBudget("esp32_devkit_v1", budget, []resolvedLibrary{libWithNatives("fat", 73)})
+	if err == nil || err.Error() != want73 {
+		t.Fatalf("error = %v, want %q", err, want73)
+	}
+}
+
+// On the XIAO RP2040 the library name records (64) run out before the free
+// native rows (72), so 65 natives must not pass.
+func TestCheckNativeBudgetRejectsMoreLibraryNativesThanNameRecords(t *testing.T) {
+	budget := nativeBudget{baseRows: 57, tableSize: 129, libraryNames: 64}
+	want := "board seeed_xiao_rp2040 holds names for at most 64 library natives, " +
+		"but the libraries need 65 (fat 65); remove a library"
+	err := checkNativeBudget("seeed_xiao_rp2040", budget, []resolvedLibrary{libWithNatives("fat", 65)})
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
+	}
+	if err := checkNativeBudget("seeed_xiao_rp2040", budget, []resolvedLibrary{libWithNatives("fat", 64)}); err != nil {
+		t.Fatalf("64 natives should fit: %v", err)
+	}
 }
 
 func TestVerifyNativeBudgetReadsTheBoardBudgetOnlyForNativeLibraries(t *testing.T) {
@@ -42,7 +65,7 @@ func TestVerifyNativeBudgetReadsTheBoardBudgetOnlyForNativeLibraries(t *testing.
 	readNativeBudgetFn = func(_, _, compositionH string) (nativeBudget, error) {
 		calls++
 		gotComposition = compositionH
-		return nativeBudget{baseRows: 20, tableSize: 21}, nil
+		return nativeBudget{baseRows: 20, tableSize: 21, libraryNames: 64}, nil
 	}
 	root, err := resolveFrothySourceRoot(".")
 	if err != nil {
