@@ -74,6 +74,11 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   drops the whole line, answers `capacity exceeded (4)` with
   `note: the line limit is <n> bytes`, and reads the next line. Before, the
   REPL stopped (`repl err` on ESP32, `frothy halt err 1` on RP2040).
+- **A long line arrives complete on a USB Serial/JTAG console.** On the
+  Seeed XIAO ESP32-C3, the console lost a part of a line longer than 256
+  bytes and gave no error, also with `frothy send`. The XIAO ESP32-C6 and
+  ESP32-S3 use the same console code. The console now has a 1,024-byte
+  receive buffer, so one full line sent at a ready prompt arrives complete.
 - **A line that holds only a comment answers `ok`.**
 - **`save -- note` saves.** A prompt word followed by a comment runs. Before,
   `save -- keep it` printed the native and did not save.
@@ -106,6 +111,12 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   new definitions fail too. Only `dangerous.wipe` recovers, and it erases the
   saved library and program. `frothy install` sends `install-user` for you,
   also when a library line fails.
+- **Pasted source can lose bytes on a USB Serial/JTAG console.** The console
+  has no flow control, and a terminal or `frothy connect` sends pasted lines
+  without a wait for the prompt. The board can then lose bytes or whole
+  lines with no error. While a program runs, an ESP32 board keeps at most 128
+  bytes of typeahead (input that waits for a read) and drops the rest. Send a
+  file with `frothy send`, which waits for the prompt after each line.
 
 ## [0.1.21] - 2026-09-10
 

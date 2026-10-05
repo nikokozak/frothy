@@ -59,7 +59,10 @@
 #endif
 
 enum {
-  FR_ESP_CONSOLE_RX_BYTES = 256,
+  /* The USB Serial/JTAG driver drops a received packet that this buffer
+     cannot hold, and a line arrives faster than the line reader reads it.
+     The buffer has room for one full input line, its CR LF and a Ctrl-C. */
+  FR_ESP_CONSOLE_RX_BYTES = 2 * FR_PROFILE_REPL_LINE_BYTES,
   FR_ESP_CONSOLE_TX_BYTES = 256,
   /* Bytes the safe-point interrupt poll may consume ahead of the console
      reader. Sized for a pasted console.read-line line; overflow drops the
