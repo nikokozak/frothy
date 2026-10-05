@@ -23,6 +23,8 @@ type sessionDevice interface {
 	syncPrompt(timeout time.Duration) error
 	sendLine(line string, timeout time.Duration, promptSeen func()) (string, error)
 	interrupt(timeout time.Duration) (string, error)
+	// lineLimit is the line_bytes value of status; 0 means no reported limit.
+	lineLimit() int
 }
 
 type compilerMode string
@@ -182,6 +184,8 @@ func (d *serialDevice) readUntilPrompt(timeout time.Duration, requireStatus bool
 		}
 	}
 }
+
+func (d *serialDevice) lineLimit() int { return d.lineBytes }
 
 func (d *serialDevice) sendLine(line string, timeout time.Duration, promptSeen func()) (string, error) {
 	if err := checkFormsFit([]string{line}, d.lineBytes); err != nil {
@@ -1345,6 +1349,17 @@ func (w *recordWriter) send(source string) error {
 	})
 }
 
+// compileError records source that the host refuses before any device line
+// (ADR 0028). It is not a session error; the session goes on.
+func (w *recordWriter) compileError(source, reason, status, text string) error {
+	return w.write(recordCompileError, recordStateIdle, recordMirrorNone, map[string]any{
+		"source": source,
+		"reason": reason,
+		"status": status,
+		"text":   text,
+	})
+}
+
 func (w *recordWriter) response(response string) error {
 	fields := map[string]any{
 		"status": responseStatus(response),
@@ -1557,6 +1572,16 @@ func runSerialRecords(input io.Reader, records *recordWriter, dev sessionDevice,
 			}
 			continue
 		}
+		// The device would answer this status for the line; the host refuses
+		// the form instead, so the device prompt stays usable.
+		if err := checkFormsFit([]string{read.source}, dev.lineLimit()); err != nil {
+			const status = "error: capacity exceeded (4)"
+			if err := records.compileError(read.source, "budget", status,
+				status+"\nnote: "+err.Error()+"\n"); err != nil {
+				return err
+			}
+			continue
+		}
 
 		if err := records.send(read.source); err != nil {
 			return err
@@ -1579,11 +1604,6 @@ func runSerialRecords(input io.Reader, records *recordWriter, dev sessionDevice,
 					return err
 				}
 				continue
-			}
-			var tooLong errFormTooLong
-			if errors.As(err, &tooLong) {
-				_ = records.sessionError(recordStateError, recordErrorSourceFailed, err.Error())
-				return err
 			}
 			return handleRecordDeviceError(records, err)
 		}

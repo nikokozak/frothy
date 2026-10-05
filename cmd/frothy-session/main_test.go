@@ -24,7 +24,10 @@ type fakeDevice struct {
 	syncs              int
 	onSend             func(line string)
 	afterPrompt        func(line string)
+	lineBytes          int
 }
+
+func (d *fakeDevice) lineLimit() int { return d.lineBytes }
 
 func (d *fakeDevice) syncPrompt(timeout time.Duration) error {
 	_ = timeout
@@ -2591,21 +2594,32 @@ func TestSendLineRefusesFormLongerThanDeviceLine(t *testing.T) {
 	}
 }
 
-// A form that the host refuses is a source failure, not a lost device.
-func TestRecordsReportRefusedFormAsSourceFailure(t *testing.T) {
-	tooLong := errFormTooLong{head: "to longword [", wireBytes: 763, limit: 511}
+// A form longer than the device line is a compile_error (ADR 0028): the host
+// refuses it before any device line, and the session goes on.
+func TestRecordsRefuseFormLongerThanDeviceLineAndContinue(t *testing.T) {
+	long := "to longword [\n" + strings.Repeat("  led.on:\n", 60) + "]"
 	dev := &fakeDevice{
-		responses:    []string{statusResponse32("device"), ""},
-		responseErrs: []error{nil, tooLong},
+		responses: []string{statusResponse32("device"), "2\nok\n"},
+		lineBytes: 511,
 	}
 	var output strings.Builder
-	err := runRecordsTestSession(t, strings.NewReader("to longword [ 1 ]\n"), &output, dev, time.Second, &interruptTracker{})
-	if !errors.As(err, &tooLong) {
-		t.Fatalf("err = %v, want errFormTooLong", err)
+	input := strings.NewReader(long + "\n1 + 1\n")
+	if err := runRecordsTestSession(t, input, &output, dev, time.Second, &interruptTracker{}); err != nil {
+		t.Fatalf("session: %v", err)
 	}
-	record := recordWithKind(decodeRecords(t, output.String()), "session_error")
-	if record == nil || record["code"] != recordErrorSourceFailed {
-		t.Fatalf("session_error = %v, want code %q", record, recordErrorSourceFailed)
+	if got, want := strings.Join(dev.sent, "\n"), "status\n1 + 1"; got != want {
+		t.Fatalf("sent %q, want %q", got, want)
+	}
+	decoded := decodeRecords(t, output.String())
+	if got, want := recordKinds(decoded), "session_start,status,compile_error,send,response,session_end"; got != want {
+		t.Fatalf("record kinds %q, want %q", got, want)
+	}
+	refused := recordWithKind(decoded, "compile_error")
+	text, _ := refused["text"].(string)
+	if refused["source"] != long || refused["reason"] != "budget" ||
+		refused["status"] != "error: capacity exceeded (4)" ||
+		!strings.Contains(text, "the device reads at most 511 bytes in one line") {
+		t.Fatalf("compile_error = %#v", refused)
 	}
 }
 

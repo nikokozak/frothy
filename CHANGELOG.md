@@ -62,7 +62,9 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 - **`frothy` refuses a form longer than the device line.** The CLI reads
   `line_bytes` from `status`. It refuses a longer form before it writes a
   byte, and it checks every form of a file or a library before the first
-  send. Firmware that does not report `line_bytes` keeps the old behavior.
+  send. In records mode (the editor connection), a refused form becomes a
+  `compile_error` record and the session goes on. Firmware that does not
+  report `line_bytes` keeps the old behavior.
 
 ### Fixed
 
