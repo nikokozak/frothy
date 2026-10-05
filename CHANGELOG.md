@@ -31,9 +31,10 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   send, the session error says `form <n> of <total> (as sent)` with the first
   line of that form, and repeats the device's error lines. Boot forms move
   last, so the send order can differ from the file order.
-- **`frothy build` refuses libraries that do not fit.** It compares the
-  natives of the project's libraries with the free rows of the board's native
-  table before the firmware build. A full table stopped the board at boot.
+- **`frothy build` refuses libraries that do not fit.** Before the firmware
+  build, it compares the natives of the project's libraries with the free
+  rows of the board's native table and with the 64 names that the firmware
+  keeps for library natives. A full table stopped the board at boot.
 - **A failed start names its error.** ESP32 prints
   `startup err: <name> (<code>)` once before it halts, and `repl err` now
   also gives the name and the code. RP2040 repeats the same line once per
@@ -51,7 +52,8 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   `gpio.write`, so `pin is 5` replaced `gpio.write` too. Source that calls
   `pin:` must call `gpio.write:`; `pin:` now answers `not found (7)`. Words
   that a device saved before keep working. If you saved an image after
-  `pin is <value>`, run `wipe-user` to restore `gpio.write`.
+  `pin is <value>`, run `wipe-user` and restart the board to restore
+  `gpio.write`; `wipe-user` also removes the rest of the saved program.
 - **A decimal fraction answers `invalid (8)`.** A token such as `3.14`
   answered `not found (7)` before. Names such as `2nd`, `500ms` and `v1.2`
   stay names.
@@ -82,6 +84,28 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   of a table entry, so a loop that opened and closed a PWM channel failed
   near the 241st open. An entry now has 8,388,607 generations. Saved images
   do not change.
+- **`frothy install` returns the board to the user tier.** It now sends
+  `install-user` after the library, and also when a library line fails.
+  Before, the board stayed in library mode until a restart, so later
+  definitions became library words and each one saved the whole image.
+
+### Known issues
+
+- **Changing a library while a program is on the board is not safe.**
+  `install-library` gives the words of the library new slots. User words
+  compiled before then answer `wrong type (2)` or run a different library
+  word with no error, and a later `save` can answer `corrupt data (11)` and
+  leave the saved state unreadable. Until a fix, change a library in this
+  order: `wipe-user`, then `frothy install`, then send the program and
+  `save`. If a library already changed under a program, do not `save`: run
+  `dangerous.wipe`, then `frothy install`, then send the program.
+- **A definition in library mode after `wipe-user` can damage the saved
+  state.** After a manual `install-library`, send `install-user` before
+  `wipe-user` or new definitions. In library mode, a definition after
+  `wipe-user` can answer `corrupt data (11)`, and then `restore`, `save` and
+  new definitions fail too. Only `dangerous.wipe` recovers, and it erases the
+  saved library and program. `frothy install` sends `install-user` for you,
+  also when a library line fails.
 
 ## [0.1.21] - 2026-09-10
 
