@@ -25,6 +25,7 @@ static void fr_esp_report_and_halt(const char *label, fr_err_t err) {
   snprintf(line, sizeof(line), "%s: %s (%u)\n", label, fr_err_name(err),
            (unsigned)err);
   (void)fr_platform_write_text(line);
+  fr_esp_console_flush();
   fr_esp_halt(err);
 }
 

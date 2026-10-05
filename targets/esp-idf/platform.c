@@ -68,9 +68,7 @@ enum {
      reader. Sized for a pasted console.read-line line; overflow drops the
      newest bytes. */
   FR_ESP_TYPEAHEAD_BYTES = 128,
-#if FR_FEATURE_CONSOLE_ROUTING
   FR_ESP_CONSOLE_TX_WAIT_MS = 100,
-#endif
 #if FR_FEATURE_UART
   FR_ESP_APP_UART_RX_BYTES = 256,
   FR_ESP_APP_UART_TX_BYTES = 256,
@@ -527,6 +525,19 @@ static bool fr_esp_console_pin_conflict(uint16_t tx, uint16_t rx) {
           fr_esp_console_route.rx == tx || fr_esp_console_route.rx == rx);
 }
 #endif
+
+/* esp_rom_printf writes to the UART directly, so the halt line can pass text
+ * that is still in the console driver buffer. Wait for that text first. */
+void fr_esp_console_flush(void) {
+#if FR_FEATURE_CONSOLE_ROUTING
+  (void)fr_esp_console_wait_tx_done(&fr_esp_console_route);
+#elif defined(FR_BOARD_CONSOLE_UART)
+  (void)uart_wait_tx_done(FR_BOARD_UART_PORT,
+                          pdMS_TO_TICKS(FR_ESP_CONSOLE_TX_WAIT_MS));
+#elif defined(FR_BOARD_CONSOLE_USB_SERIAL_JTAG)
+  (void)usb_serial_jtag_wait_tx_done(pdMS_TO_TICKS(FR_ESP_CONSOLE_TX_WAIT_MS));
+#endif
+}
 
 static fr_err_t fr_esp_console_init(void) {
 #if defined(FR_BOARD_CONSOLE_UART)
