@@ -273,6 +273,9 @@ fr_err_t fr_native_install(fr_runtime_t *runtime, fr_native_fn_t fn,
   (void)signature;
 #endif
   if (runtime->natives.count >= FR_PROFILE_NATIVE_TABLE_SIZE) {
+    fr_diag_note_capacity(runtime->diag, "native table",
+                          FR_PROFILE_NATIVE_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
+                          NULL);
     return FR_ERR_CAPACITY;
   }
 

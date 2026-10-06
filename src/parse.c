@@ -443,6 +443,13 @@ static fr_err_t fr_parse_read_token(fr_parser_t *parser) {
       parser->token.kind = FR_TOKEN_LT;
     } else if (c == '>') {
       parser->token.kind = FR_TOKEN_GT;
+    } else if (*parser->cursor == '=') {
+      /* No valid source holds two `=` side by side; the C spelling of
+       * equality is the usual cause. */
+      return fr_parse_fail_span(
+          parser, FR_DIAG_MSG_PARSE_DOUBLE_EQUALS,
+          (fr_parse_span_t){.start = span.start, .length = 2},
+          FR_ERR_INVALID);
     } else {
       parser->token.kind = FR_TOKEN_EQ;
     }
@@ -531,7 +538,30 @@ static fr_err_t fr_parse_read_token(fr_parser_t *parser) {
                               .leading_space = leading_space,
                               .leading_newline = leading_newline};
   if (fr_parse_span_looks_int(span)) {
-    fr_err_t err = fr_parse_token_int(span, &parser->token.int_value);
+    fr_err_t err = FR_OK;
+    uint16_t i = (span.length > 0 && span.start[0] == '-') ? 1u : 0u;
+    uint16_t digits_before = 0;
+    uint16_t digits_after = 0;
+    bool point = false;
+
+    /* `3.14` and `-0.5`: digits, one point, digits. Frothy has no such
+     * literal; the integer scan below would call it a name or out of range. */
+    for (; i < span.length; i++) {
+      if (span.start[i] == '.' && !point) {
+        point = true;
+      } else if (!fr_parse_is_digit(span.start[i])) {
+        break;
+      } else if (point) {
+        digits_after += 1;
+      } else {
+        digits_before += 1;
+      }
+    }
+    if (i == span.length && point && digits_before > 0 && digits_after > 0) {
+      return fr_parse_fail_span(parser, FR_DIAG_MSG_PARSE_FLOAT_LITERAL, span,
+                                FR_ERR_INVALID);
+    }
+    err = fr_parse_token_int(span, &parser->token.int_value);
     if (err == FR_OK) {
       parser->token.kind = FR_TOKEN_INT;
     } else if (err != FR_ERR_UNSUPPORTED) {
@@ -548,6 +578,17 @@ static fr_err_t fr_parse_read_token(fr_parser_t *parser) {
 
 static fr_err_t fr_parse_advance(fr_parser_t *parser) {
   return fr_parse_read_token(parser);
+}
+
+bool fr_parse_source_is_blank(const char *source) {
+  fr_parser_t parser = {0};
+
+  if (source == NULL) {
+    return false;
+  }
+  parser.cursor = source;
+  return fr_parse_read_token(&parser) == FR_OK &&
+         parser.token.kind == FR_TOKEN_EOF;
 }
 
 static uint16_t fr_parse_expected_message(fr_token_kind_t kind) {
@@ -640,6 +681,9 @@ static fr_err_t fr_parse_finish_line(fr_parser_t *parser) {
 static fr_err_t fr_parse_add_expr(fr_parser_t *parser, fr_parse_expr_t expr,
                                   fr_parse_expr_id_t *out_id) {
   if (parser->out->expr_count >= FR_PARSE_MAX_EXPR_NODES) {
+    fr_diag_note_capacity(parser->diag, "space for parse nodes in one form",
+                          FR_PARSE_MAX_EXPR_NODES, FR_DIAG_UNIT_COUNT,
+                          "split it into smaller words");
     return FR_ERR_CAPACITY;
   }
   *out_id = parser->out->expr_count;

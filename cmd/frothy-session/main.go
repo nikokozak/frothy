@@ -23,6 +23,8 @@ type sessionDevice interface {
 	syncPrompt(timeout time.Duration) error
 	sendLine(line string, timeout time.Duration, promptSeen func()) (string, error)
 	interrupt(timeout time.Duration) (string, error)
+	// lineLimit is the line_bytes value of status; 0 means no reported limit.
+	lineLimit() int
 }
 
 type compilerMode string
@@ -42,6 +44,9 @@ type deviceStatus struct {
 	intMin      int64
 	intMax      int64
 	applyBytes  uint16
+	// lineBytes is the longest request line, in bytes without the LF, that the
+	// device reads. Zero means the firmware does not report it.
+	lineBytes uint16
 }
 
 var errPromptTimeout = errors.New("timed out waiting for prompt")
@@ -61,6 +66,9 @@ type serialDevice struct {
 	readCh  chan byte
 	errCh   chan error
 	writeMu sync.Mutex
+	// lineBytes comes from the last successful status read; zero means the
+	// device did not report a limit, and sendLine checks nothing.
+	lineBytes int
 }
 
 func configureSerial(file *os.File, baud int) error {
@@ -177,7 +185,12 @@ func (d *serialDevice) readUntilPrompt(timeout time.Duration, requireStatus bool
 	}
 }
 
+func (d *serialDevice) lineLimit() int { return d.lineBytes }
+
 func (d *serialDevice) sendLine(line string, timeout time.Duration, promptSeen func()) (string, error) {
+	if err := checkFormsFit([]string{line}, d.lineBytes); err != nil {
+		return "", err
+	}
 	if err := d.writeBytes([]byte(wireRequest(line) + "\n")); err != nil {
 		return "", err
 	}
@@ -205,6 +218,34 @@ func wireRequest(source string) string {
 		}
 	}
 	return request.String()
+}
+
+// errFormTooLong means a source form needs more wire bytes than the device
+// reads in one line. The host does not send it.
+type errFormTooLong struct {
+	head      string
+	wireBytes int
+	limit     int
+}
+
+func (e errFormTooLong) Error() string {
+	return fmt.Sprintf("form %q is %d bytes on the wire; the device reads at most %d bytes in one line",
+		e.head, e.wireBytes, e.limit)
+}
+
+// checkFormsFit returns the first form whose wire line is longer than limit.
+// A limit of zero means the device did not report one.
+func checkFormsFit(forms []string, limit int) error {
+	if limit <= 0 {
+		return nil
+	}
+	for _, form := range forms {
+		if n := len(wireRequest(form)); n > limit {
+			head, _, _ := strings.Cut(form, "\n")
+			return errFormTooLong{head: head, wireBytes: n, limit: limit}
+		}
+	}
+	return nil
 }
 
 func sourceNeedsEnvelope(source string) bool {
@@ -409,6 +450,13 @@ func parseDeviceStatus(response string) (deviceStatus, error) {
 		if err != nil {
 			return deviceStatus{}, err
 		}
+		lineBytes := uint16(0) // firmware before v0.1.22 does not report it
+		if values["line_bytes"] != "" {
+			lineBytes, err = parseUint16Field(values, "line_bytes")
+			if err != nil {
+				return deviceStatus{}, err
+			}
+		}
 		wordSize, err := parseUint16Field(values, "word_size")
 		if err != nil {
 			return deviceStatus{}, err
@@ -433,6 +481,7 @@ func parseDeviceStatus(response string) (deviceStatus, error) {
 			intMin:      intMin,
 			intMax:      intMax,
 			applyBytes:  applyBytes,
+			lineBytes:   lineBytes,
 		}
 		if status.profile == "" || status.profile == "unknown" {
 			return deviceStatus{}, errors.New("status missing profile")
@@ -830,22 +879,36 @@ func isBootDefinition(line string) bool {
 	return len(fields) >= 2 && fields[0] == "boot" && fields[1] == "is"
 }
 
+// isSaveForm reports whether a form is the bare word `save` or `save:`.
+func isSaveForm(form string) bool {
+	inBlockComment := false
+	fields := strings.Fields(stripFrothyComments(form, &inBlockComment))
+	return len(fields) == 1 && (fields[0] == "save" || fields[0] == "save:")
+}
+
+// sourceFormsFromText splits text into forms and moves each `boot is` form
+// after the forms around it, so a file may call words it defines further down.
+// A boot form never moves past a `save`: the save must store it.
 func sourceFormsFromText(text string) ([]string, error) {
 	forms, err := collectSourceForms(strings.NewReader(text))
 	if err != nil {
 		return nil, err
 	}
 
-	var nonBoot []string
+	var ordered []string
 	var boot []string
 	for _, form := range forms {
-		if isBootDefinition(form) {
+		switch {
+		case isBootDefinition(form):
 			boot = append(boot, form)
-		} else {
-			nonBoot = append(nonBoot, form)
+		case isSaveForm(form):
+			ordered = append(append(ordered, boot...), form)
+			boot = nil
+		default:
+			ordered = append(ordered, form)
 		}
 	}
-	return append(nonBoot, boot...), nil
+	return append(ordered, boot...), nil
 }
 
 func readFileLines(path string) ([]string, error) {
@@ -1286,6 +1349,17 @@ func (w *recordWriter) send(source string) error {
 	})
 }
 
+// compileError records source that the host refuses before any device line
+// (ADR 0028). It is not a session error; the session goes on.
+func (w *recordWriter) compileError(source, reason, status, text string) error {
+	return w.write(recordCompileError, recordStateIdle, recordMirrorNone, map[string]any{
+		"source": source,
+		"reason": reason,
+		"status": status,
+		"text":   text,
+	})
+}
+
 func (w *recordWriter) response(response string) error {
 	fields := map[string]any{
 		"status": responseStatus(response),
@@ -1390,11 +1464,12 @@ func runSerial(input io.Reader, output io.Writer, dev sessionDevice, timeout tim
 	if err != nil {
 		return err
 	}
-	return runSerialWithInterrupts(input, output, dev, timeout, nil, true)
+	return runSerialWithInterrupts(input, output, dev, timeout, nil, true, 0)
 }
 
-func runSerialWithInterrupts(input io.Reader, output io.Writer, dev sessionDevice, timeout time.Duration, interrupts *interruptTracker, failOnDeviceError bool) error {
+func runSerialWithInterrupts(input io.Reader, output io.Writer, dev sessionDevice, timeout time.Duration, interrupts *interruptTracker, failOnDeviceError bool, formTotal int) error {
 	reader := newSessionSourceFormReader(input)
+	sent := 0
 	for {
 		read, ok, err := reader.next(output, interrupts)
 		if err != nil {
@@ -1406,6 +1481,7 @@ func runSerialWithInterrupts(input io.Reader, output io.Writer, dev sessionDevic
 		if read.sourceBlockEnd {
 			continue
 		}
+		sent++
 
 		interrupted := false
 		promptSeen := false
@@ -1438,9 +1514,33 @@ func runSerialWithInterrupts(input io.Reader, output io.Writer, dev sessionDevic
 			continue
 		}
 		if failOnDeviceError && !responseSettledAfterInterrupt(response) {
-			return fmt.Errorf("device returned %s", responseStatus(response))
+			return deviceResponseError(response, sent, formTotal, read.source)
 		}
 	}
+}
+
+// deviceResponseError reports a device error. In a file send (formTotal > 0)
+// it names the form by its place in the send order, which can differ from the
+// file order, gives the first line of the form, and repeats the device's lines
+// from the error on. It gives no advice: the failed form can have changed
+// device state.
+func deviceResponseError(response string, sent int, formTotal int, source string) error {
+	status := responseStatus(response)
+	if formTotal == 0 {
+		return fmt.Errorf("device returned %s", status)
+	}
+	head, _, _ := strings.Cut(source, "\n")
+	// The first line equal to the status is the line that responseStatus
+	// chose. With no such line, the status came from the first line.
+	lines := strings.Split(strings.TrimRight(normalizeResponseText(response), "\n"), "\n")
+	for i, line := range lines {
+		if line == status {
+			lines = lines[i:]
+			break
+		}
+	}
+	return fmt.Errorf("form %d of %d (as sent): %s\n%s", sent, formTotal, head,
+		strings.Join(lines, "\n"))
 }
 
 func handleSignalInterrupt(response string) error {
@@ -1450,12 +1550,13 @@ func handleSignalInterrupt(response string) error {
 	return nil
 }
 
-func runSerialRecords(input io.Reader, records *recordWriter, dev sessionDevice, timeout time.Duration, interrupts *interruptTracker, failOnDeviceError bool) error {
+func runSerialRecords(input io.Reader, records *recordWriter, dev sessionDevice, timeout time.Duration, interrupts *interruptTracker, failOnDeviceError bool, formTotal int) error {
 	if interrupts == nil {
 		return errors.New("record session requires interrupt tracker")
 	}
 
 	reader := newSessionSourceFormReader(input)
+	sent := 0
 	for {
 		read, ok, err := reader.next(nil, interrupts)
 		if err != nil {
@@ -1471,10 +1572,21 @@ func runSerialRecords(input io.Reader, records *recordWriter, dev sessionDevice,
 			}
 			continue
 		}
+		// The device would answer this status for the line; the host refuses
+		// the form instead, so the device prompt stays usable.
+		if err := checkFormsFit([]string{read.source}, dev.lineLimit()); err != nil {
+			const status = "error: capacity exceeded (4)"
+			if err := records.compileError(read.source, "budget", status,
+				status+"\nnote: "+err.Error()+"\n"); err != nil {
+				return err
+			}
+			continue
+		}
 
 		if err := records.send(read.source); err != nil {
 			return err
 		}
+		sent++
 
 		interrupted := false
 		promptSeen := false
@@ -1505,7 +1617,7 @@ func runSerialRecords(input io.Reader, records *recordWriter, dev sessionDevice,
 			return err
 		}
 		if failOnDeviceError && !responseOK(response) {
-			err := fmt.Errorf("device returned %s", responseStatus(response))
+			err := deviceResponseError(response, sent, formTotal, read.source)
 			_ = records.sessionError(recordStateError, recordErrorSourceFailed, err.Error())
 			return err
 		}
@@ -2403,7 +2515,7 @@ func runSessionMain() int {
 	var (
 		port       = flag.String("port", "", "serial port, for example /dev/cu.usbmodem101")
 		baud       = flag.Int("baud", 115200, "serial baud rate")
-		filePath   = flag.String("file", "", "load source lines from a file, applying boot definitions last")
+		filePath   = flag.String("file", "", "load source lines from a file, applying boot definitions last, but never after a save")
 		records    = flag.Bool("records", false, "emit NDJSON session records on stdout")
 		transcript = flag.String("transcript", "", "write NDJSON session records to a file; requires --records")
 		replay     = flag.String("replay", "", "replay accepted source from an NDJSON record transcript")
@@ -2422,6 +2534,7 @@ func runSessionMain() int {
 	}
 
 	input := io.Reader(os.Stdin)
+	var fileForms []string
 	if *replay != "" {
 		lines, err := readReplayLines(*replay)
 		if err != nil {
@@ -2435,6 +2548,7 @@ func runSessionMain() int {
 			fmt.Fprintf(os.Stderr, "file: %v\n", err)
 			os.Exit(1)
 		}
+		fileForms = lines
 		input = readerFromLines(lines)
 	}
 
@@ -2483,6 +2597,16 @@ func runSessionMain() int {
 		fmt.Fprintf(os.Stderr, "status: device silent or wedged; %s: %v\n", wipeRecoveryHint(chosen), err)
 		os.Exit(1)
 	}
+	dev.lineBytes = int(status.lineBytes)
+	// Check every form before the first send, so that a file that cannot fit
+	// leaves the device as it was instead of half loaded.
+	if err := checkFormsFit(fileForms, dev.lineBytes); err != nil {
+		if recordOutput != nil {
+			_ = recordOutput.sessionError(recordStateError, recordErrorSourceFailed, err.Error())
+		}
+		fmt.Fprintf(os.Stderr, "file: %v\n", err)
+		os.Exit(1)
+	}
 
 	failOnDeviceError := *filePath != "" || *replay != ""
 	if recordOutput != nil {
@@ -2490,14 +2614,14 @@ func runSessionMain() int {
 			fmt.Fprintf(os.Stderr, "records: %v\n", err)
 			os.Exit(1)
 		}
-		if err := runSerialRecords(input, recordOutput, dev, *timeout, tracker, failOnDeviceError); err != nil {
+		if err := runSerialRecords(input, recordOutput, dev, *timeout, tracker, failOnDeviceError, len(fileForms)); err != nil {
 			fmt.Fprintf(os.Stderr, "session: %v\n", err)
 			os.Exit(1)
 		}
 		return 0
 	}
 
-	if err := runSerialWithInterrupts(input, os.Stdout, dev, *timeout, tracker, failOnDeviceError); err != nil {
+	if err := runSerialWithInterrupts(input, os.Stdout, dev, *timeout, tracker, failOnDeviceError, len(fileForms)); err != nil {
 		fmt.Fprintf(os.Stderr, "session: %v\n", err)
 		os.Exit(1)
 	}

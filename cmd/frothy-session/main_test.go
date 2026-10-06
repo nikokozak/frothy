@@ -24,7 +24,10 @@ type fakeDevice struct {
 	syncs              int
 	onSend             func(line string)
 	afterPrompt        func(line string)
+	lineBytes          int
 }
+
+func (d *fakeDevice) lineLimit() int { return d.lineBytes }
 
 func (d *fakeDevice) syncPrompt(timeout time.Duration) error {
 	_ = timeout
@@ -1746,7 +1749,7 @@ func TestSerialSignalInterruptUsesTracker(t *testing.T) {
 	}
 	var out strings.Builder
 
-	err := runSerialWithInterrupts(strings.NewReader("forever [ 1 ]\nblink:\n"), &out, dev, time.Second, tracker, false)
+	err := runSerialWithInterrupts(strings.NewReader("forever [ 1 ]\nblink:\n"), &out, dev, time.Second, tracker, false, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1782,7 +1785,7 @@ func TestSerialFileInterruptContinues(t *testing.T) {
 			}
 			var out strings.Builder
 
-			err := runSerialWithInterrupts(strings.NewReader("forever [ 1 ]\nblink:\n"), &out, dev, time.Second, tracker, true)
+			err := runSerialWithInterrupts(strings.NewReader("forever [ 1 ]\nblink:\n"), &out, dev, time.Second, tracker, true, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1885,7 +1888,7 @@ func runRecordsTestSession(t *testing.T, input io.Reader, output io.Writer, dev 
 	if err := records.status(status); err != nil {
 		t.Fatal(err)
 	}
-	return runSerialRecords(input, records, dev, timeout, tracker, false)
+	return runSerialRecords(input, records, dev, timeout, tracker, false, 0)
 }
 
 func TestOpenRecordOutputWritesTranscriptCopy(t *testing.T) {
@@ -2375,7 +2378,7 @@ func TestRecordsFileStopsOnDeviceError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = runSerialRecords(strings.NewReader("ok\n2 + 2\n"), records, dev, time.Second, &interruptTracker{}, true)
+	err = runSerialRecords(strings.NewReader("ok\n2 + 2\n"), records, dev, time.Second, &interruptTracker{}, true, 0)
 	if err == nil || err.Error() != "device returned error: not found (7)" {
 		t.Fatalf("error = %v, want device response error", err)
 	}
@@ -2462,7 +2465,7 @@ func TestRecordsFileInterruptContinues(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = runSerialRecords(strings.NewReader("forever [ 1 ]\nblink:\n"), writer, dev, time.Second, tracker, true)
+			err = runSerialRecords(strings.NewReader("forever [ 1 ]\nblink:\n"), writer, dev, time.Second, tracker, true, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2515,6 +2518,211 @@ func TestRecordsUnsettledSignalInterruptFails(t *testing.T) {
 	sessionError := recordWithKind(records, "session_error")
 	if sessionError["state"] != "error" || sessionError["mirror"] != "none" ||
 		sessionError["code"] != "interrupt_failed" {
+		t.Fatalf("session_error record = %#v", sessionError)
+	}
+}
+
+func TestParseDeviceStatusLineBytes(t *testing.T) {
+	status, err := parseDeviceStatus(statusResponse32("device"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.lineBytes != 0 {
+		t.Fatalf("lineBytes = %d for firmware that does not report it, want 0", status.lineBytes)
+	}
+
+	reported := strings.Replace(statusResponse32("device"), "apply_bytes=128",
+		"apply_bytes=128 line_bytes=511", 1)
+	status, err = parseDeviceStatus(reported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.lineBytes != 511 {
+		t.Fatalf("lineBytes = %d, want 511", status.lineBytes)
+	}
+}
+
+func TestCheckFormsFit(t *testing.T) {
+	short := "led is $led_builtin"
+	long := "to blinky [\n" + strings.Repeat("  led.on:\n", 60) + "]"
+
+	if err := checkFormsFit([]string{short, long}, 0); err != nil {
+		t.Fatalf("limit 0 means unknown, got %v", err)
+	}
+	if err := checkFormsFit([]string{short}, 511); err != nil {
+		t.Fatalf("short form: %v", err)
+	}
+	err := checkFormsFit([]string{short, long}, 511)
+	var tooLong errFormTooLong
+	if !errors.As(err, &tooLong) {
+		t.Fatalf("err = %v, want errFormTooLong", err)
+	}
+	if tooLong.head != "to blinky [" || tooLong.limit != 511 ||
+		tooLong.wireBytes != len(wireRequest(long)) {
+		t.Fatalf("tooLong = %+v", tooLong)
+	}
+	if !strings.Contains(err.Error(), "to blinky [") || !strings.Contains(err.Error(), "511") {
+		t.Fatalf("message %q does not name the form and the limit", err.Error())
+	}
+}
+
+// A form longer than the device line never reaches the wire; firmware that
+// reports no limit gets the form as before.
+func TestSendLineRefusesFormLongerThanDeviceLine(t *testing.T) {
+	long := "to longword with p [\n" + strings.Repeat("  gpio.write: p, 1\n", 40) + "]"
+	for _, tc := range []struct {
+		limit   int
+		refused bool
+	}{{limit: 511, refused: true}, {limit: 0, refused: false}} {
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		dev := &serialDevice{file: w, lineBytes: tc.limit}
+		_, sendErr := dev.sendLine(long, 10*time.Millisecond, nil)
+		w.Close()
+		written, _ := io.ReadAll(r)
+		r.Close()
+		var tooLong errFormTooLong
+		if tc.refused {
+			if !errors.As(sendErr, &tooLong) || len(written) != 0 {
+				t.Fatalf("limit %d: err = %v, wrote %d bytes; want errFormTooLong and no bytes", tc.limit, sendErr, len(written))
+			}
+		} else if len(written) != len(wireRequest(long))+1 {
+			t.Fatalf("limit %d: wrote %d bytes, want the whole form", tc.limit, len(written))
+		}
+	}
+}
+
+// A form longer than the device line is a compile_error (ADR 0028): the host
+// refuses it before any device line, and the session goes on.
+func TestRecordsRefuseFormLongerThanDeviceLineAndContinue(t *testing.T) {
+	long := "to longword [\n" + strings.Repeat("  led.on:\n", 60) + "]"
+	dev := &fakeDevice{
+		responses: []string{statusResponse32("device"), "2\nok\n"},
+		lineBytes: 511,
+	}
+	var output strings.Builder
+	input := strings.NewReader(long + "\n1 + 1\n")
+	if err := runRecordsTestSession(t, input, &output, dev, time.Second, &interruptTracker{}); err != nil {
+		t.Fatalf("session: %v", err)
+	}
+	if got, want := strings.Join(dev.sent, "\n"), "status\n1 + 1"; got != want {
+		t.Fatalf("sent %q, want %q", got, want)
+	}
+	decoded := decodeRecords(t, output.String())
+	if got, want := recordKinds(decoded), "session_start,status,compile_error,send,response,session_end"; got != want {
+		t.Fatalf("record kinds %q, want %q", got, want)
+	}
+	refused := recordWithKind(decoded, "compile_error")
+	text, _ := refused["text"].(string)
+	if refused["source"] != long || refused["reason"] != "budget" ||
+		refused["status"] != "error: capacity exceeded (4)" ||
+		!strings.Contains(text, "the device reads at most 511 bytes in one line") {
+		t.Fatalf("compile_error = %#v", refused)
+	}
+}
+
+func TestIsSaveForm(t *testing.T) {
+	tests := []struct {
+		form string
+		want bool
+	}{
+		{form: "save", want: true},
+		{form: "  save:  ", want: true},
+		{form: "save -- keep it", want: true},
+		{form: "save: 1", want: false},
+		{form: "saved", want: false},
+		{form: "to save [ 1 ]", want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.form, func(t *testing.T) {
+			if got := isSaveForm(test.form); got != test.want {
+				t.Fatalf("isSaveForm(%q) = %v, want %v", test.form, got, test.want)
+			}
+		})
+	}
+}
+
+func TestReadFileLinesKeepsBootDefinitionsBeforeSave(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "main.fr")
+	source := strings.Join([]string{
+		"boot is fn [ blink: ]",
+		"blink is fn [ one ]",
+		"save",
+		"later is 2",
+		"boot is fn [ later ]",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	lines, err := readFileLines(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first boot form stays before the save, after the word it calls.
+	// The second boot form follows the save, as the file wrote it.
+	want := []string{
+		"blink is fn [ one ]",
+		"boot is fn [ blink: ]",
+		"save",
+		"later is 2",
+		"boot is fn [ later ]",
+	}
+	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("readFileLines() = %#v, want %#v", lines, want)
+	}
+}
+
+// fileFormsWithMovedBoot gives five forms. The boot form moves last, so the
+// failing form is third as sent but fourth in the file.
+func fileFormsWithMovedBoot(t *testing.T) []string {
+	t.Helper()
+	forms, err := sourceFormsFromText("boot is fn [ blink: ]\na is 1\nb is 2\nto fail [\n  1 / 0\n]\nc is 3\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return forms
+}
+
+const failedFormResponse = "error: capacity exceeded (4)\nnote: pending code is full (limit 687 bytes) -- a save that succeeds frees it\n"
+
+const failedFormReport = "form 3 of 5 (as sent): to fail [\n" +
+	"error: capacity exceeded (4)\nnote: pending code is full (limit 687 bytes) -- a save that succeeds frees it"
+
+func TestFileSendNamesTheFailedForm(t *testing.T) {
+	forms := fileFormsWithMovedBoot(t)
+	dev := &fakeDevice{responses: []string{"ok\n", "ok\n", "printed error: capacity exceeded (4) example\n> error: capacity exceeded (4)\n" + failedFormResponse, "ok\n", "ok\n"}}
+	var out bytes.Buffer
+
+	err := runSerialWithInterrupts(readerFromLines(forms), &out, dev, time.Second, nil, true, len(forms))
+	if err == nil || err.Error() != failedFormReport {
+		t.Fatalf("error = %v, want %q", err, failedFormReport)
+	}
+	if len(dev.sent) != 3 {
+		t.Fatalf("sent %q, want no form after the third", dev.sent)
+	}
+	if !strings.Contains(out.String(), failedFormResponse) {
+		t.Fatalf("output %q does not show the device response", out.String())
+	}
+}
+
+func TestRecordsFileSendNamesTheFailedForm(t *testing.T) {
+	forms := fileFormsWithMovedBoot(t)
+	dev := &fakeDevice{responses: []string{"ok\n", "ok\n", failedFormResponse, "ok\n", "ok\n"}}
+	var out strings.Builder
+	records := newRecordWriter(&out, "s1")
+
+	err := runSerialRecords(readerFromLines(forms), records, dev, time.Second, &interruptTracker{}, true, len(forms))
+	if err == nil || err.Error() != failedFormReport {
+		t.Fatalf("error = %v, want %q", err, failedFormReport)
+	}
+	if len(dev.sent) != 3 {
+		t.Fatalf("sent %q, want no form after the third", dev.sent)
+	}
+	sessionError := recordWithKind(decodeRecords(t, out.String()), "session_error")
+	if sessionError["code"] != "source_failed" || sessionError["message"] != failedFormReport {
 		t.Fatalf("session_error record = %#v", sessionError)
 	}
 }

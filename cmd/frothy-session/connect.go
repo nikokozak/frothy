@@ -84,11 +84,12 @@ func runConnectCommandWithStopper(args []string, stdin io.Reader, stdout io.Writ
 	defer closeDev()
 	time.Sleep(*settle)
 
-	_, err = readDeviceStatus(dev, *timeout)
+	status, err := readDeviceStatus(dev, *timeout)
 	if err != nil {
 		fmt.Fprintf(stderr, "connect: device silent or wedged; %s: %v\n", wipeRecoveryHint(chosen), err)
 		return 1
 	}
+	dev.lineBytes = int(status.lineBytes)
 	if interactive == nil {
 		fmt.Fprintln(stderr, "frothy connect: not yet implemented")
 		return 1

@@ -202,10 +202,18 @@ fr_code_install_in_ram(fr_runtime_t *runtime, fr_code_storage_kind_t kind,
     param_names_length = 0;
   }
   if (runtime->code.count >= FR_PROFILE_CODE_OBJECT_TABLE_SIZE) {
+    fr_diag_note_capacity(runtime->diag, "code object table",
+                          FR_PROFILE_CODE_OBJECT_TABLE_SIZE,
+                          FR_DIAG_UNIT_COUNT, "saved words count too");
     return FR_ERR_CAPACITY;
   }
   if ((uint32_t)runtime->code.overlay_used_instruction_bytes + view->length >
       sizeof(runtime->code.overlay_instruction_bytes)) {
+    fr_diag_note_capacity(
+        runtime->diag, "pending code",
+        (fr_int_t)(sizeof(runtime->code.overlay_instruction_bytes) -
+                   runtime->code.base_ram_used_instruction_bytes),
+        FR_DIAG_UNIT_BYTES, "a save that succeeds frees it");
     return FR_ERR_CAPACITY;
   }
   if ((uint32_t)runtime->code.overlay_used_param_name_bytes +
@@ -281,6 +289,9 @@ fr_err_t fr_code_mount_image(fr_runtime_t *runtime,
     return FR_ERR_INVALID;
   }
   if (runtime->code.count >= FR_PROFILE_CODE_OBJECT_TABLE_SIZE) {
+    fr_diag_note_capacity(runtime->diag, "code object table",
+                          FR_PROFILE_CODE_OBJECT_TABLE_SIZE,
+                          FR_DIAG_UNIT_COUNT, "saved words count too");
     return FR_ERR_CAPACITY;
   }
 

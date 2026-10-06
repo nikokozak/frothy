@@ -423,8 +423,7 @@ fr_err_t fr_base_slot_id_for_name(const char *name, fr_slot_id_t *out_slot_id) {
     if (fr_base_def_at(i, &def, &layer) != FR_OK) {
       return FR_ERR_INVALID;
     }
-    if (strcmp(def->name, name) == 0 ||
-        (def->alias != NULL && strcmp(def->alias, name) == 0)) {
+    if (strcmp(def->name, name) == 0) {
       (void)layer;
       *out_slot_id = def->slot_id;
       return FR_OK;

@@ -538,6 +538,9 @@ fr_err_t fr_slot_prepare_project_name(const fr_runtime_t *runtime,
   fr_slot_id_t first_project_id = fr_slot_first_project_id();
 
   if (runtime->slots.overlay_name_count >= FR_PROFILE_MAX_OVERLAY_NAMES) {
+    fr_diag_note_capacity(runtime->diag, "name table",
+                          FR_PROFILE_MAX_OVERLAY_NAMES, FR_DIAG_UNIT_COUNT,
+                          "saved names count too");
     return FR_ERR_CAPACITY;
   }
 
@@ -545,6 +548,8 @@ fr_err_t fr_slot_prepare_project_name(const fr_runtime_t *runtime,
     next = first_project_id;
   }
   if (next >= FR_PROFILE_MAX_SLOTS) {
+    fr_diag_note_capacity(runtime->diag, "slot table", FR_PROFILE_MAX_SLOTS,
+                          FR_DIAG_UNIT_COUNT, NULL);
     return FR_ERR_CAPACITY;
   }
 
@@ -660,6 +665,9 @@ fr_err_t fr_slot_validate_project_names(const fr_runtime_t *runtime,
 
     if ((uint32_t)runtime->slots.overlay_name_count + new_name_count >=
         FR_PROFILE_MAX_OVERLAY_NAMES) {
+      fr_diag_note_capacity(runtime->diag, "name table",
+                            FR_PROFILE_MAX_OVERLAY_NAMES, FR_DIAG_UNIT_COUNT,
+                            "saved names count too");
       return FR_ERR_CAPACITY;
     }
     if (!has_next_new_slot) {
@@ -705,6 +713,9 @@ fr_err_t fr_slot_bind_project_name(fr_runtime_t *runtime, const char *name,
 
 #if FR_PROFILE_MAX_OVERLAY_NAMES > 0
   if (runtime->slots.overlay_name_count >= FR_PROFILE_MAX_OVERLAY_NAMES) {
+    fr_diag_note_capacity(runtime->diag, "name table",
+                          FR_PROFILE_MAX_OVERLAY_NAMES, FR_DIAG_UNIT_COUNT,
+                          "saved names count too");
     return FR_ERR_CAPACITY;
   }
   if (slot_id < fr_slot_first_project_id() || slot_id >= runtime->slots.count) {
@@ -773,6 +784,9 @@ fr_err_t fr_slot_mount_project_name(fr_runtime_t *runtime, const char *name,
     return err;
   }
   if (runtime->slots.overlay_name_count >= FR_PROFILE_MAX_OVERLAY_NAMES) {
+    fr_diag_note_capacity(runtime->diag, "name table",
+                          FR_PROFILE_MAX_OVERLAY_NAMES, FR_DIAG_UNIT_COUNT,
+                          "saved names count too");
     return FR_ERR_CAPACITY;
   }
   runtime->slots.overlay_names[runtime->slots.overlay_name_count] =

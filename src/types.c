@@ -114,6 +114,10 @@ const char *fr_diag_message(uint16_t message_id) {
           "comparisons don't chain -- join two comparisons with and",
       [FR_DIAG_MSG_PARSE_RUN_ON_STATEMENT] =
           "one expression ends here -- start the next on a new line or after ';'",
+      [FR_DIAG_MSG_PARSE_DOUBLE_EQUALS] =
+          "compare with one '=' -- write a = b, not a == b",
+      [FR_DIAG_MSG_PARSE_FLOAT_LITERAL] =
+          "Frothy has whole numbers only -- scale the value, for example 314 for 3.14",
       [FR_DIAG_MSG_COMPILE_EVENT_BODY_LOCAL] =
           "event bodies can't use the caller's locals -- lift it to a global",
       [FR_DIAG_MSG_COMPILE_CONTROL_FLOW_DISABLED] =
@@ -144,6 +148,20 @@ const char *fr_diag_message(uint16_t message_id) {
     return NULL;
   }
   return messages[message_id];
+}
+
+void fr_diag_note_capacity(fr_diagnostic_t *diag, const char *store,
+                           fr_int_t limit, fr_diag_unit_t unit,
+                           const char *remedy) {
+  if (diag == NULL || diag->kind != FR_DIAG_NONE) {
+    return;
+  }
+  diag->kind = FR_DIAG_LIMIT;
+  diag->message_id = FR_DIAG_MSG_RUNTIME_CAPACITY;
+  diag->context_name = store;
+  diag->expected = limit;
+  diag->unit = (uint8_t)unit;
+  diag->note = remedy;
 }
 
 const char *fr_diag_value_kind_name(uint16_t value_kind) {

@@ -6,6 +6,123 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+## [0.1.22] - 2026-10-06
+
+### Added
+
+- **`status` reports the input line limit.** The status line ends with
+  `line_bytes`: the longest request line that the device reads, without its
+  LF (511 on the profiles with a 512-byte buffer).
+- **The prompt explains four common mistakes.** A bare word such as `led.on`
+  answers `notice: word not called (102)` with a detail that says to write
+  `led.on:`. A binding that replaces a base or library word, such as
+  `wait is 5`, answers `notice: base word replaced (103)` with a detail that
+  says to use another name. `==` and a decimal fraction such as `3.14` get a
+  message that names the mistake.
+- **`capacity exceeded (4)` names the full store.** A note line names the
+  store and its limit, for example
+  `note: pending code is full (limit 687 bytes) -- a save that succeeds frees it`.
+  The note gives a remedy only when the remedy is always true. Record storage
+  and the target stores (pulse spans, trace edges, platform buffers) still
+  answer without a note.
+- **`mem` shows the pending code.** `code.pending.used` and
+  `code.pending.total` give, in bytes, the user code that waits for the next
+  save and the room for it, without the base library. `mem` shows them, and
+  the new topic `mem code` shows only them.
+- **`frothy` names the form that failed.** When a device error stops a file
+  send, the session error says `form <n> of <total> (as sent)` with the first
+  line of that form, and repeats the device's error lines. Boot forms move
+  last, so the send order can differ from the file order.
+- **`frothy build` refuses libraries that do not fit.** Before the firmware
+  build, it compares the natives of the project's libraries with the free
+  rows of the board's native table and with the 64 names that the firmware
+  keeps for library natives. A full table stopped the board at boot.
+- **A failed start names its error.** ESP32 prints
+  `startup err: <name> (<code>)` once before it halts, and `repl err` now
+  also gives the name and the code. RP2040 repeats the same line once per
+  second.
+- **NodeMCU ESP-32S is an official board.** It uses the ESP32 profile of the
+  ESP32 DevKit V1 with its own pin constants, and the web flasher offers it.
+
+### Changed
+
+- **ESP32 I2C reports `i/o failed (12)` for an absent device.** A NACK, an
+  SCL timeout and lost arbitration answered `invalid (8)` before; RP2040
+  already answered `i/o failed (12)`. A program that tested for `invalid (8)`
+  after an I2C transfer must test for `i/o failed (12)`. Each transfer now
+  waits at most 100 ms for one bus event. A bus that a fault holds busy can
+  still stop a call. The ESP-IDF driver no longer writes its own error lines
+  (`E (...) i2c.master: ...`) on the console for a failed transfer.
+- **`pin` is an ordinary name.** The alias `pin` named the same slot as
+  `gpio.write`, so `pin is 5` replaced `gpio.write` too. Source that calls
+  `pin:` must call `gpio.write:`; `pin:` now answers `not found (7)`. Words
+  that a device saved before keep working. If you saved an image after
+  `pin is <value>`, run `wipe-user` and restart the board to restore
+  `gpio.write`; `wipe-user` also removes the rest of the saved program.
+- **A decimal fraction answers `invalid (8)`.** A token such as `3.14`
+  answered `not found (7)` before. Names such as `2nd`, `500ms` and `v1.2`
+  stay names.
+- **The session error of a failed file send changed.** It starts with
+  `form <n> of <total> (as sent):` instead of `device returned`. A script
+  that matched `device returned` after a `--file` send must match the new
+  text; stdin and replay sends keep `device returned`.
+- **`frothy` refuses a form longer than the device line.** The CLI reads
+  `line_bytes` from `status`. It refuses a longer form before it writes a
+  byte, and it checks every form of a file or a library before the first
+  send. In records mode (the editor connection), a refused form becomes a
+  `compile_error` record and the session goes on. Firmware that does not
+  report `line_bytes` keeps the old behavior.
+
+### Fixed
+
+- **A long input line no longer stops the prompt.** The device reads and
+  drops the whole line, answers `capacity exceeded (4)` with
+  `note: the line limit is <n> bytes`, and reads the next line. Before, the
+  REPL stopped (`repl err` on ESP32, `frothy halt err 1` on RP2040).
+- **A long line arrives complete on a USB Serial/JTAG console.** On the
+  Seeed XIAO ESP32-C3, the console lost a part of a line longer than 256
+  bytes and gave no error, also with `frothy send`. The XIAO ESP32-C6 and
+  ESP32-S3 use the same console code. The console now has a 1,024-byte
+  receive buffer, so one full line sent at a ready prompt arrives complete.
+- **A line that holds only a comment answers `ok`.**
+- **`save -- note` saves.** A prompt word followed by a comment runs. Before,
+  `save -- keep it` printed the native and did not save.
+- **`frothy send` keeps a boot form before a later `save`.** A boot form
+  still moves after the forms around it, but never past a `save`, so the
+  save stores it.
+- **A handle lasts millions of opens.** Each open used one of 15 generations
+  of a table entry, so a loop that opened and closed a PWM channel failed
+  near the 241st open. An entry now has 8,388,607 generations. Saved images
+  do not change.
+- **`frothy install` returns the board to the user tier.** It now sends
+  `install-user` after the library, and also when a library line fails.
+  Before, the board stayed in library mode until a restart, so later
+  definitions became library words and each one saved the whole image.
+
+### Known issues
+
+- **Changing a library while a program is on the board is not safe.**
+  `install-library` gives the words of the library new slots. User words
+  compiled before then answer `wrong type (2)` or run a different library
+  word with no error, and a later `save` can answer `corrupt data (11)` and
+  leave the saved state unreadable. Until a fix, change a library in this
+  order: `wipe-user`, then `frothy install`, then send the program and
+  `save`. If a library already changed under a program, do not `save`: run
+  `dangerous.wipe`, then `frothy install`, then send the program.
+- **A definition in library mode after `wipe-user` can damage the saved
+  state.** After a manual `install-library`, send `install-user` before
+  `wipe-user` or new definitions. In library mode, a definition after
+  `wipe-user` can answer `corrupt data (11)`, and then `restore`, `save` and
+  new definitions fail too. Only `dangerous.wipe` recovers, and it erases the
+  saved library and program. `frothy install` sends `install-user` for you,
+  also when a library line fails.
+- **Pasted source can lose bytes on a USB Serial/JTAG console.** The console
+  has no flow control, and a terminal or `frothy connect` sends pasted lines
+  without a wait for the prompt. The board can then lose bytes or whole
+  lines with no error. While a program runs, an ESP32 board keeps at most 128
+  bytes of typeahead (input that waits for a read) and drops the rest. Send a
+  file with `frothy send`, which waits for the prompt after each line.
+
 ## [0.1.21] - 2026-09-10
 
 ### Added

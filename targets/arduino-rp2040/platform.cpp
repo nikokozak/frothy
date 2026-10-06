@@ -965,6 +965,7 @@ static fr_err_t fr_rp2040_read_edited_line(char *line, uint16_t cap,
                                            bool program_input, bool *out_eof,
                                            uint16_t *out_length) {
   uint16_t used = 0;
+  bool overlong = false;
 
   if (line == NULL || cap == 0 || out_eof == NULL || out_length == NULL) {
     return FR_ERR_INVALID;
@@ -988,14 +989,21 @@ static fr_err_t fr_rp2040_read_edited_line(char *line, uint16_t cap,
     }
     if (byte == '\r' || byte == '\n') {
       line[used] = '\0';
-      *out_length = used;
       (void)fr_platform_write_text("\n");
+      if (overlong) {
+        line[0] = '\0';
+        return FR_ERR_RANGE;
+      }
+      *out_length = used;
       return FR_OK;
     }
     if (byte == FR_RP2040_CTRL_C) {
       line[0] = '\0';
       (void)fr_platform_write_text("^C\n");
       return program_input ? FR_ERR_INTERRUPTED : FR_OK;
+    }
+    if (overlong) {
+      continue;
     }
     if (byte == FR_RP2040_BACKSPACE || byte == FR_RP2040_DELETE) {
       if (used > 0) {
@@ -1009,7 +1017,8 @@ static fr_err_t fr_rp2040_read_edited_line(char *line, uint16_t cap,
       continue;
     }
     if ((uint16_t)(used + 1) >= cap) {
-      return FR_ERR_RANGE;
+      overlong = true;
+      continue;
     }
     line[used++] = (char)byte;
     line[used] = '\0';

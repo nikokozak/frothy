@@ -9,6 +9,7 @@
 #include "driver/gpio.h"
 #if FR_FEATURE_I2C
 #include "driver/i2c_master.h"
+#include "esp_log.h"
 #endif
 #if FR_FEATURE_TRACE
 #include "driver/mcpwm_cap.h"
@@ -59,15 +60,16 @@
 #endif
 
 enum {
-  FR_ESP_CONSOLE_RX_BYTES = 256,
+  /* The USB Serial/JTAG driver drops a received packet that this buffer
+     cannot hold, and a line arrives faster than the line reader reads it.
+     The buffer has room for one full input line, its CR LF and a Ctrl-C. */
+  FR_ESP_CONSOLE_RX_BYTES = 2 * FR_PROFILE_REPL_LINE_BYTES,
   FR_ESP_CONSOLE_TX_BYTES = 256,
   /* Bytes the safe-point interrupt poll may consume ahead of the console
      reader. Sized for a pasted console.read-line line; overflow drops the
      newest bytes. */
   FR_ESP_TYPEAHEAD_BYTES = 128,
-#if FR_FEATURE_CONSOLE_ROUTING
   FR_ESP_CONSOLE_TX_WAIT_MS = 100,
-#endif
 #if FR_FEATURE_UART
   FR_ESP_APP_UART_RX_BYTES = 256,
   FR_ESP_APP_UART_TX_BYTES = 256,
@@ -127,6 +129,9 @@ static fr_esp_app_uart_t
 enum {
   FR_ESP_I2C_MAX = SOC_I2C_NUM,
   FR_ESP_I2C_ADDR_MAX = 0x7F,
+  /* The longest wait for one bus event. The driver reads -1 as wait
+   * forever. */
+  FR_ESP_I2C_TIMEOUT_MS = 100,
 };
 
 typedef struct fr_esp_i2c_t {
@@ -522,6 +527,19 @@ static bool fr_esp_console_pin_conflict(uint16_t tx, uint16_t rx) {
 }
 #endif
 
+/* esp_rom_printf writes to the UART directly, so the halt line can pass text
+ * that is still in the console driver buffer. Wait for that text first. */
+void fr_esp_console_flush(void) {
+#if FR_FEATURE_CONSOLE_ROUTING
+  (void)fr_esp_console_wait_tx_done(&fr_esp_console_route);
+#elif defined(FR_BOARD_CONSOLE_UART)
+  (void)uart_wait_tx_done(FR_BOARD_UART_PORT,
+                          pdMS_TO_TICKS(FR_ESP_CONSOLE_TX_WAIT_MS));
+#elif defined(FR_BOARD_CONSOLE_USB_SERIAL_JTAG)
+  (void)usb_serial_jtag_wait_tx_done(pdMS_TO_TICKS(FR_ESP_CONSOLE_TX_WAIT_MS));
+#endif
+}
+
 static fr_err_t fr_esp_console_init(void) {
 #if defined(FR_BOARD_CONSOLE_UART)
   FR_TRY(fr_esp_err(fr_esp_console_uart_prepare(
@@ -776,6 +794,11 @@ fr_err_t fr_esp_platform_init(void) {
 
   FR_TRY(fr_esp_console_init());
   FR_TRY(fr_esp_boot_button_init());
+#if FR_FEATURE_I2C
+  /* Frothy reports I2C transfer errors itself. Keep the driver's i2c.master
+   * log lines out of the REPL stream (ADR 0080). */
+  esp_log_level_set("i2c.master", ESP_LOG_NONE);
+#endif
 #if FR_FEATURE_NET
   FR_TRY(fr_esp_nvs_init());
 #endif
@@ -2029,6 +2052,7 @@ static fr_err_t fr_esp_read_edited_line(char *line, uint16_t cap,
                                         bool program_input, bool *out_eof,
                                         uint16_t *out_length) {
   uint16_t used = 0;
+  bool overlong = false;
 
   if (line == NULL || cap == 0 || out_eof == NULL || out_length == NULL) {
     return FR_ERR_INVALID;
@@ -2057,14 +2081,21 @@ static fr_err_t fr_esp_read_edited_line(char *line, uint16_t cap,
 
     if (byte == '\r' || byte == '\n') {
       line[used] = '\0';
-      *out_length = used;
       fr_platform_write_text("\n");
+      if (overlong) {
+        line[0] = '\0';
+        return FR_ERR_RANGE;
+      }
+      *out_length = used;
       return FR_OK;
     }
     if (byte == FR_ESP_CTRL_C) {
       line[0] = '\0';
       fr_platform_write_text("^C\n");
       return program_input ? FR_ERR_INTERRUPTED : FR_OK;
+    }
+    if (overlong) {
+      continue;
     }
     if (byte == FR_ESP_BACKSPACE || byte == FR_ESP_DELETE) {
       if (used > 0) {
@@ -2078,7 +2109,8 @@ static fr_err_t fr_esp_read_edited_line(char *line, uint16_t cap,
       continue;
     }
     if ((uint16_t)(used + 1) >= cap) {
-      return FR_ERR_RANGE;
+      overlong = true;
+      continue;
     }
 
     line[used] = (char)byte;
@@ -2241,6 +2273,21 @@ fr_err_t fr_platform_pwm_close(uint16_t platform_index) {
 #endif
 
 #if FR_FEATURE_I2C
+/* A transfer returns ESP_ERR_INVALID_STATE for a NACK, an SCL timeout and
+ * lost arbitration. Each one is a bus failure, as on RP2040. */
+static fr_err_t fr_esp_i2c_err(esp_err_t err) {
+  switch (err) {
+  case ESP_OK:
+    return FR_OK;
+  case ESP_ERR_NO_MEM:
+    return FR_ERR_CAPACITY;
+  case ESP_ERR_INVALID_ARG:
+    return FR_ERR_INVALID;
+  default:
+    return FR_ERR_IO;
+  }
+}
+
 /* Per-write/read transactions construct a transient device on the bus using
  * the stored frequency as scl_speed_hz. Caching the device handle is a
  * deferred optimization. */
@@ -2311,7 +2358,8 @@ fr_err_t fr_platform_i2c_write(uint16_t platform_index, uint8_t addr,
   }
   FR_TRY(fr_esp_i2c_entry(platform_index, &i2c));
   FR_TRY(fr_esp_i2c_dev(i2c, addr, &dev));
-  err = fr_esp_err(i2c_master_transmit(dev, bytes, length, -1));
+  err = fr_esp_i2c_err(
+      i2c_master_transmit(dev, bytes, length, FR_ESP_I2C_TIMEOUT_MS));
   (void)i2c_master_bus_rm_device(dev);
   return err;
 }
@@ -2333,7 +2381,8 @@ fr_err_t fr_platform_i2c_read(uint16_t platform_index, uint8_t addr,
     return FR_OK;
   }
   FR_TRY(fr_esp_i2c_dev(i2c, addr, &dev));
-  err = fr_esp_err(i2c_master_receive(dev, bytes, length, -1));
+  err = fr_esp_i2c_err(
+      i2c_master_receive(dev, bytes, length, FR_ESP_I2C_TIMEOUT_MS));
   (void)i2c_master_bus_rm_device(dev);
   return err;
 }
@@ -2356,8 +2405,8 @@ fr_err_t fr_platform_i2c_write_read(uint16_t platform_index, uint8_t addr,
     return FR_OK;
   }
   FR_TRY(fr_esp_i2c_dev(i2c, addr, &dev));
-  err = fr_esp_err(
-      i2c_master_transmit_receive(dev, wbytes, wlength, rbytes, rlength, -1));
+  err = fr_esp_i2c_err(i2c_master_transmit_receive(
+      dev, wbytes, wlength, rbytes, rlength, FR_ESP_I2C_TIMEOUT_MS));
   (void)i2c_master_bus_rm_device(dev);
   return err;
 }

@@ -2541,19 +2541,23 @@ static void test_refs(void) {
         handle_ref.id == 0 && handle_ref.generation == 0);
   CHECK("last handle encodes",
         fr_tagged_encode_handle_ref(
-            (fr_handle_ref_t){.id = 15, .generation = 15}, &tagged) == FR_OK);
+            (fr_handle_ref_t){.id = FR_TAGGED_HANDLE_MAX_ID,
+                              .generation = FR_TAGGED_HANDLE_MAX_GENERATION},
+            &tagged) == FR_OK);
   CHECK("last handle decodes",
         fr_tagged_decode_handle_ref(tagged, &handle_ref) == FR_OK);
   CHECK("last handle round trip",
-        handle_ref.id == 15 && handle_ref.generation == 15);
+        handle_ref.id == FR_TAGGED_HANDLE_MAX_ID &&
+            handle_ref.generation == FR_TAGGED_HANDLE_MAX_GENERATION);
   CHECK("handle rejects one past id",
         fr_tagged_encode_handle_ref(
             (fr_handle_ref_t){.id = 16, .generation = 0}, &tagged) ==
             FR_ERR_RANGE);
   CHECK("handle rejects one past generation",
         fr_tagged_encode_handle_ref(
-            (fr_handle_ref_t){.id = 0, .generation = 16}, &tagged) ==
-            FR_ERR_RANGE);
+            (fr_handle_ref_t){
+                .id = 0, .generation = FR_TAGGED_HANDLE_MAX_GENERATION + 1u},
+            &tagged) == FR_ERR_RANGE);
   CHECK("non-handle returns type",
         fr_tagged_decode_handle_ref(fr_tagged_nil(), &handle_ref) ==
             FR_ERR_TYPE);
@@ -3042,6 +3046,16 @@ static void test_handles(void) {
   CHECK("handles decode reserved tag",
         fr_tagged_decode_handle_ref(tagged, &stale_ref) == FR_OK &&
             stale_ref.id == ref.id && stale_ref.generation == ref.generation);
+  CHECK("handles fill the band below the Bytes band",
+        FR_TAGGED_HANDLE_END == (fr_tagged_t)0xF7FFFFFFu &&
+            FR_TAGGED_RESERVED_BASE == (fr_tagged_t)0xF8000000u &&
+            fr_tagged_encode_handle_ref(
+                (fr_handle_ref_t){
+                    .id = FR_TAGGED_HANDLE_MAX_ID,
+                    .generation = FR_TAGGED_HANDLE_MAX_GENERATION},
+                &next_tagged) == FR_OK &&
+            next_tagged == FR_TAGGED_HANDLE_END &&
+            fr_tagged_kind(FR_TAGGED_HANDLE_END + 1u) != FR_TAGGED_HANDLE);
   CHECK("handles reserved lookup is not active",
         fr_handle_lookup(&runtime, ref, FR_HANDLE_KIND_NONE, &kind,
                          &platform_index) == FR_ERR_HANDLE);
@@ -3096,15 +3110,15 @@ static void test_handles(void) {
 #if FR_PROFILE_MAX_HANDLES > 1
   CHECK("handles retire exhausted generations",
         fr_runtime_init(&runtime) == FR_OK);
-  for (uint8_t i = 0; i < 15; i++) {
-    CHECK("handles cycle one entry",
-          fr_handle_reserve(&runtime, FR_TEST_SYNTHETIC_HANDLE_KIND, &ref, &tagged) ==
-                  FR_OK &&
-              (i > 0 || (stale_ref = ref, true)) &&
-              ref.id == 0 &&
-              fr_handle_activate(&runtime, ref, 20) == FR_OK &&
-              fr_handle_close(&runtime, ref) == FR_OK);
-  }
+  runtime.handles.entries[0].generation =
+      (fr_handle_generation_t)(FR_TAGGED_HANDLE_MAX_GENERATION - 1u);
+  CHECK("handles open an entry at its last generation",
+        fr_handle_reserve(&runtime, FR_TEST_SYNTHETIC_HANDLE_KIND, &stale_ref,
+                          &tagged) == FR_OK &&
+            stale_ref.id == 0 &&
+            stale_ref.generation == FR_TAGGED_HANDLE_MAX_GENERATION &&
+            fr_handle_activate(&runtime, stale_ref, 20) == FR_OK &&
+            fr_handle_close(&runtime, stale_ref) == FR_OK);
   CHECK("handles do not wrap exhausted generation",
         fr_handle_reserve(&runtime, FR_TEST_SYNTHETIC_HANDLE_KIND, &ref, &tagged) ==
                 FR_OK &&
@@ -5822,6 +5836,43 @@ static void test_wipe_user_closes_handles(void) {
   CHECK("wipe-handles pin reopens after wipe",
         fr_repl_eval_line(&runtime, "h is pwm.open: 5, 1000", out,
                           sizeof(out)) == FR_OK);
+}
+
+#if FR_FEATURE_COMPILER
+/* `pin` is an ordinary name: binding it must not replace gpio.write. */
+static void test_pin_is_an_ordinary_name(void) {
+  fr_runtime_t runtime;
+  char out[64];
+
+  CHECK("pin base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("binding pin leaves gpio.write intact",
+        fr_repl_eval_line(&runtime, "pin is 5", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "gpio.write: 2, 1", out,
+                              sizeof(out)) == FR_OK);
+}
+#endif
+
+/* Each open of a handle uses one generation of its entry. 1,000 opens and
+ * closes must not use up the table. */
+static void test_handles_last_many_opens(void) {
+  fr_runtime_t runtime;
+  char out[96];
+
+  CHECK("many-opens base image", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("1,000 opens and closes leave the handle table usable",
+        fr_repl_eval_line(&runtime,
+                          "cycle is fn [ here h is pwm.open: 2, 1000; "
+                          "pwm.close: h ]",
+                          out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "repeat 1000 [ cycle: ]", out,
+                              sizeof(out)) == FR_OK);
+  CHECK("a closed handle stays stale",
+        fr_repl_eval_line(&runtime, "h is pwm.open: 2, 1000", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "pwm.close: h", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "pwm.close: h", out, sizeof(out)) ==
+                FR_ERR_HANDLE);
 }
 
 #if FR_FEATURE_TEXT
@@ -8669,8 +8720,7 @@ static void test_image(void) {
             slot_id == FR_SLOT_ONE &&
             fr_base_slot_id_for_name("gpio.write", &slot_id) == FR_OK &&
             slot_id == FR_SLOT_GPIO_WRITE &&
-            fr_base_slot_id_for_name("pin", &slot_id) == FR_OK &&
-            slot_id == FR_SLOT_GPIO_WRITE &&
+            fr_base_slot_id_for_name("pin", &slot_id) == FR_ERR_NOT_FOUND &&
             fr_base_slot_id_for_name("gpio.mode", &slot_id) == FR_OK &&
             slot_id == FR_SLOT_GPIO_MODE &&
             fr_base_slot_id_for_name("gpio.read", &slot_id) == FR_OK &&
@@ -10740,7 +10790,8 @@ static void test_compile(void) {
 #endif
   CHECK("compile runtime dynamic function",
         fr_compile_overlay_update_for_runtime(
-            &runtime, "myblink is fn [ pin: led, 1 ]", &update) == FR_OK &&
+            &runtime, "myblink is fn [ gpio.write: led, 1 ]", &update) ==
+                FR_OK &&
             update.slot_inits[0].slot_id == FR_TEST_FIRST_USER_SLOT + 1 &&
             update.overlay_update.slot_name_count == 1 &&
             strcmp(update.slot_name.name, "myblink") == 0 &&
@@ -10757,7 +10808,7 @@ static void test_compile(void) {
             fr_vm_run_slot(&runtime, slot_id, &tagged) == FR_OK &&
             fr_tagged_is_nil(tagged));
   CHECK("compile runtime expression uses overlay name",
-        fr_compile_expression_for_runtime(&runtime, "pin: led, 1",
+        fr_compile_expression_for_runtime(&runtime, "gpio.write: led, 1",
                                           &expression) == FR_OK &&
             expression.instruction_bytes[2] == FR_OP_LOAD_SLOT &&
             expression.instruction_bytes[3] == FR_TEST_FIRST_USER_SLOT &&
@@ -11403,8 +11454,8 @@ static void test_compile(void) {
             fr_tagged_decode_int(tagged, &decoded) == FR_OK && decoded == 1);
   CHECK("compiled mechanical boot owns instruction bytes",
         fr_compile_overlay_update(
-            "boot is fn [ pin: $led_builtin, 1; wait: 100; "
-            "pin: $led_builtin, 0; wait: 100 ]",
+            "boot is fn [ gpio.write: $led_builtin, 1; wait: 100; "
+            "gpio.write: $led_builtin, 0; wait: 100 ]",
             &update) == FR_OK &&
             update.code_object.instructions.length == 24u + (push_size * 4u) &&
             update.instruction_bytes[2] == FR_OP_LOAD_SLOT &&
@@ -11442,8 +11493,8 @@ static void test_compile(void) {
   CHECK("compiled mechanical boot runs",
         fr_base_image_install(&runtime) == FR_OK &&
             fr_compile_overlay_update(
-                "boot is fn [ pin: $led_builtin, 1; wait: 100; "
-                "pin: $led_builtin, 0; wait: 100 ]",
+                "boot is fn [ gpio.write: $led_builtin, 1; wait: 100; "
+                "gpio.write: $led_builtin, 0; wait: 100 ]",
                 &update) == FR_OK &&
             fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
             fr_vm_run_boot(&runtime, &tagged) == FR_OK &&
@@ -11453,10 +11504,11 @@ static void test_compile(void) {
             fr_compile_overlay_update("boot is fn [ wait: -1 ]", &update) == FR_OK &&
             fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
             fr_vm_run_boot(&runtime, &tagged) == FR_ERR_DOMAIN);
-  CHECK("compiled pin rejects negative value",
+  CHECK("compiled gpio.write rejects negative value",
         fr_base_image_install(&runtime) == FR_OK &&
-            fr_compile_overlay_update("boot is fn [ pin: $led_builtin, -1 ]",
-                              &update) == FR_OK &&
+            fr_compile_overlay_update(
+                "boot is fn [ gpio.write: $led_builtin, -1 ]", &update) ==
+                FR_OK &&
             fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
             fr_vm_run_boot(&runtime, &tagged) == FR_ERR_DOMAIN);
   CHECK("compiled bare native name reads base slot",
@@ -11993,7 +12045,8 @@ static void test_compile(void) {
                                          &tagged) == FR_OK &&
             fr_tagged_is_nil(tagged));
   CHECK("compiled expression supports native calls",
-        fr_compile_expression("pin: $led_builtin, 1", &expression) == FR_OK &&
+        fr_compile_expression("gpio.write: $led_builtin, 1", &expression) ==
+                FR_OK &&
             expression.instructions.bytes == expression.instruction_bytes &&
             expression.instructions.length == 9u + push_size &&
             expression.instruction_bytes[2] == FR_OP_LOAD_SLOT &&
@@ -12007,7 +12060,8 @@ static void test_compile(void) {
                 FR_SLOT_GPIO_WRITE &&
             expression.instruction_bytes[8u + push_size] == FR_OP_RETURN);
   CHECK("compiled expression accepts trailing semicolon",
-        fr_compile_expression("pin: $led_builtin, 1;", &expression) == FR_OK &&
+        fr_compile_expression("gpio.write: $led_builtin, 1;", &expression) ==
+                FR_OK &&
             expression.instructions.length == 9u + push_size &&
             expression.instruction_bytes[5u + push_size] ==
                 FR_OP_CALL_NATIVE_SLOT &&
@@ -12634,7 +12688,7 @@ static void test_compiler_overlay_wire_parity(void) {
   fr_tagged_t wire_result = 0;
   const char *sources[] = {
       "led is $led_builtin",
-      "myblink is fn [ pin: led, 1 ]",
+      "myblink is fn [ gpio.write: led, 1 ]",
       "boot is fn [ myblink: ]",
   };
 
@@ -12856,8 +12910,8 @@ static void test_persist(void) {
 #endif
   CHECK("persist save mechanical boot",
         fr_compile_overlay_update(
-            "boot is fn [ pin: $led_builtin, 1; wait: 100; "
-            "pin: $led_builtin, 0; wait: 100 ]",
+            "boot is fn [ gpio.write: $led_builtin, 1; wait: 100; "
+            "gpio.write: $led_builtin, 0; wait: 100 ]",
             &update) == FR_OK &&
             test_persist_apply_user_overlay(&runtime,
                                             &update.overlay_update) == FR_OK &&
@@ -12977,7 +13031,8 @@ static void test_persist(void) {
             test_persist_apply_user_overlay(&runtime,
                                             &update.overlay_update) == FR_OK &&
             fr_compile_overlay_update_for_runtime(
-                &runtime, "boot is fn [ pin: led, 1 ]", &update) == FR_OK &&
+                &runtime, "boot is fn [ gpio.write: led, 1 ]", &update) ==
+                FR_OK &&
             test_persist_apply_user_overlay(&runtime,
                                             &update.overlay_update) == FR_OK &&
             fr_persist_save(&runtime) == FR_OK &&
@@ -13036,11 +13091,13 @@ static void test_persist(void) {
             test_persist_apply_user_overlay(&runtime,
                                             &update.overlay_update) == FR_OK &&
             fr_compile_overlay_update_for_runtime(
-                &runtime, "boot is fn [ pin: led, 1 ]", &update) == FR_OK &&
+                &runtime, "boot is fn [ gpio.write: led, 1 ]", &update) ==
+                FR_OK &&
             test_persist_apply_user_overlay(&runtime,
                                             &update.overlay_update) == FR_OK &&
             fr_compile_overlay_update_for_runtime(
-                &runtime, "myblink is fn [ pin: led, 1 ]", &update) == FR_OK &&
+                &runtime, "myblink is fn [ gpio.write: led, 1 ]", &update) ==
+                FR_OK &&
             test_persist_apply_user_overlay(&runtime,
                                             &update.overlay_update) == FR_OK &&
             fr_persist_save(&runtime) == FR_OK &&
@@ -14530,6 +14587,15 @@ static void test_repl(void) {
             strstr(out, " definition_text_bytes=") != NULL &&
             strstr(out, " source_render_bytes=") != NULL &&
             strstr(out, "\nok\n") != NULL);
+  {
+    char line_field[32];
+
+    snprintf(line_field, sizeof(line_field), " line_bytes=%u\n",
+             (unsigned)(FR_REPL_LINE_BYTES - 1u));
+    CHECK("repl status reports the line limit",
+          fr_repl_eval_line(&runtime, "status", out, sizeof(out)) == FR_OK &&
+              strstr(out, line_field) != NULL);
+  }
   CHECK("repl trims status command",
         fr_repl_eval_line(&runtime, " \tstatus \t", out, sizeof(out)) ==
                 FR_OK &&
@@ -14670,10 +14736,9 @@ static void test_repl(void) {
             strcmp(out, FR_TEST_WORDS_WITH_LED) == 0);
   CHECK("repl displays gpio.write native value",
         fr_repl_eval_line(&runtime, "gpio.write", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "native 2\nok\n") == 0);
-  CHECK("repl displays pin sugar native value",
-        fr_repl_eval_line(&runtime, "pin", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "native 2\nok\n") == 0);
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: gpio.write is a word -- write gpio.write: to call it\n"
+                   "native 2\nok\n") == 0);
   CHECK("repl see base nil",
         fr_repl_eval_line(&runtime, "see boot", out, sizeof(out)) == FR_OK &&
             strcmp(out, "base core nil\nok\n") == 0);
@@ -14704,12 +14769,6 @@ static void test_repl(void) {
   CHECK("repl see gpio.write renders signature",
         fr_repl_eval_line(&runtime, "see gpio.write", out, sizeof(out)) ==
                 FR_OK &&
-            strcmp(out,
-                   "gpio.write(pin: int, level: int) -> nil\n"
-                   "set gpio pin to a level (0 or 1); busy if pwm holds the pin\n"
-                   "ok\n") == 0);
-  CHECK("repl see pin sugar renders signature under canonical name",
-        fr_repl_eval_line(&runtime, "see pin", out, sizeof(out)) == FR_OK &&
             strcmp(out,
                    "gpio.write(pin: int, level: int) -> nil\n"
                    "set gpio pin to a level (0 or 1); busy if pwm holds the pin\n"
@@ -14773,10 +14832,6 @@ static void test_repl(void) {
             strcmp(out, "base persistence native arity 0\nok\n") == 0);
 #endif
 #endif
-  CHECK("repl runs top-level native call",
-        fr_repl_eval_line(&runtime, "pin: $led_builtin, 1", out,
-                          sizeof(out)) == FR_OK &&
-            strcmp(out, "ok\n") == 0);
   CHECK("repl runs top-level gpio.write native call",
         fr_repl_eval_line(&runtime, "gpio.write: $led_builtin, 1", out,
                           sizeof(out)) == FR_OK &&
@@ -14784,13 +14839,13 @@ static void test_repl(void) {
 #if FR_TAGGED_INT_MAX > 65535
   CHECK("repl rejects oversized platform integer before cast",
         fr_platform_gpio_write(13, 0) == FR_OK &&
-            fr_repl_eval_line(&runtime, "pin: 65549, 1", out, sizeof(out)) ==
-                FR_ERR_DOMAIN &&
+            fr_repl_eval_line(&runtime, "gpio.write: 65549, 1", out,
+                              sizeof(out)) == FR_ERR_DOMAIN &&
             fr_platform_gpio_read(13, &gpio_value) == FR_OK &&
             gpio_value == 0);
 #endif
   CHECK("repl runs top-level native call with overlay alias",
-        fr_repl_eval_line(&runtime, "pin: led, 1", out, sizeof(out)) ==
+        fr_repl_eval_line(&runtime, "gpio.write: led, 1", out, sizeof(out)) ==
                 FR_OK &&
             strcmp(out, "ok\n") == 0);
   CHECK("repl runs gpio.mode native",
@@ -14924,11 +14979,15 @@ static void test_repl(void) {
      id is the source-word count (15 today). */
   CHECK("repl displays bare compiled boot",
         fr_repl_eval_line(&runtime, "boot", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "code 15\nok\n") == 0);
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: boot is a word -- write boot: to call it\n"
+                   "code 15\nok\n") == 0);
 #else
   CHECK("repl displays bare compiled boot",
         fr_repl_eval_line(&runtime, "boot", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "code 0\nok\n") == 0);
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: boot is a word -- write boot: to call it\n"
+                   "code 0\nok\n") == 0);
 #endif
   CHECK("repl see overlay code",
         fr_repl_eval_line(&runtime, "see boot", out, sizeof(out)) == FR_OK &&
@@ -14937,7 +14996,7 @@ static void test_repl(void) {
         fr_repl_eval_line(&runtime, "see 0", out, sizeof(out)) == FR_OK &&
             strcmp(out, "overlay code\nto boot [ 1 ]\nok\n") == 0);
   CHECK("repl compiles dynamic function",
-        fr_repl_eval_line(&runtime, "myblink is fn [ pin: led, 1 ]", out,
+        fr_repl_eval_line(&runtime, "myblink is fn [ gpio.write: led, 1 ]", out,
                           sizeof(out)) == FR_OK &&
             strcmp(out, "ok\n") == 0);
   CHECK("repl runs dynamic function",
@@ -15096,10 +15155,9 @@ static void test_repl(void) {
 #if FR_BASE_IMAGE_INCLUDE_SYMBOLS
   CHECK("repl displays gpio.write native value without compiler",
         fr_repl_eval_line(&runtime, "gpio.write", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "native 2\nok\n") == 0);
-  CHECK("repl displays pin sugar native value without compiler",
-        fr_repl_eval_line(&runtime, "pin", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "native 2\nok\n") == 0);
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: gpio.write is a word -- write gpio.write: to call it\n"
+                   "native 2\nok\n") == 0);
 #endif
 #if FR_FEATURE_INTROSPECTION
   CHECK("repl see base nil without compiler",
@@ -15119,9 +15177,6 @@ static void test_repl(void) {
         fr_repl_eval_line(&runtime, "see gpio.write", out, sizeof(out)) ==
                 FR_OK &&
             strcmp(out, "base target native arity 2\nok\n") == 0);
-  CHECK("repl see pin sugar native arity without compiler",
-        fr_repl_eval_line(&runtime, "see pin", out, sizeof(out)) == FR_OK &&
-            strcmp(out, "base target native arity 2\nok\n") == 0);
 #if FR_FEATURE_PERSISTENCE
   CHECK("repl see persistence native owner without compiler",
         fr_repl_eval_line(&runtime, "see save", out, sizeof(out)) == FR_OK &&
@@ -15136,7 +15191,7 @@ static void test_repl(void) {
         fr_repl_eval_line(&runtime, "led is $led_builtin", out,
                           sizeof(out)) == FR_ERR_UNSUPPORTED);
   CHECK("repl rejects expression without compiler",
-        fr_repl_eval_line(&runtime, "pin: $led_builtin, 1", out,
+        fr_repl_eval_line(&runtime, "gpio.write: $led_builtin, 1", out,
                           sizeof(out)) == FR_ERR_UNSUPPORTED);
 #if FR_BASE_IMAGE_INCLUDE_SYMBOLS
   CHECK("repl boot colon nil",
@@ -16688,13 +16743,13 @@ static void test_repl_see_source_form(void) {
   CHECK("see source while",
         fr_base_image_install(&runtime) == FR_OK &&
             fr_repl_eval_line(
-                &runtime, "wait is fn with p [ while gpio.read: p [ wait: 1 ] ]",
+                &runtime, "hold is fn with p [ while gpio.read: p [ wait: 1 ] ]",
                 out, sizeof(out)) == FR_OK &&
             strcmp(out, "ok\n") == 0 &&
-            fr_repl_eval_line(&runtime, "see wait", out, sizeof(out)) ==
+            fr_repl_eval_line(&runtime, "see hold", out, sizeof(out)) ==
                 FR_OK &&
             strcmp(out, "overlay code\n"
-                        "to wait with p [ while gpio.read: p [ wait: 1 ] ]\n"
+                        "to hold with p [ while gpio.read: p [ wait: 1 ] ]\n"
                         "ok\n") == 0);
   /* repeat count: a blink-shaped body that drives a pin a fixed number of
    * passes. Fresh install for the same overlay-name budget reason. */
@@ -17048,7 +17103,7 @@ static void test_repl_pump(void) {
 #if FR_FEATURE_COMPILER
   const char *lines[] = {
       "words",
-      "boot is fn [ pin: $led_builtin, 1; pin: $led_builtin, 0; one ]",
+      "boot is fn [ gpio.write: $led_builtin, 1; gpio.write: $led_builtin, 0; one ]",
       "see boot",
       "boot:",
       "unknown",
@@ -17104,6 +17159,680 @@ static void test_repl_pump(void) {
 }
 
 #if FR_FEATURE_COMPILER
+static void test_repl_overlong_line_recovers(void) {
+  fr_runtime_t runtime;
+  char overlong[FR_REPL_LINE_BYTES + 1];
+  char out[128] = {0};
+  char expected[128];
+  const char *lines[] = {overlong, "1 + 1"};
+
+  memset(overlong, 'x', FR_REPL_LINE_BYTES);
+  overlong[FR_REPL_LINE_BYTES] = '\0';
+  snprintf(expected, sizeof(expected),
+           "> error: capacity exceeded (4)\n"
+           "note: the line limit is %u bytes\n"
+           "> 2\nok\n> ",
+           (unsigned)(FR_REPL_LINE_BYTES - 1u));
+  CHECK("repl drains an overlong line and continues",
+        fr_base_image_install(&runtime) == FR_OK &&
+            test_repl_run_lines(&runtime, lines, 2, out,
+                                (uint16_t)sizeof(out)) &&
+            strcmp(out, expected) == 0);
+}
+
+/* A full store names itself and its limit, and a note that gives a remedy
+ * gives one that works. */
+static void test_repl_capacity_notes(void) {
+  fr_runtime_t runtime;
+  char out[512] = {0};
+  char expected[160];
+  uint16_t pending_limit = 0;
+  fr_err_t err = FR_OK;
+
+  CHECK("capacity notes install", fr_base_image_install(&runtime) == FR_OK);
+  pending_limit =
+      (uint16_t)(sizeof(runtime.code.overlay_instruction_bytes) -
+                 runtime.code.base_ram_used_instruction_bytes);
+  snprintf(expected, sizeof(expected),
+           "code.pending.used 0\ncode.pending.total %u\nok\n",
+           (unsigned)pending_limit);
+  CHECK("mem code reports pending code for user code only",
+        fr_repl_eval_line(&runtime, "mem code", out, sizeof(out)) == FR_OK &&
+            strcmp(out, expected) == 0);
+
+  for (int i = 0; i < 1000; i++) {
+    err = fr_repl_eval_line(&runtime, "to w with p [ p + 1 ]", out,
+                            sizeof(out));
+    if (err != FR_OK) {
+      break;
+    }
+  }
+  snprintf(expected, sizeof(expected),
+           "note: pending code is full (limit %u bytes) -- a save that "
+           "succeeds frees it\n",
+           (unsigned)pending_limit);
+  CHECK("pending code full names the store and its limit",
+        err == FR_ERR_CAPACITY &&
+            strstr(out, "error: capacity exceeded (4)\n") == out &&
+            strstr(out, expected) != NULL);
+#if FR_FEATURE_PERSISTENCE
+  (void)fr_platform_persist_clear();
+  CHECK("save frees pending code, as the note says",
+        fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "to w with p [ p + 1 ]", out,
+                              sizeof(out)) == FR_OK);
+
+  (void)fr_platform_persist_clear();
+#endif
+
+#if FR_FEATURE_PERSISTENCE && FR_FEATURE_EVENTS
+  /* A word with an event body holds two code objects. The bodies differ,
+   * because a saved image shares equal code. A save frees pending code on the
+   * way. */
+  snprintf(expected, sizeof(expected),
+           "note: code object table is full (limit %u) -- saved words count "
+           "too\n",
+           (unsigned)FR_PROFILE_CODE_OBJECT_TABLE_SIZE);
+  /* Clearing storage drops the image that the runtime mounted, so start a
+   * fresh runtime after it. */
+  (void)fr_platform_persist_clear();
+  CHECK("capacity notes reinstall", fr_base_image_install(&runtime) == FR_OK);
+  {
+    bool names_full = false;
+
+    /* Where the name table fills first (host_small), a redefinition adds
+     * code objects with no new name. */
+    for (int i = 0; i < 2 * FR_PROFILE_CODE_OBJECT_TABLE_SIZE; i++) {
+      char line[48];
+
+      snprintf(line, sizeof(line), "to e%d [ every 1000 [ %d ] ]",
+               names_full ? 0 : i, i);
+      err = fr_repl_eval_line(&runtime, line, out, sizeof(out));
+      if (err == FR_ERR_CAPACITY && strstr(out, "pending code") != NULL &&
+          fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK) {
+        err = fr_repl_eval_line(&runtime, line, out, sizeof(out));
+      }
+      if (err == FR_ERR_CAPACITY && !names_full &&
+          strstr(out, "code object table") == NULL) {
+        names_full = true;
+        continue;
+      }
+      if (err != FR_OK) {
+        break;
+      }
+    }
+  }
+  (void)fr_platform_persist_clear();
+  CHECK("code object table full names the store and its limit",
+        err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
+#endif
+
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  snprintf(expected, sizeof(expected),
+           "note: name table is full (limit %u) -- saved names count too\n",
+           (unsigned)FR_PROFILE_MAX_OVERLAY_NAMES);
+  CHECK("capacity notes install for names",
+        fr_base_image_install(&runtime) == FR_OK);
+  for (int i = 0; i <= FR_PROFILE_MAX_OVERLAY_NAMES; i++) {
+    char line[32];
+
+    snprintf(line, sizeof(line), "n%d is %d", i, i);
+    err = fr_repl_eval_line(&runtime, line, out, sizeof(out));
+    if (err != FR_OK) {
+      break;
+    }
+  }
+  CHECK("name table full names the store and its limit",
+        err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
+#endif
+
+#if FR_FEATURE_PERSISTENCE && FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  /* A library slot made before a user wipe stays below the live user slot,
+   * so repeated installs fill the slot table while few names exist. */
+  snprintf(expected, sizeof(expected), "note: slot table is full (limit %u)\n",
+           (unsigned)FR_PROFILE_MAX_SLOTS);
+  (void)fr_platform_persist_clear();
+  CHECK("capacity notes install for slots",
+        fr_base_image_install(&runtime) == FR_OK);
+  for (int i = 0; i < FR_PROFILE_MAX_SLOTS; i++) {
+    if (fr_repl_eval_line(&runtime, "install-library", out, sizeof(out)) !=
+        FR_OK) {
+      break;
+    }
+    err = fr_repl_eval_line(&runtime, "l is 1", out, sizeof(out));
+    if (err != FR_OK) {
+      break;
+    }
+    (void)fr_repl_eval_line(&runtime, "install-user", out, sizeof(out));
+    (void)fr_repl_eval_line(&runtime, "wipe-user", out, sizeof(out));
+    (void)fr_repl_eval_line(&runtime, "u is 1", out, sizeof(out));
+  }
+  CHECK("slot table full names the store and its limit",
+        err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
+  (void)fr_platform_persist_clear();
+#endif
+
+#if FR_FEATURE_TEXT
+  /* Short texts fill the object table before the Text pool. */
+  snprintf(expected, sizeof(expected),
+           "note: object table (cells, text and records) is full (limit %u)\n",
+           (unsigned)FR_PROFILE_OBJECT_TABLE_SIZE);
+  CHECK("capacity notes install for objects",
+        fr_base_image_install(&runtime) == FR_OK);
+  for (int i = 0; i <= FR_PROFILE_OBJECT_TABLE_SIZE; i++) {
+    char line[48];
+
+    snprintf(line, sizeof(line), "t is text.from-int: %d", i);
+    err = fr_repl_eval_line(&runtime, line, out, sizeof(out));
+    if (err != FR_OK) {
+      break;
+    }
+  }
+  CHECK("object table full names the store and its limit",
+        err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
+
+  /* Long texts fill the Text pool before the object table. */
+  snprintf(expected, sizeof(expected),
+           "note: Text pool is full (limit %u bytes) -- a save that succeeds "
+           "frees what the program no longer uses\n",
+           (unsigned)FR_TEXT_BYTE_CAPACITY);
+  (void)fr_platform_persist_clear();
+  CHECK("capacity notes install for text",
+        fr_base_image_install(&runtime) == FR_OK);
+  {
+    char line[160] = {0};
+
+    for (int i = 0; i < FR_PROFILE_OBJECT_TABLE_SIZE; i++) {
+      snprintf(line, sizeof(line),
+               "t is text.concat: \"%0100d\", (text.from-int: %d)", 0, i);
+      err = fr_repl_eval_line(&runtime, line, out, sizeof(out));
+      if (err != FR_OK) {
+        break;
+      }
+    }
+    CHECK("Text pool full names the store and its limit",
+          err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
+#if FR_FEATURE_PERSISTENCE
+    /* The same line that failed fits after a save. */
+    CHECK("save frees the Text that the program no longer uses",
+          fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+              fr_repl_eval_line(&runtime, line, out, sizeof(out)) == FR_OK);
+#endif
+  }
+  (void)fr_platform_persist_clear();
+#endif
+
+#if FR_FEATURE_CELLS
+  /* Large cells fill cell storage before the object table. */
+  snprintf(expected, sizeof(expected),
+           "note: cell storage is full (limit %u words) -- a save that "
+           "succeeds frees what the program no longer uses\n",
+           (unsigned)FR_PROFILE_MAX_CELL_WORDS);
+  CHECK("capacity notes install for cells",
+        fr_base_image_install(&runtime) == FR_OK);
+  for (int i = 0; i < FR_PROFILE_MAX_CELL_WORDS; i++) {
+    char line[48];
+
+    snprintf(line, sizeof(line), "c is cells: %d",
+             (int)FR_PROFILE_MAX_CELL_LENGTH);
+    err = fr_repl_eval_line(&runtime, line, out, sizeof(out));
+    if (err != FR_OK) {
+      break;
+    }
+  }
+  CHECK("cell storage full names the store and its limit",
+        err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
+#if FR_FEATURE_PERSISTENCE
+  CHECK("save frees the cells that the program no longer uses",
+        fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "c is cells: 1", out, sizeof(out)) ==
+                FR_OK);
+#endif
+  (void)fr_platform_persist_clear();
+#endif
+#if FR_FEATURE_BYTES && FR_FEATURE_TEXT
+  /* Two 2,048-byte copies and their join need more than the arena. */
+  snprintf(expected, sizeof(expected),
+           "note: Bytes arena is full (limit %u bytes)\n",
+           (unsigned)FR_PROFILE_BYTES_ARENA_BYTES);
+  CHECK("capacity notes install for Bytes",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime, "t is \"x\"", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime,
+                              "repeat 11 [ set t to text.concat: t, t ]", out,
+                              sizeof(out)) == FR_OK);
+  CHECK("Bytes arena full names the store and its limit",
+        fr_repl_eval_line(&runtime,
+                          "bytes.length: (bytes.concat: (bytes.from-text: t), "
+                          "(bytes.from-text: t))",
+                          out, sizeof(out)) == FR_ERR_CAPACITY &&
+            strstr(out, expected) != NULL);
+
+  /* An entry retires at its last generation, so many short uses fill the
+     table. */
+  snprintf(expected, sizeof(expected),
+           "note: Bytes table is full (limit %u)\n",
+           (unsigned)FR_PROFILE_BYTES_COUNT);
+  CHECK("Bytes table full names the store and its limit",
+        fr_repl_eval_line(&runtime,
+                          "repeat 2000 [ bytes.length: (bytes.from-int: 1) ]",
+                          out, sizeof(out)) == FR_ERR_CAPACITY &&
+            strstr(out, expected) != NULL);
+#endif
+
+#if FR_FEATURE_PAD
+  char line_buffer[64];
+
+  CHECK("capacity notes install for PAD",
+        fr_base_image_install(&runtime) == FR_OK);
+  snprintf(expected, sizeof(expected),
+           "note: PAD is full (limit %u bytes) -- pad.reset empties it\n",
+           (unsigned)FR_PROFILE_PAD_BYTES);
+  snprintf(line_buffer, sizeof(line_buffer),
+           "repeat %u [ pad.emit-byte: 65 ]",
+           (unsigned)(FR_PROFILE_PAD_BYTES + 1u));
+  CHECK("PAD full names the store and its limit",
+        fr_repl_eval_line(&runtime, line_buffer, out, sizeof(out)) ==
+                FR_ERR_CAPACITY &&
+            strstr(out, expected) != NULL);
+  snprintf(line_buffer, sizeof(line_buffer),
+           "repeat %u [ pad.emit-byte: 65 ]", (unsigned)FR_PROFILE_PAD_BYTES);
+  CHECK("pad.reset empties PAD, as the note says",
+        fr_repl_eval_line(&runtime, "pad.reset:", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, line_buffer, out, sizeof(out)) ==
+                FR_OK);
+#endif
+
+#if FR_FEATURE_EVENTS
+  CHECK("capacity notes install for event bodies",
+        fr_base_image_install(&runtime) == FR_OK);
+  CHECK("a second event body in one word names the store and its limit",
+        fr_repl_eval_line(&runtime,
+                          "two is fn [ every 500 [ 1 ]; every 600 [ 2 ] ]",
+                          out, sizeof(out)) == FR_ERR_CAPACITY &&
+            strstr(out, "note: space for on, every and after bodies in one "
+                        "word is full (limit 1) -- start the second one from "
+                        "another word\n") != NULL);
+  CHECK("a second event body started from another word fits, as the note "
+        "says",
+        fr_repl_eval_line(&runtime, "second is fn [ every 600 [ 2 ] ]", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime,
+                              "two is fn [ every 500 [ 1 ]; second: ]", out,
+                              sizeof(out)) == FR_OK);
+#endif
+
+  {
+    char locals[512];
+    char line[600];
+    int used = 0;
+
+    /* A local binding and a named repeat index each take a local slot. */
+    for (int i = 0; i < FR_PARSE_MAX_LOCALS; i++) {
+      used += snprintf(locals + used, sizeof(locals) - (size_t)used,
+                       "%shere a%d is 1", i == 0 ? "" : "; ", i);
+    }
+    snprintf(expected, sizeof(expected),
+             "note: space for locals in one form is full (limit %u)\n",
+             (unsigned)FR_PARSE_MAX_LOCALS);
+    CHECK("capacity notes install for locals",
+          fr_base_image_install(&runtime) == FR_OK);
+    snprintf(line, sizeof(line), "many is fn [ %s; here extra is 1 ]",
+             locals);
+    CHECK("too many locals in a word name the store and its limit",
+          fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                  FR_ERR_CAPACITY &&
+              strstr(out, expected) != NULL);
+    snprintf(line, sizeof(line), "repeat 1 as i [ %s ]", locals);
+    CHECK("too many locals in an expression line name the store and its "
+          "limit",
+          fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                  FR_ERR_CAPACITY &&
+              strstr(out, expected) != NULL);
+    snprintf(line, sizeof(line), "v is max: (repeat 1 as i [ %s ]), 0",
+             locals);
+    CHECK("too many locals in a value binding name the store and its limit",
+          fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                  FR_ERR_CAPACITY &&
+              strstr(out, expected) != NULL);
+  }
+
+  {
+    /* N ones joined by + make 2N - 1 parse nodes. */
+    int ones = FR_PARSE_MAX_EXPR_NODES / 2 + 1;
+    int part_ones = (ones + 1) / 2;
+    char sum[300];
+    char line[340];
+    int used = 0;
+
+    for (int i = 0; i < ones; i++) {
+      used += snprintf(sum + used, sizeof(sum) - (size_t)used, "%s1",
+                       i == 0 ? "" : " + ");
+    }
+    snprintf(expected, sizeof(expected),
+             "note: space for parse nodes in one form is full (limit %u) -- "
+             "split it into smaller words\n",
+             (unsigned)FR_PARSE_MAX_EXPR_NODES);
+    CHECK("capacity notes install for parse nodes",
+          fr_base_image_install(&runtime) == FR_OK);
+    CHECK("too many parse nodes in one form name the store and its limit",
+          fr_repl_eval_line(&runtime, sum, out, sizeof(out)) ==
+                  FR_ERR_CAPACITY &&
+              strstr(out, expected) != NULL);
+    /* The first part_ones ones of the sum, then the same total from a word. */
+    snprintf(line, sizeof(line), "part is fn [ %.*s ]", 4 * part_ones - 3,
+             sum);
+    snprintf(expected, sizeof(expected), "%d\nok\n", ones);
+    CHECK("the same sum split into a smaller word fits, as the note says",
+          fr_repl_eval_line(&runtime, line, out, sizeof(out)) == FR_OK &&
+              fr_repl_eval_line(&runtime, "(part:) + (part:) - 1", out,
+                                sizeof(out)) == FR_OK &&
+              strcmp(out, expected) == 0);
+  }
+
+#if FR_FEATURE_EVENTS
+  CHECK("capacity notes install for the event table",
+        fr_base_image_install(&runtime) == FR_OK);
+  for (uint16_t i = 0; i < FR_EVENT_BINDING_COUNT; i++) {
+    CHECK("event table fills",
+          fr_event_register(&runtime, FR_EVENT_KIND_GPIO_RISING,
+                            (uint16_t)(20 + i), 0, 1) == FR_OK);
+  }
+  snprintf(expected, sizeof(expected),
+           "note: event table is full (limit %u)\n",
+           (unsigned)FR_EVENT_BINDING_COUNT);
+  CHECK("a full event table names the store and its limit",
+        fr_repl_eval_line(&runtime, "tick is fn [ every 1000 [ 1 ] ]", out,
+                          sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "tick:", out, sizeof(out)) ==
+                FR_ERR_CAPACITY &&
+            strstr(out, expected) != NULL);
+  CHECK("event table test clears its bindings",
+        fr_runtime_clear_project(&runtime) == FR_OK);
+#endif
+
+#if FR_FEATURE_HANDLES && FR_FEATURE_UART
+  {
+    fr_handle_ref_t ref = {0};
+    fr_tagged_t handle = 0;
+
+    CHECK("capacity notes install for the handle table",
+          fr_base_image_install(&runtime) == FR_OK);
+    for (fr_handle_id_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
+      CHECK("handle table fills",
+            fr_handle_reserve(&runtime, FR_TEST_SYNTHETIC_HANDLE_KIND, &ref,
+                              &handle) == FR_OK);
+    }
+    snprintf(expected, sizeof(expected),
+             "note: handle table is full (limit %u)\n",
+             (unsigned)FR_PROFILE_MAX_HANDLES);
+    CHECK("a full handle table names the store and its limit",
+          fr_repl_eval_line(&runtime, "u is uart.open: 0, $baud_9600", out,
+                            sizeof(out)) == FR_ERR_CAPACITY &&
+              strstr(out, expected) != NULL);
+  }
+#endif
+
+  {
+    static const fr_image_native_t natives[FR_PROFILE_NATIVE_TABLE_SIZE];
+    fr_diagnostic_t diag = {0};
+    fr_native_id_t native_id = 0;
+
+    /* Natives are added at startup, from the base image, the libraries and
+     * image updates; no line at the prompt adds one. */
+    CHECK("capacity notes install for the native table",
+          fr_base_image_install(&runtime) == FR_OK);
+    runtime.diag = &diag;
+    err = fr_overlay_apply(
+        &runtime,
+        &(const fr_overlay_update_t){
+            .natives = natives,
+            .native_count = (uint16_t)(FR_PROFILE_NATIVE_TABLE_SIZE -
+                                       runtime.natives.count + 1u),
+        });
+    CHECK("an update with too many natives names the native table",
+          err == FR_ERR_CAPACITY && diag.kind == FR_DIAG_LIMIT &&
+              diag.context_name != NULL &&
+              strcmp(diag.context_name, "native table") == 0 &&
+              diag.expected == FR_PROFILE_NATIVE_TABLE_SIZE &&
+              diag.unit == FR_DIAG_UNIT_COUNT && diag.note == NULL);
+    diag = (fr_diagnostic_t){0};
+    do {
+      err = fr_native_install(&runtime, test_native_one, 0, NULL, &native_id);
+    } while (err == FR_OK);
+    CHECK("a full native table names the store and its limit",
+          err == FR_ERR_CAPACITY && diag.kind == FR_DIAG_LIMIT &&
+              diag.context_name != NULL &&
+              strcmp(diag.context_name, "native table") == 0 &&
+              diag.expected == FR_PROFILE_NATIVE_TABLE_SIZE &&
+              diag.unit == FR_DIAG_UNIT_COUNT && diag.note == NULL);
+    runtime.diag = NULL;
+  }
+}
+
+/* A binding that replaces a base word says so once (ADR 0079, notice 103). */
+static void test_repl_base_word_notice(void) {
+  fr_runtime_t runtime;
+  char out[256] = {0};
+  static const char replaced[] =
+      "notice: base word replaced (103)\n"
+      "detail: wait was a base word -- use another name to keep it\n"
+      "ok\n";
+
+  CHECK("base word notice install", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("a new name prints no notice",
+        fr_repl_eval_line(&runtime, "fresh is 5", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("binding a base word to itself prints no notice",
+        fr_repl_eval_line(&runtime, "wait is wait", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("a failed binding prints no notice",
+        fr_repl_eval_line(&runtime, "wait is no-such-word", out,
+                          sizeof(out)) == FR_ERR_NOT_FOUND &&
+            strstr(out, "(103)") == NULL);
+  CHECK("replacing a base word prints notice 103",
+        fr_repl_eval_line(&runtime, "wait is 5", out, sizeof(out)) == FR_OK &&
+            strcmp(out, replaced) == 0);
+  CHECK("a second binding prints no notice",
+        fr_repl_eval_line(&runtime, "wait is 6", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("replacing a base word with a call result prints notice 103",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime, "wait is gpio.read: $led_builtin", out,
+                              sizeof(out)) == FR_OK &&
+            strcmp(out, replaced) == 0);
+  CHECK("boot prints no notice",
+        fr_repl_eval_line(&runtime, "boot is fn [ 1 ]", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0);
+
+#if FR_FEATURE_PERSISTENCE
+  /* A library session saves each binding, and that save moves the base. */
+  fr_platform_persist_clear();
+  CHECK("a library that replaces a base word prints notice 103",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime, "install-library", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "wait is 5", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, replaced) == 0);
+  fr_platform_persist_clear();
+  CHECK("a library that replaces a base word with a call result prints "
+        "notice 103",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime, "install-library", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "wait is gpio.read: $led_builtin",
+                              out, sizeof(out)) == FR_OK &&
+            strcmp(out, replaced) == 0);
+
+  /* A library can install a boot value and its own words. */
+  fr_platform_persist_clear();
+  CHECK("a library installs a boot value and a word",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime, "install-library", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "libword is fn [ 1 ]", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "boot is fn [ 2 ]", out,
+                              sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "install-user", out, sizeof(out)) ==
+                FR_OK);
+  CHECK("boot prints no notice after a library set it",
+        fr_repl_eval_line(&runtime, "boot is fn [ 3 ]", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("replacing a library word prints notice 103",
+        fr_repl_eval_line(&runtime, "libword is 5", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "notice: base word replaced (103)\n"
+                        "detail: libword was a base word -- use another "
+                        "name to keep it\nok\n") == 0);
+  fr_platform_persist_clear();
+#endif
+}
+
+/* A reader who types a comment gets an answer that names no mistake. Raw
+ * serial is the first interface, so the device says it, not the tool. */
+static void test_repl_input_mistakes(void) {
+  fr_runtime_t runtime;
+  char out[512] = {0};
+
+  CHECK("source of only comments is blank",
+        fr_parse_source_is_blank("-- just a note") &&
+            fr_parse_source_is_blank("  -* note *-  ") &&
+            fr_parse_source_is_blank("   ") &&
+            !fr_parse_source_is_blank("1 -- not blank") &&
+            !fr_parse_source_is_blank("-* never closed"));
+
+  CHECK("repl install for input mistakes",
+        fr_base_image_install(&runtime) == FR_OK);
+  CHECK("repl answers ok to a line that holds only a comment",
+        fr_repl_eval_line(&runtime, "-- just a note", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("repl answers ok to a line that holds only a block comment",
+        fr_repl_eval_line(&runtime, "  -* note *-", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0);
+  CHECK("repl still rejects a block comment that never closes",
+        fr_repl_eval_line(&runtime, "-* never closed", out, sizeof(out)) ==
+            FR_ERR_INVALID);
+  CHECK("repl still runs code that ends in a comment",
+        fr_repl_eval_line(&runtime, "1 + 1 -- two", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "2\nok\n") == 0);
+  CHECK("repl reads a bare word followed by a comment as the bare word",
+        fr_repl_eval_line(&runtime, "one -- note", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "1\nok\n") == 0);
+  {
+    fr_parse_line_t parsed;
+    fr_parse_expr_id_t expr_id = 0;
+    fr_diagnostic_t diag = {0};
+
+    CHECK("parse names == as the mistake",
+          fr_parse_expression_line_with_diagnostic("1 == 1", &parsed,
+                                                   &expr_id, &diag) ==
+                  FR_ERR_INVALID &&
+              diag.message_id == FR_DIAG_MSG_PARSE_DOUBLE_EQUALS &&
+              diag.span_length == 2);
+    CHECK("parse keeps one = as equality",
+          fr_parse_expression_line("1 = 1", &parsed, &expr_id) == FR_OK &&
+              parsed.exprs[expr_id].kind == FR_PARSE_EXPR_EQ);
+  }
+  {
+    fr_parse_line_t parsed;
+    fr_parse_expr_id_t expr_id = 0;
+    fr_diagnostic_t diag = {0};
+    const char *names[] = {"2nd", "500ms", "v1.2", "1.", ".5"};
+    bool names_stay = true;
+
+    CHECK("parse names a decimal fraction as the mistake",
+          fr_parse_expression_line_with_diagnostic("3.14", &parsed, &expr_id,
+                                                   &diag) == FR_ERR_INVALID &&
+              diag.message_id == FR_DIAG_MSG_PARSE_FLOAT_LITERAL &&
+              diag.span_length == 4);
+    CHECK("parse names a negative decimal fraction as the mistake",
+          fr_parse_expression_line("-0.5", &parsed, &expr_id) ==
+              FR_ERR_INVALID);
+    diag = (fr_diagnostic_t){0};
+    CHECK("parse names a decimal fraction past the integer range",
+          fr_parse_expression_line_with_diagnostic(
+              "1073741824.5", &parsed, &expr_id, &diag) == FR_ERR_INVALID &&
+              diag.message_id == FR_DIAG_MSG_PARSE_FLOAT_LITERAL);
+    diag = (fr_diagnostic_t){0};
+    CHECK("parse names a negative decimal fraction past the integer range",
+          fr_parse_expression_line_with_diagnostic(
+              "-1073741825.5", &parsed, &expr_id, &diag) == FR_ERR_INVALID &&
+              diag.message_id == FR_DIAG_MSG_PARSE_FLOAT_LITERAL);
+    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+      names_stay = names_stay &&
+                   fr_parse_expression_line(names[i], &parsed, &expr_id) ==
+                       FR_OK &&
+                   parsed.exprs[expr_id].kind == FR_PARSE_EXPR_NAME;
+    }
+    CHECK("parse leaves names that only look like numbers as names",
+          names_stay);
+  }
+  CHECK("repl renders the whole-numbers message",
+        fr_repl_eval_line(&runtime, "x is 3.14", out, sizeof(out)) ==
+                FR_ERR_INVALID &&
+            strstr(out, "Frothy has whole numbers only") != NULL &&
+            strstr(out, "source: x is 3.14\n             ^^^^\n") != NULL);
+  CHECK("repl says a bare word names a word and was not called",
+        fr_repl_eval_line(&runtime, "gpio.write", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: gpio.write is a word -- write gpio.write: to call it\n"
+                   "native 2\nok\n") == 0);
+  CHECK("repl names the word when a comment follows it",
+        fr_repl_eval_line(&runtime, "gpio.write -- note", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "notice: word not called (102)\n"
+                   "detail: gpio.write is a word -- write gpio.write: to call it\n"
+                   "native 2\nok\n") == 0);
+  CHECK("repl keeps a bare value free of the word notice",
+        fr_repl_eval_line(&runtime, "one", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "1\nok\n") == 0);
+  CHECK("repl renders the == message under the operator",
+        fr_repl_eval_line(&runtime, "1 == 1", out, sizeof(out)) ==
+                FR_ERR_INVALID &&
+            strstr(out, "error: invalid (8)\n") == out &&
+            strstr(out,
+                   "compare with one '=' -- write a = b, not a == b\n") !=
+                NULL &&
+            strstr(out, "source: 1 == 1\n          ^^\n") != NULL);
+#if FR_FEATURE_PERSISTENCE
+  (void)fr_platform_persist_clear();
+  CHECK("repl saves when save is followed by a comment",
+        fr_repl_eval_line(&runtime, "kept is 5", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "save -- keep it", out,
+                              sizeof(out)) == FR_OK &&
+            strcmp(out, "ok\n") == 0 &&
+            fr_repl_eval_line(&runtime, "kept is 6", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "restore", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "kept", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "5\nok\n") == 0);
+  CHECK("repl saves when save: is followed by a comment",
+        fr_repl_eval_line(&runtime, "kept is 7", out, sizeof(out)) == FR_OK &&
+            fr_repl_eval_line(&runtime, "save: -- note", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out, "ok\n") == 0 &&
+            fr_repl_eval_line(&runtime, "kept is 8", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "restore", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "kept", out, sizeof(out)) == FR_OK &&
+            strcmp(out, "7\nok\n") == 0);
+  (void)fr_platform_persist_clear();
+#endif
+}
+
 static void test_repl_source_form_wire(void) {
   fr_runtime_t runtime;
   char out[1024] = {0};
@@ -17242,16 +17971,16 @@ static void test_repl_transcript(void) {
   CHECK("repl transcript define mechanical boot",
         fr_repl_eval_line(
             &runtime,
-            "boot is fn [ pin: $led_builtin, 1; wait: 100; "
-            "pin: $led_builtin, 0; wait: 100 ]",
+            "boot is fn [ gpio.write: $led_builtin, 1; wait: 100; "
+            "gpio.write: $led_builtin, 0; wait: 100 ]",
             out, sizeof(out)) == FR_OK &&
             strcmp(out, "ok\n") == 0);
   CHECK("repl transcript direct pin on",
-        fr_repl_eval_line(&runtime, "pin: $led_builtin, 1", out,
+        fr_repl_eval_line(&runtime, "gpio.write: $led_builtin, 1", out,
                           sizeof(out)) == FR_OK &&
             strcmp(out, "ok\n") == 0);
   CHECK("repl transcript direct pin off",
-        fr_repl_eval_line(&runtime, "pin: $led_builtin, 0", out,
+        fr_repl_eval_line(&runtime, "gpio.write: $led_builtin, 0", out,
                           sizeof(out)) == FR_OK &&
             strcmp(out, "ok\n") == 0);
   CHECK("repl transcript run mechanical boot",
@@ -17261,11 +17990,11 @@ static void test_repl_transcript(void) {
   CHECK("repl transcript rejects definition without compiler",
         fr_repl_eval_line(
             &runtime,
-            "boot is fn [ pin: $led_builtin, 1; wait: 100; "
-            "pin: $led_builtin, 0; wait: 100 ]",
+            "boot is fn [ gpio.write: $led_builtin, 1; wait: 100; "
+            "gpio.write: $led_builtin, 0; wait: 100 ]",
             out, sizeof(out)) == FR_ERR_UNSUPPORTED);
   CHECK("repl transcript rejects direct pin without compiler",
-        fr_repl_eval_line(&runtime, "pin: $led_builtin, 1", out,
+        fr_repl_eval_line(&runtime, "gpio.write: $led_builtin, 1", out,
                           sizeof(out)) == FR_ERR_UNSUPPORTED);
 #endif
 #if FR_FEATURE_PERSISTENCE
@@ -17391,7 +18120,7 @@ static void test_repl_startup_restore_and_boot(void) {
             fr_platform_gpio_read(13, &gpio_value) == FR_OK &&
             gpio_value == 0);
   CHECK("startup boot saves boot overlay",
-        fr_repl_eval_line(&runtime, "boot is fn [ pin: 13, 1 ]", out,
+        fr_repl_eval_line(&runtime, "boot is fn [ gpio.write: 13, 1 ]", out,
                           sizeof(out)) == FR_OK &&
             strcmp(out, "ok\n") == 0 && fr_persist_save(&runtime) == FR_OK);
   CHECK("startup boot resets runtime and gpio",
@@ -17475,6 +18204,10 @@ int main(void) {
   test_event_register_cancel();
   test_wipe_user_clears_events();
   test_wipe_user_closes_handles();
+  test_handles_last_many_opens();
+#if FR_FEATURE_COMPILER
+  test_pin_is_an_ordinary_name();
+#endif
   test_bulk_close_preserves_failed_entries();
   test_wipe_user_retries_failed_close();
   test_wipe_user_preserves_unclosable_handle();
@@ -17656,6 +18389,10 @@ int main(void) {
 #endif
   test_repl_pump();
 #if FR_FEATURE_COMPILER
+  test_repl_overlong_line_recovers();
+  test_repl_capacity_notes();
+  test_repl_input_mistakes();
+  test_repl_base_word_notice();
   test_repl_source_form_wire();
 #endif
 #if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0

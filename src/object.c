@@ -602,9 +602,18 @@ fr_err_t fr_cells_check_install(const fr_runtime_t *runtime, uint16_t length,
   if (length == 0 || length > FR_PROFILE_MAX_CELL_LENGTH) {
     return FR_ERR_RANGE;
   }
-  if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE ||
-      (uint32_t)runtime->objects.used_cell_words + length >
-          FR_PROFILE_MAX_CELL_WORDS) {
+  if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
+    fr_diag_note_capacity(runtime->diag,
+                          "object table (cells, text and records)",
+                          FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
+                          NULL);
+    return FR_ERR_CAPACITY;
+  }
+  if ((uint32_t)runtime->objects.used_cell_words + length >
+      FR_PROFILE_MAX_CELL_WORDS) {
+    fr_diag_note_capacity(runtime->diag, "cell storage",
+                          FR_PROFILE_MAX_CELL_WORDS, FR_DIAG_UNIT_WORDS,
+                          "a save that succeeds frees what the program no longer uses");
     return FR_ERR_CAPACITY;
   }
   if (initial_values != NULL) {
@@ -779,9 +788,18 @@ fr_err_t fr_text_check_install(const fr_runtime_t *runtime,
   if (find_err != FR_ERR_NOT_FOUND) {
     return find_err;
   }
-  if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE ||
-      (uint32_t)runtime->objects.used_text_bytes + length >
-          FR_TEXT_BYTE_CAPACITY) {
+  if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
+    fr_diag_note_capacity(runtime->diag,
+                          "object table (cells, text and records)",
+                          FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
+                          NULL);
+    return FR_ERR_CAPACITY;
+  }
+  if ((uint32_t)runtime->objects.used_text_bytes + length >
+      FR_TEXT_BYTE_CAPACITY) {
+    fr_diag_note_capacity(runtime->diag, "Text pool", FR_TEXT_BYTE_CAPACITY,
+                          FR_DIAG_UNIT_BYTES,
+                          "a save that succeeds frees what the program no longer uses");
     return FR_ERR_CAPACITY;
   }
   return FR_OK;
@@ -818,9 +836,18 @@ fr_err_t fr_text_install_since(fr_runtime_t *runtime, const uint8_t *bytes,
   if (find_err != FR_ERR_NOT_FOUND) {
     return find_err;
   }
-  if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE ||
-      (uint32_t)runtime->objects.used_text_bytes + length >
-          FR_TEXT_BYTE_CAPACITY) {
+  if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
+    fr_diag_note_capacity(runtime->diag,
+                          "object table (cells, text and records)",
+                          FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
+                          NULL);
+    return FR_ERR_CAPACITY;
+  }
+  if ((uint32_t)runtime->objects.used_text_bytes + length >
+      FR_TEXT_BYTE_CAPACITY) {
+    fr_diag_note_capacity(runtime->diag, "Text pool", FR_TEXT_BYTE_CAPACITY,
+                          FR_DIAG_UNIT_BYTES,
+                          "a save that succeeds frees what the program no longer uses");
     return FR_ERR_CAPACITY;
   }
 
@@ -880,6 +907,10 @@ fr_err_t fr_text_mount_image_since(fr_runtime_t *runtime, const uint8_t *bytes,
     return find_err;
   }
   if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
+    fr_diag_note_capacity(runtime->diag,
+                          "object table (cells, text and records)",
+                          FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
+                          NULL);
     return FR_ERR_CAPACITY;
   }
 
@@ -1193,8 +1224,14 @@ static fr_err_t fr_record_shape_install_since_kind(
   if (find_err != FR_ERR_NOT_FOUND) {
     return find_err;
   }
-  if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE ||
-      runtime->objects.used_record_shape_fields + field_count >
+  if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
+    fr_diag_note_capacity(runtime->diag,
+                          "object table (cells, text and records)",
+                          FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
+                          NULL);
+    return FR_ERR_CAPACITY;
+  }
+  if (runtime->objects.used_record_shape_fields + field_count >
           FR_PROFILE_MAX_RECORD_SHAPE_FIELDS ||
       runtime->objects.used_record_names + 1u + field_count >
           FR_RECORD_NAME_ENTRY_CAPACITY) {
@@ -1386,9 +1423,15 @@ fr_err_t fr_record_install(fr_runtime_t *runtime,
   if (field_count != shape_field_count) {
     return FR_ERR_INVALID;
   }
-  if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE ||
-      (uint32_t)runtime->objects.used_record_values + field_count >
-          FR_PROFILE_MAX_RECORD_VALUE_FIELDS) {
+  if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
+    fr_diag_note_capacity(runtime->diag,
+                          "object table (cells, text and records)",
+                          FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
+                          NULL);
+    return FR_ERR_CAPACITY;
+  }
+  if ((uint32_t)runtime->objects.used_record_values + field_count >
+      FR_PROFILE_MAX_RECORD_VALUE_FIELDS) {
     return FR_ERR_CAPACITY;
   }
   for (uint16_t i = 0; i < field_count; i++) {
@@ -1560,6 +1603,9 @@ fr_err_t fr_bytes_install(fr_runtime_t *runtime, const uint8_t *bytes,
   }
   if ((uint32_t)runtime->bytes.arena_used + length >
       FR_PROFILE_BYTES_ARENA_BYTES) {
+    fr_diag_note_capacity(runtime->diag, "Bytes arena",
+                          FR_PROFILE_BYTES_ARENA_BYTES, FR_DIAG_UNIT_BYTES,
+                          NULL);
     return FR_ERR_CAPACITY;
   }
 
@@ -1587,6 +1633,8 @@ fr_err_t fr_bytes_install(fr_runtime_t *runtime, const uint8_t *bytes,
     fr_bytes_ref_t ref = {.id = i, .generation = entry->generation};
     return fr_tagged_encode_bytes_ref(ref, out_tagged);
   }
+  fr_diag_note_capacity(runtime->diag, "Bytes table", FR_PROFILE_BYTES_COUNT,
+                        FR_DIAG_UNIT_COUNT, NULL);
   return FR_ERR_CAPACITY;
 #else
   (void)runtime;

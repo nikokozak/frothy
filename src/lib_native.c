@@ -21,7 +21,6 @@ const uint16_t fr_lib_natives_count = 0;
 /* Name records for the slots the install loop bound. Static lifetime mirrors
    the base name table so reset/restore can't drop them. def->name points to
    the link-time string in fr_lib_natives[], so we borrow rather than copy. */
-enum { FR_LIB_NATIVE_RECORD_MAX = 64 };
 
 typedef struct {
   fr_slot_id_t slot_id;

@@ -336,7 +336,6 @@ typedef struct fr_base_def_t {
   fr_slot_id_t slot_id;
 #if FR_BASE_IMAGE_INCLUDE_SYMBOLS
   const char *name;
-  const char *alias;
 #endif
   fr_base_def_kind_t kind;
   fr_tagged_t literal_tagged;

@@ -78,6 +78,19 @@ static bool fr_repl_is_space(char ch) {
   return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r';
 }
 
+/* True when text holds nothing that runs: only spaces, and comments when the
+ * parser is present. */
+static bool fr_repl_text_is_blank(const char *text) {
+  while (fr_repl_is_space(*text)) {
+    text += 1;
+  }
+#if FR_FEATURE_COMPILER
+  return *text == '\0' || fr_parse_source_is_blank(text);
+#else
+  return *text == '\0';
+#endif
+}
+
 /* Tooling keeps the serial protocol one request per physical line. A
  * source-form request carries real source newlines as `\n` and protects a
  * literal backslash as `\\`; decode it over the prefix in the REPL's existing
@@ -211,7 +224,7 @@ static fr_err_t fr_repl_parse_recognized_command(
   while (end > start && fr_repl_is_space(end[-1])) {
     end -= 1;
   }
-  if (start == end) {
+  if (fr_repl_text_is_blank(start)) {
     out->kind = FR_REPL_COMMAND_BLANK;
     return FR_OK;
   }
@@ -672,6 +685,15 @@ static fr_err_t fr_repl_write_status(const fr_repl_writer_t *writer) {
 
     FR_TRY(fr_repl_write_u16(bytes, (uint16_t)sizeof(bytes),
                              FR_PROFILE_MAX_SOURCE_RENDER_BYTES));
+    FR_TRY(fr_repl_writer_write(writer, bytes));
+  }
+  /* The longest request line the device reads, not counting the LF. */
+  FR_TRY(fr_repl_writer_write(writer, " line_bytes="));
+  {
+    char bytes[6];
+
+    FR_TRY(fr_repl_write_u16(bytes, (uint16_t)sizeof(bytes),
+                             (uint16_t)(FR_REPL_LINE_BYTES - 1u)));
     FR_TRY(fr_repl_writer_write(writer, bytes));
   }
   return fr_repl_writer_write(writer, "\nok\n");
@@ -1212,6 +1234,26 @@ static fr_err_t fr_repl_append_runtime_context_line(
                           "detail: value cannot be stored in "));
     FR_TRY(fr_repl_append(out, out_cap, used, diag->context_name));
     return fr_repl_append_char(out, out_cap, used, '\n');
+  case FR_DIAG_MSG_RUNTIME_CAPACITY:
+    if (diag->context_name == NULL) {
+      return FR_OK;
+    }
+    *out_wrote = true;
+    FR_TRY(fr_repl_append(out, out_cap, used, "note: "));
+    FR_TRY(fr_repl_append(out, out_cap, used, diag->context_name));
+    FR_TRY(fr_repl_append(out, out_cap, used, " is full (limit "));
+    FR_TRY(fr_repl_append_int(out, out_cap, used, diag->expected));
+    if (diag->unit == FR_DIAG_UNIT_BYTES) {
+      FR_TRY(fr_repl_append(out, out_cap, used, " bytes"));
+    } else if (diag->unit == FR_DIAG_UNIT_WORDS) {
+      FR_TRY(fr_repl_append(out, out_cap, used, " words"));
+    }
+    FR_TRY(fr_repl_append_char(out, out_cap, used, ')'));
+    if (diag->note != NULL) {
+      FR_TRY(fr_repl_append(out, out_cap, used, " -- "));
+      FR_TRY(fr_repl_append(out, out_cap, used, diag->note));
+    }
+    return fr_repl_append_char(out, out_cap, used, '\n');
   case FR_DIAG_MSG_RUNTIME_STACK_OVERFLOW:
   case FR_DIAG_MSG_RUNTIME_STACK_UNDERFLOW:
   case FR_DIAG_MSG_RUNTIME_INTEGER_OVERFLOW:
@@ -1734,6 +1776,16 @@ static fr_err_t fr_repl_write_mem(fr_runtime_t *runtime, const char *arg,
   if (arg_len == 0) {
     FR_TRY(fr_repl_write_mem_heap(writer));
     FR_TRY(fr_repl_write_mem_slots(runtime, writer));
+    /* Pending code: the user code that the next `save` writes and frees,
+     * without the base library's share of the same area. */
+    FR_TRY(fr_repl_write_mem_pair(
+        writer, "code.pending.used",
+        (uint32_t)(runtime->code.overlay_used_instruction_bytes -
+                   runtime->code.base_ram_used_instruction_bytes)));
+    FR_TRY(fr_repl_write_mem_pair(
+        writer, "code.pending.total",
+        (uint32_t)(sizeof(runtime->code.overlay_instruction_bytes) -
+                   runtime->code.base_ram_used_instruction_bytes)));
     FR_TRY(fr_repl_write_mem_objects(runtime, writer));
     FR_TRY(fr_repl_write_mem_events(runtime, writer));
     return fr_repl_writer_write(writer, "ok\n");
@@ -1744,6 +1796,17 @@ static fr_err_t fr_repl_write_mem(fr_runtime_t *runtime, const char *arg,
   }
   if (fr_repl_span_equals(arg, arg_len, "slots")) {
     FR_TRY(fr_repl_write_mem_slots(runtime, writer));
+    return fr_repl_writer_write(writer, "ok\n");
+  }
+  if (fr_repl_span_equals(arg, arg_len, "code")) {
+    FR_TRY(fr_repl_write_mem_pair(
+        writer, "code.pending.used",
+        (uint32_t)(runtime->code.overlay_used_instruction_bytes -
+                   runtime->code.base_ram_used_instruction_bytes)));
+    FR_TRY(fr_repl_write_mem_pair(
+        writer, "code.pending.total",
+        (uint32_t)(sizeof(runtime->code.overlay_instruction_bytes) -
+                   runtime->code.base_ram_used_instruction_bytes)));
     return fr_repl_writer_write(writer, "ok\n");
   }
   if (fr_repl_span_equals(arg, arg_len, "objects")) {
@@ -2146,10 +2209,7 @@ static fr_err_t fr_repl_zero_arg_call_slot(fr_runtime_t *runtime,
     return FR_ERR_RANGE;
   }
   cursor += 1;
-  while (fr_repl_is_space(*cursor)) {
-    cursor += 1;
-  }
-  if (*cursor != '\0') {
+  if (!fr_repl_text_is_blank(cursor)) {
     return FR_ERR_NOT_FOUND;
   }
 #if FR_FEATURE_NUMERIC_SLOT_CALLS
@@ -2366,10 +2426,7 @@ static fr_err_t fr_repl_eval_bare_word(fr_runtime_t *runtime, const char *line,
     end += 1;
   }
   name_len = (uint16_t)(end - start);
-  while (fr_repl_is_space(*end)) {
-    end += 1;
-  }
-  if (*end != '\0') {
+  if (!fr_repl_text_is_blank(end)) {
     return FR_OK;
   }
   if ((uint32_t)name_len + 1 > sizeof(name)) {
@@ -2400,6 +2457,49 @@ static fr_err_t fr_repl_eval_bare_word(fr_runtime_t *runtime, const char *line,
 }
 
 #if FR_FEATURE_COMPILER
+/* Notice 103 (ADR 0079): true when the slot still holds the base or library
+ * word that it started with. boot is left out: every program binds it. */
+static bool fr_repl_slot_holds_base_word(const fr_runtime_t *runtime,
+                                         fr_slot_id_t slot_id) {
+  fr_tagged_t base = 0;
+  fr_code_object_id_t code_object_id = 0;
+  fr_native_id_t native_id = 0;
+
+  if (slot_id == FR_SLOT_BOOT || slot_id >= FR_PROFILE_MAX_SLOTS ||
+      runtime->slots.base_tier[slot_id] == FR_INSTALL_TIER_USER) {
+    return false;
+  }
+  base = runtime->slots.base[slot_id];
+  return runtime->slots.current[slot_id] == base &&
+         (fr_tagged_decode_code_object_id(base, &code_object_id) == FR_OK ||
+          fr_tagged_decode_native_id(base, &native_id) == FR_OK);
+}
+
+/* Writes notice 103. The caller decides right after the binding, before a
+ * library session saves it: that save moves the base to the new value. */
+static fr_err_t fr_repl_write_base_word_notice(const fr_repl_writer_t *writer,
+                                              const fr_runtime_t *runtime,
+                                              fr_slot_id_t slot_id) {
+  char notice[FR_REPL_OUTPUT_BYTES];
+  uint16_t used = 0;
+  const char *name = fr_slot_name(runtime, slot_id);
+
+  if (name == NULL) {
+    return FR_OK;
+  }
+  notice[0] = '\0';
+  FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                        "notice: base word replaced ("));
+  FR_TRY(fr_repl_append_u16(notice, (uint16_t)sizeof(notice), &used,
+                            FR_REPL_NOTICE_BASE_WORD_REPLACED));
+  FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                        ")\ndetail: "));
+  FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used, name));
+  FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                        " was a base word -- use another name to keep it\n"));
+  return fr_repl_writer_write(writer, notice);
+}
+
 static fr_err_t
 fr_repl_eval_value_binding(fr_runtime_t *runtime,
                            const fr_compile_value_binding_t *binding,
@@ -2550,6 +2650,50 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
       }
       return fr_repl_writer_write(writer, "ok\n");
     }
+    {
+      /* A bare word that names a word shows its value and runs nothing,
+       * because the call needs a colon. Say so. A name with bytes that the
+       * ESP console drops gets no notice. */
+      fr_code_object_id_t code_object_id = 0;
+      fr_native_id_t native_id = 0;
+      const char *name = line;
+      uint16_t name_length = 0;
+      bool printable = true;
+
+      while (fr_repl_is_space(*name)) {
+        name += 1;
+      }
+      while (name[name_length] != '\0' &&
+             !fr_repl_is_space(name[name_length])) {
+        printable = printable && name[name_length] >= 0x21 &&
+                    name[name_length] <= 0x7e;
+        name_length += 1;
+      }
+      if (printable &&
+          (fr_tagged_decode_code_object_id(result, &code_object_id) ==
+               FR_OK ||
+           fr_tagged_decode_native_id(result, &native_id) == FR_OK)) {
+        char notice[FR_REPL_OUTPUT_BYTES];
+        uint16_t used = 0;
+
+        notice[0] = '\0';
+        FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                              "notice: word not called ("));
+        FR_TRY(fr_repl_append_u16(notice, (uint16_t)sizeof(notice), &used,
+                                  FR_REPL_NOTICE_WORD_NOT_CALLED));
+        FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                              ")\ndetail: "));
+        FR_TRY(fr_repl_append_span(notice, (uint16_t)sizeof(notice), &used,
+                                   name, name_length));
+        FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                              " is a word -- write "));
+        FR_TRY(fr_repl_append_span(notice, (uint16_t)sizeof(notice), &used,
+                                   name, name_length));
+        FR_TRY(fr_repl_append(notice, (uint16_t)sizeof(notice), &used,
+                              ": to call it\n"));
+        FR_TRY(fr_repl_writer_write(writer, notice));
+      }
+    }
     return fr_repl_writer_write_tagged_response(writer, runtime, result);
   }
   FR_TRY(err);
@@ -2568,7 +2712,13 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
         runtime, line, compiled, diag);
 
     if (err == FR_OK) {
+      fr_slot_id_t slot_id = compiled->slot_inits[0].slot_id;
+      bool replaced = fr_repl_slot_holds_base_word(runtime, slot_id);
+
       err = fr_overlay_apply(runtime, &compiled->overlay_update);
+      replaced =
+          replaced && err == FR_OK &&
+          runtime->slots.current[slot_id] != runtime->slots.base[slot_id];
 #if FR_FEATURE_PERSISTENCE
       if (err == FR_OK) {
         fr_persist_session_install_tier_stamp_overlay(
@@ -2578,6 +2728,9 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
         }
       }
 #endif
+      if (err == FR_OK && replaced) {
+        err = fr_repl_write_base_word_notice(writer, runtime, slot_id);
+      }
       if (err == FR_OK) {
         err = fr_repl_writer_write(writer, "ok\n");
       }
@@ -2596,13 +2749,21 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
           runtime, line, &binding, diag);
 
       if (bind_err == FR_OK) {
+        bool replaced = fr_repl_slot_holds_base_word(runtime, binding.slot_id);
+
         FR_TRY(fr_repl_eval_value_binding(runtime, &binding, &result));
+        replaced = replaced && runtime->slots.current[binding.slot_id] !=
+                                   runtime->slots.base[binding.slot_id];
 #if FR_FEATURE_PERSISTENCE
         fr_persist_session_install_tier_stamp_slot(runtime, binding.slot_id);
         if (runtime->install_tier == FR_INSTALL_TIER_LIBRARY) {
           FR_TRY(fr_persist_save_full(runtime));
         }
 #endif
+        if (replaced) {
+          FR_TRY(fr_repl_write_base_word_notice(writer, runtime,
+                                                binding.slot_id));
+        }
         return fr_repl_writer_write(writer, "ok\n");
       }
       if (bind_err != FR_ERR_UNSUPPORTED) {
@@ -2749,8 +2910,28 @@ fr_err_t fr_repl_run(fr_runtime_t *runtime, const fr_repl_io_t *io) {
   runtime->install_tier = FR_INSTALL_TIER_USER;
 
   while (true) {
+    fr_err_t read_err;
+
     FR_TRY(io->write_text("> "));
-    FR_TRY(io->read_line(line, (uint16_t)sizeof(line), &eof));
+    read_err = io->read_line(line, (uint16_t)sizeof(line), &eof);
+    if (read_err == FR_ERR_RANGE) {
+      char response[FR_REPL_OUTPUT_BYTES];
+      uint16_t used;
+
+      FR_TRY(fr_repl_write_error(runtime, response,
+                                 (uint16_t)sizeof(response), FR_ERR_CAPACITY,
+                                 NULL, NULL, false));
+      used = (uint16_t)strlen(response);
+      FR_TRY(fr_repl_append(response, (uint16_t)sizeof(response), &used,
+                            "note: the line limit is "));
+      FR_TRY(fr_repl_append_u16(response, (uint16_t)sizeof(response), &used,
+                                (uint16_t)(sizeof(line) - 1u)));
+      FR_TRY(fr_repl_append(response, (uint16_t)sizeof(response), &used,
+                            " bytes\n"));
+      FR_TRY(io->write_text(response));
+      continue;
+    }
+    FR_TRY(read_err);
     if (eof) {
       return FR_OK;
     }

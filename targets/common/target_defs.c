@@ -6000,7 +6000,6 @@ const fr_base_def_t fr_target_base_defs[] = {
         .slot_id = FR_SLOT_GPIO_WRITE,
 #if FR_BASE_IMAGE_INCLUDE_SYMBOLS
         .name = "gpio.write",
-        .alias = "pin",
 #endif
         .kind = FR_BASE_DEF_NATIVE,
         .native_fn = fr_native_gpio_write,

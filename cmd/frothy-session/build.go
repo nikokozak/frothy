@@ -143,6 +143,9 @@ func runBuild(opts buildOptions, stdout io.Writer, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "frothy build: generator emission complete for board %s (--no-make set)\n", proj.Board)
 		return nil
 	}
+	if err := verifyNativeBudget(opts.projectDir, proj.Board, libs); err != nil {
+		return err
+	}
 	if err := runMake(opts.projectDir, proj.Board, stdout, stderr); err != nil {
 		return err
 	}

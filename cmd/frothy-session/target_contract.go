@@ -231,9 +231,16 @@ func resolveTargetContract(sourceRoot, board string, selected map[string]bool,
 }
 
 func readTargetFacts(sourceRoot, board, compositionH string) (map[string]string, error) {
+	return readMakeFacts(sourceRoot, "print-target-facts", "resolve target facts",
+		board, compositionH)
+}
+
+// readMakeFacts runs a print target of the Makefile and reads its KEY=VALUE
+// lines. what starts each error.
+func readMakeFacts(sourceRoot, makeTarget, what, board, compositionH string) (map[string]string, error) {
 	args := []string{
 		"-s", "--no-print-directory", "-C", sourceRoot,
-		"print-target-facts", "BOARD=" + board,
+		makeTarget, "BOARD=" + board,
 		"FROTHY_COMPOSITION_H=" + compositionH,
 	}
 	cmd := exec.Command("make", args...)
@@ -244,16 +251,16 @@ func readTargetFacts(sourceRoot, board, compositionH string) (map[string]string,
 	if err != nil {
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
-			return nil, fmt.Errorf("resolve target facts: %w", err)
+			return nil, fmt.Errorf("%s: %w", what, err)
 		}
-		return nil, fmt.Errorf("resolve target facts: %w: %s", err, message)
+		return nil, fmt.Errorf("%s: %w: %s", what, err, message)
 	}
 	facts := make(map[string]string)
 	for _, line := range strings.Split(string(output), "\n") {
 		key, value, ok := strings.Cut(line, "=")
 		if ok {
 			if _, exists := facts[key]; exists {
-				return nil, fmt.Errorf("resolve target facts: duplicate %s", key)
+				return nil, fmt.Errorf("%s: duplicate %s", what, key)
 			}
 			facts[key] = value
 		}

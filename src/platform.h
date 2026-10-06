@@ -187,6 +187,9 @@ void fr_host_console_fail_next_switch(void);
 #endif
 
 #if FR_FEATURE_REPL
+/* Read one line for the REPL. CR/LF is removed. A line longer than cap - 1
+ * bytes returns RANGE only after the whole line, up to and including its
+ * terminator, has been consumed, so the next read starts a new line. */
 fr_err_t fr_platform_read_line(char *line, uint16_t cap, bool *out_eof);
 /* Read one edited line from the active console for a running program. CR/LF
  * is removed, Ctrl-C returns INTERRUPTED, and no prompt-idle handler runs

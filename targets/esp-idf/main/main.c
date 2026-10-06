@@ -9,11 +9,24 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include <stdio.h>
+
 static void fr_esp_halt(fr_err_t err) {
   esp_rom_printf("frothy halt err %u\n", (unsigned)err);
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
+}
+
+/* Writes "<label>: <name> (<code>)" once on the Frothy console, then halts. */
+static void fr_esp_report_and_halt(const char *label, fr_err_t err) {
+  char line[64];
+
+  snprintf(line, sizeof(line), "%s: %s (%u)\n", label, fr_err_name(err),
+           (unsigned)err);
+  (void)fr_platform_write_text(line);
+  fr_esp_console_flush();
+  fr_esp_halt(err);
 }
 
 void app_main(void) {
@@ -35,20 +48,17 @@ void app_main(void) {
 
   err = fr_base_image_install(runtime);
   if (err != FR_OK) {
-    fr_platform_write_text("startup err\n");
-    fr_esp_halt(err);
+    fr_esp_report_and_halt("startup err", err);
   }
 
   err = fr_repl_startup_restore_and_boot(runtime);
   if (err != FR_OK) {
-    fr_platform_write_text("startup err\n");
-    fr_esp_halt(err);
+    fr_esp_report_and_halt("startup err", err);
   }
 
   err = fr_repl_run_platform(runtime);
   if (err != FR_OK) {
-    fr_platform_write_text("repl err\n");
-    fr_esp_halt(err);
+    fr_esp_report_and_halt("repl err", err);
   }
 #endif
 }

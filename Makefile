@@ -385,6 +385,12 @@ test-esp-idf-console-boundary: ## Check that common ESP-IDF I/O uses the selecte
 		END { if (begin_count != 1 || end_count != 1 || in_console) { print "console implementation markers are invalid"; bad = 1 } exit bad }' \
 		targets/esp-idf/platform.c
 
+test-esp-idf-i2c-timeout: ## Check that each ESP32 I2C transfer passes FR_ESP_I2C_TIMEOUT_MS.
+	@tr '\n' ' ' < targets/esp-idf/platform.c | \
+		grep -oE 'i2c_master_(transmit_receive|transmit|receive|probe)[(][^;]*;' | \
+		awk '{ n += 1; if ($$0 !~ /,[[:space:]]*FR_ESP_I2C_TIMEOUT_MS[[:space:]]*[)]/) { print "I2C transfer without FR_ESP_I2C_TIMEOUT_MS: " $$0; bad = 1 } } \
+		END { if (n < 3) { print "expected at least 3 I2C transfer calls, found " n; bad = 1 } exit bad }'
+
 test-unity: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TEST_BINARY) $(UNITY_PERSIST_TIER_TEST_BINARY) $(UNITY_T12_SERVO_TEST_BINARY) $(UNITY_T21_MEM_TEST_BINARY) $(UNITY_T15_NET_TEST_BINARY) $(UNITY_T15B_TCP_TEST_BINARY) $(UNITY_T14_POWER_TEST_BINARY) $(UNITY_T16_BYTES_TEST_BINARY) ## Run all Unity host binaries.
 	./$(UNITY_TEST_BINARY)
 	./$(UNITY_I2C_TEST_BINARY)
@@ -532,7 +538,7 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 		'close-handles' \
 		'commands' \
 		'time is 200' \
-		'myblink is fn [ pin: $$led_builtin, 1; wait: time; pin: $$led_builtin, 0; wait: time ]' \
+		'myblink is fn [ gpio.write: $$led_builtin, 1; wait: time; gpio.write: $$led_builtin, 0; wait: time ]' \
 		'blink_times is fn with count [ repeat count [ myblink: ] ]' \
 		'boot is fn [ blink_times: 3 ]' \
 		'gpio.high: $$led_builtin' \
@@ -621,7 +627,7 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 		fi; \
 	done; \
 	err_out=$$(printf '%s\n' \
-		'bad is fn [ pin: ]' \
+		'bad is fn [ gpio.write: ]' \
 		'time is 200' \
 		'words' \
 		| build/host/frothy-host-normal); \
@@ -631,6 +637,65 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 	fi; \
 	if ! printf '%s\n' "$$err_out" | grep -q 'time'; then \
 		printf '%s\nmissing recovery command output\n' "$$err_out"; \
+		exit 1; \
+	fi; \
+	comment_out=$$(printf -- '-- note\n1 + 1\n' | build/host/frothy-host-normal); \
+	if ! printf '%s\n' "$$comment_out" | grep -qxF '> ok' || \
+		! printf '%s\n' "$$comment_out" | grep -qF '> 2'; then \
+		printf '%s\ncomment line transcript failed\n' "$$comment_out"; \
+		exit 1; \
+	fi; \
+	overlong_out=$$(awk 'BEGIN { for (i = 0; i < 600; i++) printf "x"; print ""; for (i = 0; i < 506; i++) printf " "; print "1 + 1" }' \
+		| build/host/frothy-host-normal); \
+	overlong_error_count=$$(printf '%s\n' "$$overlong_out" | grep -c 'error:'); \
+	if [ "$$overlong_error_count" != 1 ] || \
+		! printf '%s\n' "$$overlong_out" | grep -qF 'note: the line limit is 511 bytes' || \
+		! printf '%s\n' "$$overlong_out" | grep -qF '> 2'; then \
+		printf '%s\noverlong input transcript failed\n' "$$overlong_out"; \
+		exit 1; \
+	fi; \
+	exact_lf_out=$$(awk 'BEGIN { for (i = 0; i < 506; i++) printf " "; printf "1 + 1\n" }' \
+		| build/host/frothy-host-normal); \
+	exact_crlf_out=$$(awk 'BEGIN { for (i = 0; i < 506; i++) printf " "; printf "1 + 1\r\n" }' \
+		| build/host/frothy-host-normal); \
+	if ! printf '%s\n' "$$exact_lf_out" | grep -qF '> 2' || \
+		printf '%s\n' "$$exact_lf_out" | grep -qF 'error:' || \
+		! printf '%s\n' "$$exact_crlf_out" | grep -qF '> 2' || \
+		printf '%s\n' "$$exact_crlf_out" | grep -qF 'error:'; then \
+		printf '%s\n%s\nexact-fit input transcript failed\n' "$$exact_lf_out" "$$exact_crlf_out"; \
+		exit 1; \
+	fi; \
+	overlong_cr_out=$$(awk 'BEGIN { for (i = 0; i < 600; i++) printf "x"; printf "\r1 + 1\n" }' \
+		| build/host/frothy-host-normal); \
+	if ! printf '%s\n' "$$overlong_cr_out" | grep -qF 'note: the line limit is 511 bytes' || \
+		! printf '%s\n' "$$overlong_cr_out" | grep -qF '> 2'; then \
+		printf '%s\noverlong CR input transcript failed\n' "$$overlong_cr_out"; \
+		exit 1; \
+	fi; \
+	cr_boundary_out=$$(awk 'BEGIN { for (i = 0; i < 505; i++) printf " "; printf "1 + 1\r1 + 2\n" }' \
+		| build/host/frothy-host-normal); \
+	if printf '%s\n' "$$cr_boundary_out" | grep -qF 'error:' || \
+		! printf '%s\n' "$$cr_boundary_out" | grep -qF '> 2' || \
+		! printf '%s\n' "$$cr_boundary_out" | grep -qF '> 3'; then \
+		printf '%s\nCR at the line limit transcript failed\n' "$$cr_boundary_out"; \
+		exit 1; \
+	fi; \
+	cr_open_file=build/host/cr-open-stdin.txt; \
+	rm -f $$cr_open_file; \
+	( { awk 'BEGIN { for (i = 0; i < 600; i++) printf "x"; printf "\r" }'; sleep 10; } \
+		| build/host/frothy-host-normal > $$cr_open_file 2>&1 & ); \
+	cr_wait=0; \
+	while ! grep -qF 'note: the line limit is 511 bytes' $$cr_open_file 2>/dev/null && \
+		[ $$cr_wait -lt 50 ]; do sleep 0.1; cr_wait=$$((cr_wait + 1)); done; \
+	if ! grep -qF 'note: the line limit is 511 bytes' $$cr_open_file; then \
+		cat $$cr_open_file; printf 'a CR did not end the line at once\n'; \
+		exit 1; \
+	fi; \
+	overlong_ctrl_c_out=$$(awk 'BEGIN { print "console.read-line:"; for (i = 0; i < 600; i++) printf "x"; printf "%c\n1 + 1\n", 3 }' \
+		| build/host/frothy-host-normal); \
+	if ! printf '%s\n' "$$overlong_ctrl_c_out" | grep -qxF '> interrupted' || \
+		! printf '%s\n' "$$overlong_ctrl_c_out" | grep -qF '> 2'; then \
+		printf '%s\noverlong Ctrl-C input transcript failed\n' "$$overlong_ctrl_c_out"; \
 		exit 1; \
 	fi; \
 	notice_out=$$(printf '%s\n' \
@@ -828,14 +893,14 @@ test-esp32-plain-host-transcript: esp32-plain-host ## Replay the esp32_plain pro
 		'words' \
 		'$$led_builtin' \
 		'$$a0' \
-		'pin: $$led_builtin, 1' \
+		'gpio.write: $$led_builtin, 1' \
 		'gpio.read: $$led_builtin' \
 		'adc.read: $$a0' \
 		'message is "ready"' \
 		'message' \
 		'status is cells: 1' \
 		'set status[0] to message' \
-		'boot is fn [ pin: $$led_builtin, 1 ]' \
+		'boot is fn [ gpio.write: $$led_builtin, 1 ]' \
 		'gpio.write: $$led_builtin, 0' \
 		'gpio.high: $$led_builtin' \
 		'1000 + gpio.read: $$led_builtin' \
@@ -1065,10 +1130,19 @@ print-target-facts:
 			-e 's/^#define \(FR_FEATURE_[A-Z0-9_]*\) \(.*\)$$/\1=\2/p' | \
 		LC_ALL=C sort
 
+print-native-budget: ## Print the base native rows and the table size for BOARD.
+	@rm -rf build/native-budget-$(BOARD)
+	@$(MAKE) --no-print-directory -s BOARD=$(BOARD) TARGET=host PROFILE=$(PROFILE) \
+		FROTHY_COMPOSITION_H=$(FROTHY_COMPOSITION_H) \
+		BUILD_DIR=build/native-budget-$(BOARD) \
+		TARGET_MAIN_SOURCE=tools/native-budget.c \
+		FROTHY_BINARY=build/native-budget-$(BOARD)/native-budget frothy >&2
+	@build/native-budget-$(BOARD)/native-budget
+
 vsix: ## Build the VS Code extension package.
 	cd editors/vscode && npm ci && npm run build && npx vsce package
 
 clean: ## Remove generated build outputs.
 	rm -rf build frothy test/test test/test-host-normal test/fixtures/projects/*/.frothy
 
-.PHONY: test test-esp-idf-console-boundary test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config print-target-facts vsix clean
+.PHONY: print-native-budget test test-esp-idf-console-boundary test-esp-idf-i2c-timeout test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config print-target-facts vsix clean
