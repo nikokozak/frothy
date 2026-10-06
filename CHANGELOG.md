@@ -6,6 +6,8 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+## [0.1.22] - 2026-10-06
+
 ### Added
 
 - **`status` reports the input line limit.** The status line ends with
@@ -39,6 +41,8 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   `startup err: <name> (<code>)` once before it halts, and `repl err` now
   also gives the name and the code. RP2040 repeats the same line once per
   second.
+- **NodeMCU ESP-32S is an official board.** It uses the ESP32 profile of the
+  ESP32 DevKit V1 with its own pin constants, and the web flasher offers it.
 
 ### Changed
 
