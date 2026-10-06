@@ -47,7 +47,8 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   already answered `i/o failed (12)`. A program that tested for `invalid (8)`
   after an I2C transfer must test for `i/o failed (12)`. Each transfer now
   waits at most 100 ms for one bus event. A bus that a fault holds busy can
-  still stop a call.
+  still stop a call. The ESP-IDF driver no longer writes its own error lines
+  (`E (...) i2c.master: ...`) on the console for a failed transfer.
 - **`pin` is an ordinary name.** The alias `pin` named the same slot as
   `gpio.write`, so `pin is 5` replaced `gpio.write` too. Source that calls
   `pin:` must call `gpio.write:`; `pin:` now answers `not found (7)`. Words

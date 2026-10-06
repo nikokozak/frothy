@@ -9,6 +9,7 @@
 #include "driver/gpio.h"
 #if FR_FEATURE_I2C
 #include "driver/i2c_master.h"
+#include "esp_log.h"
 #endif
 #if FR_FEATURE_TRACE
 #include "driver/mcpwm_cap.h"
@@ -793,6 +794,11 @@ fr_err_t fr_esp_platform_init(void) {
 
   FR_TRY(fr_esp_console_init());
   FR_TRY(fr_esp_boot_button_init());
+#if FR_FEATURE_I2C
+  /* Frothy reports I2C transfer errors itself. Keep the driver's i2c.master
+   * log lines out of the REPL stream (ADR 0080). */
+  esp_log_level_set("i2c.master", ESP_LOG_NONE);
+#endif
 #if FR_FEATURE_NET
   FR_TRY(fr_esp_nvs_init());
 #endif
