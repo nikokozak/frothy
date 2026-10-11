@@ -598,7 +598,7 @@ static fr_err_t fr_native_decode_text_or_bytes_view(
 }
 #endif
 
-#if FR_FEATURE_NET || FR_FEATURE_BYTES
+#if FR_FEATURE_NET || FR_FEATURE_BYTES || (FR_FEATURE_TEXT && FR_FEATURE_REPL)
 static fr_err_t fr_native_decode_text_view(fr_runtime_t *runtime,
                                            const fr_tagged_t *args,
                                            uint8_t arg_count, uint8_t index,
@@ -3532,6 +3532,25 @@ static const fr_native_signature_t fr_native_pulse_close_signature = {
 #endif
 
 #if FR_FEATURE_TEXT && FR_FEATURE_REPL
+#if FR_TAGGED_INT_MIN < (-1073741824) || FR_TAGGED_INT_MAX > 1073741823
+#error "Check the print integer buffer size for the new tagged integer range"
+#endif
+
+/* Write at most 11 decimal bytes before end. No NUL or allocation is needed. */
+static uint8_t *fr_native_print_int_digits(fr_int_t value, uint8_t *end) {
+  uint32_t magnitude = value < 0 ? (uint32_t)(-(value + 1)) + 1u
+                                 : (uint32_t)value;
+
+  do {
+    *--end = (uint8_t)('0' + magnitude % 10u);
+    magnitude /= 10u;
+  } while (magnitude > 0);
+  if (value < 0) {
+    *--end = '-';
+  }
+  return end;
+}
+
 /* An event handler runs outside the request/response stream (fired at the idle
  * prompt, or interleaved into a running program at a safe point). Its print
  * output is framed with the reserved async-line prefix: each line begins with
@@ -3571,17 +3590,72 @@ static fr_err_t fr_native_print(fr_runtime_t *runtime, const fr_tagged_t *args,
                                 uint8_t arg_count, fr_tagged_t *out) {
   const uint8_t *bytes = NULL;
   uint16_t length = 0;
+  uint8_t digits[11];
+  fr_int_t value = 0;
 
   if (runtime == NULL || args == NULL || arg_count != 1 || out == NULL) {
     return FR_ERR_INVALID;
   }
-  FR_TRY(fr_native_decode_text_or_bytes_view(runtime, args, arg_count, 0,
-                                             &bytes, &length));
+  if (fr_tagged_decode_int(args[0], &value) == FR_OK) {
+    bytes = fr_native_print_int_digits(value, digits + sizeof(digits));
+    length = (uint16_t)(digits + sizeof(digits) - bytes);
+  } else {
+    FR_TRY(fr_native_decode_text_or_bytes_view(runtime, args, arg_count, 0,
+                                               &bytes, &length));
+  }
   if (runtime->dispatching_event) {
     FR_TRY(fr_native_print_async(bytes, length));
   } else {
     FR_TRY(fr_platform_write_bytes(bytes, length));
   }
+  *out = fr_tagged_nil();
+  return FR_OK;
+}
+
+enum { FR_PRINT_VALUE_LABEL_MAX = 48 };
+
+static fr_err_t fr_native_print_value(fr_runtime_t *runtime,
+                                      const fr_tagged_t *args,
+                                      uint8_t arg_count, fr_tagged_t *out) {
+  const uint8_t *label = NULL;
+  uint16_t label_length = 0;
+  fr_int_t value = 0;
+  /* "! ", the label, a colon, at most 11 decimal bytes, and LF. */
+  uint8_t line[2 + FR_PRINT_VALUE_LABEL_MAX + 1 + 11 + 1];
+  uint8_t *start = NULL;
+  bool label_ok = false;
+
+  if (runtime == NULL || args == NULL || arg_count != 2 || out == NULL) {
+    return FR_ERR_INVALID;
+  }
+  FR_TRY(fr_native_decode_text_view(runtime, args, arg_count, 0,
+                                    &label, &label_length));
+  FR_TRY(fr_native_decode_int_arg(runtime, args, arg_count, 1, &value));
+  /* The label rule of the app's plot: [A-Za-z_][A-Za-z0-9_.-]{0,47}. */
+  label_ok = label_length > 0 && label_length <= FR_PRINT_VALUE_LABEL_MAX;
+  for (uint16_t i = 0; label_ok && i < label_length; i++) {
+    uint8_t byte = label[i];
+    bool first = (byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z') ||
+                 byte == '_';
+    bool later = (byte >= '0' && byte <= '9') || byte == '.' || byte == '-';
+
+    label_ok = first || (i > 0 && later);
+  }
+  if (!label_ok) {
+    return fr_native_reject_arg_because(
+        runtime, args, arg_count, 0, FR_ERR_DOMAIN,
+        "label must be 1 to 48 letters, digits, _, . or -, with a letter or _ first");
+  }
+  line[sizeof(line) - 1] = '\n';
+  start = fr_native_print_int_digits(value, line + sizeof(line) - 1);
+  *--start = ':';
+  start -= label_length;
+  memcpy(start, label, label_length);
+  if (runtime->dispatching_event) {
+    *--start = ' ';
+    *--start = '!';
+  }
+  FR_TRY(fr_platform_write_bytes(start, (uint16_t)(line + sizeof(line) - start)));
   *out = fr_tagged_nil();
   return FR_OK;
 }
@@ -5811,13 +5885,23 @@ static const fr_native_signature_t fr_native_text_pack_signature = {
 
 #if FR_FEATURE_TEXT && FR_FEATURE_REPL
 static const fr_native_param_t fr_native_print_params[] = {
-    {"value", FR_NATIVE_VALUE_TEXT_OR_BYTES},
+    {"value", FR_NATIVE_VALUE_INT_OR_TEXT_OR_BYTES},
 };
 static const fr_native_signature_t fr_native_print_signature = {
     .params = fr_native_print_params,
     .arg_count = 1,
     .result = FR_NATIVE_VALUE_NIL,
-    .help = "write raw text or bytes to the console output",
+    .help = "write an int, text, or bytes to the console output",
+};
+static const fr_native_param_t fr_native_print_value_params[] = {
+    {"label", FR_NATIVE_VALUE_TEXT},
+    {"value", FR_NATIVE_VALUE_INT},
+};
+static const fr_native_signature_t fr_native_print_value_signature = {
+    .params = fr_native_print_value_params,
+    .arg_count = 2,
+    .result = FR_NATIVE_VALUE_NIL,
+    .help = "write label:value and a newline to the console output",
 };
 #endif
 
@@ -6928,6 +7012,18 @@ const fr_base_def_t fr_target_base_defs[] = {
         .native_arity = 1,
 #if FR_FEATURE_NATIVE_SIGNATURES
         .native_signature = &fr_native_print_signature,
+#endif
+    },
+    {
+        .slot_id = FR_SLOT_PRINT_VALUE,
+#if FR_BASE_IMAGE_INCLUDE_SYMBOLS
+        .name = "print.value",
+#endif
+        .kind = FR_BASE_DEF_NATIVE,
+        .native_fn = fr_native_print_value,
+        .native_arity = 2,
+#if FR_FEATURE_NATIVE_SIGNATURES
+        .native_signature = &fr_native_print_value_signature,
 #endif
     },
 #endif

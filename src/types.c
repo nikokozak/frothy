@@ -194,6 +194,8 @@ const char *fr_diag_value_kind_name(uint16_t value_kind) {
     return "text";
   case FR_DIAG_VALUE_TEXT_OR_BYTES:
     return "text or bytes";
+  case FR_DIAG_VALUE_INT_OR_TEXT_OR_BYTES:
+    return "int, text, or bytes";
   case FR_DIAG_VALUE_CELLS:
     return "cells";
   case FR_DIAG_VALUE_RECORD:

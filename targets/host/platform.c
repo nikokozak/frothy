@@ -3141,6 +3141,7 @@ void fr_host_capture_text(char *out, uint16_t cap) {
     out[0] = '\0';
   }
 }
+
 #endif
 
 /* Host read blocks on fgets with no poll loop, so there is no idle window in
@@ -3229,29 +3230,16 @@ fr_err_t fr_platform_console_read_line(uint8_t *bytes, uint16_t cap,
 }
 
 fr_err_t fr_platform_write_text(const char *text) {
+  size_t length = 0;
+
   if (text == NULL) {
     return FR_ERR_INVALID;
   }
-#ifdef FR_HOST_TEST_HELPERS
-  if (fr_host_text_capture != NULL) {
-    size_t length = strlen(text);
-
-    if (fr_host_text_capture_used >= fr_host_text_capture_cap ||
-        length >=
-            (size_t)(fr_host_text_capture_cap - fr_host_text_capture_used)) {
-      return FR_ERR_RANGE;
-    }
-    memcpy(&fr_host_text_capture[fr_host_text_capture_used], text, length);
-    fr_host_text_capture_used =
-        (uint16_t)(fr_host_text_capture_used + length);
-    fr_host_text_capture[fr_host_text_capture_used] = '\0';
-    return FR_OK;
+  length = strlen(text);
+  if (length > UINT16_MAX) {
+    return FR_ERR_RANGE;
   }
-#endif
-  if (fputs(text, stdout) == EOF || fflush(stdout) == EOF) {
-    return FR_ERR_IO;
-  }
-  return FR_OK;
+  return fr_platform_write_bytes((const uint8_t *)text, (uint16_t)length);
 }
 #endif
 
@@ -3532,6 +3520,20 @@ fr_err_t fr_platform_write_bytes(const uint8_t *bytes, uint16_t length) {
   if (bytes == NULL && length > 0) {
     return FR_ERR_INVALID;
   }
+#if FR_FEATURE_REPL && defined(FR_HOST_TEST_HELPERS)
+  if (fr_host_text_capture != NULL) {
+    if (fr_host_text_capture_used >= fr_host_text_capture_cap ||
+        length >= fr_host_text_capture_cap - fr_host_text_capture_used) {
+      return FR_ERR_RANGE;
+    }
+    if (length > 0) {
+      memcpy(&fr_host_text_capture[fr_host_text_capture_used], bytes, length);
+    }
+    fr_host_text_capture_used = (uint16_t)(fr_host_text_capture_used + length);
+    fr_host_text_capture[fr_host_text_capture_used] = '\0';
+    return FR_OK;
+  }
+#endif
   if (length > 0 && fwrite(bytes, 1, length, stdout) != length) {
     return FR_ERR_IO;
   }

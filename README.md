@@ -146,6 +146,28 @@ is needed. Use `;` only when you want several expressions on the same line.
 Words you define stick around on the board, so you build a program by
 teaching the chip one word at a time.
 
+### Print numeric samples
+
+`print:` accepts an integer, Text, or Bytes. Foreground output has no automatic
+newline. Use `print.value:` for a complete named integer line:
+
+```frothy
+repeat 10 as light [
+  print.value: "light", light
+  wait: 100
+]
+```
+
+Each call writes `light:0`, `light:1`, and so on, followed by LF. Both operations
+return nil. Integer output uses a fixed local buffer and creates no Text or Bytes.
+A label has 1 to 48 bytes: a letter or `_` first, then letters, digits, `_`,
+`.` or `-`.
+
+Event handlers add the existing `! ` prefix and terminate each line.
+A `print.value:` call cannot be interrupted by another VM event between its
+label and value. Serial writes can still block or fail after partial output.
+Use complete lines when foreground code and event handlers both write output.
+
 ### Read a console line as data
 
 `console.read-line:` blocks for one line from the active console and returns

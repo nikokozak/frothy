@@ -198,7 +198,7 @@ fr_err_t fr_platform_console_read_line(uint8_t *bytes, uint16_t cap,
                                        uint16_t *out_length);
 fr_err_t fr_platform_write_text(const char *text);
 #ifdef FR_HOST_TEST_HELPERS
-/* Test-only: capture platform text in out. NULL restores stdout. */
+/* Test-only: capture console text and byte writes in out. NULL restores stdout. */
 void fr_host_capture_text(char *out, uint16_t cap);
 #endif
 /* Idle-servicing hook. The REPL registers a handler the platform calls while

@@ -16,6 +16,7 @@ typedef enum fr_native_value_kind_t {
   FR_NATIVE_VALUE_SECRET_TEXT,
   FR_NATIVE_VALUE_TEXT_OR_BYTES,
   FR_NATIVE_VALUE_BYTES,
+  FR_NATIVE_VALUE_INT_OR_TEXT_OR_BYTES,
 } fr_native_value_kind_t;
 
 typedef struct fr_native_param_t {

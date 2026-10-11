@@ -24,6 +24,8 @@ fr_native_value_diag_kind(fr_native_value_kind_t kind) {
     return FR_DIAG_VALUE_TEXT_OR_BYTES;
   case FR_NATIVE_VALUE_BYTES:
     return FR_DIAG_VALUE_BYTES;
+  case FR_NATIVE_VALUE_INT_OR_TEXT_OR_BYTES:
+    return FR_DIAG_VALUE_INT_OR_TEXT_OR_BYTES;
   default:
     return FR_DIAG_VALUE_NONE;
   }
@@ -96,7 +98,12 @@ static bool fr_native_value_matches(const fr_runtime_t *runtime,
 #endif
   case FR_NATIVE_VALUE_NIL:
     return fr_tagged_is_nil(value);
+  case FR_NATIVE_VALUE_INT_OR_TEXT_OR_BYTES:
   case FR_NATIVE_VALUE_TEXT_OR_BYTES: {
+    if (kind == FR_NATIVE_VALUE_INT_OR_TEXT_OR_BYTES &&
+        fr_tagged_kind(value) == FR_TAGGED_INT) {
+      return true;
+    }
 #if FR_FEATURE_TEXT
     fr_object_id_t text_id = 0;
     const uint8_t *ignored_bytes = NULL;

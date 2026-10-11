@@ -142,6 +142,7 @@ typedef enum fr_diag_value_kind_t {
   FR_DIAG_VALUE_CELLS,
   FR_DIAG_VALUE_RECORD,
   FR_DIAG_VALUE_RECORD_SHAPE,
+  FR_DIAG_VALUE_INT_OR_TEXT_OR_BYTES,
 } fr_diag_value_kind_t;
 
 const char *fr_diag_value_kind_name(uint16_t value_kind);

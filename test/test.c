@@ -102,8 +102,8 @@ static fr_err_t test_persist_apply_user_overlay(
 
 #if FR_FEATURE_TEXT
 #if FR_FEATURE_REPL
-#define FR_TEST_PRINT_WORD " print"
-#define FR_TEST_PRINT_SLOT_COUNT 1
+#define FR_TEST_PRINT_WORD " print print.value"
+#define FR_TEST_PRINT_SLOT_COUNT 2
 #else
 #define FR_TEST_PRINT_WORD ""
 #define FR_TEST_PRINT_SLOT_COUNT 0
@@ -509,7 +509,8 @@ static void test_base_def_contract(void) {
         FR_SLOT_TEXT_LENGTH == FR_SLOT_AFTER_PAD);
 #if FR_FEATURE_REPL
   CHECK("event register slot follows text ids",
-        FR_SLOT_EVENT_REGISTER == FR_SLOT_PRINT + 1);
+        FR_SLOT_PRINT_VALUE == FR_SLOT_PRINT + 1 &&
+            FR_SLOT_EVENT_REGISTER == FR_SLOT_PRINT_VALUE + 1);
 #else
   CHECK("event register slot follows text ids",
         FR_SLOT_EVENT_REGISTER == FR_SLOT_TEXT_FROM_INT + 1);
@@ -4965,6 +4966,191 @@ static fr_err_t test_text_native_id(fr_runtime_t *runtime, fr_slot_id_t slot_id,
   return fr_native_get(runtime, native_id, out_entry);
 }
 
+#if FR_FEATURE_REPL && defined(FR_HOST_TEST_HELPERS)
+static void test_print_output(void) {
+  fr_runtime_t runtime;
+  const fr_native_entry_t *print_entry = NULL;
+  const fr_native_entry_t *value_entry = NULL;
+  fr_object_id_t label_id = 0;
+  fr_tagged_t args[2] = {0};
+  fr_tagged_t result = 0;
+  char capture[64];
+  char expected[64];
+  char reply[64];
+  const fr_int_t values[] = {
+      FR_TAGGED_INT_MIN, FR_TAGGED_INT_MIN + 1, -100000, -10, -1,
+      0, 1, 9, 10, 99, 100, FR_TAGGED_INT_MAX - 1, FR_TAGGED_INT_MAX,
+  };
+  const struct {
+    const char *bytes;
+    uint16_t length;
+  } invalid_labels[] = {
+      {"", 0}, {"a:b", 3}, {"a\rb", 3}, {"a\nb", 3}, {"a\0b", 3},
+      {"a\tb", 3}, {"\x1b", 1}, {"\x7f", 1}, {"! light", 7}, {"> light", 7},
+      {"1a", 2}, {"-a", 2}, {".a", 2}, {"a b", 3}, {"\xc3\xa9", 2},
+      {"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 49},
+  };
+  const char *valid_labels[] = {
+      "_", "a.b-c_1", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  };
+
+  CHECK("print installs output natives",
+        fr_base_image_install(&runtime) == FR_OK &&
+            test_text_native_id(&runtime, FR_SLOT_PRINT, &print_entry) == FR_OK &&
+            test_text_native_id(&runtime, FR_SLOT_PRINT_VALUE, &value_entry) ==
+                FR_OK &&
+            fr_text_install(&runtime, (const uint8_t *)"light", 5,
+                              &label_id) == FR_OK &&
+            fr_tagged_encode_object_id(label_id, &args[0]) == FR_OK);
+  if (print_entry == NULL || value_entry == NULL) {
+    return;
+  }
+  for (uint8_t event = 0; event < 2; event++) {
+    runtime.dispatching_event = event != 0;
+    for (size_t i = 0; i < sizeof(values) / sizeof(values[0]); i++) {
+      CHECK("print encodes integer boundary",
+            fr_tagged_encode_int(values[i], &args[1]) == FR_OK);
+      (void)snprintf(expected, sizeof(expected), "%s%ld%s",
+                     event ? "! " : "", (long)values[i], event ? "\n" : "");
+      fr_host_capture_text(capture, sizeof(capture));
+      CHECK("print writes exact decimal bytes and returns nil",
+            fr_native_call(&runtime, print_entry, &args[1], 1, &result) == FR_OK &&
+                fr_tagged_is_nil(result) && strcmp(capture, expected) == 0);
+      (void)snprintf(expected, sizeof(expected), "%slight:%ld\n",
+                     event ? "! " : "", (long)values[i]);
+      fr_host_capture_text(capture, sizeof(capture));
+      CHECK("print.value writes one framed line and returns nil",
+            fr_native_call(&runtime, value_entry, args, 2, &result) == FR_OK &&
+                fr_tagged_is_nil(result) && strcmp(capture, expected) == 0);
+    }
+    for (size_t i = 0; i < sizeof(invalid_labels) / sizeof(invalid_labels[0]); i++) {
+      fr_tagged_t invalid_args[2] = {0, args[1]};
+      fr_object_id_t invalid_id = 0;
+      CHECK("print.value installs an invalid label for validation",
+            fr_text_install(&runtime, (const uint8_t *)invalid_labels[i].bytes,
+                              invalid_labels[i].length, &invalid_id) == FR_OK &&
+                fr_tagged_encode_object_id(invalid_id, &invalid_args[0]) == FR_OK);
+      fr_host_capture_text(capture, sizeof(capture));
+      CHECK("print.value rejects invalid labels before any output",
+            fr_native_call(&runtime, value_entry, invalid_args, 2, &result) ==
+                    FR_ERR_DOMAIN && capture[0] == '\0');
+    }
+    for (size_t i = 0; i < sizeof(valid_labels) / sizeof(valid_labels[0]); i++) {
+      fr_tagged_t valid_args[2] = {0, 0};
+      fr_object_id_t valid_id = 0;
+      CHECK("print.value installs a valid edge label",
+            fr_text_install(&runtime, (const uint8_t *)valid_labels[i],
+                            (uint16_t)strlen(valid_labels[i]), &valid_id) == FR_OK &&
+                fr_tagged_encode_object_id(valid_id, &valid_args[0]) == FR_OK &&
+                fr_tagged_encode_int(7, &valid_args[1]) == FR_OK);
+      (void)snprintf(expected, sizeof(expected), "%s%s:7\n", event ? "! " : "",
+                     valid_labels[i]);
+      fr_host_capture_text(capture, sizeof(capture));
+      CHECK("print.value writes a valid edge label",
+            fr_native_call(&runtime, value_entry, valid_args, 2, &result) == FR_OK &&
+                strcmp(capture, expected) == 0);
+    }
+    fr_host_capture_text(capture, sizeof(capture));
+    CHECK("print rejects bool before output without signature validation",
+          print_entry->fn(&runtime, &(fr_tagged_t){fr_tagged_true()}, 1,
+                            &result) == FR_ERR_TYPE && capture[0] == '\0');
+    CHECK("print.value rejects wrong types before output without signatures",
+          value_entry->fn(&runtime, (fr_tagged_t[]){args[1], args[1]}, 2,
+                            &result) == FR_ERR_TYPE &&
+              value_entry->fn(&runtime, (fr_tagged_t[]){args[0], args[0]}, 2,
+                                &result) == FR_ERR_TYPE && capture[0] == '\0');
+  }
+  runtime.dispatching_event = false;
+  fr_host_capture_text(capture, sizeof(capture));
+  CHECK("print preserves foreground Text bytes including NUL",
+        fr_repl_eval_line(&runtime, "print: \"a\\x00b\\n\\nc\"", reply,
+                           sizeof(reply)) == FR_OK &&
+            memcmp(capture, "a\0b\n\nc\0", 7) == 0);
+  runtime.dispatching_event = true;
+  fr_host_capture_text(capture, sizeof(capture));
+  CHECK("print preserves multiline event Text framing",
+        fr_repl_eval_line(&runtime, "print: \"a\\n\\nc\"", reply,
+                           sizeof(reply)) == FR_OK &&
+            strcmp(capture, "! a\n! \n! c\n") == 0);
+  fr_host_capture_text(capture, sizeof(capture));
+  CHECK("empty event print writes nothing",
+        fr_repl_eval_line(&runtime, "print: \"\"", reply, sizeof(reply)) == FR_OK &&
+            capture[0] == '\0');
+  runtime.dispatching_event = false;
+#if FR_FEATURE_BYTES
+  fr_host_capture_text(capture, sizeof(capture));
+  CHECK("print preserves foreground Bytes including NUL",
+        fr_repl_eval_line(&runtime,
+                           "print: bytes.from-text: \"a\\x00b\\n\\nc\"", reply,
+                           sizeof(reply)) == FR_OK &&
+            memcmp(capture, "a\0b\n\nc\0", 7) == 0);
+#endif
+  for (uint8_t event = 0; event < 2; event++) {
+    runtime.dispatching_event = event != 0;
+    fr_host_capture_text(capture, 8);
+    CHECK("print.value writes its line in one write and returns its failure",
+          fr_native_call(&runtime, value_entry, args, 2, &result) == FR_ERR_RANGE &&
+              capture[0] == '\0');
+  }
+  runtime.dispatching_event = false;
+  fr_host_capture_text(NULL, 0);
+
+  /* Full pools must not prevent output or change retained values. */
+  {
+    fr_object_table_t objects_before;
+    fr_err_t fill_error = FR_OK;
+#if FR_FEATURE_BYTES
+    fr_bytes_t bytes_before;
+    fr_tagged_t bytes = 0;
+#endif
+#if FR_FEATURE_PAD
+    fr_pad_t pad_before;
+    CHECK("print keeps caller PAD data", fr_pad_emit_byte(&runtime, 73) == FR_OK);
+    memcpy(&pad_before, &runtime.pad, sizeof(pad_before));
+#endif
+    for (uint16_t i = 0; i <= FR_PROFILE_OBJECT_TABLE_SIZE && fill_error == FR_OK; i++) {
+      const uint8_t text[2] = {(uint8_t)i, (uint8_t)(i >> 8)};
+      fr_object_id_t id = 0;
+      fill_error = fr_text_install(&runtime, text, sizeof(text), &id);
+    }
+    CHECK("print test fills object storage", fill_error == FR_ERR_CAPACITY);
+    memcpy(&objects_before, &runtime.objects, sizeof(objects_before));
+#if FR_FEATURE_BYTES
+    fill_error = FR_OK;
+    for (uint16_t i = 0; i <= FR_PROFILE_BYTES_COUNT && fill_error == FR_OK; i++) {
+      fill_error = fr_bytes_install(&runtime, (const uint8_t *)"keep", 4, &bytes);
+    }
+    CHECK("print test fills Bytes storage", fill_error == FR_ERR_CAPACITY);
+    memcpy(&bytes_before, &runtime.bytes, sizeof(bytes_before));
+#endif
+    for (fr_int_t i = 0; i < 10000; i++) {
+      runtime.dispatching_event = (i & 1) != 0;
+      CHECK("print encodes changing integer", fr_tagged_encode_int(i, &args[1]) == FR_OK);
+      fr_host_capture_text(capture, sizeof(capture));
+      CHECK("integer print needs no free storage",
+            fr_native_call(&runtime, print_entry, &args[1], 1, &result) == FR_OK);
+      fr_host_capture_text(capture, sizeof(capture));
+      (void)snprintf(expected, sizeof(expected), "%slight:%ld\n",
+                     runtime.dispatching_event ? "! " : "", (long)i);
+      CHECK("named integer output continues with full storage",
+            fr_native_call(&runtime, value_entry, args, 2, &result) == FR_OK &&
+                strcmp(capture, expected) == 0);
+    }
+    CHECK("numeric output leaves object storage unchanged",
+          memcmp(&objects_before, &runtime.objects, sizeof(objects_before)) == 0);
+#if FR_FEATURE_BYTES
+    CHECK("numeric output leaves Bytes storage unchanged",
+          memcmp(&bytes_before, &runtime.bytes, sizeof(bytes_before)) == 0);
+#endif
+#if FR_FEATURE_PAD
+    CHECK("numeric output leaves PAD unchanged",
+          memcmp(&pad_before, &runtime.pad, sizeof(pad_before)) == 0);
+#endif
+  }
+  fr_host_capture_text(NULL, 0);
+}
+#endif
+
 /* Walk the named text via text.at, asserting each byte equals expected[i]. */
 static int test_text_bytes_match(fr_runtime_t *runtime, const char *name,
                                  const char *expected) {
@@ -5038,12 +5224,16 @@ static void test_text_natives(void) {
   CHECK("print renders signature",
         fr_repl_eval_line(&runtime, "see print", out, sizeof(out)) == FR_OK &&
             strcmp(out,
-                   "print(value: text|bytes) -> nil\n"
-                   "write raw text or bytes to the console output\n"
+                   "print(value: int|text|bytes) -> nil\n"
+                   "write an int, text, or bytes to the console output\n"
                    "ok\n") == 0);
-  CHECK("print rejects int arg",
-        fr_repl_eval_line(&runtime, "print: 7", out, sizeof(out)) ==
-            FR_ERR_TYPE);
+  CHECK("print.value renders signature",
+        fr_repl_eval_line(&runtime, "see print.value", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out,
+                   "print.value(label: text, value: int) -> nil\n"
+                   "write label:value and a newline to the console output\n"
+                   "ok\n") == 0);
 
   CHECK("text.length on bare literal evaluates",
         fr_repl_eval_line(&runtime, "text.length: \"hello\"", out,
@@ -8743,7 +8933,9 @@ static void test_image(void) {
 #if FR_FEATURE_TEXT && FR_FEATURE_REPL
   CHECK("base image looks up print slot name",
         fr_base_slot_id_for_name("print", &slot_id) == FR_OK &&
-            slot_id == FR_SLOT_PRINT);
+            slot_id == FR_SLOT_PRINT &&
+            fr_base_slot_id_for_name("print.value", &slot_id) == FR_OK &&
+            slot_id == FR_SLOT_PRINT_VALUE);
 #endif
 #if FR_FEATURE_UART
   CHECK("base image looks up uart slot names",
@@ -16055,7 +16247,7 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out,
                                    "error: wrong type: cells 1 (2)") &&
             strstr(out,
-                   "print argument 1 expects text or bytes, got cells\n") !=
+                   "print argument 1 expects int, text, or bytes, got cells\n") !=
                 NULL);
 #endif
 
@@ -17295,8 +17487,9 @@ static void test_repl_capacity_notes(void) {
   CHECK("capacity notes install for slots",
         fr_base_image_install(&runtime) == FR_OK);
   for (int i = 0; i < FR_PROFILE_MAX_SLOTS; i++) {
-    if (fr_repl_eval_line(&runtime, "install-library", out, sizeof(out)) !=
-        FR_OK) {
+    /* Any step can meet the full table first; keep the error of that step. */
+    err = fr_repl_eval_line(&runtime, "install-library", out, sizeof(out));
+    if (err != FR_OK) {
       break;
     }
     err = fr_repl_eval_line(&runtime, "l is 1", out, sizeof(out));
@@ -17305,7 +17498,10 @@ static void test_repl_capacity_notes(void) {
     }
     (void)fr_repl_eval_line(&runtime, "install-user", out, sizeof(out));
     (void)fr_repl_eval_line(&runtime, "wipe-user", out, sizeof(out));
-    (void)fr_repl_eval_line(&runtime, "u is 1", out, sizeof(out));
+    err = fr_repl_eval_line(&runtime, "u is 1", out, sizeof(out));
+    if (err != FR_OK) {
+      break;
+    }
   }
   CHECK("slot table full names the store and its limit",
         err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
@@ -17936,6 +18132,22 @@ static void test_repl_interrupt_terminates_response(void) {
             test_repl_run_lines(&runtime, lines, 2, out,
                                 (uint16_t)sizeof(out)) &&
             strcmp(out, "> interrupted\nok\n> 1\nok\n> ") == 0);
+#if FR_FEATURE_TEXT && defined(FR_HOST_TEST_HELPERS)
+  {
+    char capture[64];
+    const char *output_lines[] = {
+        "forever [ print.value: \"light\", 7; stop: ]",
+        "print.value: \"after\", 8",
+    };
+    fr_host_capture_text(capture, sizeof(capture));
+    CHECK("numeric output loop stops at a VM interrupt and the REPL recovers",
+          test_repl_run_lines(&runtime, output_lines, 2, out,
+                               (uint16_t)sizeof(out)) &&
+              strcmp(capture, "light:7\nafter:8\n") == 0 &&
+              strcmp(out, "> interrupted\nok\n> ok\n> ") == 0);
+    fr_host_capture_text(NULL, 0);
+  }
+#endif
 }
 #endif
 
@@ -18195,6 +18407,9 @@ int main(void) {
 #if FR_FEATURE_TEXT
   test_text_objects();
   test_text_natives();
+#if FR_FEATURE_REPL && defined(FR_HOST_TEST_HELPERS)
+  test_print_output();
+#endif
 #endif
 #if FR_FEATURE_RECORDS
   test_records();
