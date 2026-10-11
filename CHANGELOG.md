@@ -6,6 +6,23 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+### Added
+
+- **`print` writes an integer, and `print.value` writes one named line.**
+  `print: 42` writes `42`. `print.value: "light", 512` writes `light:512` and LF
+  in one write, so an event cannot print inside the line. Neither word makes a
+  Text or Bytes value, so a loop can print for as long as it runs. A label has
+  1 to 48 bytes: a letter or `_` first, then letters, digits, `_`, `.` or `-`.
+
+### Changed
+
+- **A reply starts on its own line.** When a word such as `print` or
+  `pad.type` leaves the console line open, the device writes LF before its
+  next reply, prompt, event line or error. `print: "hi"` at the prompt now
+  answers `hi`, LF, `ok` instead of `hiok`, and `frothy send` no longer waits
+  until its timeout after such a form. After an interrupted
+  `console.read-line`, a reply can start with one empty line.
+
 ## [0.1.22] - 2026-10-06
 
 ### Added
