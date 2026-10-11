@@ -5016,8 +5016,9 @@ static void test_print_output(void) {
       CHECK("print writes exact decimal bytes and returns nil",
             fr_native_call(&runtime, print_entry, &args[1], 1, &result) == FR_OK &&
                 fr_tagged_is_nil(result) && strcmp(capture, expected) == 0);
+      /* The foreground print above left the line open (ADR 0078). */
       (void)snprintf(expected, sizeof(expected), "%slight:%ld\n",
-                     event ? "! " : "", (long)values[i]);
+                     event ? "! " : "\n", (long)values[i]);
       fr_host_capture_text(capture, sizeof(capture));
       CHECK("print.value writes one framed line and returns nil",
             fr_native_call(&runtime, value_entry, args, 2, &result) == FR_OK &&
@@ -5067,11 +5068,12 @@ static void test_print_output(void) {
                            sizeof(reply)) == FR_OK &&
             memcmp(capture, "a\0b\n\nc\0", 7) == 0);
   runtime.dispatching_event = true;
+  runtime.console_line_open = true; /* foreground output with no LF */
   fr_host_capture_text(capture, sizeof(capture));
-  CHECK("print preserves multiline event Text framing",
+  CHECK("an event line after an open foreground line starts a new line",
         fr_repl_eval_line(&runtime, "print: \"a\\n\\nc\"", reply,
                            sizeof(reply)) == FR_OK &&
-            strcmp(capture, "! a\n! \n! c\n") == 0);
+            strcmp(capture, "\n! a\n! \n! c\n") == 0);
   fr_host_capture_text(capture, sizeof(capture));
   CHECK("empty event print writes nothing",
         fr_repl_eval_line(&runtime, "print: \"\"", reply, sizeof(reply)) == FR_OK &&
@@ -5087,11 +5089,15 @@ static void test_print_output(void) {
 #endif
   for (uint8_t event = 0; event < 2; event++) {
     runtime.dispatching_event = event != 0;
+    runtime.console_line_open = false;
     fr_host_capture_text(capture, 8);
     CHECK("print.value writes its line in one write and returns its failure",
           fr_native_call(&runtime, value_entry, args, 2, &result) == FR_ERR_RANGE &&
               capture[0] == '\0');
+    CHECK("a failed write leaves the console line open",
+          runtime.console_line_open);
   }
+  runtime.console_line_open = false;
   runtime.dispatching_event = false;
   fr_host_capture_text(NULL, 0);
 
@@ -5131,7 +5137,7 @@ static void test_print_output(void) {
             fr_native_call(&runtime, print_entry, &args[1], 1, &result) == FR_OK);
       fr_host_capture_text(capture, sizeof(capture));
       (void)snprintf(expected, sizeof(expected), "%slight:%ld\n",
-                     runtime.dispatching_event ? "! " : "", (long)i);
+                     runtime.dispatching_event ? "! " : "\n", (long)i);
       CHECK("named integer output continues with full storage",
             fr_native_call(&runtime, value_entry, args, 2, &result) == FR_OK &&
                 strcmp(capture, expected) == 0);
@@ -6490,6 +6496,7 @@ static void test_save_beyond_hold_capacity_stays_strict(void) {
   char name[32];
   char out[256];
   char compact_notice_out[27];
+  char open_notice_out[28];
   char short_notice_out[26];
   bool all_ok = true;
 
@@ -6523,6 +6530,11 @@ static void test_save_beyond_hold_capacity_stays_strict(void) {
         fr_repl_eval_line(&runtime, "save", compact_notice_out,
                           sizeof(compact_notice_out)) == FR_ERR_VOLATILE &&
             strcmp(compact_notice_out, "notice: not saved (13)\nok\n") == 0);
+  runtime.console_line_open = true;
+  CHECK("cap small buffer keeps the headline after an open-line separator",
+        fr_repl_eval_line(&runtime, "save", open_notice_out,
+                          sizeof(open_notice_out)) == FR_ERR_VOLATILE &&
+            strcmp(open_notice_out, "\nnotice: not saved (13)\nok\n") == 0);
   CHECK("cap too-small buffer emits no partial notice",
         fr_repl_eval_line(&runtime, "save", short_notice_out,
                           sizeof(short_notice_out)) == FR_ERR_RANGE &&
@@ -15567,6 +15579,140 @@ static bool test_repl_run_lines(fr_runtime_t *runtime,
   return err == FR_OK;
 }
 
+#if FR_FEATURE_REPL && FR_FEATURE_TEXT && FR_FEATURE_PAD && \
+    defined(FR_HOST_TEST_HELPERS)
+/* ADR 0078: a word can leave the console line open. A prompt, a REPL reply,
+ * an event line and a complete-line word start in column 0, so a client always
+ * finds `ok` or `error:` on its own line. */
+static void test_console_line_framing(void) {
+  static const struct {
+    const char *name;
+    bool open_before; /* as after a boot word that printed with no LF */
+    const char *lines[2];
+    uint8_t line_count;
+    const char *expected_prefix;
+  } cases[] = {
+      {"ok follows an open print", false, {"print: 42"}, 1, "> 42\nok\n> "},
+      {"a print that ends in LF adds no empty line", false,
+       {"print: \"hi\\n\""}, 1, "> hi\nok\n> "},
+      {"a result follows an open print", false,
+       {"to f [ print: 5; 7 ]", "f:"}, 2, "> ok\n> 5\n7\nok\n> "},
+      {"an error follows an open print", false,
+       {"to g [ print: 5; 1 / 0 ]", "g:"}, 2, "> ok\n> 5\nerror: "},
+      {"print.value follows an open print", false,
+       {"to v [ print: 5; print.value: \"x\", 1 ]", "v:"}, 2,
+       "> ok\n> 5\nx:1\nok\n> "},
+      {"pad.type leaves the line open", false,
+       {"to t [ pad.reset:; pad.emit-byte: 65; pad.type: ]", "t:"}, 2,
+       "> ok\n> A\nok\n> "},
+      {"pad.type with no data leaves the line closed", false,
+       {"to t [ pad.reset:; pad.type: ]", "t:"}, 2, "> ok\n> ok\n> "},
+      {"pad.type that ends in LF adds no empty line", false,
+       {"to t [ pad.reset:; pad.emit-byte: 10; pad.type: ]", "t:"}, 2,
+       "> ok\n> \nok\n> "},
+      {"a Text result gets one LF", false,
+       {"to l [ print: 5; \"abcdefghij\" ]", "l:"}, 2,
+       "> ok\n> 5\n\"abcdefghij\"\nok\n> "},
+      {"the first prompt follows boot output", true, {""}, 0, "\n> "},
+  };
+  const fr_repl_io_t io = {
+      .read_line = test_repl_read_line,
+      .write_text = fr_platform_write_text,
+  };
+  fr_runtime_t runtime;
+  char capture[128];
+  char reply[64];
+
+  for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+    test_repl_io_state_t state = {
+        .lines = cases[i].lines,
+        .line_count = cases[i].line_count,
+    };
+    fr_err_t err = FR_OK;
+
+    CHECK("line framing installs the base image",
+          fr_base_image_install(&runtime) == FR_OK);
+    runtime.console_line_open = cases[i].open_before;
+    test_repl_io_state = &state;
+    fr_host_capture_text(capture, sizeof(capture));
+    err = fr_repl_run(&runtime, &io);
+    fr_host_capture_text(NULL, 0);
+    test_repl_io_state = NULL;
+    if (err != FR_OK ||
+        strncmp(capture, cases[i].expected_prefix,
+                strlen(cases[i].expected_prefix)) != 0) {
+      fprintf(stderr, "line framing: %s\n  got: [%s]\n", cases[i].name,
+              capture);
+    }
+    CHECK("each reply starts in column 0",
+          err == FR_OK && strncmp(capture, cases[i].expected_prefix,
+                                  strlen(cases[i].expected_prefix)) == 0);
+  }
+
+  CHECK("line framing installs the base image",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime,
+                              "to t [ pad.reset:; pad.emit-byte: 65; pad.type: ]",
+                              reply, sizeof(reply)) == FR_OK);
+  runtime.dispatching_event = true;
+  fr_host_capture_text(capture, sizeof(capture));
+  CHECK("pad.type in an event body writes raw bytes and opens the line",
+        fr_repl_eval_line(&runtime, "t:", reply, sizeof(reply)) == FR_OK &&
+            strcmp(capture, "A") == 0 && strcmp(reply, "\nok\n") == 0);
+  runtime.console_line_open = false;
+  fr_host_capture_text(capture, 3);
+  CHECK("a failed body after the event prefix leaves the line open",
+        fr_repl_eval_line(&runtime, "print: \"abc\"", reply, sizeof(reply)) !=
+                FR_OK &&
+            strcmp(capture, "! ") == 0 && strncmp(reply, "\nerror: ", 8) == 0);
+  runtime.dispatching_event = false;
+#if FR_FEATURE_EVENTS
+  runtime.console_line_open = true;
+  runtime.events.overflow_count = runtime.events.overflow_reported_count + 1u;
+  fr_host_capture_text(capture, sizeof(capture));
+  fr_event_report_overflow(&runtime);
+  CHECK("the dropped-event line starts on a new line",
+        strcmp(capture, "\n! events dropped: 1\n") == 0 &&
+            !runtime.console_line_open);
+#endif
+#if FR_FEATURE_CONSOLE_ROUTING
+  runtime.console_line_open = true;
+  fr_host_capture_text(capture, sizeof(capture));
+  CHECK("a console route change closes the open line first",
+        fr_repl_eval_line(&runtime, "console.default:", reply, sizeof(reply)) ==
+                FR_OK &&
+            strcmp(capture, "\n") == 0 && strcmp(reply, "ok\n") == 0);
+#endif
+  fr_host_capture_text(NULL, 0);
+  runtime.console_line_open = true;
+  CHECK("a buffered reply starts on a new line and closes the line",
+        fr_repl_eval_line(&runtime, "1 + 1", reply, sizeof(reply)) == FR_OK &&
+            strcmp(reply, "\n2\nok\n") == 0 && !runtime.console_line_open);
+  runtime.console_line_open = true;
+  CHECK("clear keeps an open console line",
+        fr_runtime_clear_project(&runtime) == FR_OK && runtime.console_line_open);
+#if FR_FEATURE_PERSISTENCE
+  (void)fr_platform_persist_clear();
+  CHECK("save, restore and wipe-user keep an open console line",
+        fr_persist_save(&runtime) == FR_OK &&
+            fr_persist_restore(&runtime) == FR_OK &&
+            fr_persist_wipe_user(&runtime) == FR_OK && runtime.console_line_open);
+  (void)fr_platform_persist_clear();
+#endif
+  {
+    test_repl_io_state_t state = {.lines = NULL, .line_count = 0};
+
+    test_repl_io_state = &state;
+    fr_host_capture_text(capture, 1);
+    CHECK("a failed newline stops the reply and keeps the line open",
+          fr_repl_run(&runtime, &io) != FR_OK && capture[0] == '\0' &&
+              runtime.console_line_open);
+    fr_host_capture_text(NULL, 0);
+    test_repl_io_state = NULL;
+  }
+}
+#endif
+
 static bool test_error_line_matches_wire_shape(const char *out) {
   const char *line = strstr(out, "error: ");
   const char *end = NULL;
@@ -16274,6 +16420,15 @@ static void test_repl_error_diagnostics(void) {
             fr_repl_eval_line(&runtime, "gpio.read: 65536", compact_out,
                               (uint16_t)sizeof(compact_out)) == FR_ERR_DOMAIN &&
             strcmp(compact_out, "error: bad value: 65536 (3)\n") == 0);
+  {
+    char open_error_out[30];
+
+    runtime.console_line_open = true;
+    CHECK("small public buffer keeps the headline after an open-line separator",
+          fr_repl_eval_line(&runtime, "gpio.read: 65536", open_error_out,
+                            (uint16_t)sizeof(open_error_out)) == FR_ERR_DOMAIN &&
+              strcmp(open_error_out, "\nerror: bad value: 65536 (3)\n") == 0);
+  }
   CHECK("too-small public buffer does not emit a partial error",
         fr_base_image_install(&runtime) == FR_OK &&
             fr_repl_eval_line(&runtime, "gpio.read: 65536", short_error_out,
@@ -18358,6 +18513,37 @@ static void test_repl_startup_restore_and_boot(void) {
             gpio_value == 1 &&
             fr_slot_read(&runtime, FR_SLOT_BOOT, &tagged) == FR_OK &&
             fr_tagged_decode_code_object_id(tagged, &code_id) == FR_OK);
+#if FR_FEATURE_TEXT && defined(FR_HOST_TEST_HELPERS)
+  {
+    char boot_out[96];
+
+    /* ADR 0078: a boot word can leave the console line open. */
+    CHECK("startup boot saves a boot that prints and fails",
+          fr_repl_eval_line(&runtime, "boot is fn [ print: \"ready\"; 1 / 0 ]",
+                            out, sizeof(out)) == FR_OK &&
+              fr_persist_save(&runtime) == FR_OK &&
+              fr_base_image_install(&runtime) == FR_OK);
+    fr_host_capture_text(boot_out, (uint16_t)sizeof(boot_out));
+    CHECK("a startup error follows boot output on a new line",
+          fr_repl_startup_restore_and_boot(&runtime) == FR_OK &&
+              strstr(boot_out, "ready\nerror: ") != NULL &&
+              !runtime.console_line_open);
+    fr_host_capture_text(NULL, 0);
+    CHECK("startup boot saves a boot that prints",
+          fr_repl_eval_line(&runtime, "boot is fn [ print: \"ready\" ]", out,
+                            sizeof(out)) == FR_OK &&
+              fr_persist_save(&runtime) == FR_OK &&
+              fr_base_image_install(&runtime) == FR_OK);
+    fr_host_capture_text(boot_out, (uint16_t)sizeof(boot_out));
+    CHECK("boot output leaves the line open for the first prompt",
+          fr_repl_startup_restore_and_boot(&runtime) == FR_OK &&
+              strstr(boot_out, "ready") != NULL &&
+              strcmp(strstr(boot_out, "ready"), "ready") == 0 &&
+              runtime.console_line_open);
+    fr_host_capture_text(NULL, 0);
+    fr_platform_persist_clear();
+  }
+#endif
 }
 #endif
 
@@ -18409,6 +18595,10 @@ int main(void) {
   test_text_natives();
 #if FR_FEATURE_REPL && defined(FR_HOST_TEST_HELPERS)
   test_print_output();
+#if FR_FEATURE_REPL && FR_FEATURE_TEXT && FR_FEATURE_PAD && \
+    defined(FR_HOST_TEST_HELPERS)
+  test_console_line_framing();
+#endif
 #endif
 #endif
 #if FR_FEATURE_RECORDS

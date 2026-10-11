@@ -34,6 +34,7 @@ typedef struct fr_repl_writer_t {
 } fr_repl_writer_t;
 
 typedef struct fr_repl_buffer_writer_t {
+  fr_runtime_t *runtime;
   char *out;
   uint16_t out_cap;
   uint16_t used;
@@ -363,10 +364,21 @@ static fr_err_t fr_repl_buffer_writer_write(void *ctx, const char *text) {
   fr_repl_buffer_writer_t *writer = (fr_repl_buffer_writer_t *)ctx;
   const char *newline = NULL;
   uint16_t text_len = 0;
+  uint16_t start_used = 0;
 
   if (writer == NULL || writer->out == NULL || text == NULL ||
       writer->out_cap == 0) {
     return FR_ERR_INVALID;
+  }
+  start_used = writer->used;
+  /* The reply starts in column 0 after word output (ADR 0078). */
+  if (writer->runtime->console_line_open) {
+    if ((uint32_t)writer->used + 2 > writer->out_cap) {
+      return FR_ERR_RANGE;
+    }
+    writer->out[writer->used++] = '\n';
+    writer->out[writer->used] = '\0';
+    writer->runtime->console_line_open = false;
   }
 
   text_len = (uint16_t)strlen(text);
@@ -374,16 +386,16 @@ static fr_err_t fr_repl_buffer_writer_write(void *ctx, const char *text) {
     /* Error headlines are self-contained. Preserve the evaluation error for
      * fixed-buffer embedders when only optional diagnostic detail is too big. */
     newline = strchr(text, '\n');
-    if (writer->used == 0 && newline != NULL &&
+    if (start_used == 0 && newline != NULL &&
         (strncmp(text, "error: ", 7) == 0 ||
          strncmp(text, "notice: ", 8) == 0)) {
       uint32_t first_line_len = (uint32_t)(newline - text) + 1u;
-      uint32_t required = first_line_len +
+      uint32_t required = writer->used + first_line_len +
                           (strncmp(text, "notice: ", 8) == 0 ? 4u : 1u);
 
       if (required <= writer->out_cap) {
-        memcpy(writer->out, text, first_line_len);
-        writer->used = (uint16_t)first_line_len;
+        memcpy(&writer->out[writer->used], text, first_line_len);
+        writer->used = (uint16_t)(writer->used + first_line_len);
         writer->out[writer->used] = '\0';
         return FR_OK;
       }
@@ -396,13 +408,23 @@ static fr_err_t fr_repl_buffer_writer_write(void *ctx, const char *text) {
   return FR_OK;
 }
 
-static fr_err_t fr_repl_io_writer_write(void *ctx, const char *text) {
-  const fr_repl_io_t *io = (const fr_repl_io_t *)ctx;
+typedef struct fr_repl_io_writer_t {
+  fr_runtime_t *runtime;
+  const fr_repl_io_t *io;
+} fr_repl_io_writer_t;
 
-  if (io == NULL || io->write_text == NULL) {
+/* REPL output starts in column 0: a word can leave the console line open. */
+static fr_err_t fr_repl_io_writer_write(void *ctx, const char *text) {
+  fr_repl_io_writer_t *writer = (fr_repl_io_writer_t *)ctx;
+
+  if (writer == NULL || writer->io == NULL || writer->io->write_text == NULL) {
     return FR_ERR_INVALID;
   }
-  return io->write_text(text);
+  if (writer->runtime->console_line_open) {
+    FR_TRY(writer->io->write_text("\n"));
+    writer->runtime->console_line_open = false;
+  }
+  return writer->io->write_text(text);
 }
 
 static fr_err_t fr_repl_write_u16(char *out, uint16_t out_cap, uint16_t value) {
@@ -1464,12 +1486,14 @@ static fr_err_t fr_repl_write_error(fr_runtime_t *runtime, char *out,
 }
 
 #if FR_FEATURE_PERSISTENCE
-static void fr_repl_write_startup_error(fr_err_t err) {
+static void fr_repl_write_startup_error(fr_runtime_t *runtime, fr_err_t err) {
   char response[FR_REPL_OUTPUT_BYTES];
 
   if (fr_repl_write_error(NULL, response, (uint16_t)sizeof(response), err,
-                          NULL, NULL, false) == FR_OK) {
-    (void)fr_platform_write_text(response);
+                          NULL, NULL, false) == FR_OK &&
+      fr_console_start_line(runtime) == FR_OK) {
+    (void)fr_console_write(runtime, (const uint8_t *)response,
+                           (uint16_t)strlen(response));
   }
 }
 #endif
@@ -1488,11 +1512,14 @@ fr_err_t fr_repl_startup_restore_and_boot(fr_runtime_t *runtime) {
 #if FR_FEATURE_CONSOLE_ROUTING
   bool recovery_requested = false;
 
-  FR_TRY(fr_platform_write_text("boot: Ctrl-C or BOOT skips saved code\n"));
+  static const char banner[] = "boot: Ctrl-C or BOOT skips saved code\n";
+  static const char safe[] = "safe boot\n";
+
+  FR_TRY(fr_console_write(runtime, (const uint8_t *)banner, sizeof(banner) - 1));
   FR_TRY(fr_platform_recovery_requested(FR_REPL_SAFE_BOOT_WINDOW_MS,
                                         &recovery_requested));
   if (recovery_requested) {
-    FR_TRY(fr_platform_write_text("safe boot\n"));
+    FR_TRY(fr_console_write(runtime, (const uint8_t *)safe, sizeof(safe) - 1));
     return FR_OK;
   }
 #endif
@@ -1505,11 +1532,11 @@ fr_err_t fr_repl_startup_restore_and_boot(fr_runtime_t *runtime) {
    * still runs so a corrupt L1 doesn't strand a saved user tier. */
   l1_err = fr_persist_restore_library(runtime);
   if (l1_err != FR_OK && l1_err != FR_ERR_NOT_FOUND) {
-    fr_repl_write_startup_error(l1_err);
+    fr_repl_write_startup_error(runtime, l1_err);
   }
   l2_err = fr_persist_restore_user(runtime);
   if (l2_err != FR_OK && l2_err != FR_ERR_NOT_FOUND) {
-    fr_repl_write_startup_error(l2_err);
+    fr_repl_write_startup_error(runtime, l2_err);
   }
   if (l1_err != FR_OK && l2_err != FR_OK) {
     /* Nothing installed from NVS; skip boot dispatch. */
@@ -1519,11 +1546,11 @@ fr_err_t fr_repl_startup_restore_and_boot(fr_runtime_t *runtime) {
   boot_err = fr_vm_run_boot(runtime, &out);
   if (boot_err == FR_ERR_INTERRUPTED) {
     fr_runtime_clear_interrupt(runtime);
-    fr_repl_write_startup_error(boot_err);
+    fr_repl_write_startup_error(runtime, boot_err);
     return FR_OK;
   }
   if (boot_err != FR_OK) {
-    fr_repl_write_startup_error(boot_err);
+    fr_repl_write_startup_error(runtime, boot_err);
   }
 #endif
   return FR_OK;
@@ -2846,6 +2873,7 @@ static fr_err_t fr_repl_eval_line_to_writer(fr_runtime_t *runtime,
 fr_err_t fr_repl_eval_line(fr_runtime_t *runtime, const char *line, char *out,
                            uint16_t out_cap) {
   fr_repl_buffer_writer_t buffer = {
+      .runtime = runtime,
       .out = out,
       .out_cap = out_cap,
   };
@@ -2886,9 +2914,11 @@ static fr_err_t fr_repl_service_events(void *ctx) {
   if (err != FR_OK && err != FR_ERR_INTERRUPTED) {
     char response[FR_REPL_OUTPUT_BYTES];
     if (fr_repl_write_error(runtime, response, (uint16_t)sizeof(response), err,
-                            NULL, NULL, false) == FR_OK) {
-      (void)fr_platform_write_text("! ");
-      (void)fr_platform_write_text(response);
+                            NULL, NULL, false) == FR_OK &&
+        fr_console_start_line(runtime) == FR_OK &&
+        fr_console_write(runtime, (const uint8_t *)"! ", 2) == FR_OK) {
+      (void)fr_console_write(runtime, (const uint8_t *)response,
+                             (uint16_t)strlen(response));
     }
   }
   return FR_OK;
@@ -2896,8 +2926,9 @@ static fr_err_t fr_repl_service_events(void *ctx) {
 
 fr_err_t fr_repl_run(fr_runtime_t *runtime, const fr_repl_io_t *io) {
   char line[FR_REPL_LINE_BYTES];
+  fr_repl_io_writer_t io_writer = {runtime, io};
   const fr_repl_writer_t writer = {
-      .ctx = (void *)io,
+      .ctx = (void *)&io_writer,
       .write = fr_repl_io_writer_write,
   };
   bool eof = false;
@@ -2915,7 +2946,7 @@ fr_err_t fr_repl_run(fr_runtime_t *runtime, const fr_repl_io_t *io) {
   while (true) {
     fr_err_t read_err;
 
-    FR_TRY(io->write_text("> "));
+    FR_TRY(fr_repl_io_writer_write(&io_writer, "> "));
     read_err = io->read_line(line, (uint16_t)sizeof(line), &eof);
     if (read_err == FR_ERR_RANGE) {
       char response[FR_REPL_OUTPUT_BYTES];
@@ -2931,7 +2962,7 @@ fr_err_t fr_repl_run(fr_runtime_t *runtime, const fr_repl_io_t *io) {
                                 (uint16_t)(sizeof(line) - 1u)));
       FR_TRY(fr_repl_append(response, (uint16_t)sizeof(response), &used,
                             " bytes\n"));
-      FR_TRY(io->write_text(response));
+      FR_TRY(fr_repl_io_writer_write(&io_writer, response));
       continue;
     }
     FR_TRY(read_err);
@@ -2949,7 +2980,7 @@ fr_err_t fr_repl_run(fr_runtime_t *runtime, const fr_repl_io_t *io) {
                                         &reported);
     }
     if (err == FR_ERR_INTERRUPTED) {
-      FR_TRY(io->write_text("interrupted\nok\n"));
+      FR_TRY(fr_repl_io_writer_write(&io_writer, "interrupted\nok\n"));
     } else if (err != FR_OK && evaluated && !reported) {
       return err;
     } else if (err != FR_OK && !evaluated) {
@@ -2958,7 +2989,7 @@ fr_err_t fr_repl_run(fr_runtime_t *runtime, const fr_repl_io_t *io) {
       FR_TRY(fr_repl_write_error(runtime, response,
                                  (uint16_t)sizeof(response), err, line,
                                  &diag, false));
-      FR_TRY(io->write_text(response));
+      FR_TRY(fr_repl_io_writer_write(&io_writer, response));
     }
   }
 }

@@ -3569,7 +3569,8 @@ static uint16_t fr_persist_append_u16(char *buf, uint16_t cap, uint16_t used,
 /* SPEC D6 paragraph 4: an L1 bind failure during boot writes one line via
  * the same channel fr_repl_write_startup_error uses, then the loop continues.
  * The format is fixed by the SPEC: warning: L1 skip slot=<id> err=<name>\n. */
-static void fr_persist_write_l1_skip_warning(fr_slot_id_t slot_id,
+static void fr_persist_write_l1_skip_warning(fr_runtime_t *runtime,
+                                             fr_slot_id_t slot_id,
                                              fr_err_t err) {
   char buf[80];
   uint16_t used = 0;
@@ -3588,7 +3589,9 @@ static void fr_persist_write_l1_skip_warning(fr_slot_id_t slot_id,
   } else {
     buf[sizeof(buf) - 1] = '\0';
   }
-  (void)fr_platform_write_text(buf);
+  if (fr_console_start_line(runtime) == FR_OK) {
+    (void)fr_console_write(runtime, (const uint8_t *)buf, (uint16_t)strlen(buf));
+  }
 }
 
 /* Walks decoded bind records once per tier in tier-id order (L1 then L2)
@@ -3634,7 +3637,8 @@ static fr_err_t fr_persist_apply_binds_tiered(
       }
       if (err != FR_OK) {
         if (skip_on_failure) {
-          fr_persist_write_l1_skip_warning(bind_records[i].slot_id, err);
+          fr_persist_write_l1_skip_warning(runtime, bind_records[i].slot_id,
+                                           err);
           continue;
         }
         return err;

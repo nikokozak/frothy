@@ -185,6 +185,9 @@ struct fr_runtime_t {
   /* Set while fr_event_dispatch is running a body so the VM step loop does
      not re-enter dispatch from inside a handler (spec §5: no preemption). */
   bool dispatching_event;
+  /* The last tracked console write did not end in LF (ADR 0078). Only
+     fr_runtime_init clears it at start; clear, restore and wipes keep it. */
+  bool console_line_open;
   /* T12L-7 D3: session-scoped install tier. fr_repl_run resets to USER on
      entry; install-library / install-user REPL commands flip it; the persist
      encoder reads it when stamping new overlay records. */
@@ -198,6 +201,11 @@ struct fr_runtime_t {
 
 fr_err_t fr_runtime_init(fr_runtime_t *runtime);
 fr_err_t fr_runtime_reset(fr_runtime_t *runtime);
+/* Console output by a word. A failed write leaves the line marked open. */
+fr_err_t fr_console_write(fr_runtime_t *runtime, const uint8_t *bytes,
+                          uint16_t length);
+/* Write LF if the line is open, so that the next line starts in column 0. */
+fr_err_t fr_console_start_line(fr_runtime_t *runtime);
 fr_err_t fr_runtime_clear_project(fr_runtime_t *runtime);
 /* True while the VM is running anything. Persistence asks before replacing
    the program a frame is executing (ADR 0071). */

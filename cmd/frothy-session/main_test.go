@@ -166,6 +166,23 @@ func TestSerialReadUntilPromptRequiresTerminalStatus(t *testing.T) {
 	}
 }
 
+// A word such as `print: 42` writes no line end; the device starts its reply on
+// a new line, so the status is still a whole line.
+func TestSerialReadUntilPromptAcceptsReplyAfterOpenOutput(t *testing.T) {
+	dev := serialDeviceWithReadBytes("42\nok\n> ")
+
+	response, err := dev.readUntilPrompt(time.Second, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := response, "42\nok\n"; got != want {
+		t.Fatalf("response %q, want %q", got, want)
+	}
+	if got := responseStatus(response); got != "ok" || !responseOK(response) {
+		t.Fatalf("response status = %q, ok = %v", got, responseOK(response))
+	}
+}
+
 func TestSerialReadUntilPromptAcceptsLegacyErrorStatus(t *testing.T) {
 	dev := serialDeviceWithReadBytes("err 8\n> ")
 

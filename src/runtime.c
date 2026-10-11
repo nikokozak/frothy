@@ -55,6 +55,7 @@ fr_err_t fr_runtime_init(fr_runtime_t *runtime) {
      which can only happen with none of them running -- must not touch it. */
   runtime->execution_depth = 0;
   runtime->dispatching_event = false;
+  runtime->console_line_open = false;
   runtime->install_tier = FR_INSTALL_TIER_USER;
   runtime->rescue_error = FR_OK;
   runtime->rescue_error_active = false;
@@ -148,6 +149,28 @@ fr_err_t fr_runtime_clear_project(fr_runtime_t *runtime) {
 
 fr_err_t fr_runtime_reset(fr_runtime_t *runtime) {
   return fr_runtime_clear_project(runtime);
+}
+
+fr_err_t fr_console_write(fr_runtime_t *runtime, const uint8_t *bytes,
+                          uint16_t length) {
+  if (length == 0) {
+    return FR_OK;
+  }
+  runtime->console_line_open = true;
+  FR_TRY(fr_platform_write_bytes(bytes, length));
+  runtime->console_line_open = bytes[length - 1] != '\n';
+  return FR_OK;
+}
+
+fr_err_t fr_console_start_line(fr_runtime_t *runtime) {
+  static const uint8_t newline = '\n';
+
+  if (!runtime->console_line_open) {
+    return FR_OK;
+  }
+  FR_TRY(fr_platform_write_bytes(&newline, 1));
+  runtime->console_line_open = false;
+  return FR_OK;
 }
 
 bool fr_runtime_is_executing(const fr_runtime_t *runtime) {

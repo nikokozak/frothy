@@ -7,18 +7,23 @@
 #include <string.h>
 
 #if FR_FEATURE_REPL
-/* Avoid pulling stdio formatting into the event path for one async counter. */
-static void fr_event_write_u32(uint32_t value) {
-  char digits[11];
-  uint8_t pos = (uint8_t)(sizeof(digits) - 1u);
+/* One tracked write, with no stdio formatting in the event path. */
+static void fr_event_write_dropped_line(fr_runtime_t *runtime,
+                                        uint32_t dropped) {
+  static const char prefix[] = "! events dropped: ";
+  uint8_t line[sizeof(prefix) - 1u + 10u + 1u];
+  uint8_t *start = line + sizeof(line);
 
-  digits[pos] = '\0';
+  *--start = '\n';
   do {
-    pos--;
-    digits[pos] = (char)('0' + (value % 10u));
-    value /= 10u;
-  } while (value > 0);
-  (void)fr_platform_write_text(&digits[pos]);
+    *--start = (uint8_t)('0' + (dropped % 10u));
+    dropped /= 10u;
+  } while (dropped > 0);
+  start -= sizeof(prefix) - 1u;
+  memcpy(start, prefix, sizeof(prefix) - 1u);
+  if (fr_console_start_line(runtime) == FR_OK) {
+    (void)fr_console_write(runtime, start, (uint16_t)(line + sizeof(line) - start));
+  }
 }
 #endif
 
@@ -262,9 +267,7 @@ void fr_event_report_overflow(fr_runtime_t *runtime) {
   dropped =
       runtime->events.overflow_count - runtime->events.overflow_reported_count;
   runtime->events.overflow_reported_count = runtime->events.overflow_count;
-  (void)fr_platform_write_text("! events dropped: ");
-  fr_event_write_u32(dropped);
-  (void)fr_platform_write_text("\n");
+  fr_event_write_dropped_line(runtime, dropped);
 #else
   (void)runtime;
 #endif

@@ -14,7 +14,8 @@
 #include <string.h>
 
 #if FR_FEATURE_CONSOLE_ROUTING || FR_FEATURE_BLE
-static fr_err_t fr_native_write_rendered_line(const char *line, size_t cap,
+static fr_err_t fr_native_write_rendered_line(fr_runtime_t *runtime,
+                                              const char *line, size_t cap,
                                               int written);
 #endif
 
@@ -1537,13 +1538,18 @@ static fr_err_t fr_native_console_read_line(fr_runtime_t *runtime,
                                             fr_tagged_t *out) {
   uint8_t bytes[FR_PROFILE_REPL_LINE_BYTES];
   uint16_t length = 0;
+  fr_err_t err = FR_OK;
 
   (void)args;
   if (runtime == NULL || arg_count != 0 || out == NULL) {
     return FR_ERR_INVALID;
   }
-  FR_TRY(fr_platform_console_read_line(bytes, (uint16_t)sizeof(bytes),
-                                       &length));
+  err = fr_platform_console_read_line(bytes, (uint16_t)sizeof(bytes), &length);
+  if (err != FR_OK) {
+    /* The echo can hold part of a line, and core cannot see it. */
+    runtime->console_line_open = true;
+    return err;
+  }
   return fr_bytes_install(runtime, bytes, length, out);
 }
 #endif
@@ -1565,6 +1571,7 @@ static fr_err_t fr_native_console_uart(fr_runtime_t *runtime,
   if (baud == 0) {
     return fr_native_reject_arg(runtime, args, arg_count, 2, FR_ERR_DOMAIN);
   }
+  FR_TRY(fr_console_start_line(runtime));
   FR_TRY(fr_platform_console_set_uart(tx, rx, (uint32_t)baud));
   *out = fr_tagged_nil();
   return FR_OK;
@@ -1574,12 +1581,12 @@ static fr_err_t fr_native_console_default(fr_runtime_t *runtime,
                                           const fr_tagged_t *args,
                                           uint8_t arg_count,
                                           fr_tagged_t *out) {
-  (void)runtime;
   (void)args;
   (void)arg_count;
-  if (out == NULL) {
+  if (runtime == NULL || out == NULL) {
     return FR_ERR_INVALID;
   }
+  FR_TRY(fr_console_start_line(runtime));
   FR_TRY(fr_platform_console_restore_default());
   *out = fr_tagged_nil();
   return FR_OK;
@@ -1615,7 +1622,7 @@ static fr_err_t fr_native_console_info(fr_runtime_t *runtime,
   default:
     return FR_ERR_INVALID;
   }
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
   *out = fr_tagged_nil();
   return FR_OK;
 }
@@ -1908,7 +1915,7 @@ static fr_err_t fr_native_ble_info(fr_runtime_t *runtime,
                      backend, fr_native_ble_radio_state_name(status.radio_state),
                      roles,
                      status.coexistence_enabled ? "enabled" : "disabled");
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 
   if (status.own_address_valid) {
     written = snprintf(
@@ -1920,7 +1927,7 @@ static fr_err_t fr_native_ble_info(fr_runtime_t *runtime,
   } else {
     written = snprintf(line, sizeof(line), "ble address=none\n");
   }
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 
   if (status.requested_interval_ms > 0) {
     written = snprintf(
@@ -1937,7 +1944,7 @@ static fr_err_t fr_native_ble_info(fr_runtime_t *runtime,
     written = snprintf(line, sizeof(line), "ble scan=%s parameters=none\n",
                        fr_native_ble_scan_state_name(status.scan_state));
   }
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 
 #if FR_BLE_ENABLE_BROADCASTER
   if (status.advertise_requested_interval_ms > 0) {
@@ -1959,7 +1966,7 @@ static fr_err_t fr_native_ble_info(fr_runtime_t *runtime,
         (unsigned long)status.advertise_starts,
         (unsigned long)status.advertise_stops);
   }
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 #endif
 
 #if FR_BLE_ENABLE_CENTRAL || FR_BLE_ENABLE_PERIPHERAL
@@ -1975,7 +1982,7 @@ static fr_err_t fr_native_ble_info(fr_runtime_t *runtime,
       (unsigned long)status.connection_accepts,
       (unsigned long)status.connection_disconnects,
       (unsigned long)status.incoming_rejected);
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 #endif
 
   if (status.current_valid) {
@@ -1998,7 +2005,7 @@ static fr_err_t fr_native_ble_info(fr_runtime_t *runtime,
         (unsigned long)status.dequeued, (unsigned long)status.dropped,
         (unsigned long)status.malformed);
   }
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 
   written = snprintf(
       line, sizeof(line),
@@ -2008,7 +2015,7 @@ static fr_err_t fr_native_ble_info(fr_runtime_t *runtime,
       status.cleanup_required ? "required" : "clean",
       (unsigned long)status.late_callback_count,
       (unsigned long)status.reset_count);
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 
   written = snprintf(
       line, sizeof(line),
@@ -2016,7 +2023,7 @@ static fr_err_t fr_native_ble_info(fr_runtime_t *runtime,
       fr_native_ble_operation_name(status.last_operation), result,
       (long)status.last_platform_code, (long)status.last_protocol_reason,
       (unsigned long)status.last_operation_ms);
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 
   *out = fr_tagged_nil();
   return FR_OK;
@@ -2370,7 +2377,7 @@ static fr_err_t fr_native_ble_gatt_info(fr_runtime_t *runtime,
       (unsigned)status.table.value_bytes_used,
       (unsigned)FR_BLE_GATT_VALUE_BYTES, (unsigned)status.subscription_count,
       (unsigned)FR_BLE_GATT_CCCD_COUNT);
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 
   for (uint16_t row_id = 0; row_id < status.table.row_count; row_id++) {
     bool found = false;
@@ -2388,7 +2395,7 @@ static fr_err_t fr_native_ble_gatt_info(fr_runtime_t *runtime,
           (unsigned)row_id, uuid,
           service->secondary ? "secondary" : "primary",
           (unsigned)service->characteristic_count);
-      FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+      FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
       found = true;
       break;
     }
@@ -2411,7 +2418,7 @@ static fr_err_t fr_native_ble_gatt_info(fr_runtime_t *runtime,
           (unsigned)characteristic->maximum_length,
           (unsigned)characteristic->value_length,
           (unsigned)characteristic->target_value_handle);
-      FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+      FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
       found = true;
       break;
     }
@@ -2445,13 +2452,13 @@ static fr_err_t fr_native_ble_gatt_info(fr_runtime_t *runtime,
         (unsigned long)status.preaccept_write_rejected,
         status.indication_pending ? "pending" : "idle");
   }
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 
   written = snprintf(line, sizeof(line),
                      "ble gatt last-att=%ld platform=%ld\n",
                      (long)status.last_att_error,
                      (long)status.last_platform_code);
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 #endif
 
 #if FR_BLE_ENABLE_GATT_CLIENT
@@ -2484,7 +2491,7 @@ static fr_err_t fr_native_ble_gatt_info(fr_runtime_t *runtime,
         (unsigned long)client.notification_dropped,
         (unsigned long)client.notification_stale);
   }
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
   written = snprintf(
       line, sizeof(line),
       "ble gatt client procedure=%s attribute=%u service-matches=%u characteristic-matches=%u last-att=%ld platform=%ld\n",
@@ -2495,7 +2502,7 @@ static fr_err_t fr_native_ble_gatt_info(fr_runtime_t *runtime,
       (unsigned)client.service_match_count,
       (unsigned)client.characteristic_match_count,
       (long)client.last_att_error, (long)client.last_platform_code);
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 #endif
   *out = fr_tagged_nil();
   return FR_OK;
@@ -3247,7 +3254,7 @@ static fr_err_t fr_native_ble_connection_info(
       (unsigned)info.peer_address[4], (unsigned)info.peer_address[5],
       (unsigned long)info.interval_us, (unsigned)info.latency,
       (unsigned long)info.supervision_timeout_us, (unsigned)info.mtu);
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 
   if (info.rssi_valid) {
     written = snprintf(
@@ -3265,7 +3272,7 @@ static fr_err_t fr_native_ble_connection_info(
         info.bonded ? 1u : 0u, (unsigned long)info.connected_at_ms,
         (unsigned long)info.disconnected_at_ms, (long)info.last_reason);
   }
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
   *out = fr_tagged_nil();
   return FR_OK;
 }
@@ -3557,7 +3564,8 @@ static uint8_t *fr_native_print_int_digits(fr_int_t value, uint8_t *end) {
  * "! " and ends with a newline. "! " is reserved for this — eval results never
  * begin with it — so a host can route these lines to an event lane. See
  * docs/wire-protocol.md (v1.1). */
-static fr_err_t fr_native_print_async(const uint8_t *bytes, uint16_t length) {
+static fr_err_t fr_native_print_async(fr_runtime_t *runtime,
+                                      const uint8_t *bytes, uint16_t length) {
   static const uint8_t prefix[2] = {'!', ' '};
   static const uint8_t newline = '\n';
   uint16_t run_start = 0;
@@ -3567,21 +3575,22 @@ static fr_err_t fr_native_print_async(const uint8_t *bytes, uint16_t length) {
   if (length == 0) {
     return FR_OK;
   }
-  FR_TRY(fr_platform_write_bytes(prefix, sizeof(prefix)));
+  FR_TRY(fr_console_start_line(runtime));
+  FR_TRY(fr_console_write(runtime, prefix, sizeof(prefix)));
   for (uint16_t i = 0; i < length; i++) {
     if (bytes[i] == '\n') {
-      FR_TRY(fr_platform_write_bytes(&bytes[run_start], (uint16_t)(i + 1 - run_start)));
+      FR_TRY(fr_console_write(runtime, &bytes[run_start], (uint16_t)(i + 1 - run_start)));
       run_start = (uint16_t)(i + 1);
       if (run_start < length) {
-        FR_TRY(fr_platform_write_bytes(prefix, sizeof(prefix)));
+        FR_TRY(fr_console_write(runtime, prefix, sizeof(prefix)));
       }
     }
   }
   if (run_start < length) {
-    FR_TRY(fr_platform_write_bytes(&bytes[run_start], (uint16_t)(length - run_start)));
+    FR_TRY(fr_console_write(runtime, &bytes[run_start], (uint16_t)(length - run_start)));
   }
   if (bytes[length - 1] != '\n') {
-    FR_TRY(fr_platform_write_bytes(&newline, 1));
+    FR_TRY(fr_console_write(runtime, &newline, 1));
   }
   return FR_OK;
 }
@@ -3604,9 +3613,9 @@ static fr_err_t fr_native_print(fr_runtime_t *runtime, const fr_tagged_t *args,
                                                &bytes, &length));
   }
   if (runtime->dispatching_event) {
-    FR_TRY(fr_native_print_async(bytes, length));
+    FR_TRY(fr_native_print_async(runtime, bytes, length));
   } else {
-    FR_TRY(fr_platform_write_bytes(bytes, length));
+    FR_TRY(fr_console_write(runtime, bytes, length));
   }
   *out = fr_tagged_nil();
   return FR_OK;
@@ -3655,7 +3664,8 @@ static fr_err_t fr_native_print_value(fr_runtime_t *runtime,
     *--start = ' ';
     *--start = '!';
   }
-  FR_TRY(fr_platform_write_bytes(start, (uint16_t)(line + sizeof(line) - start)));
+  FR_TRY(fr_console_start_line(runtime));
+  FR_TRY(fr_console_write(runtime, start, (uint16_t)(line + sizeof(line) - start)));
   *out = fr_tagged_nil();
   return FR_OK;
 }
@@ -3932,7 +3942,7 @@ static fr_err_t fr_native_pad_type(fr_runtime_t *runtime,
   }
 
   FR_TRY(fr_pad_view(runtime, &bytes, &length));
-  FR_TRY(fr_platform_write_bytes(bytes, length));
+  FR_TRY(fr_console_write(runtime, bytes, length));
   *out = fr_tagged_nil();
   return FR_OK;
 }
@@ -4275,7 +4285,8 @@ static fr_err_t fr_native_fire_event(fr_runtime_t *runtime,
 
 #if FR_FEATURE_TRACE || FR_FEATURE_PULSE || FR_FEATURE_CONSOLE_ROUTING ||       \
     FR_FEATURE_BLE
-static fr_err_t fr_native_write_rendered_line(const char *line, size_t cap,
+static fr_err_t fr_native_write_rendered_line(fr_runtime_t *runtime,
+                                              const char *line, size_t cap,
                                               int written) {
   if (line == NULL) {
     return FR_ERR_INVALID;
@@ -4286,7 +4297,8 @@ static fr_err_t fr_native_write_rendered_line(const char *line, size_t cap,
   if ((size_t)written >= cap) {
     return FR_ERR_CAPACITY;
   }
-  return fr_platform_write_text(line);
+  FR_TRY(fr_console_start_line(runtime));
+  return fr_console_write(runtime, (const uint8_t *)line, (uint16_t)written);
 }
 #endif
 
@@ -4536,12 +4548,12 @@ static fr_err_t fr_native_trace_dump(fr_runtime_t *runtime,
                      "trace state=complete channels=%u events=%u tick_ns=%u\n",
                      (unsigned)status.channel_count,
                      (unsigned)status.event_count, (unsigned)FR_SIGNAL_TICK_NS);
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
 
   for (uint8_t channel = 0; channel < status.channel_count; channel++) {
     written = snprintf(line, sizeof(line), "trace.channel %u pin=%u\n",
                        (unsigned)channel, (unsigned)status.pins[channel]);
-    FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+    FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
   }
   for (uint16_t i = 0; i < status.event_count; i++) {
     fr_trace_event_t event = {0};
@@ -4552,7 +4564,7 @@ static fr_err_t fr_native_trace_dump(fr_runtime_t *runtime,
         "trace.edge %u channel=%u level=%u delta_ns=%lu\n", (unsigned)i,
         (unsigned)event.channel, (unsigned)event.level,
         (unsigned long)event.delta_ns);
-    FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+    FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
   }
 
   *out = fr_tagged_nil();
@@ -4754,7 +4766,7 @@ static fr_err_t fr_native_pulse_dump(fr_runtime_t *runtime,
       (unsigned)status.pin, (unsigned)status.idle,
       (unsigned)status.segment_count, (unsigned)FR_SIGNAL_TICK_NS,
       (unsigned long)status.total_ns);
-  FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+  FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
   for (uint16_t i = 0; i < status.segment_count; i++) {
     fr_pulse_segment_t segment = {0};
 
@@ -4763,7 +4775,7 @@ static fr_err_t fr_native_pulse_dump(fr_runtime_t *runtime,
                        "pulse.segment %u level=%u duration_ns=%lu\n",
                        (unsigned)i, (unsigned)segment.level,
                        (unsigned long)segment.duration_ns);
-    FR_TRY(fr_native_write_rendered_line(line, sizeof(line), written));
+    FR_TRY(fr_native_write_rendered_line(runtime, line, sizeof(line), written));
   }
 
   *out = fr_tagged_nil();

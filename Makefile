@@ -691,9 +691,15 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 		cat $$cr_open_file; printf 'a CR did not end the line at once\n'; \
 		exit 1; \
 	fi; \
+	read_line_out=$$(printf 'to q [ print: "name? "; console.read-line: ]\nq:\nbob\n' \
+		| build/host/frothy-host-normal); \
+	if ! printf '%s\n' "$$read_line_out" | grep -qxF 'bytes 3'; then \
+		printf '%s\nread-line after an open print transcript failed\n' "$$read_line_out"; \
+		exit 1; \
+	fi; \
 	overlong_ctrl_c_out=$$(awk 'BEGIN { print "console.read-line:"; for (i = 0; i < 600; i++) printf "x"; printf "%c\n1 + 1\n", 3 }' \
 		| build/host/frothy-host-normal); \
-	if ! printf '%s\n' "$$overlong_ctrl_c_out" | grep -qxF '> interrupted' || \
+	if ! printf '%s\n' "$$overlong_ctrl_c_out" | grep -qxF 'interrupted' || \
 		! printf '%s\n' "$$overlong_ctrl_c_out" | grep -qF '> 2'; then \
 		printf '%s\noverlong Ctrl-C input transcript failed\n' "$$overlong_ctrl_c_out"; \
 		exit 1; \
