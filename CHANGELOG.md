@@ -16,6 +16,22 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ### Changed
 
+- **A loop can make Bytes values for as long as it runs.** Before, a board
+  failed with `capacity exceeded (4)` and the note `Bytes table is full
+  (limit 8)` after about 1,024 Bytes values since the last restart or save,
+  also when no value was in use. Now each loop pass, each event body and each
+  failed `attempt` body frees the Bytes values that it made. A loop that calls
+  `i2c.read` has no pass limit, and an `on` body can loop over
+  `bytes.from-byte`.
+- **`set` of a local refuses a Bytes value.** The next loop pass can free the
+  value while the local still names it. Make the value with `here` in the loop
+  body. The error is `not saved (13)`, with a detail that names this fix.
+- **Each loop level uses one of the 16 locals of its word.** A word with 16
+  locals and a loop answers `capacity exceeded (4)` with the note
+  `space for locals in one form is full (limit 16)`. An event body has its own
+  16 locals: before, the word and its event body shared one limit.
+- **The instruction format moves to 2.** Code saved by v0.1.22 does not load:
+  the device answers `other release (27)`.
 - **A reply starts on its own line.** When a word such as `print` or
   `pad.type` leaves the console line open, the device writes LF before its
   next reply, prompt, event line or error. `print: "hi"` at the prompt now
