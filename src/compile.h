@@ -13,7 +13,7 @@ typedef char fr_compile_assert_overlay_text_cap_fits_parse_body
 enum {
   FR_COMPILE_MAX_INSTRUCTION_BYTES =
       FR_PROFILE_MAX_DEFINITION_INSTRUCTION_BYTES,
-  FR_COMPILE_MAX_PARAM_NAME_BYTES = FR_PROFILE_MAX_OVERLAY_PARAM_NAME_BYTES,
+  FR_COMPILE_MAX_PARAM_NAME_BYTES = FR_MAX_DEFINITION_PARAM_NAME_BYTES,
 };
 
 typedef struct fr_compile_overlay_update_t {

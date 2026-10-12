@@ -591,7 +591,7 @@ static fr_err_t fr_image_record_field_ref_allowed(
 static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
                                      const fr_image_records_t *records,
                                      fr_image_apply_mode_t mode) {
-  uint32_t used_instruction_bytes = 0;
+  uint32_t used_ram_code_bytes = 0;
   uint32_t used_cell_words = 0;
   uint32_t used_record_values = 0;
   uint16_t new_text_objects = 0;
@@ -660,27 +660,32 @@ static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
       runtime->code.count != runtime->code.image_count) {
     return FR_ERR_INVALID;
   }
-  used_instruction_bytes = runtime->code.overlay_used_instruction_bytes;
+  /* Each code object takes its instructions and then its parameter names
+   * from the one RAM area (ADR 0084), so the check counts both before any
+   * change. */
+  used_ram_code_bytes = runtime->code.ram_code_used;
   for (uint16_t i = 0; i < records->code_object_count; i++) {
     const fr_instruction_stream_t *instructions =
         &records->code_objects[i].instructions;
     fr_instruction_header_t header = {0};
-    uint32_t instruction_capacity =
-        (uint32_t)sizeof(runtime->code.overlay_instruction_bytes);
+    uint32_t ram_code_capacity = (uint32_t)sizeof(runtime->code.ram_code_bytes);
+    uint32_t names_length = records->code_objects[i].param_names != NULL
+                                ? records->code_objects[i].param_names_length
+                                : 0u;
 
     if (instructions->length == 0 || instructions->bytes == NULL) {
       return FR_ERR_INVALID;
     }
     FR_TRY(fr_instruction_read_header(instructions, &header));
-    if (used_instruction_bytes + instructions->length > instruction_capacity) {
+    if (used_ram_code_bytes + instructions->length + names_length >
+        ram_code_capacity) {
       fr_diag_note_capacity(
           runtime->diag, "pending code",
-          (fr_int_t)(instruction_capacity -
-                     runtime->code.base_ram_used_instruction_bytes),
+          (fr_int_t)(ram_code_capacity - runtime->code.ram_code_base_used),
           FR_DIAG_UNIT_BYTES, "a save that succeeds frees it");
       return FR_ERR_CAPACITY;
     }
-    used_instruction_bytes += instructions->length;
+    used_ram_code_bytes += instructions->length + names_length;
   }
 
 #if FR_FEATURE_CELLS

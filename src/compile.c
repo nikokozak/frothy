@@ -702,14 +702,6 @@ static fr_err_t fr_compile_write_byte(uint8_t instruction_bytes[],
  * Level L uses local 15 - L, so the visible locals keep their numbers, and
  * a body with a loop has all 16 locals. Without Bytes, a loop has no
  * checkpoint and these helpers write nothing. */
-#if FR_FEATURE_BYTES
-typedef char fr_compile_loop_locals_fit_frame
-    [(FR_PARSE_MAX_PARAMS + FR_PARSE_MAX_LOCALS <=
-      FR_PROFILE_MAX_STACK_DEPTH)
-         ? 1
-         : -1];
-#endif
-
 /* A body with a local, or with a loop when Bytes are on, needs the 4-byte
  * locals header. The scan covers the whole line, event bodies included, so
  * a word whose only locals are in its event body keeps one unused count

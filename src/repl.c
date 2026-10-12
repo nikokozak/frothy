@@ -1812,12 +1812,12 @@ static fr_err_t fr_repl_write_mem(fr_runtime_t *runtime, const char *arg,
      * without the base library's share of the same area. */
     FR_TRY(fr_repl_write_mem_pair(
         writer, "code.pending.used",
-        (uint32_t)(runtime->code.overlay_used_instruction_bytes -
-                   runtime->code.base_ram_used_instruction_bytes)));
+        (uint32_t)(runtime->code.ram_code_used -
+                   runtime->code.ram_code_base_used)));
     FR_TRY(fr_repl_write_mem_pair(
         writer, "code.pending.total",
-        (uint32_t)(sizeof(runtime->code.overlay_instruction_bytes) -
-                   runtime->code.base_ram_used_instruction_bytes)));
+        (uint32_t)(sizeof(runtime->code.ram_code_bytes) -
+                   runtime->code.ram_code_base_used)));
     FR_TRY(fr_repl_write_mem_objects(runtime, writer));
     FR_TRY(fr_repl_write_mem_events(runtime, writer));
     return fr_repl_writer_write(writer, "ok\n");
@@ -1833,12 +1833,12 @@ static fr_err_t fr_repl_write_mem(fr_runtime_t *runtime, const char *arg,
   if (fr_repl_span_equals(arg, arg_len, "code")) {
     FR_TRY(fr_repl_write_mem_pair(
         writer, "code.pending.used",
-        (uint32_t)(runtime->code.overlay_used_instruction_bytes -
-                   runtime->code.base_ram_used_instruction_bytes)));
+        (uint32_t)(runtime->code.ram_code_used -
+                   runtime->code.ram_code_base_used)));
     FR_TRY(fr_repl_write_mem_pair(
         writer, "code.pending.total",
-        (uint32_t)(sizeof(runtime->code.overlay_instruction_bytes) -
-                   runtime->code.base_ram_used_instruction_bytes)));
+        (uint32_t)(sizeof(runtime->code.ram_code_bytes) -
+                   runtime->code.ram_code_base_used)));
     return fr_repl_writer_write(writer, "ok\n");
   }
   if (fr_repl_span_equals(arg, arg_len, "objects")) {

@@ -8320,9 +8320,9 @@ static void test_code(void) {
                 FR_CODE_STORAGE_OVERLAY_RAM &&
             fr_code_get_instructions(&runtime, overlay_code_id, &owned_view) ==
                 FR_OK &&
-            owned_view.bytes >= runtime.code.overlay_instruction_bytes &&
-            owned_view.bytes < runtime.code.overlay_instruction_bytes +
-                                   sizeof(runtime.code.overlay_instruction_bytes));
+            owned_view.bytes >= runtime.code.ram_code_bytes &&
+            owned_view.bytes < runtime.code.ram_code_bytes +
+                                   sizeof(runtime.code.ram_code_bytes));
   CHECK("overlay shadow calls overlay code without moving base id",
         fr_tagged_encode_code_object_id(overlay_code_id, &overlay_code_tagged) ==
                 FR_OK &&
@@ -8348,7 +8348,7 @@ static void test_code(void) {
   image_bytes_before = runtime.code.entries[base_code_id].instruction_bytes;
   too_large_view = (fr_instruction_stream_t){
       .bytes = stable_two,
-      .length = (uint16_t)(FR_PROFILE_MAX_OVERLAY_CODE_BYTES + 1u),
+      .length = (uint16_t)(FR_PROFILE_RAM_CODE_BYTES + 1u),
   };
   CHECK("overlay over-cap leaves image arena untouched",
         (fr_code_clear_overlay(&runtime), true) &&
@@ -13056,10 +13056,9 @@ static void test_compiler_overlay_wire_parity(void) {
   CHECK("compiler parity code counts match",
         direct_runtime.code.count == wire_runtime.code.count &&
             host_mirror.code.count == wire_runtime.code.count &&
-            direct_runtime.code.overlay_used_instruction_bytes ==
-                wire_runtime.code.overlay_used_instruction_bytes &&
-            host_mirror.code.overlay_used_instruction_bytes ==
-                wire_runtime.code.overlay_used_instruction_bytes);
+            direct_runtime.code.ram_code_used ==
+                wire_runtime.code.ram_code_used &&
+            host_mirror.code.ram_code_used == wire_runtime.code.ram_code_used);
   CHECK("compiler parity literal slot matches",
         test_named_slot_effects_match(&direct_runtime, &wire_runtime, "led"));
   CHECK("compiler parity code slot matches",
@@ -17667,6 +17666,237 @@ static void test_repl_overlong_line_recovers(void) {
             strcmp(out, expected) == 0);
 }
 
+#if FR_FEATURE_COMPILER
+/* ADR 0084 points 1 to 3: one pending area holds each unsaved instruction
+ * stream and then its parameter names, and one check runs before any
+ * change. */
+static uint16_t test_pending_room(const fr_runtime_t *runtime) {
+  return (uint16_t)(sizeof(runtime->code.ram_code_bytes) -
+                    runtime->code.ram_code_used);
+}
+
+static uint16_t test_compiled_length(fr_runtime_t *runtime,
+                                     const char *source) {
+  static fr_compile_overlay_update_t update;
+
+  if (fr_compile_overlay_update_for_runtime(runtime, source, &update) !=
+      FR_OK) {
+    return 0;
+  }
+  return (uint16_t)(update.code_object.instructions.length +
+                    (update.overlay_update.code_object_count == 2u
+                         ? update.event_body_object.instructions.length
+                         : 0u));
+}
+
+static bool test_word_param_names(fr_runtime_t *runtime, const char *word,
+                                  const char *names, uint16_t names_len) {
+  fr_slot_id_t slot_id = 0;
+  fr_tagged_t tagged = 0;
+  fr_code_object_id_t code_id = 0;
+  const char *got = NULL;
+  uint16_t got_len = 0;
+
+  return fr_slot_id_for_name(runtime, word, &slot_id) == FR_OK &&
+         fr_slot_read(runtime, slot_id, &tagged) == FR_OK &&
+         fr_tagged_decode_code_object_id(tagged, &code_id) == FR_OK &&
+         fr_code_get_param_names(runtime, code_id, &got, &got_len) == FR_OK &&
+         got_len == names_len && memcmp(got, names, names_len) == 0;
+}
+
+static void test_pending_area_holds_code_and_names(void) {
+  static fr_runtime_t runtime;
+  char out[1024];
+  char before[1024];
+  char line[700];
+  uint16_t word_length = 0;
+  uint16_t filler_length = 0;
+  uint16_t exact_length = 0;
+  uint16_t room = 0;
+  uint16_t name_length = 0;
+  int used = 0;
+
+  /* The names of a word follow its code in the pending area. */
+  CHECK("pending area install", fr_base_image_install(&runtime) == FR_OK);
+  room = test_pending_room(&runtime);
+  word_length =
+      test_compiled_length(&runtime, "to w with alpha, beta [ alpha + beta ]");
+  CHECK("pending area: a word with two names",
+        word_length > 0 &&
+            fr_repl_eval_line(&runtime,
+                              "to w with alpha, beta [ alpha + beta ]", out,
+                              sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) == room - word_length - 11u &&
+            test_word_param_names(&runtime, "w", "alpha\0beta\0", 11));
+  snprintf(before, sizeof(before),
+           "code.pending.used %u\ncode.pending.total %u\nok\n",
+           (unsigned)(word_length + 11u),
+           (unsigned)(sizeof(runtime.code.ram_code_bytes) -
+                      runtime.code.ram_code_base_used));
+  CHECK("mem code counts the names",
+        fr_repl_eval_line(&runtime, "mem code", out, sizeof(out)) == FR_OK &&
+            strcmp(out, before) == 0);
+  CHECK("clear frees pending code and names together",
+        fr_repl_eval_line(&runtime, "clear", out, sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) == room);
+
+#if FR_FEATURE_EVENTS
+  /* Both instruction streams and the word's names count; an event body has
+   * no names. */
+  word_length =
+      test_compiled_length(&runtime, "to ev with p [ every 1000 [ 1 ] ; p ]");
+  CHECK("pending area: a word with an event body",
+        word_length > 0 &&
+            fr_repl_eval_line(&runtime,
+                              "to ev with p [ every 1000 [ 1 ] ; p ]", out,
+                              sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) == room - word_length - 2u);
+  CHECK("pending area: clear after the event word",
+        fr_repl_eval_line(&runtime, "clear", out, sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) == room);
+#endif
+
+  /* Fill the area with one word until the room left is less than one more
+   * filler and the exact word with a one-byte name. */
+  filler_length = test_compiled_length(&runtime, "to filler [ 1 ; 2 ; 3 ]");
+  exact_length = test_compiled_length(&runtime, "to exact with p [ 0 ]");
+  CHECK("pending area: filler and exact lengths",
+        filler_length > 0 && exact_length > 0);
+  room = test_pending_room(&runtime);
+  while (filler_length > 0 &&
+         room >= (uint16_t)(filler_length + exact_length + 2u)) {
+    if (fr_repl_eval_line(&runtime, "to filler [ 1 ; 2 ; 3 ]", out,
+                          sizeof(out)) != FR_OK) {
+      break;
+    }
+    room = test_pending_room(&runtime);
+  }
+  CHECK("pending area: the fill leaves room for a short name",
+        room >= (uint16_t)(exact_length + 2u) &&
+            room < (uint16_t)(filler_length + exact_length + 2u));
+
+  /* One byte more than the room: refused, and nothing changes. */
+  name_length = (uint16_t)(room - exact_length);
+  used = snprintf(line, sizeof(line), "to exact with ");
+  memset(line + used, 'q', name_length);
+  used += name_length;
+  snprintf(line + used, sizeof(line) - (size_t)used, " [ 0 ]");
+  CHECK("pending area: one byte over is refused",
+        fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                FR_ERR_CAPACITY &&
+            strstr(out, "note: pending code is full") != NULL &&
+            test_pending_room(&runtime) == room);
+  /* The exact fit. */
+  used = snprintf(line, sizeof(line), "to exact with ");
+  memset(line + used, 'q', (size_t)(name_length - 1u));
+  used += name_length - 1u;
+  snprintf(line + used, sizeof(line) - (size_t)used, " [ 0 ]");
+  CHECK("pending area: an exact fit fits",
+        fr_repl_eval_line(&runtime, line, out, sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) == 0);
+
+#if FR_FEATURE_TEXT
+  /* Pressure test t-leak2: refused definitions that contain Text leave no
+   * object, Text byte, slot or pending byte behind. */
+  CHECK("t-leak2 state before",
+        fr_repl_eval_line(&runtime, "mem", before, sizeof(before)) == FR_OK);
+  for (int i = 0; i < 4; i++) {
+    snprintf(line, sizeof(line), "to leak%d [ \"refused text %d\" ]", i, i);
+    CHECK("t-leak2 definition is refused",
+          fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+              FR_ERR_CAPACITY);
+  }
+  CHECK("t-leak2 changes nothing",
+        fr_repl_eval_line(&runtime, "mem", out, sizeof(out)) == FR_OK &&
+            strcmp(out, before) == 0);
+#endif
+
+  /* Every parameter name at the token limit fits. */
+  CHECK("pending area: long names install",
+        fr_base_image_install(&runtime) == FR_OK);
+  used = snprintf(line, sizeof(line), "to long with ");
+  for (int i = 0; i < FR_PARSE_MAX_PARAMS; i++) {
+    if (i > 0) {
+      used += snprintf(line + used, sizeof(line) - (size_t)used, ", ");
+    }
+    memset(line + used, 'a' + i, FR_PROFILE_PARSE_MAX_TOKEN_BYTES);
+    used += FR_PROFILE_PARSE_MAX_TOKEN_BYTES;
+  }
+  snprintf(line + used, sizeof(line) - (size_t)used, " [ 0 ]");
+  {
+    static fr_compile_overlay_update_t update;
+    const char *names = NULL;
+    uint16_t names_len = 0;
+
+    CHECK("pending area: the longest legal names fit",
+          fr_compile_overlay_update_for_runtime(&runtime, line, &update) ==
+                  FR_OK &&
+              fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
+              fr_code_get_param_names(&runtime,
+                                      (fr_code_object_id_t)(runtime.code.count -
+                                                            1u),
+                                      &names, &names_len) == FR_OK &&
+              names_len == FR_PARSE_MAX_PARAMS *
+                               (FR_PROFILE_PARSE_MAX_TOKEN_BYTES + 1));
+  }
+
+#if FR_FEATURE_SOURCE_BASE
+  /* A base word keeps its names in the base part of the area: after a
+   * restore of the base, in a copied runtime, and after a clear. */
+  CHECK("base names install", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("a base word shows its names",
+        fr_repl_eval_line(&runtime, "see blink", out, sizeof(out)) == FR_OK &&
+            strstr(out, "to blink with pin, count, delay [") != NULL);
+  CHECK("clear keeps the base names",
+        fr_repl_eval_line(&runtime, "to w with x [ x ]", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "clear", out, sizeof(out)) == FR_OK &&
+            test_word_param_names(&runtime, "blink", "pin\0count\0delay\0",
+                                  16));
+  fr_code_restore_base(&runtime);
+  CHECK("fr_code_restore_base keeps the base names",
+        test_word_param_names(&runtime, "blink", "pin\0count\0delay\0", 16));
+  {
+    static fr_runtime_t copy;
+    fr_slot_id_t slot_id = 0;
+    fr_tagged_t tagged = 0;
+    fr_code_object_id_t code_id = 0;
+    const char *names = NULL;
+    uint16_t names_len = 0;
+    uintptr_t area = (uintptr_t)copy.code.ram_code_bytes;
+
+    memcpy(&copy, &runtime, sizeof(copy));
+    fr_code_rebase_ram_pointers(&copy, &runtime);
+    CHECK("a copied runtime rebases the names into its own area",
+          fr_slot_id_for_name(&copy, "blink", &slot_id) == FR_OK &&
+              fr_slot_read(&copy, slot_id, &tagged) == FR_OK &&
+              fr_tagged_decode_code_object_id(tagged, &code_id) == FR_OK &&
+              fr_code_get_param_names(&copy, code_id, &names, &names_len) ==
+                  FR_OK &&
+              (uintptr_t)names >= area &&
+              (uintptr_t)names + names_len <=
+                  area + sizeof(copy.code.ram_code_bytes) &&
+              names_len == 16 && memcmp(names, "pin\0count\0delay\0", 16) == 0);
+  }
+#endif
+
+#if FR_FEATURE_PERSISTENCE
+  /* A save that succeeds frees the pending names with their code. */
+  (void)fr_platform_persist_clear();
+  CHECK("save frees pending names install",
+        fr_base_image_install(&runtime) == FR_OK);
+  room = test_pending_room(&runtime);
+  CHECK("save frees pending names",
+        fr_repl_eval_line(&runtime, "to w with alpha, beta [ alpha ]", out,
+                          sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) < room &&
+            fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) == room);
+  (void)fr_platform_persist_clear();
+#endif
+}
+#endif
+
 /* A full store names itself and its limit, and a note that gives a remedy
  * gives one that works. */
 static void test_repl_capacity_notes(void) {
@@ -17677,9 +17907,8 @@ static void test_repl_capacity_notes(void) {
   fr_err_t err = FR_OK;
 
   CHECK("capacity notes install", fr_base_image_install(&runtime) == FR_OK);
-  pending_limit =
-      (uint16_t)(sizeof(runtime.code.overlay_instruction_bytes) -
-                 runtime.code.base_ram_used_instruction_bytes);
+  pending_limit = (uint16_t)(sizeof(runtime.code.ram_code_bytes) -
+                             runtime.code.ram_code_base_used);
   snprintf(expected, sizeof(expected),
            "code.pending.used 0\ncode.pending.total %u\nok\n",
            (unsigned)pending_limit);
@@ -17687,9 +17916,13 @@ static void test_repl_capacity_notes(void) {
         fr_repl_eval_line(&runtime, "mem code", out, sizeof(out)) == FR_OK &&
             strcmp(out, expected) == 0);
 
+  /* Each redefinition adds a code entry. The word is large enough that the
+   * pending area fills before the code entries run out, also on host_small
+   * (260 bytes of code and names, 16 entries). */
   for (int i = 0; i < 1000; i++) {
-    err = fr_repl_eval_line(&runtime, "to w with p [ p + 1 ]", out,
-                            sizeof(out));
+    err = fr_repl_eval_line(
+        &runtime, "to w with p [ p + 1 ; p + 2 ; p + 3 ; p + 4 ]", out,
+        sizeof(out));
     if (err != FR_OK) {
       break;
     }
@@ -18951,6 +19184,7 @@ int main(void) {
 #if FR_FEATURE_COMPILER
   test_repl_overlong_line_recovers();
   test_repl_capacity_notes();
+  test_pending_area_holds_code_and_names();
   test_repl_input_mistakes();
   test_repl_base_word_notice();
   test_repl_source_form_wire();
