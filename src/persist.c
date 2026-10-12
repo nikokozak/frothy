@@ -148,8 +148,8 @@ static fr_err_t fr_persist_cleanup_failed_apply(fr_runtime_t *runtime) {
 /* latest_only stops after the newest image instead of falling back to the
  * older one. The save tail needs that for its *result*: a fallback mount
  * would quietly put the runtime back on the previous program while save
- * reported success (ADR 0070). It is not a recovery policy -- the tolerant
- * save runs the ordinary loop afterwards when the newest image fails.
+ * reported success (ADR 0070, ADR 0090). It is not a recovery policy --
+ * each save runs the ordinary loop afterwards when the newest image fails.
  * Boot and public restore keep the fallback -- there, an older good image
  * is the recovery. */
 static fr_err_t
@@ -245,15 +245,26 @@ static fr_err_t fr_persist_remount(fr_runtime_t *runtime, bool latest_only) {
                                            true, latest_only, NULL);
 }
 
+/* A save mounts only the image that it wrote. When that fails, the ordinary
+ * loop brings back a mounted program, and the save keeps its own error. */
+static fr_err_t fr_persist_remount_saved(fr_runtime_t *runtime) {
+  fr_err_t err = fr_persist_remount(runtime, true);
+
+  if (err != FR_OK) {
+    (void)fr_persist_remount(runtime, false);
+  }
+  return err;
+}
+
 /* D5: save persists the user tier only and preserves the library tier in
- * durable storage byte-for-byte. The existing committed payload (if any) is
- * scanned for L1 record spans, those source bytes are copied into the new
- * stream in source order, and freshly encoded L2 records follow them. A first
- * save against empty storage produces an L2-only payload. */
+ * durable storage byte-for-byte. The mounted payload (if any) is scanned for
+ * L1 record spans, those source bytes are copied into the new stream in
+ * source order, and freshly encoded L2 records follow them. A save with no
+ * mounted image produces an L2-only payload. */
 /* Everything up to and including the header write, which is the commit:
- * the payload goes to the inactive slot first and the stamped header
- * last. On any error nothing is committed -- the inactive slot may be
- * dirty, but the newest valid image and the live runtime are both
+ * the payload goes to the slot that is not mounted first and the stamped
+ * header last. On any error nothing is committed -- that slot may be
+ * dirty, but the mounted image and the live runtime are both
  * untouched. Mounting the new image is the caller's next step, and the
  * boundary between the two is what tells a failed save from a failed
  * remount. */
@@ -271,7 +282,10 @@ static fr_err_t fr_persist_commit_image(fr_runtime_t *runtime) {
   }
   fr_persist_forget_boot_image();
 
-  read_err = fr_platform_persist_mount(0, &image, &image_length);
+  /* The kept records come from the image that the runtime is mounted on:
+   * their ids are true only for it. With none mounted (safe boot), the save
+   * writes only what the runtime holds (ADR 0090). */
+  read_err = fr_platform_persist_mounted_image(&image, &image_length);
   if (read_err == FR_OK) {
     save_err = fr_persist_format_validate(image, image_length, &info);
     if (save_err == FR_OK) {
@@ -282,16 +296,12 @@ static fr_err_t fr_persist_commit_image(fr_runtime_t *runtime) {
         old_payload_length = (uint16_t)info.payload_length;
       }
     }
-  } else if (read_err != FR_ERR_NOT_FOUND && read_err != FR_ERR_CORRUPT &&
-             read_err != FR_ERR_OTHER_RELEASE) {
+  } else if (read_err != FR_ERR_NOT_FOUND) {
     return read_err;
   }
   if (save_err == FR_OK) {
     save_err = fr_persist_stream_commit(runtime, old_payload,
                                         old_payload_length, true);
-  }
-  if (save_err != FR_OK) {
-    fr_platform_persist_mount_discard();
   }
   return save_err;
 }
@@ -317,7 +327,7 @@ static fr_err_t fr_persist_check_prompt_only(const fr_runtime_t *runtime) {
 fr_err_t fr_persist_save(fr_runtime_t *runtime) {
   FR_TRY(fr_persist_check_prompt_only(runtime));
   FR_TRY(fr_persist_commit_image(runtime));
-  return fr_persist_remount(runtime, false);
+  return fr_persist_remount_saved(runtime);
 }
 
 void fr_persist_note_save_rejection(fr_runtime_t *runtime, fr_err_t err) {
@@ -558,7 +568,7 @@ fr_err_t fr_persist_save_full(fr_runtime_t *runtime) {
   }
   fr_persist_forget_boot_image();
   FR_TRY(fr_persist_stream_commit(runtime, NULL, 0, false));
-  return fr_persist_remount(runtime, false);
+  return fr_persist_remount_saved(runtime);
 }
 
 /* SPEC D10: receiving install-library drops L1 from the device — runtime

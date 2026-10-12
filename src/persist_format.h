@@ -2,6 +2,8 @@
 
 #include "types.h"
 
+#include <stdbool.h>
+
 #if FR_FEATURE_PERSISTENCE
 
 enum {
@@ -43,5 +45,16 @@ fr_err_t fr_persist_format_validate(const uint8_t *bytes,
                                     fr_persist_format_info_t *out);
 fr_err_t fr_persist_format_stamp_generation(uint8_t *bytes,
                                             uint32_t backend_generation);
+
+enum { FR_PERSIST_NO_MOUNTED_SLOT = 0xff };
+
+/* The slot of two that a save writes, and its generation. The save never
+ * writes the slot that the runtime is mounted on, because it reads the kept
+ * records from it. With no image mounted, an empty or invalid slot comes
+ * first, then the older one. The generation is above every valid envelope. */
+void fr_persist_format_pick_commit_slot(const bool valid[2],
+                                        const fr_persist_format_info_t info[2],
+                                        uint8_t mounted_slot, uint8_t *out_slot,
+                                        uint32_t *out_generation);
 
 #endif

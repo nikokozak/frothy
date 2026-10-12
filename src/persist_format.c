@@ -174,3 +174,25 @@ fr_err_t fr_persist_format_stamp_generation(uint8_t *bytes,
   fr_persist_format_write_header_crc(bytes);
   return FR_OK;
 }
+
+void fr_persist_format_pick_commit_slot(const bool valid[2],
+                                        const fr_persist_format_info_t info[2],
+                                        uint8_t mounted_slot, uint8_t *out_slot,
+                                        uint32_t *out_generation) {
+  uint32_t newest = 0;
+
+  for (uint8_t slot = 0; slot < 2; slot++) {
+    if (valid[slot] && info[slot].backend_generation > newest) {
+      newest = info[slot].backend_generation;
+    }
+  }
+  if (mounted_slot < 2) {
+    *out_slot = (uint8_t)(1u - mounted_slot);
+  } else if (valid[0] && valid[1]) {
+    *out_slot =
+        info[0].backend_generation <= info[1].backend_generation ? 0u : 1u;
+  } else {
+    *out_slot = valid[0] ? 1u : 0u;
+  }
+  *out_generation = newest + 1u;
+}

@@ -15,6 +15,7 @@
 #include "event.h"
 #include "instruction.h"
 #include "persist.h"
+#include "persist_format.h"
 #include "platform.h"
 #include "repl.h"
 #include "runtime.h"
@@ -168,6 +169,112 @@ static void test_corrupt_newer_image_falls_back_to_older_good_image(void) {
 
   assert_restored_boot_is_nil();
 }
+
+/* ADR 0090: the slot that a save writes. It is never the mounted slot. */
+static void test_commit_slot_choice(void) {
+  static const struct {
+    bool valid0;
+    bool valid1;
+    uint32_t generation0;
+    uint32_t generation1;
+    uint8_t mounted_slot;
+    uint8_t slot;
+    uint32_t generation;
+  } cases[] = {
+      {false, false, 0, 0, FR_PERSIST_NO_MOUNTED_SLOT, 0, 1},
+      {true, false, 5, 0, FR_PERSIST_NO_MOUNTED_SLOT, 1, 6},
+      {false, true, 0, 5, FR_PERSIST_NO_MOUNTED_SLOT, 0, 6},
+      {true, true, 3, 5, FR_PERSIST_NO_MOUNTED_SLOT, 0, 6},
+      {true, true, 5, 3, FR_PERSIST_NO_MOUNTED_SLOT, 1, 6},
+      {true, true, 4, 4, FR_PERSIST_NO_MOUNTED_SLOT, 0, 5},
+      {true, true, 3, 5, 0, 1, 6},
+      {true, true, 3, 5, 1, 0, 6},
+      {true, false, 5, 0, 0, 1, 6},
+      {false, true, 0, 5, 1, 0, 6},
+  };
+
+  for (uint8_t i = 0; i < (uint8_t)(sizeof(cases) / sizeof(cases[0])); i++) {
+    bool valid[2] = {cases[i].valid0, cases[i].valid1};
+    fr_persist_format_info_t info[2] = {{0}};
+    uint8_t slot = 0xff;
+    uint32_t generation = 0;
+
+    info[0].backend_generation = cases[i].generation0;
+    info[1].backend_generation = cases[i].generation1;
+    fr_persist_format_pick_commit_slot(valid, info, cases[i].mounted_slot,
+                                       &slot, &generation);
+    TEST_ASSERT_EQUAL_UINT8(cases[i].slot, slot);
+    TEST_ASSERT_EQUAL_UINT32(cases[i].generation, generation);
+  }
+}
+
+#if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0
+/* ADR 0090: after a fallback to an older image, a save reads the records
+ * that it keeps from the mounted image and writes the other slot, so the
+ * mounted image stays. Before, the save read the newer bad image and wrote
+ * the slot that the runtime was mounted on. */
+static void test_save_after_fallback_keeps_the_mounted_image(void) {
+  uint8_t image[FR_PROFILE_PERSISTENCE_BYTES];
+  uint8_t mounted[FR_PROFILE_PERSISTENCE_BYTES];
+  uint8_t older[FR_PROFILE_PERSISTENCE_BYTES];
+  uint16_t image_length = 0;
+  uint16_t older_length = 0;
+  fr_persist_format_info_t info = {0};
+  const uint16_t version_offset = (uint16_t)(FR_PERSIST_HEADER_BYTES + 4u);
+  char buf[128];
+
+  save_boot_one_after_nil_save();
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_platform_persist_read(image, (uint16_t)sizeof(image),
+                                             &image_length, 0));
+  memcpy(mounted, image, image_length);
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_persist_format_validate(image, image_length, &info));
+  image[version_offset] ^= 0x5au;
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_format_build_header(
+                               image, info.payload_length,
+                               fr_crc32(&image[FR_PERSIST_HEADER_BYTES],
+                                        info.payload_length)));
+  TEST_ASSERT_EQUAL(FR_OK, test_persist_commit_image(image, info.total_length));
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_restore(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK, fr_repl_eval_line(&s_runtime, "two is fn [ 2 ]", buf,
+                                             (uint16_t)sizeof(buf)));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_save(&s_runtime));
+
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_platform_persist_read(older, (uint16_t)sizeof(older),
+                                             &older_length, 1));
+  TEST_ASSERT_EQUAL_UINT16(image_length, older_length);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(mounted, older, image_length);
+  assert_restored_boot_is_one();
+  TEST_ASSERT_EQUAL(
+      FR_OK, fr_repl_eval_line(&s_runtime, "two:", buf, (uint16_t)sizeof(buf)));
+  TEST_ASSERT_EQUAL_STRING("2\nok\n", buf);
+}
+
+/* ADR 0090: a save whose remount fails returns that error, and the ordinary
+ * loop leaves a mounted program. Before, the runtime was left cleared. */
+static void test_failed_save_remount_returns_its_error(void) {
+  char buf[128];
+  fr_tagged_t tagged = 0;
+  fr_int_t decoded = 0;
+
+  save_boot_one_after_nil_save();
+  TEST_ASSERT_EQUAL(FR_OK, fr_repl_eval_line(&s_runtime, "two is fn [ 2 ]", buf,
+                                             (uint16_t)sizeof(buf)));
+  fr_host_persist_debug_fail_next_mount_commit();
+  TEST_ASSERT_EQUAL(FR_ERR_IO, fr_persist_save(&s_runtime));
+
+  TEST_ASSERT_EQUAL(
+      FR_OK, fr_repl_eval_line(&s_runtime, "two:", buf, (uint16_t)sizeof(buf)));
+  TEST_ASSERT_EQUAL_STRING("2\nok\n", buf);
+  TEST_ASSERT_EQUAL(FR_OK, fr_vm_run_boot(&s_runtime, &tagged));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_int(tagged, &decoded));
+  TEST_ASSERT_EQUAL(1, decoded);
+}
+#endif
 
 #if FR_FEATURE_COMPILER && FR_FEATURE_EVENTS && FR_PROFILE_MAX_OVERLAY_NAMES > 0
 static void save_counter_event_image(fr_runtime_t *runtime) {
@@ -410,6 +517,11 @@ int main(void) {
   RUN_TEST(test_mid_commit_power_loss_keeps_previous_good_image);
   RUN_TEST(test_bad_payload_newer_image_falls_back_to_older_good_image);
   RUN_TEST(test_corrupt_newer_image_falls_back_to_older_good_image);
+  RUN_TEST(test_commit_slot_choice);
+#if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  RUN_TEST(test_save_after_fallback_keeps_the_mounted_image);
+  RUN_TEST(test_failed_save_remount_returns_its_error);
+#endif
 #if FR_FEATURE_COMPILER && FR_FEATURE_EVENTS && FR_PROFILE_MAX_OVERLAY_NAMES > 0
   RUN_TEST(test_failed_restore_drops_candidate_code_without_fallback);
   RUN_TEST(test_failed_restore_cleans_candidate_code_before_fallback);

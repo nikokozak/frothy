@@ -823,6 +823,10 @@ fr_err_t fr_platform_persist_mount(uint8_t image_index,
 fr_err_t fr_platform_persist_mount_commit(void);
 void fr_platform_persist_mount_discard(void);
 void fr_platform_persist_unmount(void);
+/* Borrow the image that the runtime is mounted on, or FR_ERR_NOT_FOUND when
+ * none is mounted. A save reads the records that it keeps from this image. */
+fr_err_t fr_platform_persist_mounted_image(const uint8_t **out_bytes,
+                                           uint16_t *out_length);
 bool fr_platform_persist_pointer_is_mounted(const void *ptr, uint16_t length);
 bool fr_platform_persist_code_pointer_is_direct(const void *ptr,
                                                 uint16_t length);

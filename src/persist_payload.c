@@ -1501,6 +1501,10 @@ static fr_err_t fr_persist_payload_write_finalized(
   fr_persist_object_record_kind_t object_kinds[FR_OBJECT_TABLE_CAPACITY];
   uint16_t code_count = code_count_initial;
   uint16_t object_count = object_count_initial;
+  uint8_t tier_lo =
+      tier_filter == 0 ? (uint8_t)FR_PERSIST_TIER_LIBRARY : tier_filter;
+  uint8_t tier_hi =
+      tier_filter == 0 ? (uint8_t)FR_PERSIST_TIER_USER : tier_filter;
 
   if (runtime == NULL || writer == NULL) {
     return FR_ERR_INVALID;
@@ -1542,65 +1546,69 @@ static fr_err_t fr_persist_payload_write_finalized(
                                    library_prefix_length));
   }
 
-  for (fr_slot_id_t slot_id = 0; slot_id < runtime->slots.count; slot_id++) {
-    fr_code_object_id_t code_id = 0;
-    uint16_t ignored = 0;
+  /* A full encode writes the whole library closure before any user root, so
+   * the library records hold the ids below a boundary and the save that
+   * copies them maps exactly those ids to themselves. */
+  for (uint8_t pass_tier = tier_lo; pass_tier <= tier_hi; pass_tier++) {
+    for (fr_slot_id_t slot_id = 0; slot_id < runtime->slots.count; slot_id++) {
+      fr_code_object_id_t code_id = 0;
+      uint16_t ignored = 0;
 
-    if (!fr_persist_slot_should_encode(runtime, slot_id, tier_filter)) {
-      continue;
+      if (!fr_persist_slot_should_encode(runtime, slot_id, pass_tier)) {
+        continue;
+      }
+      if (fr_tagged_decode_code_object_id(runtime->slots.current[slot_id],
+                                          &code_id) == FR_OK) {
+        FR_TRY(fr_persist_encode_code_ref(
+            writer, runtime, code_id, runtime_code_ids, code_visiting,
+            &code_count, runtime_object_ids, object_kinds, &object_count,
+            &ignored));
+      }
     }
-    if (fr_tagged_decode_code_object_id(runtime->slots.current[slot_id],
-                                        &code_id) == FR_OK) {
-      FR_TRY(fr_persist_encode_code_ref(writer, runtime, code_id,
-                                        runtime_code_ids, code_visiting,
-                                        &code_count,
-                                        runtime_object_ids, object_kinds,
-                                        &object_count, &ignored));
-    }
-  }
 
-  for (fr_slot_id_t slot_id = 0; slot_id < runtime->slots.count; slot_id++) {
-    fr_object_id_t object_id = 0;
-    uint16_t ignored = 0;
+    for (fr_slot_id_t slot_id = 0; slot_id < runtime->slots.count; slot_id++) {
+      fr_object_id_t object_id = 0;
+      uint16_t ignored = 0;
 
-    if (!fr_persist_slot_should_encode(runtime, slot_id, tier_filter)) {
-      continue;
-    }
-    if (fr_tagged_decode_object_id(runtime->slots.current[slot_id],
-                                   &object_id) == FR_OK) {
-      fr_persist_object_record_kind_t kind = FR_PERSIST_OBJECT_NONE;
+      if (!fr_persist_slot_should_encode(runtime, slot_id, pass_tier)) {
+        continue;
+      }
+      if (fr_tagged_decode_object_id(runtime->slots.current[slot_id],
+                                     &object_id) == FR_OK) {
+        fr_persist_object_record_kind_t kind = FR_PERSIST_OBJECT_NONE;
 
-      FR_TRY(fr_persist_object_kind(runtime, object_id, &kind));
-      if (kind == FR_PERSIST_OBJECT_TEXT) {
+        FR_TRY(fr_persist_object_kind(runtime, object_id, &kind));
+        if (kind == FR_PERSIST_OBJECT_TEXT) {
 #if !FR_FEATURE_TEXT
-        return FR_ERR_UNSUPPORTED;
+          return FR_ERR_UNSUPPORTED;
 #else
-        FR_TRY(fr_persist_encode_text_ref(writer, runtime, object_id,
-                                          runtime_object_ids, object_kinds,
-                                          &object_count, &ignored));
-#endif
-      } else if (kind == FR_PERSIST_OBJECT_CELLS) {
-        FR_TRY(fr_persist_encode_cell_ref(writer, runtime, object_id,
-                                          runtime_object_ids, object_kinds,
-                                          &object_count, &ignored));
-      } else if (kind == FR_PERSIST_OBJECT_RECORD_SHAPE) {
-#if !FR_FEATURE_RECORDS
-        return FR_ERR_UNSUPPORTED;
-#else
-        FR_TRY(fr_persist_encode_record_shape_ref(
-            writer, runtime, object_id, runtime_object_ids, object_kinds,
-            &object_count, &ignored));
-#endif
-      } else if (kind == FR_PERSIST_OBJECT_RECORD) {
-#if !FR_FEATURE_RECORDS
-        return FR_ERR_UNSUPPORTED;
-#else
-        FR_TRY(fr_persist_encode_record_ref(writer, runtime, object_id,
+          FR_TRY(fr_persist_encode_text_ref(writer, runtime, object_id,
                                             runtime_object_ids, object_kinds,
                                             &object_count, &ignored));
 #endif
-      } else {
-        return FR_ERR_TYPE;
+        } else if (kind == FR_PERSIST_OBJECT_CELLS) {
+          FR_TRY(fr_persist_encode_cell_ref(writer, runtime, object_id,
+                                            runtime_object_ids, object_kinds,
+                                            &object_count, &ignored));
+        } else if (kind == FR_PERSIST_OBJECT_RECORD_SHAPE) {
+#if !FR_FEATURE_RECORDS
+          return FR_ERR_UNSUPPORTED;
+#else
+          FR_TRY(fr_persist_encode_record_shape_ref(
+              writer, runtime, object_id, runtime_object_ids, object_kinds,
+              &object_count, &ignored));
+#endif
+        } else if (kind == FR_PERSIST_OBJECT_RECORD) {
+#if !FR_FEATURE_RECORDS
+          return FR_ERR_UNSUPPORTED;
+#else
+          FR_TRY(fr_persist_encode_record_ref(writer, runtime, object_id,
+                                              runtime_object_ids, object_kinds,
+                                              &object_count, &ignored));
+#endif
+        } else {
+          return FR_ERR_TYPE;
+        }
       }
     }
   }

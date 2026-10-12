@@ -2626,7 +2626,7 @@ static fr_err_t fr_esp_persist_pick_read_slot(
 static fr_err_t fr_esp_persist_pick_commit_slot(const esp_partition_t *partition,
                                                 uint8_t *out_slot,
                                                 uint32_t *out_generation) {
-  fr_persist_format_info_t info[FR_ESP_PERSIST_SLOT_COUNT];
+  fr_persist_format_info_t info[FR_ESP_PERSIST_SLOT_COUNT] = {{0}};
   bool valid[FR_ESP_PERSIST_SLOT_COUNT] = {false, false};
 
   if (out_slot == NULL || out_generation == NULL) {
@@ -2637,25 +2637,11 @@ static fr_err_t fr_esp_persist_pick_commit_slot(const esp_partition_t *partition
     valid[slot] =
         fr_esp_persist_slot_info(partition, slot, &info[slot]) == FR_OK;
   }
-
-  if (valid[0] && valid[1]) {
-    if (info[0].backend_generation <= info[1].backend_generation) {
-      *out_slot = 0;
-      *out_generation = info[1].backend_generation + 1u;
-    } else {
-      *out_slot = 1;
-      *out_generation = info[0].backend_generation + 1u;
-    }
-  } else if (valid[0]) {
-    *out_slot = 1;
-    *out_generation = info[0].backend_generation + 1u;
-  } else if (valid[1]) {
-    *out_slot = 0;
-    *out_generation = info[1].backend_generation + 1u;
-  } else {
-    *out_slot = 0;
-    *out_generation = 1;
-  }
+  fr_persist_format_pick_commit_slot(valid, info,
+                                     fr_esp_persist_mmap_active
+                                         ? fr_esp_persist_mmap_slot
+                                         : (uint8_t)FR_PERSIST_NO_MOUNTED_SLOT,
+                                     out_slot, out_generation);
   return FR_OK;
 }
 
@@ -2703,6 +2689,19 @@ void fr_platform_persist_unmount(void) {
     fr_esp_persist_mmap_slot = 0;
     fr_esp_persist_candidate_aliases_active = false;
   }
+}
+
+fr_err_t fr_platform_persist_mounted_image(const uint8_t **out_bytes,
+                                           uint16_t *out_length) {
+  if (out_bytes == NULL || out_length == NULL) {
+    return FR_ERR_INVALID;
+  }
+  if (!fr_esp_persist_mmap_active) {
+    return FR_ERR_NOT_FOUND;
+  }
+  *out_bytes = fr_esp_persist_mmap_bytes;
+  *out_length = fr_esp_persist_mmap_length;
+  return FR_OK;
 }
 
 void fr_platform_persist_mount_discard(void) {

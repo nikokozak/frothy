@@ -202,6 +202,15 @@ static void read_committed_payload(uint8_t *header, uint8_t *payload,
 
 static fr_runtime_t s_runtime;
 
+/* A restart: a fresh runtime, then the two-call boot mount. A save keeps
+ * the library records of the mounted image, so a test that saves after a
+ * reset must mount first (ADR 0090). */
+static void tier_boot(void) {
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_restore_library(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_restore_user(&s_runtime));
+}
+
 void setUp(void) {
   fr_platform_persist_clear();
   /* T12L-7 D3: install tier is per-runtime. setUp resets to user so
@@ -598,9 +607,9 @@ static void test_save_preserves_library_records_from_nvs(void) {
   /* Seed the committed image with the L1-only payload + a valid header. */
   seed_persist_from_runtime(&s_runtime);
 
-  /* Reset the runtime fully and bring up only L2 — proves the saved L1
-   * came from NVS, not from runtime overlay state. */
-  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  /* Restart on the seeded image, then add L2 -- the save copies the L1
+   * records of the mounted image byte for byte. */
+  tier_boot();
   TEST_ASSERT_EQUAL(FR_OK,
                     fr_repl_eval_line(&s_runtime, "install-user", repl_out,
                                       (uint16_t)sizeof(repl_out)));
@@ -663,7 +672,7 @@ static void test_save_preserves_library_code_word_from_nvs(void) {
                                                      &l1_payload_length));
   seed_persist_from_runtime(&s_runtime);
 
-  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_boot();
   TEST_ASSERT_EQUAL(FR_OK,
                     fr_repl_eval_line(&s_runtime, "install-user", repl_out,
                                       (uint16_t)sizeof(repl_out)));
@@ -721,7 +730,7 @@ static void test_save_preserves_library_text_in_code_from_nvs(void) {
                                                      &l1_payload_length));
   seed_persist_from_runtime(&s_runtime);
 
-  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_boot();
   TEST_ASSERT_EQUAL(FR_OK,
                     fr_repl_eval_line(&s_runtime, "install-user", repl_out,
                                       (uint16_t)sizeof(repl_out)));
@@ -779,7 +788,7 @@ static void test_save_stream_matches_staged_l1_reference(void) {
                                old_payload, old_length, prefix,
                                (uint16_t)sizeof(prefix), &prefix_length));
 
-  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_boot();
   TEST_ASSERT_EQUAL(FR_OK,
                     fr_repl_eval_line(&s_runtime, "install-user", repl_out,
                                       (uint16_t)sizeof(repl_out)));
@@ -1506,6 +1515,109 @@ static void test_install_library_persists_replacement_l1(void) {
   TEST_ASSERT_EQUAL(7, value);
 }
 
+static void tier_eval_expect(const char *line, const char *expected) {
+  char out[FR_REPL_OUTPUT_BYTES];
+
+  TEST_ASSERT_EQUAL_MESSAGE(
+      FR_OK, fr_repl_eval_line(&s_runtime, line, out, (uint16_t)sizeof(out)),
+      line);
+  TEST_ASSERT_EQUAL_STRING_MESSAGE(expected, out, line);
+}
+
+/* ADR 0090: with no mounted image (safe boot skips the boot mount), a save
+ * has no source for kept records and writes only what the runtime holds.
+ * Before, it copied the library records of the newest image: the new word
+ * had taken the slot of a library word that the runtime did not know, the
+ * image failed its mount, and the save fell back to the older image. */
+static void test_save_with_no_mounted_image_keeps_its_own_code(void) {
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lw is fn [ 42 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  fr_platform_persist_unmount();
+  tier_eval_expect("f is fn [ 1 ]", "ok\n");
+  tier_eval_expect("save", "ok\n");
+
+  tier_boot();
+  tier_eval_expect("f:", "1\nok\n");
+  {
+    fr_slot_id_t slot = 0;
+
+    TEST_ASSERT_EQUAL(FR_ERR_NOT_FOUND,
+                      fr_slot_id_for_name(&s_runtime, "lw", &slot));
+  }
+}
+
+static fr_code_object_id_t tier_code_id_of(const char *name) {
+  fr_slot_id_t slot = 0;
+  fr_tagged_t tagged = 0;
+  fr_code_object_id_t code_id = 0;
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, name, &slot));
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, slot, &tagged));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_code_object_id(tagged, &code_id));
+  return code_id;
+}
+
+/* ADR 0090: a full encode gives the library closure the lower ids. Before,
+ * `f` (saved before install-library) got a lower code id than `lw`, and the
+ * next save left out the code of `f`. */
+static void test_library_closure_first_keeps_user_code(void) {
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("f is fn [ 1 ]", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lw is fn [ 42 ]", "ok\n");
+  TEST_ASSERT_LESS_THAN(tier_code_id_of("f"), tier_code_id_of("lw"));
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("g is fn [ 2 ]", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_eval_expect("restore", "ok\n");
+  tier_eval_expect("g:", "2\nok\n");
+  tier_boot();
+  tier_eval_expect("f:", "1\nok\n");
+  tier_eval_expect("lw:", "42\nok\n");
+  tier_eval_expect("g:", "2\nok\n");
+}
+
+#if FR_FEATURE_TEXT
+static fr_object_id_t tier_object_id_of(const char *name) {
+  fr_slot_id_t slot = 0;
+  fr_tagged_t tagged = 0;
+  fr_object_id_t object_id = 0;
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, name, &slot));
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, slot, &tagged));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_object_id(tagged, &object_id));
+  return object_id;
+}
+
+/* The same rule for objects: a user Text made before install-library and a
+ * library Text made after it. */
+static void test_library_closure_first_keeps_user_text(void) {
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("ut is \"user\"", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lt is \"lib\"", "ok\n");
+  TEST_ASSERT_LESS_THAN(tier_object_id_of("ut"), tier_object_id_of("lt"));
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("g is 2", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_boot();
+  tier_eval_expect("text.equals?: ut, \"user\"", "true\nok\n");
+  tier_eval_expect("text.equals?: lt, \"lib\"", "true\nok\n");
+  tier_eval_expect("g", "2\nok\n");
+}
+#endif
+
 static void test_repl_install_library_replies_ok(void) {
   char out[FR_REPL_OUTPUT_BYTES];
 
@@ -1553,6 +1665,11 @@ int main(void) {
   RUN_TEST(test_user_restore_without_prior_library_returns_not_found);
   RUN_TEST(test_install_library_drops_l1_runtime_and_nvs_preserves_user);
   RUN_TEST(test_install_library_persists_replacement_l1);
+  RUN_TEST(test_save_with_no_mounted_image_keeps_its_own_code);
+  RUN_TEST(test_library_closure_first_keeps_user_code);
+#if FR_FEATURE_TEXT
+  RUN_TEST(test_library_closure_first_keeps_user_text);
+#endif
   RUN_TEST(test_repl_install_library_replies_ok);
   RUN_TEST(test_repl_install_user_replies_ok);
   return UNITY_END();

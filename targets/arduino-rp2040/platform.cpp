@@ -462,6 +462,7 @@ static fr_err_t fr_rp2040_persist_pick_commit_slot(
     uint8_t *out_slot, uint32_t *out_generation) {
   fr_persist_format_info_t info[FR_RP2040_PERSIST_SLOT_COUNT] = {};
   bool valid[FR_RP2040_PERSIST_SLOT_COUNT] = {false, false};
+  uint8_t mounted_slot = 0;
 
   if (out_slot == NULL || out_generation == NULL) {
     return FR_ERR_INVALID;
@@ -469,24 +470,16 @@ static fr_err_t fr_rp2040_persist_pick_commit_slot(
   for (uint8_t slot = 0; slot < FR_RP2040_PERSIST_SLOT_COUNT; slot++) {
     valid[slot] = fr_rp2040_persist_slot_info(slot, &info[slot]) == FR_OK;
   }
-  if (valid[0] && valid[1]) {
-    if (info[0].backend_generation <= info[1].backend_generation) {
-      *out_slot = 0;
-      *out_generation = info[1].backend_generation + 1u;
-    } else {
-      *out_slot = 1;
-      *out_generation = info[0].backend_generation + 1u;
-    }
-  } else if (valid[0]) {
-    *out_slot = 1;
-    *out_generation = info[0].backend_generation + 1u;
-  } else if (valid[1]) {
-    *out_slot = 0;
-    *out_generation = info[1].backend_generation + 1u;
+  if (!fr_rp2040_persist_mounted) {
+    mounted_slot = FR_PERSIST_NO_MOUNTED_SLOT;
+  } else if (fr_rp2040_persist_mounted_bytes ==
+             fr_rp2040_persist_slot_bytes(0)) {
+    mounted_slot = 0;
   } else {
-    *out_slot = 0;
-    *out_generation = 1;
+    mounted_slot = 1;
   }
+  fr_persist_format_pick_commit_slot(valid, info, mounted_slot, out_slot,
+                                     out_generation);
   return FR_OK;
 }
 
@@ -1477,6 +1470,19 @@ void fr_platform_persist_unmount(void) {
   fr_rp2040_persist_mounted_bytes = NULL;
   fr_rp2040_persist_mounted_length = 0;
   fr_rp2040_persist_mounted = false;
+}
+
+fr_err_t fr_platform_persist_mounted_image(const uint8_t **out_bytes,
+                                           uint16_t *out_length) {
+  if (out_bytes == NULL || out_length == NULL) {
+    return FR_ERR_INVALID;
+  }
+  if (!fr_rp2040_persist_mounted) {
+    return FR_ERR_NOT_FOUND;
+  }
+  *out_bytes = fr_rp2040_persist_mounted_bytes;
+  *out_length = fr_rp2040_persist_mounted_length;
+  return FR_OK;
 }
 
 bool fr_platform_persist_pointer_is_mounted(const void *ptr,

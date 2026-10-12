@@ -3642,7 +3642,7 @@ static fr_err_t fr_host_persist_pick_read_slot(
 
 static fr_err_t fr_host_persist_pick_commit_slot(uint8_t *out_slot,
                                                  uint32_t *out_generation) {
-  fr_persist_format_info_t info[FR_HOST_PERSIST_SLOT_COUNT];
+  fr_persist_format_info_t info[FR_HOST_PERSIST_SLOT_COUNT] = {{0}};
   bool valid[FR_HOST_PERSIST_SLOT_COUNT] = {false, false};
 
   if (out_slot == NULL || out_generation == NULL) {
@@ -3652,25 +3652,11 @@ static fr_err_t fr_host_persist_pick_commit_slot(uint8_t *out_slot,
   for (uint8_t slot = 0; slot < FR_HOST_PERSIST_SLOT_COUNT; slot++) {
     valid[slot] = fr_host_persist_slot_info(slot, &info[slot]) == FR_OK;
   }
-
-  if (valid[0] && valid[1]) {
-    if (info[0].backend_generation <= info[1].backend_generation) {
-      *out_slot = 0;
-      *out_generation = info[1].backend_generation + 1u;
-    } else {
-      *out_slot = 1;
-      *out_generation = info[0].backend_generation + 1u;
-    }
-  } else if (valid[0]) {
-    *out_slot = 1;
-    *out_generation = info[0].backend_generation + 1u;
-  } else if (valid[1]) {
-    *out_slot = 0;
-    *out_generation = info[1].backend_generation + 1u;
-  } else {
-    *out_slot = 0;
-    *out_generation = 1;
-  }
+  fr_persist_format_pick_commit_slot(valid, info,
+                                     fr_host_persist_active_mounted
+                                         ? fr_host_persist_active_mount_slot
+                                         : (uint8_t)FR_PERSIST_NO_MOUNTED_SLOT,
+                                     out_slot, out_generation);
   return FR_OK;
 }
 
@@ -3788,6 +3774,26 @@ void fr_platform_persist_unmount(void) {
 #ifdef FR_HOST_TEST_HELPERS
   fr_host_persist_active_map_mounted = false;
 #endif
+}
+
+fr_err_t fr_platform_persist_mounted_image(const uint8_t **out_bytes,
+                                           uint16_t *out_length) {
+  if (out_bytes == NULL || out_length == NULL) {
+    return FR_ERR_INVALID;
+  }
+  if (!fr_host_persist_active_mounted) {
+    return FR_ERR_NOT_FOUND;
+  }
+#ifdef FR_HOST_TEST_HELPERS
+  if (fr_host_persist_active_map_mounted) {
+    *out_bytes = fr_host_persist_mount_maps[fr_host_persist_active_map];
+    *out_length = fr_host_persist_mount_map_lengths[fr_host_persist_active_map];
+    return FR_OK;
+  }
+#endif
+  *out_bytes = fr_host_persist_slots[fr_host_persist_active_mount_slot].bytes;
+  *out_length = fr_host_persist_slots[fr_host_persist_active_mount_slot].length;
+  return FR_OK;
 }
 
 fr_err_t fr_platform_persist_mount_commit(void) {
