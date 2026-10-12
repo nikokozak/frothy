@@ -70,6 +70,13 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   it wrote, it answers that error, and the device runs the newest image that it
   can mount. Before, the device went back to the older program and the save
   answered `ok`. A save never writes over the image that the device runs.
+- **A redefinition of a library word survives `save`.** After a user word
+  replaced a library word (notice 103), `save` answered `corrupt data (11)`;
+  v0.1.22 answered `ok` but lost the new word. Now the saved image keeps both
+  values: the user value is the value of the word, and `wipe-user` brings
+  back the library value. A `save` that would hold more values than the
+  device can mount fails with `capacity exceeded (4)`, and the image that the
+  device runs does not change.
 - **A `save` in safe boot keeps only what the device holds.** In safe boot the
   device does not load the saved program, so `save` writes only the words that
   you define. Before, a new word could take the slot of a saved library word,
