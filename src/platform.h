@@ -851,7 +851,13 @@ fr_err_t fr_platform_persist_clear(void);
  * stored image without exposing the backend's slot layout. */
 fr_err_t fr_host_persist_debug_corrupt_newest(uint16_t offset, uint8_t value);
 void fr_host_persist_debug_interrupt_next_header_write(void);
+/* The next finalize writes its header and then returns an error. */
+void fr_host_persist_debug_fail_after_next_header_write(void);
+/* Each call makes one more mount commit fail. */
 void fr_host_persist_debug_fail_next_mount_commit(void);
+/* One step of the next save fails: step 0 is the erase at stream begin, and
+ * step n is the nth stream write. */
+void fr_host_persist_debug_fail_stream_step(uint16_t step);
 void fr_host_persist_debug_shadow_mounts(bool enabled);
 void fr_host_persist_debug_direct_code_pointers(bool enabled);
 #endif

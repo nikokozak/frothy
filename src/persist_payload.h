@@ -47,6 +47,13 @@ fr_err_t fr_persist_payload_save_stream(
     uint16_t old_payload_length, fr_persist_payload_write_fn_t write,
     void *ctx, uint16_t *out_length);
 
+/* The values that a save must store hold no handle and no Bytes value. A
+ * command that saves at once checks this before its save (ADR 0090
+ * amendment). A refusal then leaves its target binding, the tier and the
+ * saved image as they were. The encoder checks it too. On a refusal, the
+ * note names the slot. */
+fr_err_t fr_persist_payload_check_savable(const fr_runtime_t *runtime);
+
 /* ADR 0070 tolerant save. hold_volatile_slots collects the overlay slots
  * whose live handle value can be stored as nil, or returns FR_ERR_VOLATILE
  * when any of them must keep the old strict rejection. note_held_slots

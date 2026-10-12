@@ -13,6 +13,7 @@
 #include "code.h"
 #include "crc.h"
 #include "event.h"
+#include "handle.h"
 #include "instruction.h"
 #include "persist.h"
 #include "persist_format.h"
@@ -103,7 +104,9 @@ static void assert_all_code_headers_read(fr_runtime_t *runtime) {
 
 void setUp(void) { TEST_ASSERT_EQUAL(FR_OK, fr_platform_persist_clear()); }
 
-void tearDown(void) {}
+/* A boot forgets the handles of s_runtime, and the host keeps their pins
+ * open. A failed test must not leave a pin busy for the next one. */
+void tearDown(void) { fr_handle_close_all(&s_runtime); }
 
 static void test_read_returns_newest_good_image(void) {
   save_boot_one_after_nil_save();
@@ -511,6 +514,263 @@ static void test_see_after_restore_renders_canonical_arg_names(void) {
 }
 #endif
 
+#if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0
+/* ADR 0090 amendment: `wipe-user`, `install-library` and a definition in
+ * library mode change the runtime and then save at once. */
+static void expect_line(const char *line, fr_err_t err, const char *expected) {
+  char out[FR_REPL_OUTPUT_BYTES];
+
+  TEST_ASSERT_EQUAL_MESSAGE(
+      err, fr_repl_eval_line(&s_runtime, line, out, (uint16_t)sizeof(out)),
+      line);
+  if (expected != NULL) {
+    TEST_ASSERT_EQUAL_STRING_MESSAGE(expected, out, line);
+  }
+}
+
+static void expect_no_name(const char *name) {
+  fr_slot_id_t slot_id = 0;
+
+  TEST_ASSERT_EQUAL_MESSAGE(FR_ERR_NOT_FOUND,
+                            fr_slot_id_for_name(&s_runtime, name, &slot_id),
+                            name);
+}
+
+/* A restart: a fresh runtime and the two-call boot mount. */
+static void boot(void) {
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_restore_library(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_restore_user(&s_runtime));
+}
+
+/* The saved program: the library word lw and the user word u. */
+static void boot_saved_words(void) {
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  expect_line("install-library", FR_OK, "ok\n");
+  expect_line("lw is fn [ 1 ]", FR_OK, "ok\n");
+  expect_line("install-user", FR_OK, "ok\n");
+  expect_line("u is fn [ 2 ]", FR_OK, "ok\n");
+  expect_line("save", FR_OK, "ok\n");
+  boot();
+}
+
+static void expect_saved_words(void) {
+  expect_line("lw:", FR_OK, "1\nok\n");
+  expect_line("u:", FR_OK, "2\nok\n");
+}
+
+/* A library definition after a fresh mount in library mode. */
+static void enter_library_mode(void) {
+  expect_line("install-library", FR_OK, "ok\n");
+  expect_line("lw is fn [ 1 ]", FR_OK, "ok\n");
+}
+
+/* A failed step before the commit: the runtime goes back to the mounted
+ * image, and the next boot mounts it. Step 0 is the erase at stream begin;
+ * steps 1 and 2 are the first two writes. */
+static void test_failed_save_step_restores_the_mounted_image(void) {
+  static const char *const commands[] = {"wipe-user", "install-library",
+                                         "nw is fn [ 3 ]"};
+
+  for (uint8_t command = 0; command < 3; command++) {
+    for (uint16_t step = 0; step < 3; step++) {
+      TEST_ASSERT_EQUAL(FR_OK, fr_platform_persist_clear());
+      boot_saved_words();
+      if (command == 2) {
+        enter_library_mode();
+      }
+      fr_host_persist_debug_fail_stream_step(step);
+      expect_line(commands[command], FR_ERR_IO, NULL);
+      expect_saved_words();
+      expect_no_name("nw");
+      TEST_ASSERT_EQUAL(command == 2 ? FR_INSTALL_TIER_LIBRARY
+                                     : FR_INSTALL_TIER_USER,
+                        s_runtime.install_tier);
+      boot();
+      expect_saved_words();
+      expect_no_name("nw");
+    }
+  }
+}
+
+/* A failed finalize has an unknown result: the runtime follows the newest
+ * image that mounts, and a restart mounts the same image. */
+static void test_failed_finalize_follows_the_newest_image(void) {
+  /* Before the header write, the mounted image stays the newest. */
+  boot_saved_words();
+  enter_library_mode();
+  fr_host_persist_debug_interrupt_next_header_write();
+  expect_line("nw is fn [ 3 ]", FR_ERR_IO, NULL);
+  expect_saved_words();
+  expect_no_name("nw");
+  boot();
+  expect_saved_words();
+  expect_no_name("nw");
+
+  /* After the header write, the new image is the newest. */
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_persist_clear());
+  boot_saved_words();
+  enter_library_mode();
+  fr_host_persist_debug_fail_after_next_header_write();
+  expect_line("nw is fn [ 3 ]", FR_ERR_IO, NULL);
+  expect_line("nw:", FR_OK, "3\nok\n");
+  boot();
+  expect_saved_words();
+  expect_line("nw:", FR_OK, "3\nok\n");
+
+  /* Both mount attempts of the save fail too; a restart mounts the new
+   * image. */
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_persist_clear());
+  boot_saved_words();
+  enter_library_mode();
+  fr_host_persist_debug_fail_after_next_header_write();
+  fr_host_persist_debug_fail_next_mount_commit();
+  fr_host_persist_debug_fail_next_mount_commit();
+  expect_line("nw is fn [ 3 ]", FR_ERR_IO, NULL);
+  boot();
+  expect_saved_words();
+  expect_line("nw:", FR_OK, "3\nok\n");
+}
+
+/* With no mounted image (safe boot), a failed save clears the project: a
+ * mount could load the image that the boot skipped. A write fails, then a
+ * finalize fails before its header write. */
+static void test_failed_save_with_no_mounted_image_clears_the_project(void) {
+  for (uint8_t round = 0; round < 2; round++) {
+    TEST_ASSERT_EQUAL(FR_OK, fr_platform_persist_clear());
+    boot_saved_words();
+    TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+    fr_platform_persist_unmount();
+    expect_line("x is fn [ 9 ]", FR_OK, "ok\n");
+    if (round == 0) {
+      fr_host_persist_debug_fail_stream_step(1);
+    } else {
+      fr_host_persist_debug_interrupt_next_header_write();
+    }
+    expect_line("install-library", FR_ERR_IO, NULL);
+    expect_no_name("x");
+    expect_no_name("lw");
+    boot();
+    expect_saved_words();
+  }
+}
+
+#if FR_FEATURE_HANDLES && FR_FEATURE_PWM
+static const char s_not_saved_h[] =
+    "error: not saved (13)\n"
+    "detail: cannot save slot 'h' - bound to a live handle or buffer\n";
+static const char s_not_saved_u[] =
+    "error: not saved (13)\n"
+    "detail: cannot save slot 'u' - bound to a live handle or buffer\n";
+
+static uint8_t open_pwm_handles(void) {
+  uint8_t count = 0;
+
+  for (uint16_t i = 0; i < FR_PROFILE_MAX_HANDLES; i++) {
+    const fr_handle_entry_t *entry = &s_runtime.handles.entries[i];
+
+    if (entry->kind == FR_HANDLE_KIND_PWM &&
+        entry->platform_index != FR_HANDLE_PLATFORM_NONE) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/* The `mem` report is longer than FR_REPL_OUTPUT_BYTES. */
+enum { MEM_REPORT_BYTES = 1024 };
+
+/* `install-library` checks before its wipe that its save can store every
+ * value: a refusal changes nothing. */
+static void test_install_library_refuses_a_user_handle_with_no_change(void) {
+  char before[MEM_REPORT_BYTES];
+  char after[MEM_REPORT_BYTES];
+
+  boot_saved_words();
+  expect_line("x is fn [ 3 ]", FR_OK, "ok\n");
+  expect_line("h is pwm.open: 5, 1000", FR_OK, "ok\n");
+  TEST_ASSERT_EQUAL(FR_OK, fr_repl_eval_line(&s_runtime, "mem", before,
+                                             (uint16_t)sizeof(before)));
+  expect_line("install-library", FR_ERR_VOLATILE, s_not_saved_h);
+  TEST_ASSERT_EQUAL(FR_OK, fr_repl_eval_line(&s_runtime, "mem", after,
+                                             (uint16_t)sizeof(after)));
+  TEST_ASSERT_EQUAL_STRING(before, after);
+  expect_saved_words();
+  expect_line("x:", FR_OK, "3\nok\n");
+  expect_line("pwm.write: h, 0", FR_OK, "ok\n");
+  TEST_ASSERT_EQUAL_UINT8(1, open_pwm_handles());
+  TEST_ASSERT_EQUAL(FR_INSTALL_TIER_USER, s_runtime.install_tier);
+}
+
+/* In library mode, a value binding checks after its run, and a function
+ * definition checks before its change. A refusal changes no name, slot or
+ * tier, and closes no handle. */
+static void test_library_definitions_refuse_a_handle_with_no_change(void) {
+  char before[MEM_REPORT_BYTES];
+  char after[MEM_REPORT_BYTES];
+
+  boot_saved_words();
+  enter_library_mode();
+  TEST_ASSERT_EQUAL(FR_OK, fr_repl_eval_line(&s_runtime, "mem", before,
+                                             (uint16_t)sizeof(before)));
+  expect_line("h is pwm.open: 5, 1000", FR_ERR_VOLATILE, s_not_saved_h);
+  TEST_ASSERT_EQUAL(FR_OK, fr_repl_eval_line(&s_runtime, "mem", after,
+                                             (uint16_t)sizeof(after)));
+  TEST_ASSERT_EQUAL_STRING(before, after);
+  expect_no_name("h");
+  TEST_ASSERT_EQUAL_UINT8(1, open_pwm_handles());
+  TEST_ASSERT_EQUAL(FR_INSTALL_TIER_LIBRARY, s_runtime.install_tier);
+
+  /* The exact repeat returns the handle that the user word u now holds. */
+  expect_line("set u to pwm.open: 5, 1000", FR_OK, NULL);
+  expect_line("h is pwm.open: 5, 1000", FR_ERR_VOLATILE, s_not_saved_u);
+  expect_no_name("h");
+  expect_line("pwm.write: u, 0", FR_OK, "ok\n");
+  expect_line("nw is fn [ 3 ]", FR_ERR_VOLATILE, s_not_saved_u);
+  expect_no_name("nw");
+  expect_line("pwm.write: u, 0", FR_OK, "ok\n");
+  TEST_ASSERT_EQUAL_UINT8(1, open_pwm_handles());
+
+  /* `clear` closes the pin; the boot below only forgets it. */
+  expect_line("clear", FR_OK, "ok\n");
+  boot();
+  expect_no_name("h");
+  expect_no_name("nw");
+  expect_saved_words();
+}
+
+/* A refused library binding of an existing name gives the slot its value
+ * and its overlay flag back. */
+static void test_refused_library_rebinding_restores_its_target(void) {
+  fr_slot_id_t u_slot = 0;
+
+  boot_saved_words();
+  enter_library_mode();
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, "u", &u_slot));
+  expect_line("u is pwm.open: 5, 1000", FR_ERR_VOLATILE, s_not_saved_u);
+  expect_line("u:", FR_OK, "2\nok\n");
+  TEST_ASSERT_FALSE(fr_slot_is_overlay(&s_runtime, u_slot));
+  TEST_ASSERT_EQUAL_UINT8(1, open_pwm_handles());
+}
+
+/* `wipe-user` cannot check before its wipe. A library value that the save
+ * cannot store fails the save. The runtime goes back to the mounted image,
+ * also when the first remount fails. The command keeps the save error. */
+static void test_failed_rollback_remount_keeps_the_save_error(void) {
+  boot_saved_words();
+  enter_library_mode();
+  expect_line("set lw to pwm.open: 5, 1000", FR_OK, NULL);
+  expect_line("install-user", FR_OK, "ok\n");
+  fr_host_persist_debug_fail_next_mount_commit();
+  expect_line("wipe-user", FR_ERR_VOLATILE, NULL);
+  expect_saved_words();
+  TEST_ASSERT_EQUAL_UINT8(0, open_pwm_handles());
+  boot();
+  expect_saved_words();
+}
+#endif
+#endif
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_read_returns_newest_good_image);
@@ -532,6 +792,17 @@ int main(void) {
   RUN_TEST(test_failed_mount_commit_drops_candidate_slot_names);
 #endif
   RUN_TEST(test_clear_reports_not_found);
+#if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  RUN_TEST(test_failed_save_step_restores_the_mounted_image);
+  RUN_TEST(test_failed_finalize_follows_the_newest_image);
+  RUN_TEST(test_failed_save_with_no_mounted_image_clears_the_project);
+#if FR_FEATURE_HANDLES && FR_FEATURE_PWM
+  RUN_TEST(test_install_library_refuses_a_user_handle_with_no_change);
+  RUN_TEST(test_library_definitions_refuse_a_handle_with_no_change);
+  RUN_TEST(test_refused_library_rebinding_restores_its_target);
+  RUN_TEST(test_failed_rollback_remount_keeps_the_save_error);
+#endif
+#endif
 #if FR_FEATURE_TEXT
   RUN_TEST(test_see_after_restore_renders_canonical_arg_names);
 #endif

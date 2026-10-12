@@ -261,13 +261,11 @@ static fr_err_t fr_persist_remount_saved(fr_runtime_t *runtime) {
  * L1 record spans, those source bytes are copied into the new stream in
  * source order, and freshly encoded L2 records follow them. A save with no
  * mounted image produces an L2-only payload. */
-/* Everything up to and including the header write, which is the commit:
- * the payload goes to the slot that is not mounted first and the stamped
- * header last. On any error nothing is committed -- that slot may be
- * dirty, but the mounted image and the live runtime are both
- * untouched. Mounting the new image is the caller's next step, and the
- * boundary between the two is what tells a failed save from a failed
- * remount. */
+/* The payload goes first to the slot that is not mounted, and the stamped
+ * header goes last. The header write is the commit. A failure before it
+ * leaves that slot dirty, and the mounted image and the live runtime do not
+ * change. A failed header write has an unknown durable result, because the
+ * header can be on the flash. The caller mounts the newest image next. */
 static fr_err_t fr_persist_commit_image(fr_runtime_t *runtime) {
   fr_err_t read_err = FR_OK;
   fr_err_t save_err = FR_OK;
@@ -304,6 +302,37 @@ static fr_err_t fr_persist_commit_image(fr_runtime_t *runtime) {
                                         old_payload_length, true);
   }
   return save_err;
+}
+
+/* The save of a command that changed the runtime first: `wipe-user`,
+ * `install-library` and a definition in library mode (ADR 0090 amendment).
+ * When the save fails, the runtime goes back to the newest image that
+ * mounts. Before the commit that is the mounted image, so the change of the
+ * command goes, with all other unsaved project state. A failed finalize can
+ * leave either image newest. With no mounted image (safe boot), a failure
+ * clears the project instead, because a mount could load the image that the
+ * boot skipped. The command returns the first error. Plain `save` keeps its
+ * runtime; only prompt commands come here (ADR 0071). */
+static fr_err_t fr_persist_save_at_once(fr_runtime_t *runtime, bool full) {
+  const uint8_t *image = NULL;
+  uint16_t image_length = 0;
+  bool mounted =
+      fr_platform_persist_mounted_image(&image, &image_length) == FR_OK;
+  fr_err_t err = FR_OK;
+  fr_err_t mount_err = FR_OK;
+
+  if (full) {
+    fr_persist_forget_boot_image();
+    err = fr_persist_stream_commit(runtime, NULL, 0, false);
+  } else {
+    err = fr_persist_commit_image(runtime);
+  }
+  if (err != FR_OK && !mounted) {
+    (void)fr_runtime_reset(runtime);
+    return err;
+  }
+  mount_err = fr_persist_remount_saved(runtime);
+  return err != FR_OK ? err : mount_err;
 }
 
 /* ADR 0071. These entries replace the running program: they commit a new
@@ -348,10 +377,9 @@ void fr_persist_note_save_rejection(fr_runtime_t *runtime, fr_err_t err) {
  * will come back empty after a reboot. A stale ref -- a handle value whose
  * resource is already closed -- is an inert value and rides along.
  *
- * Every other route to save -- an expression, a saved function, wipe-user's
- * internal save -- calls fr_persist_save and keeps refusing. That is the
- * point of splitting them: this path runs outside the VM, where nothing is
- * mid-execution when the save tail remounts the image.
+ * Only the prompt's `save` uses this tolerant path. Other callers use the
+ * strict save or the save-at-once path. This function runs outside the VM,
+ * so a remount cannot replace an active frame.
  *
  * Whatever cannot be held (see fr_persist_payload_hold_volatile_slots)
  * falls back to the strict save, so those responses stay exactly as they
@@ -548,7 +576,7 @@ fr_err_t fr_persist_wipe_user(fr_runtime_t *runtime) {
   FR_TRY(fr_event_clear_table(runtime));
   fr_handle_close_all(runtime);
   fr_persist_session_wipe_user_tier(runtime);
-  return fr_persist_save(runtime);
+  return fr_persist_save_at_once(runtime, false);
 }
 
 /* Defined in persist_payload.c — drops L1 overlay binds from the runtime
@@ -566,9 +594,7 @@ fr_err_t fr_persist_save_full(fr_runtime_t *runtime) {
   if (runtime == NULL) {
     return FR_ERR_INVALID;
   }
-  fr_persist_forget_boot_image();
-  FR_TRY(fr_persist_stream_commit(runtime, NULL, 0, false));
-  return fr_persist_remount_saved(runtime);
+  return fr_persist_save_at_once(runtime, true);
 }
 
 /* SPEC D10: receiving install-library drops L1 from the device — runtime
@@ -582,8 +608,11 @@ fr_err_t fr_persist_install_library(fr_runtime_t *runtime) {
   if (runtime == NULL) {
     return FR_ERR_INVALID;
   }
+  /* A value that the save cannot store refuses the command before the wipe
+   * (ADR 0090 amendment). */
+  FR_TRY(fr_persist_payload_check_savable(runtime));
   fr_persist_session_wipe_library_tier(runtime);
-  return fr_persist_save_full(runtime);
+  return fr_persist_save_at_once(runtime, true);
 }
 
 uint16_t fr_persist_debug_last_payload_bytes(void) {

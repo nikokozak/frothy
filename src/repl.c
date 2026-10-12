@@ -2538,16 +2538,40 @@ static fr_err_t
 fr_repl_eval_value_binding(fr_runtime_t *runtime,
                            const fr_compile_value_binding_t *binding,
                            fr_tagged_t *out) {
-  if (runtime == NULL || binding == NULL || out == NULL) {
+  fr_tagged_t previous = 0;
+  bool previous_overlay = false;
+  fr_err_t err = FR_OK;
+
+  if (runtime == NULL || binding == NULL || out == NULL ||
+      binding->slot_id >= FR_PROFILE_MAX_SLOTS) {
     return FR_ERR_INVALID;
   }
 
+  previous = runtime->slots.current[binding->slot_id];
+  previous_overlay = runtime->slots.overlay[binding->slot_id];
   FR_TRY(fr_vm_run_instruction_stream(runtime, &binding->instructions, out));
   if (binding->has_slot_name) {
     FR_TRY(fr_slot_bind_project_name(runtime, binding->slot_name.name,
                                      binding->slot_name.slot_id));
   }
-  return FR_OK;
+#if FR_FEATURE_PERSISTENCE
+  /* A library binding saves at once. The run makes the value, so the check
+   * comes after it. On a refusal, the name and the slot go back. A handle
+   * that the run opened stays open with no name (ADR 0090 amendment). */
+  if (runtime->install_tier == FR_INSTALL_TIER_LIBRARY) {
+    err = fr_persist_payload_check_savable(runtime);
+  }
+#endif
+  if (err != FR_OK) {
+    if (binding->has_slot_name) {
+      (void)fr_slot_rollback_project_name(runtime, binding->slot_name.name,
+                                          binding->slot_name.slot_id);
+    } else {
+      runtime->slots.current[binding->slot_id] = previous;
+      runtime->slots.overlay[binding->slot_id] = previous_overlay;
+    }
+  }
+  return err;
 }
 #endif
 
@@ -2749,7 +2773,16 @@ static fr_err_t fr_repl_eval_line_to_writer_inner(fr_runtime_t *runtime,
       fr_slot_id_t slot_id = compiled->slot_inits[0].slot_id;
       bool replaced = fr_repl_slot_holds_base_word(runtime, slot_id);
 
-      err = fr_overlay_apply(runtime, &compiled->overlay_update);
+#if FR_FEATURE_PERSISTENCE
+      /* A library definition saves at once. A value that the save cannot
+       * store refuses it before any change (ADR 0090 amendment). */
+      if (runtime->install_tier == FR_INSTALL_TIER_LIBRARY) {
+        err = fr_persist_payload_check_savable(runtime);
+      }
+#endif
+      if (err == FR_OK) {
+        err = fr_overlay_apply(runtime, &compiled->overlay_update);
+      }
       replaced =
           replaced && err == FR_OK &&
           runtime->slots.current[slot_id] != runtime->slots.base[slot_id];

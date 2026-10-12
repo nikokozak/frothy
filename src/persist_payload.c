@@ -1320,8 +1320,7 @@ static bool fr_persist_slot_is_held(const fr_runtime_t *runtime,
   return false;
 }
 
-static fr_err_t fr_persist_check_no_volatile_handles(
-    const fr_runtime_t *runtime) {
+fr_err_t fr_persist_payload_check_savable(const fr_runtime_t *runtime) {
   if (runtime == NULL) {
     return FR_ERR_INVALID;
   }
@@ -1536,7 +1535,7 @@ static fr_err_t fr_persist_payload_write_finalized(
     runtime_object_ids[i] = i;
     (void)fr_persist_object_kind(runtime, i, &object_kinds[i]);
   }
-  FR_TRY(fr_persist_check_no_volatile_handles(runtime));
+  FR_TRY(fr_persist_payload_check_savable(runtime));
   if (write_preamble) {
     FR_TRY(fr_persist_writer_bytes(
         writer, fr_persist_payload_magic,

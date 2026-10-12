@@ -3568,7 +3568,11 @@ static struct {
 
 #ifdef FR_HOST_TEST_HELPERS
 static bool fr_host_persist_interrupt_header_write;
-static bool fr_host_persist_fail_next_mount_commit;
+static bool fr_host_persist_fail_after_header_write;
+static uint8_t fr_host_persist_fail_mount_commits;
+static bool fr_host_persist_fail_step_armed;
+static uint16_t fr_host_persist_fail_step;
+static uint16_t fr_host_persist_write_count;
 static bool fr_host_persist_shadow_mounts;
 static bool fr_host_persist_direct_code_pointers = true;
 static uint8_t fr_host_persist_mount_maps[2][FR_PERSIST_STORAGE_BYTES];
@@ -3801,8 +3805,8 @@ fr_err_t fr_platform_persist_mount_commit(void) {
     return FR_ERR_INVALID;
   }
 #ifdef FR_HOST_TEST_HELPERS
-  if (fr_host_persist_fail_next_mount_commit) {
-    fr_host_persist_fail_next_mount_commit = false;
+  if (fr_host_persist_fail_mount_commits > 0) {
+    fr_host_persist_fail_mount_commits--;
     return FR_ERR_IO;
   }
 #endif
@@ -3973,6 +3977,13 @@ fr_err_t fr_platform_persist_stream_begin(void) {
          sizeof(fr_host_persist_slots[slot].bytes));
   fr_host_persist_slots[slot].length = FR_PERSIST_HEADER_BYTES;
   fr_host_persist_slots[slot].in_use = true;
+#ifdef FR_HOST_TEST_HELPERS
+  fr_host_persist_write_count = 0;
+  if (fr_host_persist_fail_step_armed && fr_host_persist_fail_step == 0) {
+    fr_host_persist_fail_step_armed = false;
+    return FR_ERR_IO;
+  }
+#endif
   fr_host_persist_stream.active = true;
   fr_host_persist_stream.slot = slot;
   fr_host_persist_stream.cursor = FR_PERSIST_HEADER_BYTES;
@@ -3992,6 +4003,14 @@ fr_err_t fr_platform_persist_stream_write(const uint8_t *bytes,
       fr_host_persist_stream.slot >= FR_HOST_PERSIST_SLOT_COUNT) {
     return FR_ERR_INVALID;
   }
+#ifdef FR_HOST_TEST_HELPERS
+  fr_host_persist_write_count++;
+  if (fr_host_persist_fail_step_armed &&
+      fr_host_persist_fail_step == fr_host_persist_write_count) {
+    fr_host_persist_fail_step_armed = false;
+    return FR_ERR_IO;
+  }
+#endif
   next = (uint32_t)fr_host_persist_stream.cursor + length;
   if (next > FR_PERSIST_STORAGE_BYTES) {
     return FR_ERR_CAPACITY;
@@ -4032,6 +4051,12 @@ fr_err_t fr_platform_persist_stream_finalize(
   slot->length = fr_host_persist_stream.cursor;
   slot->in_use = true;
   fr_host_persist_stream.active = false;
+#ifdef FR_HOST_TEST_HELPERS
+  if (fr_host_persist_fail_after_header_write) {
+    fr_host_persist_fail_after_header_write = false;
+    return FR_ERR_IO;
+  }
+#endif
   return FR_OK;
 }
 
@@ -4048,7 +4073,9 @@ fr_err_t fr_platform_persist_clear(void) {
   }
 #ifdef FR_HOST_TEST_HELPERS
   fr_host_persist_interrupt_header_write = false;
-  fr_host_persist_fail_next_mount_commit = false;
+  fr_host_persist_fail_after_header_write = false;
+  fr_host_persist_fail_mount_commits = 0;
+  fr_host_persist_fail_step_armed = false;
   fr_host_persist_shadow_mounts = false;
   fr_host_persist_direct_code_pointers = true;
   fr_host_persist_active_map_mounted = false;
@@ -4074,8 +4101,17 @@ void fr_host_persist_debug_interrupt_next_header_write(void) {
   fr_host_persist_interrupt_header_write = true;
 }
 
+void fr_host_persist_debug_fail_after_next_header_write(void) {
+  fr_host_persist_fail_after_header_write = true;
+}
+
 void fr_host_persist_debug_fail_next_mount_commit(void) {
-  fr_host_persist_fail_next_mount_commit = true;
+  fr_host_persist_fail_mount_commits++;
+}
+
+void fr_host_persist_debug_fail_stream_step(uint16_t step) {
+  fr_host_persist_fail_step = step;
+  fr_host_persist_fail_step_armed = true;
 }
 
 void fr_host_persist_debug_shadow_mounts(bool enabled) {
