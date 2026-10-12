@@ -23,8 +23,9 @@
 #define FR_PROFILE_MAX_DEFINITION_TEXT_BYTES 4096
 #define FR_PROFILE_MAX_DEFINITION_CODE_OBJECTS 2
 /* RAM code with its parameter names: the base words, then the unsaved
-   words (ADR 0084). */
-#define FR_PROFILE_RAM_CODE_BYTES 1544
+   words (ADR 0084). 4,608 bytes hold at least 70 small definitions before
+   a save (ADR 0083). */
+#define FR_PROFILE_RAM_CODE_BYTES 4608
 #define FR_PROFILE_MAX_OVERLAY_TEXT_BYTES 4096
 #define FR_PROFILE_MAX_SOURCE_RENDER_BYTES 4096
 #define FR_PROFILE_MAX_STACK_DEPTH 48

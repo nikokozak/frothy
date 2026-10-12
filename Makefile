@@ -961,6 +961,14 @@ test-esp32-plain-host-transcript: esp32-plain-host ## Replay the esp32_plain pro
 			exit 1; \
 		fi; \
 	done; \
+	defs=$$(i=0; while [ $$i -lt 70 ]; do printf '%s\n' 'to w with p [ gpio.write: p, 1 ; wait: 10 ; gpio.write: p, 0 ; wait: 10 ]'; \
+		i=$$((i + 1)); done | build/esp32-plain-host/frothy); \
+	if [ "$$(printf '%s\n' "$$defs" | grep -c 'ok$$')" != 70 ] || \
+		printf '%s\n' "$$defs" | grep -q 'error'; then \
+		printf '%s\n' "$$defs" | grep -A1 'error' | head -4; \
+		printf 'the RAM code area does not hold 70 definitions (ADR 0083)\n'; \
+		exit 1; \
+	fi; \
 	printf 'esp32_plain host transcript ok\n'
 
 seeed-xiao-host:
@@ -1011,6 +1019,17 @@ test-seeed-xiao-esp32c3-host-transcript: ## Check the C3 base image and hardware
 		'> error: not found (7)' '> 43' 'ok' '> '); \
 	if [ "$$out" != "$$expected" ]; then \
 		printf '%s\nXIAO ESP32C3 transcript did not match\n' "$$out"; \
+		exit 1; \
+	fi; \
+	defs=$$({ i=0; while [ $$i -lt 15 ]; do printf '%s\n' 'to w with p [ gpio.write: p, 1 ; wait: 10 ; gpio.write: p, 0 ; wait: 10 ]'; \
+		i=$$((i + 1)); done; printf '%s\n' 'mem code'; } \
+		| build/seeed_xiao_esp32c3-host/frothy.elf); \
+	total=$$(printf '%s\n' "$$defs" | awk '/code.pending.total/ { print $$2 }'); \
+	if [ "$$(printf '%s\n' "$$defs" | grep -c 'ok$$')" != 16 ] || \
+		printf '%s\n' "$$defs" | grep -q 'error' || [ -z "$$total" ] || \
+		[ "$$total" -gt 1544 ]; then \
+		printf '%s\n' "$$defs" | tail -4; \
+		printf 'the C3 keeps a RAM code area of 1,544 bytes and holds 15 definitions (ADR 0083)\n'; \
 		exit 1; \
 	fi; \
 	printf 'XIAO ESP32C3 host transcript ok\n'
