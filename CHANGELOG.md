@@ -30,6 +30,13 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   locals and a loop answers `capacity exceeded (4)` with the note
   `space for locals in one form is full (limit 16)`. An event body has its own
   16 locals: before, the word and its event body shared one limit.
+- **The `esp32_plain` native table has more room.** On `esp32_plain` (ESP32
+  DevKit V1, NodeMCU ESP-32S, XIAO ESP32S3, XIAO ESP32C6) the native table
+  grows from 163 to 192 rows, and 49 rows stay free after the base words. The
+  stepper and synth libraries use 23 rows together, so both fit on the boards
+  that support both (ESP32 DevKit V1 and XIAO ESP32S3). The XIAO ESP32C3 keeps
+  163 rows. `make test-native-budget` checks the room for the first-party
+  libraries on each shipped board.
 - **More unsaved code fits before a `save`.** On the profiles `esp32_plain`
   (ESP32 DevKit V1, NodeMCU ESP-32S, XIAO ESP32S3, XIAO ESP32C6),
   `rp2040_plain` (XIAO RP2040) and `rp2040_nina` (Nano RP2040 Connect), the
