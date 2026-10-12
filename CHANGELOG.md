@@ -59,6 +59,23 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   until its timeout after such a form. After an interrupted
   `console.read-line`, a reply can start with one empty line.
 
+### Fixed
+
+- **A `save` after `install-library` keeps every word.** Before, in some
+  orders, a `save` answered `ok` but lost the newest word. The next `save`
+  then answered `corrupt data (11)`, and only `dangerous.wipe` helped. For
+  example: save a word, run `install-library` and define a library word, then
+  `install-user`, define a new word and `save`.
+- **A failed save answers its error.** When a save cannot mount the image that
+  it wrote, it answers that error, and the device runs the newest image that it
+  can mount. Before, the device went back to the older program and the save
+  answered `ok`. A save never writes over the image that the device runs.
+- **A `save` in safe boot keeps only what the device holds.** In safe boot the
+  device does not load the saved program, so `save` writes only the words that
+  you define. Before, a new word could take the slot of a saved library word,
+  and the save lost it with no message. Use `restore` before `save` to keep
+  the saved program.
+
 ## [0.1.22] - 2026-10-06
 
 ### Added
