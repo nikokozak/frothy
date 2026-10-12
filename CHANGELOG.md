@@ -30,6 +30,12 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   locals and a loop answers `capacity exceeded (4)` with the note
   `space for locals in one form is full (limit 16)`. An event body has its own
   16 locals: before, the word and its event body shared one limit.
+- **Unsaved code and its parameter names share one area.** Before, the names
+  had their own area of 520 bytes, and when it was full the device dropped the
+  names of the next word with no message, so `see` showed `arg0`. Now a
+  definition whose code and names do not fit answers `capacity exceeded (4)`
+  with the note `pending code is full`, and nothing changes. `mem code`
+  counts the names. The area keeps the size of the two old areas together.
 - **The instruction format moves to 2.** Code saved by v0.1.22 does not load:
   the device answers `other release (27)`.
 - **A reply starts on its own line.** When a word such as `print` or
