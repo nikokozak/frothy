@@ -166,6 +166,9 @@ void fr_persist_session_wipe_user_tier(fr_runtime_t *runtime) {
   fr_slot_reclaim_free_tail(runtime);
 }
 
+static uint8_t fr_persist_slot_encode_tier(const fr_runtime_t *runtime,
+                                           fr_slot_id_t slot_id);
+
 /* SPEC D10: install-library on receipt drops L1 binds from the runtime so
  * re-installing replaces removed library words. Mirror of
  * fr_persist_session_wipe_user_tier with the tier check inverted, and the
@@ -178,13 +181,22 @@ void fr_persist_session_wipe_library_tier(fr_runtime_t *runtime) {
   }
   for (fr_slot_id_t slot_id = 0; slot_id < runtime->slots.count; slot_id++) {
     if (runtime->slots.base_tier[slot_id] == FR_INSTALL_TIER_LIBRARY) {
+      /* A user value that is not saved yet stays: an overlay that the
+       * encoder counts in the user tier. Only the library value under it
+       * goes (ADR 0091). */
+      bool user_value = fr_slot_is_overlay(runtime, slot_id) &&
+                        fr_persist_slot_encode_tier(runtime, slot_id) ==
+                            FR_PERSIST_TIER_USER;
+
       runtime->slots.base[slot_id] = fr_tagged_nil();
-      runtime->slots.current[slot_id] = fr_tagged_nil();
       runtime->slots.base_tier[slot_id] = 0;
       runtime->slots.library_base[slot_id] = fr_tagged_nil();
       runtime->slots.library_base_present[slot_id] = false;
-      fr_persist_slot_tier[slot_id] = 0;
-      runtime->slots.overlay[slot_id] = false;
+      if (!user_value) {
+        runtime->slots.current[slot_id] = fr_tagged_nil();
+        fr_persist_slot_tier[slot_id] = 0;
+        runtime->slots.overlay[slot_id] = false;
+      }
     } else if (runtime->slots.library_base_present[slot_id]) {
       runtime->slots.library_base[slot_id] = fr_tagged_nil();
       runtime->slots.library_base_present[slot_id] = false;

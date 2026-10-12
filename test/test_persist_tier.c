@@ -1850,6 +1850,82 @@ static void test_save_checks_the_bind_limit_before_its_commit(void) {
   TEST_ASSERT_EQUAL_UINT8_ARRAY(before, after, before_length);
 }
 
+/* After the wipe of `install-library`, each user value stays and the
+ * library value changed with `set` is gone. */
+static void tier_expect_kept_user_values(void) {
+  fr_slot_id_t slot_id = 0;
+
+  tier_eval_expect("lw:", "2\nok\n");
+  tier_eval_expect("lv", "3\nok\n");
+  tier_eval_expect("lf:", "5\nok\n");
+  TEST_ASSERT_EQUAL(FR_ERR_NOT_FOUND,
+                    fr_slot_id_for_name(&s_runtime, "lc", &slot_id));
+}
+
+/* ADR 0091 addendum: the wipe of `install-library` keeps a user value that
+ * is not saved yet, and only the library value under it goes. Before, the
+ * user redefinition went with its name. `set` keeps the stamp of a slot, so
+ * a `set` on a library value goes with the library. The kept value can hold
+ * library code. A later library definition replaces the user value. */
+static void test_install_library_keeps_an_unsaved_user_redefinition(void) {
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lw is fn [ 1 ]", "ok\n");
+  tier_eval_expect("lv is 4", "ok\n");
+  tier_eval_expect("lc is 4", "ok\n");
+  tier_eval_expect("lf is fn [ 1 ]", "ok\n");
+  tier_eval_expect("lw2 is fn [ 5 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_ok("lw is fn [ 2 ]");
+  tier_eval_ok("lv is 2");
+  tier_eval_expect("set lv to 3", "ok\n");
+  tier_eval_ok("lf is lw2");
+  tier_eval_expect("set lc to 5", "ok\n");
+  tier_eval_expect("install-library", "ok\n");
+  tier_expect_kept_user_values();
+  tier_eval_expect("clear", "ok\n");
+  tier_expect_kept_user_values();
+  tier_eval_expect("restore", "ok\n");
+  tier_expect_kept_user_values();
+  tier_boot();
+  tier_expect_kept_user_values();
+  tier_eval_expect("save", "ok\n");
+  tier_boot();
+  tier_expect_kept_user_values();
+
+  /* A library definition replaces the user value (ADR 0091 decision 4). */
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lw is fn [ 3 ]", "ok\n");
+  tier_eval_expect("lw:", "3\nok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_boot();
+  tier_eval_expect("lw:", "3\nok\n");
+  tier_eval_expect("wipe-user", "ok\n");
+  tier_eval_expect("lw:", "3\nok\n");
+}
+
+/* An overlay with no tier stamp is a user value too, as the encoder counts
+ * it; the C API can write one. */
+static void test_install_library_keeps_an_unstamped_overlay(void) {
+  fr_slot_id_t slot_id = 0;
+
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lv is 4", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, "lv", &slot_id));
+  fr_persist_session_reset();
+  TEST_ASSERT_EQUAL(
+      FR_OK, fr_slot_write(&s_runtime, slot_id, FR_TAGGED_INT_LITERAL(7)));
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lv", "7\nok\n");
+  tier_boot();
+  tier_eval_expect("lv", "7\nok\n");
+}
+
 static void test_repl_install_library_replies_ok(void) {
   char out[FR_REPL_OUTPUT_BYTES];
 
@@ -1903,6 +1979,8 @@ int main(void) {
   RUN_TEST(test_library_definition_replaces_a_user_redefinition);
   RUN_TEST(test_name_of_a_slot_with_two_binds_mounts_in_the_library_pass);
   RUN_TEST(test_save_checks_the_bind_limit_before_its_commit);
+  RUN_TEST(test_install_library_keeps_an_unsaved_user_redefinition);
+  RUN_TEST(test_install_library_keeps_an_unstamped_overlay);
 #if FR_FEATURE_TEXT
   RUN_TEST(test_user_redefinition_of_library_text_survives_save);
 #endif
