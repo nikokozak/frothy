@@ -92,6 +92,11 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   go, and open handles close. In safe boot, the device clears the project.
   When the last write of the save fails, the device runs the newest saved
   program that it can load. That program can hold the change.
+- **`install-library` keeps a user word that has the name of a library word.**
+  Before, `install-library` removed a user redefinition of a library word that
+  was not saved yet, with no message. Now the user word stays, and only the
+  library value under it goes. A library definition of the same name still
+  replaces the user word.
 - **A `save` in safe boot keeps only what the device holds.** In safe boot the
   device does not load the saved program, so `save` writes only the words that
   you define. Before, a new word could take the slot of a saved library word,
