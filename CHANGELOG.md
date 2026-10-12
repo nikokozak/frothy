@@ -77,6 +77,21 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   back the library value. A `save` that would hold more values than the
   device can mount fails with `capacity exceeded (4)`, and the image that the
   device runs does not change.
+- **A library command whose save fails no longer keeps its binding or its wipe
+  unless the saved program holds it.** `install-library`, `wipe-user` and each
+  definition in library mode save at once. Before, when that save failed, the
+  command answered the error, but its change stayed on the device until a
+  restart. Now `install-library` checks that its save can store every value
+  before it changes the runtime. Each library definition other than a value
+  binding (such as `h is pwm.open: 5, 1000`) does the same. A handle or a
+  Bytes value refuses the command with `not saved (13)`. A value binding
+  checks after its expression runs. On a refusal, only its target binding goes
+  back. The other effects of the expression stay, and a handle that it opened
+  stays open, with no name. When the save fails for another reason, the device
+  goes back to the saved program, as after `restore`. Other unsaved changes
+  go, and open handles close. In safe boot, the device clears the project.
+  When the last write of the save fails, the device runs the newest saved
+  program that it can load. That program can hold the change.
 - **A `save` in safe boot keeps only what the device holds.** In safe boot the
   device does not load the saved program, so `save` writes only the words that
   you define. Before, a new word could take the slot of a saved library word,
