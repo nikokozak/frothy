@@ -1493,14 +1493,16 @@ void fr_persist_payload_note_held_slots(const fr_runtime_t *runtime,
 static fr_err_t fr_persist_payload_write_finalized(
     const fr_runtime_t *runtime, uint8_t tier_filter,
     uint16_t code_count_initial, uint16_t object_count_initial,
-    const uint8_t *library_prefix, uint16_t library_prefix_length,
-    bool write_preamble, fr_persist_writer_t *writer) {
+    uint16_t bind_count_initial, const uint8_t *library_prefix,
+    uint16_t library_prefix_length, bool write_preamble,
+    fr_persist_writer_t *writer) {
   fr_code_object_id_t runtime_code_ids[FR_PROFILE_CODE_OBJECT_TABLE_SIZE];
   bool code_visiting[FR_PROFILE_CODE_OBJECT_TABLE_SIZE];
   fr_object_id_t runtime_object_ids[FR_OBJECT_TABLE_CAPACITY];
   fr_persist_object_record_kind_t object_kinds[FR_OBJECT_TABLE_CAPACITY];
   uint16_t code_count = code_count_initial;
   uint16_t object_count = object_count_initial;
+  uint16_t bind_count = bind_count_initial;
   uint8_t tier_lo =
       tier_filter == 0 ? (uint8_t)FR_PERSIST_TIER_LIBRARY : tier_filter;
   uint8_t tier_hi =
@@ -1617,6 +1619,14 @@ static fr_err_t fr_persist_payload_write_finalized(
     if (!fr_persist_slot_should_encode(runtime, slot_id, tier_filter)) {
       continue;
     }
+    /* The decoder holds FR_PROFILE_MAX_SLOTS BIND records; a slot can have
+     * two (ADR 0091), so the count is checked before the commit. */
+    bind_count = (uint16_t)(bind_count + 1u);
+    if (bind_count > FR_PROFILE_MAX_SLOTS) {
+      fr_diag_note_capacity(runtime->diag, "saved value table",
+                            FR_PROFILE_MAX_SLOTS, FR_DIAG_UNIT_COUNT, NULL);
+      return FR_ERR_CAPACITY;
+    }
 
     FR_TRY(fr_persist_writer_u8(writer, FR_PERSIST_RECORD_BIND));
     FR_TRY(fr_persist_writer_u16(writer, slot_id));
@@ -1655,6 +1665,13 @@ static fr_err_t fr_persist_payload_write_finalized(
     name_scratch[name_length] = '\0';
     FR_TRY(fr_slot_id_for_name(runtime, name_scratch, &slot_id));
     if (!fr_persist_slot_should_encode(runtime, slot_id, tier_filter)) {
+      continue;
+    }
+    /* The save that keeps the library records copies the NAME of a slot
+     * with a library copy; a second NAME for it would make the image
+     * invalid (ADR 0091). */
+    if (tier_filter == (uint8_t)FR_PERSIST_TIER_USER &&
+        runtime->slots.library_base_present[slot_id]) {
       continue;
     }
 
@@ -1703,7 +1720,7 @@ fr_err_t fr_persist_payload_encode(const fr_runtime_t *runtime, uint8_t *bytes,
   }
   FR_TRY(fr_persist_payload_write_finalized(
       runtime, 0, runtime->code.base_image_count, runtime->objects.base_count,
-      NULL, 0, true, &writer));
+      0, NULL, 0, true, &writer));
   *out_length = writer.used;
   return FR_OK;
 }
@@ -1719,7 +1736,7 @@ fr_err_t fr_persist_payload_encode_stream(
   }
   FR_TRY(fr_persist_payload_write_finalized(
       runtime, 0, runtime->code.base_image_count, runtime->objects.base_count,
-      NULL, 0, true, &writer));
+      0, NULL, 0, true, &writer));
   *out_length = writer.used;
   return FR_OK;
 }
@@ -1875,16 +1892,20 @@ static fr_err_t fr_persist_payload_advance_record(
 /* Walk a prefix span (a slice of an encoded payload, starting at the first
  * record byte after magic+version) and return the next final code/object ids
  * after the preserved L1 records. */
-static fr_err_t fr_persist_payload_next_prefix_ids(
-    const uint8_t *prefix, uint16_t prefix_length, uint16_t *out_code_count,
-    uint16_t *out_object_count) {
+static fr_err_t fr_persist_payload_next_prefix_ids(const uint8_t *prefix,
+                                                   uint16_t prefix_length,
+                                                   uint16_t *out_code_count,
+                                                   uint16_t *out_object_count,
+                                                   uint16_t *out_bind_count) {
   fr_persist_reader_t reader = {prefix, prefix_length, 0};
 
-  if (out_code_count == NULL || out_object_count == NULL) {
+  if (out_code_count == NULL || out_object_count == NULL ||
+      out_bind_count == NULL) {
     return FR_ERR_INVALID;
   }
   *out_code_count = 0;
   *out_object_count = 0;
+  *out_bind_count = 0;
   if (prefix == NULL || prefix_length == 0) {
     return FR_OK;
   }
@@ -1913,8 +1934,9 @@ static fr_err_t fr_persist_payload_next_prefix_ids(
       if (key >= *out_object_count) {
         *out_object_count = (uint16_t)(key + 1u);
       }
-    } else if (tag == FR_PERSIST_RECORD_BIND ||
-               tag == FR_PERSIST_RECORD_NAME) {
+    } else if (tag == FR_PERSIST_RECORD_BIND) {
+      *out_bind_count = (uint16_t)(*out_bind_count + 1u);
+    } else if (tag == FR_PERSIST_RECORD_NAME) {
       /* no count change */
     } else {
       return FR_ERR_CORRUPT;
@@ -2371,7 +2393,7 @@ static fr_err_t fr_persist_writer_copy_source_bytes(
 
 static fr_err_t fr_persist_payload_copy_l1_records(
     const uint8_t *src, uint16_t src_length, const fr_persist_l1_marks_t *marks,
-    fr_persist_writer_t *writer) {
+    fr_persist_writer_t *writer, uint16_t *out_bind_count) {
   fr_persist_reader_t scan = {src, src_length, 0};
   const uint8_t *magic_scratch = NULL;
   uint8_t version_scratch = 0;
@@ -2409,6 +2431,15 @@ static fr_err_t fr_persist_payload_copy_l1_records(
           key < FR_OBJECT_TABLE_CAPACITY && marks->object_in_l1[key];
       break;
     case FR_PERSIST_RECORD_BIND:
+      /* Only the library BIND: a slot can also have a user BIND, for a user
+       * redefinition of a library word (ADR 0091). The tier byte follows the
+       * u8 tag and the u16 slot. */
+      qualifies = key < FR_PROFILE_MAX_SLOTS && marks->slot_in_l1[key] &&
+                  src[record_start + 3u] == FR_PERSIST_TIER_LIBRARY;
+      if (qualifies) {
+        *out_bind_count = (uint16_t)(*out_bind_count + 1u);
+      }
+      break;
     case FR_PERSIST_RECORD_NAME:
       qualifies = key < FR_PROFILE_MAX_SLOTS && marks->slot_in_l1[key];
       break;
@@ -2439,13 +2470,14 @@ fr_err_t fr_persist_payload_save_encode(
   fr_persist_writer_t writer = {bytes, 0, cap, NULL, NULL};
   uint16_t prefix_code_count = 0;
   uint16_t prefix_object_count = 0;
+  uint16_t prefix_bind_count = 0;
 
   if (runtime == NULL || bytes == NULL || out_length == NULL) {
     return FR_ERR_INVALID;
   }
   FR_TRY(fr_persist_payload_next_prefix_ids(
       library_prefix, library_prefix_length, &prefix_code_count,
-      &prefix_object_count));
+      &prefix_object_count, &prefix_bind_count));
   if (prefix_code_count < runtime->code.base_image_count) {
     prefix_code_count = runtime->code.base_image_count;
   }
@@ -2454,8 +2486,8 @@ fr_err_t fr_persist_payload_save_encode(
   }
   FR_TRY(fr_persist_payload_write_finalized(
       runtime, (uint8_t)FR_PERSIST_TIER_USER, prefix_code_count,
-      prefix_object_count, library_prefix, library_prefix_length, true,
-      &writer));
+      prefix_object_count, prefix_bind_count, library_prefix,
+      library_prefix_length, true, &writer));
   *out_length = writer.used;
   return FR_OK;
 }
@@ -2470,6 +2502,7 @@ fr_err_t fr_persist_payload_save_stream(
   bool have_old_payload = false;
   uint16_t prefix_code_count = 0;
   uint16_t prefix_object_count = 0;
+  uint16_t prefix_bind_count = 0;
 
   if (runtime == NULL || write == NULL || out_length == NULL) {
     return FR_ERR_INVALID;
@@ -2495,12 +2528,12 @@ fr_err_t fr_persist_payload_save_stream(
                                  (uint16_t)sizeof(fr_persist_payload_magic)));
   FR_TRY(fr_persist_writer_u8(&writer, FR_PERSIST_PAYLOAD_VERSION));
   if (have_old_payload) {
-    FR_TRY(fr_persist_payload_copy_l1_records(old_payload, old_payload_length,
-                                              &marks, &writer));
+    FR_TRY(fr_persist_payload_copy_l1_records(
+        old_payload, old_payload_length, &marks, &writer, &prefix_bind_count));
   }
   FR_TRY(fr_persist_payload_write_finalized(
       runtime, (uint8_t)FR_PERSIST_TIER_USER, prefix_code_count,
-      prefix_object_count, NULL, 0, false, &writer));
+      prefix_object_count, prefix_bind_count, NULL, 0, false, &writer));
   *out_length = writer.used;
   return FR_OK;
 }
@@ -3850,12 +3883,19 @@ fr_persist_install_resources(fr_runtime_t *runtime,
 static uint8_t
 fr_persist_name_slot_tier(const fr_persist_decoded_payload_t *decoded,
                           fr_slot_id_t slot_id) {
+  uint8_t tier = 0;
+
+  /* A slot with a library BIND and a user BIND (a user redefinition of a
+   * library word) mounts its name in the library pass (ADR 0091). */
   for (uint16_t i = 0; i < decoded->bind_count; i++) {
     if (decoded->bind_records[i].slot_id == slot_id) {
-      return decoded->bind_records[i].tier;
+      tier = decoded->bind_records[i].tier;
+      if (tier == FR_PERSIST_TIER_LIBRARY) {
+        return tier;
+      }
     }
   }
-  return 0;
+  return tier;
 }
 #endif
 
@@ -4220,6 +4260,9 @@ fr_err_t fr_persist_payload_extract_library_records(
       qualifies = key < FR_OBJECT_TABLE_CAPACITY && object_in_l1[key];
       break;
     case FR_PERSIST_RECORD_BIND:
+      qualifies = key < FR_PROFILE_MAX_SLOTS && slot_in_l1[key] &&
+                  src[record_start + 3u] == FR_PERSIST_TIER_LIBRARY;
+      break;
     case FR_PERSIST_RECORD_NAME:
       qualifies = key < FR_PROFILE_MAX_SLOTS && slot_in_l1[key];
       break;

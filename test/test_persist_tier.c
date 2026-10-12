@@ -756,13 +756,19 @@ static void test_save_preserves_library_text_in_code_from_nvs(void) {
 }
 #endif
 
+/* The old image holds a user redefinition of the library word, so its slot
+ * has a library BIND and a user BIND. The extractor keeps only the library
+ * records: exactly the records of the image before the redefinition
+ * (ADR 0091). */
 static void test_save_stream_matches_staged_l1_reference(void) {
+  uint8_t library_payload[FR_PROFILE_PERSISTENCE_BYTES];
   uint8_t old_header[FR_PERSIST_HEADER_BYTES];
   uint8_t old_payload[FR_PROFILE_PERSISTENCE_BYTES];
   uint8_t prefix[FR_PROFILE_PERSISTENCE_BYTES];
   uint8_t expected_image[FR_PROFILE_PERSISTENCE_BYTES];
   uint8_t saved_image[FR_PROFILE_PERSISTENCE_BYTES];
   fr_persist_format_info_t old_info = {0};
+  uint16_t library_length = 0;
   uint16_t old_length = 0;
   uint16_t prefix_length = 0;
   uint16_t expected_payload_length = 0;
@@ -781,12 +787,22 @@ static void test_save_stream_matches_staged_l1_reference(void) {
                     fr_repl_eval_line(&s_runtime, "lib_thunk is fn [ 99 ]",
                                       repl_out, (uint16_t)sizeof(repl_out)));
   TEST_ASSERT_EQUAL_STRING("ok\n", repl_out);
-  seed_persist_from_runtime(&s_runtime);
+  read_committed_payload(NULL, library_payload, &library_length);
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_repl_eval_line(&s_runtime, "install-user", repl_out,
+                                      (uint16_t)sizeof(repl_out)));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_repl_eval_line(&s_runtime, "lib_thunk is fn [ 5 ]",
+                                      repl_out, (uint16_t)sizeof(repl_out)));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_save(&s_runtime));
   read_committed_payload(old_header, old_payload, &old_length);
   TEST_ASSERT_EQUAL(FR_OK, fr_persist_format_read_header(old_header, &old_info));
   TEST_ASSERT_EQUAL(FR_OK, fr_persist_payload_extract_library_records(
                                old_payload, old_length, prefix,
                                (uint16_t)sizeof(prefix), &prefix_length));
+  /* Magic and version (5 bytes) and END (1 byte) are not records. */
+  TEST_ASSERT_EQUAL_UINT16(library_length - 6u, prefix_length);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(&library_payload[5], prefix, prefix_length);
 
   tier_boot();
   TEST_ASSERT_EQUAL(FR_OK,
@@ -1618,6 +1634,222 @@ static void test_library_closure_first_keeps_user_text(void) {
 }
 #endif
 
+static void tier_eval_ok(const char *line) {
+  char out[FR_REPL_OUTPUT_BYTES];
+
+  TEST_ASSERT_EQUAL_MESSAGE(
+      FR_OK, fr_repl_eval_line(&s_runtime, line, out, (uint16_t)sizeof(out)),
+      line);
+}
+
+/* ADR 0091: a user redefinition of a library word survives save. Before,
+ * the save that keeps the library records wrote a second NAME for the slot,
+ * and the mount refused the image. */
+static void test_user_redefinition_of_library_word_survives_save(void) {
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lw is fn [ 1 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_ok("lw is fn [ 2 ]");
+  tier_eval_expect("save", "ok\n");
+  tier_eval_expect("lw:", "2\nok\n");
+  tier_eval_expect("clear", "ok\n");
+  tier_eval_expect("lw:", "2\nok\n");
+  tier_eval_expect("restore", "ok\n");
+  tier_eval_expect("lw:", "2\nok\n");
+  tier_boot();
+  tier_eval_expect("lw:", "2\nok\n");
+  /* A second save reads the library copy that the mount kept. */
+  tier_eval_expect("save", "ok\n");
+  tier_boot();
+  tier_eval_expect("save", "ok\n");
+  tier_eval_expect("lw:", "2\nok\n");
+  tier_eval_expect("wipe-user", "ok\n");
+  tier_eval_expect("lw:", "1\nok\n");
+  tier_boot();
+  tier_eval_expect("lw:", "1\nok\n");
+}
+
+/* ADR 0091: install-library drops the library copy that a user value hides,
+ * and a library definition of that name replaces the user value. */
+static void test_library_definition_replaces_a_user_redefinition(void) {
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lw is fn [ 1 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_ok("lw is fn [ 2 ]");
+  tier_eval_expect("save", "ok\n");
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_ok("lw is fn [ 3 ]");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("lw:", "3\nok\n");
+  tier_boot();
+  tier_eval_expect("lw:", "3\nok\n");
+  tier_eval_expect("wipe-user", "ok\n");
+  tier_eval_expect("lw:", "3\nok\n");
+}
+
+#if FR_FEATURE_TEXT
+static void test_user_redefinition_of_library_text_survives_save(void) {
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lt is \"lib\"", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_ok("lt is \"usr\"");
+  tier_eval_expect("save", "ok\n");
+  tier_boot();
+  tier_eval_expect("text.equals?: lt, \"usr\"", "true\nok\n");
+  tier_eval_expect("wipe-user", "ok\n");
+  tier_eval_expect("text.equals?: lt, \"lib\"", "true\nok\n");
+}
+#endif
+
+/* The bytes of a CODE, BIND or NAME record at `i`, or 0. */
+static uint16_t tier_record_length(const uint8_t *p, uint16_t i) {
+  switch (p[i]) {
+  case FR_TEST_TIER_RECORD_CODE:
+    return (uint16_t)(5u + ((uint16_t)p[i + 3] | ((uint16_t)p[i + 4] << 8)));
+  case FR_TEST_TIER_RECORD_NAME:
+    return (uint16_t)(4u + p[i + 3]);
+  case FR_TEST_TIER_RECORD_BIND:
+    switch (p[i + 4]) {
+    case FR_TEST_TIER_VALUE_INT:
+      return (uint16_t)(5u + FR_TEST_TIER_INT_BYTES);
+    case FR_TEST_TIER_VALUE_CODE:
+    case FR_TEST_TIER_VALUE_NATIVE:
+    case FR_TEST_TIER_VALUE_OBJECT:
+      return 7u;
+    default:
+      return 5u;
+    }
+  default:
+    return 0;
+  }
+}
+
+/* ADR 0091: the format does not fix the BIND order. When the user BIND of a
+ * slot comes before its library BIND, the library pass of the boot still
+ * mounts the name. */
+static void
+test_name_of_a_slot_with_two_binds_mounts_in_the_library_pass(void) {
+  uint8_t header[FR_PERSIST_HEADER_BYTES];
+  uint8_t payload[FR_PROFILE_PERSISTENCE_BYTES];
+  uint8_t moved[FR_PROFILE_PERSISTENCE_BYTES];
+  uint8_t image[FR_PROFILE_PERSISTENCE_BYTES];
+  uint16_t length = 0;
+  uint16_t library_at = 0;
+  uint16_t user_at = 0;
+  uint16_t user_length = 0;
+  uint16_t used = 0;
+  fr_slot_id_t slot_id = 0;
+
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lw is fn [ 1 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_ok("lw is fn [ 2 ]");
+  tier_eval_expect("save", "ok\n");
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, "lw", &slot_id));
+  read_committed_payload(header, payload, &length);
+
+  for (uint16_t i = 5; i < length && payload[i] != FR_TEST_TIER_RECORD_END;
+       i = (uint16_t)(i + tier_record_length(payload, i))) {
+    TEST_ASSERT_NOT_EQUAL(0, tier_record_length(payload, i));
+    if (payload[i] == FR_TEST_TIER_RECORD_BIND &&
+        ((uint16_t)payload[i + 1] | ((uint16_t)payload[i + 2] << 8)) ==
+            slot_id) {
+      if (payload[i + 3] == FR_TEST_TIER_LIBRARY) {
+        library_at = i;
+      } else {
+        user_at = i;
+        user_length = tier_record_length(payload, i);
+      }
+    }
+  }
+  TEST_ASSERT_TRUE(library_at != 0 && user_at > library_at);
+  /* Move the user BIND in front of the library BIND. */
+  memcpy(moved, payload, library_at);
+  used = library_at;
+  memcpy(&moved[used], &payload[user_at], user_length);
+  used = (uint16_t)(used + user_length);
+  memcpy(&moved[used], &payload[library_at], (size_t)(user_at - library_at));
+  used = (uint16_t)(used + (user_at - library_at));
+  memcpy(&moved[used], &payload[user_at + user_length],
+         (size_t)(length - user_at - user_length));
+  used = (uint16_t)(used + (length - user_at - user_length));
+  TEST_ASSERT_EQUAL_UINT16(length, used);
+  memcpy(&image[FR_PERSIST_HEADER_BYTES], moved, used);
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_format_build_header(
+                               image, used, fr_crc32(moved, used)));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    test_persist_commit_image(
+                        image, (uint16_t)(FR_PERSIST_HEADER_BYTES + used)));
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_restore_library(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, "lw", &slot_id));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_restore_user(&s_runtime));
+  tier_eval_expect("lw:", "2\nok\n");
+}
+
+/* ADR 0091: the decoder holds FR_PROFILE_MAX_SLOTS BIND records, and a slot
+ * with a user redefinition of a library word has two. The save checks the
+ * count before its commit. */
+static void test_save_checks_the_bind_limit_before_its_commit(void) {
+  uint8_t before[FR_PROFILE_PERSISTENCE_BYTES];
+  uint8_t after[FR_PROFILE_PERSISTENCE_BYTES];
+  uint16_t before_length = 0;
+  uint16_t after_length = 0;
+  fr_diagnostic_t diag = {0};
+  fr_slot_id_t library_slot = 0;
+  fr_slot_id_t spare_slot = FR_PROFILE_MAX_SLOTS;
+
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lw is fn [ 1 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_ok("lw is fn [ 2 ]");
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_slot_id_for_name(&s_runtime, "lw", &library_slot));
+  /* Every other slot but one gets a value: the slot of `lw` has two BINDs,
+   * so the image has exactly FR_PROFILE_MAX_SLOTS of them. */
+  for (fr_slot_id_t slot = 0; slot < FR_PROFILE_MAX_SLOTS; slot++) {
+    if (slot == library_slot) {
+      continue;
+    }
+    if (spare_slot == FR_PROFILE_MAX_SLOTS) {
+      spare_slot = slot;
+      continue;
+    }
+    TEST_ASSERT_EQUAL(
+        FR_OK, fr_slot_write(&s_runtime, slot, FR_TAGGED_INT_LITERAL(5)));
+    fr_persist_session_install_tier_stamp_slot(&s_runtime, slot);
+  }
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_save(&s_runtime));
+  read_committed_payload(NULL, before, &before_length);
+
+  /* One BIND more fails before the commit with its note; the mounted image
+   * stays. */
+  TEST_ASSERT_EQUAL(
+      FR_OK, fr_slot_write(&s_runtime, spare_slot, FR_TAGGED_INT_LITERAL(5)));
+  fr_persist_session_install_tier_stamp_slot(&s_runtime, spare_slot);
+  s_runtime.diag = &diag;
+  TEST_ASSERT_EQUAL(FR_ERR_CAPACITY, fr_persist_save(&s_runtime));
+  s_runtime.diag = NULL;
+  TEST_ASSERT_EQUAL(FR_DIAG_LIMIT, diag.kind);
+  TEST_ASSERT_EQUAL_STRING("saved value table", diag.context_name);
+  TEST_ASSERT_EQUAL(FR_PROFILE_MAX_SLOTS, diag.expected);
+  TEST_ASSERT_EQUAL_UINT8(FR_DIAG_UNIT_COUNT, diag.unit);
+  read_committed_payload(NULL, after, &after_length);
+  TEST_ASSERT_EQUAL_UINT16(before_length, after_length);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(before, after, before_length);
+}
+
 static void test_repl_install_library_replies_ok(void) {
   char out[FR_REPL_OUTPUT_BYTES];
 
@@ -1667,6 +1899,13 @@ int main(void) {
   RUN_TEST(test_install_library_persists_replacement_l1);
   RUN_TEST(test_save_with_no_mounted_image_keeps_its_own_code);
   RUN_TEST(test_library_closure_first_keeps_user_code);
+  RUN_TEST(test_user_redefinition_of_library_word_survives_save);
+  RUN_TEST(test_library_definition_replaces_a_user_redefinition);
+  RUN_TEST(test_name_of_a_slot_with_two_binds_mounts_in_the_library_pass);
+  RUN_TEST(test_save_checks_the_bind_limit_before_its_commit);
+#if FR_FEATURE_TEXT
+  RUN_TEST(test_user_redefinition_of_library_text_survives_save);
+#endif
 #if FR_FEATURE_TEXT
   RUN_TEST(test_library_closure_first_keeps_user_text);
 #endif
