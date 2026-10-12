@@ -1161,6 +1161,35 @@ print-target-facts:
 			-e 's/^#define \(FR_FEATURE_[A-Z0-9_]*\) \(.*\)$$/\1=\2/p' | \
 		LC_ALL=C sort
 
+# The accepted native table size of each shipped board, and the native rows
+# that its supported first-party libraries need: stepper (15) on six boards,
+# synth (8) on ESP32 DevKit V1 and XIAO ESP32S3 (ADR 0082 addendum). The row
+# counts copy the manifests in libraries/; change them with a library release.
+NATIVE_BUDGET_BOARDS := \
+	esp32_devkit_v1:192:23 \
+	seeed_xiao_esp32s3:192:23 \
+	seeed_xiao_esp32c6:192:15 \
+	nodemcu_esp32s:192:0 \
+	seeed_xiao_esp32c3:163:15 \
+	seeed_xiao_rp2040:129:15 \
+	arduino_nano_rp2040_connect:152:15
+
+test-native-budget: ## Check each shipped board's native table and the room for its first-party libraries.
+	@for entry in $(NATIVE_BUDGET_BOARDS); do \
+		board=$${entry%%:*}; rest=$${entry#*:}; size=$${rest%%:*}; need=$${rest#*:}; \
+		out=$$($(MAKE) --no-print-directory -s print-native-budget BOARD=$$board 2>/dev/null); \
+		base=$$(printf '%s\n' "$$out" | sed -n 's/^NATIVE_BASE_ROWS=//p'); \
+		table=$$(printf '%s\n' "$$out" | sed -n 's/^NATIVE_TABLE_SIZE=//p'); \
+		if [ -z "$$base" ] || [ "$$table" != "$$size" ] || \
+			[ $$((table - base)) -lt $$need ]; then \
+			printf '%s: table %s rows (accepted %s), base %s rows; its libraries need %s free rows\n' \
+				"$$board" "$$table" "$$size" "$$base" "$$need"; \
+			exit 1; \
+		fi; \
+		printf '%s: %s of %s rows for the base, %s free, %s needed\n' \
+			"$$board" "$$base" "$$table" $$((table - base)) "$$need"; \
+	done
+
 print-native-budget: ## Print the base native rows and the table size for BOARD.
 	@rm -rf build/native-budget-$(BOARD)
 	@$(MAKE) --no-print-directory -s BOARD=$(BOARD) TARGET=host PROFILE=$(PROFILE) \
@@ -1176,4 +1205,4 @@ vsix: ## Build the VS Code extension package.
 clean: ## Remove generated build outputs.
 	rm -rf build frothy test/test test/test-host-normal test/fixtures/projects/*/.frothy
 
-.PHONY: print-native-budget test test-esp-idf-console-boundary test-esp-idf-i2c-timeout test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config print-target-facts vsix clean
+.PHONY: print-native-budget test-native-budget test test-esp-idf-console-boundary test-esp-idf-i2c-timeout test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config print-target-facts vsix clean

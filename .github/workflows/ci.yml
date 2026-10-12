@@ -33,6 +33,7 @@ jobs:
       - run: make test-esp-idf-i2c-timeout
       - run: make test-unity
       - run: make test-bytes-checked
+      - run: make test-native-budget
       - run: make test-host-normal-transcript
       - run: make test-esp32-plain-host-transcript
       - run: make test-seeed-xiao-esp32c3-host-transcript

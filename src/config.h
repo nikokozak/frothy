@@ -526,6 +526,10 @@
 #error "FR_PROFILE_RAM_CODE_BYTES must fit the 16-bit used counters"
 #endif
 
+#if FR_PROFILE_NATIVE_TABLE_SIZE > 65535
+#error "FR_PROFILE_NATIVE_TABLE_SIZE must fit the 16-bit native counters"
+#endif
+
 /* The image code buffers hold one instruction stream. */
 #if FR_PROFILE_MAX_DEFINITION_INSTRUCTION_BYTES > FR_PROFILE_TOTAL_IMAGE_BYTES
 #error "FR_PROFILE_MAX_DEFINITION_INSTRUCTION_BYTES cannot exceed FR_PROFILE_TOTAL_IMAGE_BYTES"
