@@ -1256,6 +1256,10 @@ static fr_err_t fr_repl_append_runtime_context_line(
     FR_TRY(fr_repl_append(out, out_cap, used,
                           "detail: value cannot be stored in "));
     FR_TRY(fr_repl_append(out, out_cap, used, diag->context_name));
+    if (diag->note != NULL) {
+      FR_TRY(fr_repl_append(out, out_cap, used, " -- "));
+      FR_TRY(fr_repl_append(out, out_cap, used, diag->note));
+    }
     return fr_repl_append_char(out, out_cap, used, '\n');
   case FR_DIAG_MSG_RUNTIME_CAPACITY:
     if (diag->context_name == NULL) {
@@ -2865,7 +2869,7 @@ static fr_err_t fr_repl_eval_line_to_writer(fr_runtime_t *runtime,
   }
   runtime->diag = previous_diag;
 #if FR_FEATURE_BYTES
-  fr_bytes_reset_if_outermost(runtime);
+  fr_bytes_reset(runtime);
 #endif
   return report_err == FR_OK ? err : report_err;
 }

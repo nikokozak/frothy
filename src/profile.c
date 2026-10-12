@@ -3,6 +3,7 @@
 #include "base_defs.h"
 #include "config.h"
 #include "crc.h"
+#include "instruction.h"
 #include "lib_native.h"
 #include "tagged.h"
 
@@ -372,6 +373,9 @@ static uint32_t fr_profile_hash_body(uint16_t word_size,
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_MAX_RECORD_VALUE_FIELDS);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_PAD_BYTES);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_OVERLAY_UPDATE_VERSION);
+  /* Saved code is instruction bytes, so a new format is a new image
+   * contract (ADR 0085 decision 8). */
+  fr_profile_hash_u16(&crc, FR_INSTRUCTION_FORMAT_VERSION);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_BASE_IMAGE_INCLUDE_SYMBOLS);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_COMPILER);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_OVERLAY_APPLY_COMMAND);

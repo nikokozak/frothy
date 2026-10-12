@@ -216,11 +216,12 @@ typedef struct fr_handle_ref_t {
 } fr_handle_ref_t;
 
 typedef uint8_t fr_bytes_id_t;
-typedef uint8_t fr_bytes_generation_t;
 
+/* A Bytes tag names an entry. In a checked build (FR_BYTES_CHECKED) it also
+ * carries the rewind count of the entry; otherwise the count is 0. */
 typedef struct fr_bytes_ref_t {
   fr_bytes_id_t id;
-  fr_bytes_generation_t generation;
+  uint16_t rewinds;
 } fr_bytes_ref_t;
 
 /* T12L-7 D3: session-scoped install tier on the runtime. Wire-byte values

@@ -45,6 +45,10 @@ typedef struct fr_vm_attempt_frame_t {
   uint16_t saved_depth;
   fr_code_offset_t fallback_ip;
   fr_code_offset_t end_ip;
+#if FR_FEATURE_BYTES
+  /* `rescue` frees the Bytes values of the failed body (ADR 0085). */
+  fr_bytes_mark_t bytes;
+#endif
 } fr_vm_attempt_frame_t;
 
 typedef struct fr_vm_rescue_context_t {
@@ -186,13 +190,13 @@ static void fr_vm_note_value_rejection(fr_runtime_t *runtime,
   diag->actual_state = FR_DIAG_ACTUAL_VALUE;
 }
 
-static void fr_vm_note_store_rejection(fr_runtime_t *runtime,
-                                       fr_tagged_t actual,
-                                       const char *container_name) {
+static fr_diagnostic_t *fr_vm_note_store_rejection(fr_runtime_t *runtime,
+                                                   fr_tagged_t actual,
+                                                   const char *container_name) {
   fr_diagnostic_t *diag = fr_vm_begin_diag(runtime);
 
   if (diag == NULL) {
-    return;
+    return NULL;
   }
 
   diag->kind = FR_DIAG_NOTE;
@@ -201,7 +205,67 @@ static void fr_vm_note_store_rejection(fr_runtime_t *runtime,
   diag->actual = actual;
   diag->actual_state = FR_DIAG_ACTUAL_VALUE;
   diag->context_name = container_name;
+  return diag;
 }
+
+/* `set` of a local refuses a Bytes value: the next loop pass can free the
+ * value while the local still names it (ADR 0085 decision 4). */
+static fr_err_t fr_vm_check_set_local(fr_runtime_t *runtime,
+                                      fr_tagged_t value) {
+#if FR_FEATURE_BYTES
+  if (value >= FR_TAGGED_BYTES_BASE && value <= FR_TAGGED_BYTES_END) {
+    fr_diagnostic_t *diag =
+        fr_vm_note_store_rejection(runtime, value, "a local with set");
+
+    if (diag != NULL) {
+      diag->note = "use here in the loop body";
+    }
+    return FR_ERR_VOLATILE;
+  }
+#else
+  (void)runtime;
+  (void)value;
+#endif
+  return FR_OK;
+}
+
+#if FR_FEATURE_BYTES
+/* A loop keeps its checkpoint in a hidden local as one integer: the entry
+ * cursor times 65,536 plus the arena cursor (ADR 0085 decision 2). A loop
+ * runs these on every pass, so they use the integer tag directly. */
+static fr_err_t fr_vm_bytes_checkpoint_at(fr_runtime_t *runtime,
+                                          fr_vm_state_t *state, fr_opcode_t op,
+                                          uint8_t local_index) {
+  fr_tagged_t *local = NULL;
+  uint32_t checkpoint = 0;
+
+  if (local_index >= state->local_count) {
+    return FR_ERR_INVALID;
+  }
+  local = &state->frame[state->arg_count + local_index];
+  if (op == FR_OP_BYTES_BEGIN) {
+    *local = FR_TAGGED_INT_LITERAL((int32_t)runtime->bytes.entry_count * 65536 +
+                                   (int32_t)runtime->bytes.arena_used);
+    state->ip += 2;
+    return FR_OK;
+  }
+  /* A checkpoint is a non-negative integer: its tag lies from the tag of 0
+   * to the tag of the largest integer. */
+  if (*local < FR_TAGGED_INT_LITERAL(0) || *local > FR_TAGGED_INT_END) {
+    return FR_ERR_INVALID;
+  }
+  checkpoint = (uint32_t)(*local - FR_TAGGED_INT_LITERAL(0));
+  if ((checkpoint >> 16) > UINT8_MAX) {
+    return FR_ERR_INVALID;
+  }
+  FR_TRY(fr_bytes_rewind(
+      runtime,
+      (fr_bytes_mark_t){.arena_used = (uint16_t)(checkpoint & 0xFFFFu),
+                        .entry_count = (uint8_t)(checkpoint >> 16)}));
+  state->ip += 2;
+  return FR_OK;
+}
+#endif
 
 static void fr_vm_note_too_few_args(fr_runtime_t *runtime, uint8_t expected,
                                     uint16_t got) {
@@ -415,6 +479,9 @@ static fr_err_t fr_vm_attempt_begin(fr_runtime_t *runtime,
   frame->saved_depth = state->depth;
   frame->fallback_ip = fallback_ip;
   frame->end_ip = end_ip;
+#if FR_FEATURE_BYTES
+  frame->bytes = fr_bytes_mark(runtime);
+#endif
   state->attempt_depth = (uint8_t)(state->attempt_depth + 1u);
   state->ip += 3;
   return FR_OK;
@@ -500,7 +567,7 @@ static fr_err_t fr_vm_load_local(fr_runtime_t *runtime,
 
 static fr_err_t fr_vm_store_local(fr_runtime_t *runtime,
                                   const fr_instruction_stream_t *view,
-                                  fr_vm_state_t *state) {
+                                  fr_vm_state_t *state, bool is_set) {
   uint8_t local_index = 0;
   fr_tagged_t value = 0;
 
@@ -509,11 +576,31 @@ static fr_err_t fr_vm_store_local(fr_runtime_t *runtime,
     return FR_ERR_INVALID;
   }
   FR_TRY(fr_vm_pop(runtime, state, &value));
+  if (is_set) {
+    FR_TRY(fr_vm_check_set_local(runtime, value));
+  }
 
   state->frame[state->arg_count + local_index] = value;
   state->ip += 2;
   return fr_vm_push(runtime, state, fr_tagged_nil());
 }
+
+#if FR_FEATURE_BYTES
+static fr_err_t fr_vm_bytes_checkpoint(fr_runtime_t *runtime,
+                                       const fr_instruction_stream_t *view,
+                                       fr_vm_state_t *state) {
+  uint8_t local_index = 0;
+
+  /* The frame checked the header when it began, so the operand needs only
+   * its bounds and the local count of the frame. */
+  if ((uint32_t)state->ip + 1u >= view->length) {
+    return FR_ERR_INVALID;
+  }
+  local_index = view->bytes[state->ip + 1u];
+  return fr_vm_bytes_checkpoint_at(
+      runtime, state, (fr_opcode_t)view->bytes[state->ip], local_index);
+}
+#endif
 
 static fr_err_t fr_vm_repeat_begin_as(fr_runtime_t *runtime,
                                       const fr_instruction_stream_t *view,
@@ -1219,6 +1306,17 @@ static fr_err_t fr_vm_try_catch_attempt(fr_runtime_t *runtime,
 
     state->attempt_depth = (uint8_t)(state->attempt_depth - 1u);
     frame = state->attempts[state->attempt_depth];
+#if FR_FEATURE_BYTES
+    {
+      /* The failed body ends here on every path, also when the rescue
+       * cannot start. */
+      fr_err_t rewind_err = fr_bytes_rewind(runtime, frame.bytes);
+
+      if (rewind_err != FR_OK) {
+        return rewind_err;
+      }
+    }
+#endif
     fr_vm_rescue_discard_through(runtime, state, frame.end_ip);
     if (state->rescue_depth >= FR_PROFILE_MAX_ATTEMPT_DEPTH) {
       err = FR_ERR_CAPACITY;
@@ -1597,6 +1695,9 @@ static fr_err_t fr_vm_reader_attempt_begin(
   frame->saved_depth = state->depth;
   frame->fallback_ip = fallback_ip;
   frame->end_ip = end_ip;
+#if FR_FEATURE_BYTES
+  frame->bytes = fr_bytes_mark(runtime);
+#endif
   state->attempt_depth = (uint8_t)(state->attempt_depth + 1u);
   state->ip += 3;
   return FR_OK;
@@ -1654,7 +1755,7 @@ static fr_err_t fr_vm_reader_load_local(fr_runtime_t *runtime,
 static fr_err_t fr_vm_reader_store_local(fr_runtime_t *runtime,
                                          fr_code_object_id_t code_object_id,
                                          uint16_t length,
-                                         fr_vm_state_t *state) {
+                                         fr_vm_state_t *state, bool is_set) {
   uint8_t local_index = 0;
   fr_tagged_t value = 0;
 
@@ -1664,11 +1765,28 @@ static fr_err_t fr_vm_reader_store_local(fr_runtime_t *runtime,
     return FR_ERR_INVALID;
   }
   FR_TRY(fr_vm_pop(runtime, state, &value));
+  if (is_set) {
+    FR_TRY(fr_vm_check_set_local(runtime, value));
+  }
 
   state->frame[state->arg_count + local_index] = value;
   state->ip += 2;
   return fr_vm_push(runtime, state, fr_tagged_nil());
 }
+
+#if FR_FEATURE_BYTES
+static fr_err_t fr_vm_reader_bytes_checkpoint(
+    fr_runtime_t *runtime, fr_code_object_id_t code_object_id, uint16_t length,
+    fr_vm_state_t *state, fr_opcode_t op) {
+  uint8_t local_index = 0;
+
+  /* As in fr_vm_bytes_checkpoint: no second read of the header. */
+  FR_TRY(fr_vm_reader_require(length, state->ip, 2));
+  FR_TRY(fr_code_read_u8(runtime, code_object_id, (uint16_t)(state->ip + 1u),
+                         &local_index));
+  return fr_vm_bytes_checkpoint_at(runtime, state, op, local_index);
+}
+#endif
 
 #if FR_FEATURE_CELLS
 static fr_err_t fr_vm_reader_load_cell(fr_runtime_t *runtime,
@@ -2099,8 +2217,11 @@ static fr_err_t fr_vm_reader_step(fr_runtime_t *runtime,
   case FR_OP_LOAD_LOCAL:
     return fr_vm_reader_load_local(runtime, code_object_id, length, state);
   case FR_OP_STORE_LOCAL:
+    return fr_vm_reader_store_local(runtime, code_object_id, length, state,
+                                    false);
   case FR_OP_SET_LOCAL:
-    return fr_vm_reader_store_local(runtime, code_object_id, length, state);
+    return fr_vm_reader_store_local(runtime, code_object_id, length, state,
+                                    true);
 #if FR_FEATURE_CELLS
   case FR_OP_LOAD_CELL:
     return fr_vm_reader_load_cell(runtime, code_object_id, length, state);
@@ -2169,12 +2290,14 @@ static fr_err_t fr_vm_reader_step(fr_runtime_t *runtime,
     return fr_vm_reader_repeat_begin_as(runtime, code_object_id, length, state);
   case FR_OP_REPEAT_NEXT_AS:
     return fr_vm_reader_repeat_next_as(runtime, code_object_id, length, state);
-  case FR_OP_BYTES_RESET:
+  case FR_OP_BYTES_BEGIN:
+  case FR_OP_BYTES_REWIND:
 #if FR_FEATURE_BYTES
-    fr_bytes_reset_if_outermost(runtime);
+    return fr_vm_reader_bytes_checkpoint(runtime, code_object_id, length,
+                                         state, op);
+#else
+    return FR_ERR_UNSUPPORTED;
 #endif
-    state->ip++;
-    return FR_OK;
   default:
     return FR_ERR_INVALID;
   }
@@ -2209,8 +2332,9 @@ static fr_err_t fr_vm_step(fr_runtime_t *runtime,
   case FR_OP_LOAD_LOCAL:
     return fr_vm_load_local(runtime, view, state);
   case FR_OP_STORE_LOCAL:
+    return fr_vm_store_local(runtime, view, state, false);
   case FR_OP_SET_LOCAL:
-    return fr_vm_store_local(runtime, view, state);
+    return fr_vm_store_local(runtime, view, state, true);
 #if FR_FEATURE_CELLS
   case FR_OP_LOAD_CELL:
     return fr_vm_load_cell(runtime, view, state);
@@ -2278,12 +2402,13 @@ static fr_err_t fr_vm_step(fr_runtime_t *runtime,
     return fr_vm_repeat_begin_as(runtime, view, state);
   case FR_OP_REPEAT_NEXT_AS:
     return fr_vm_repeat_next_as(runtime, view, state);
-  case FR_OP_BYTES_RESET:
+  case FR_OP_BYTES_BEGIN:
+  case FR_OP_BYTES_REWIND:
 #if FR_FEATURE_BYTES
-    fr_bytes_reset_if_outermost(runtime);
+    return fr_vm_bytes_checkpoint(runtime, view, state);
+#else
+    return FR_ERR_UNSUPPORTED;
 #endif
-    state->ip++;
-    return FR_OK;
   default:
     return FR_ERR_INVALID;
   }
@@ -2326,7 +2451,7 @@ static fr_err_t fr_vm_run_instruction_stream_depth(
     state.frame[i] = args[i];
   }
   for (uint8_t i = 0; i < header.local_count; i++) {
-    state.frame[arg_count + i] = fr_tagged_nil();
+    state.frame[arg_count + i] = FR_TAGGED_NIL;
   }
   state.arg_count = arg_count;
   state.local_count = header.local_count;
@@ -2440,7 +2565,7 @@ static fr_err_t fr_vm_run_reader_code_object_depth(
     state.frame[i] = args[i];
   }
   for (uint8_t i = 0; i < header.local_count; i++) {
-    state.frame[arg_count + i] = fr_tagged_nil();
+    state.frame[arg_count + i] = FR_TAGGED_NIL;
   }
   state.arg_count = arg_count;
   state.local_count = header.local_count;
@@ -2534,22 +2659,21 @@ fr_err_t fr_vm_run_instruction_stream(fr_runtime_t *runtime,
 
 fr_err_t fr_vm_run_boot(fr_runtime_t *runtime, fr_tagged_t *out_tagged) {
   fr_tagged_t tagged = 0;
+  fr_err_t err = FR_OK;
 
   if (runtime == NULL || out_tagged == NULL) {
     return FR_ERR_INVALID;
   }
 
-  FR_TRY(fr_slot_read(runtime, FR_SLOT_BOOT, &tagged));
-  if (fr_tagged_is_nil(tagged)) {
+  err = fr_slot_read(runtime, FR_SLOT_BOOT, &tagged);
+  if (err == FR_OK && fr_tagged_is_nil(tagged)) {
     *out_tagged = fr_tagged_nil();
-    return FR_OK;
+  } else if (err == FR_OK) {
+    err = fr_vm_run_slot(runtime, FR_SLOT_BOOT, out_tagged);
   }
-
-  {
-    fr_err_t err = fr_vm_run_slot(runtime, FR_SLOT_BOOT, out_tagged);
 #if FR_FEATURE_BYTES
-    fr_bytes_reset_if_outermost(runtime);
+  /* Boot ends like a prompt line: no Bytes value outlives it. */
+  fr_bytes_reset(runtime);
 #endif
-    return err;
-  }
+  return err;
 }

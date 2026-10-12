@@ -138,6 +138,13 @@
 #define FR_FEATURE_BYTES 0
 #endif
 
+/* A host test build sets this to 1. A Bytes tag then carries a rewind count
+ * of its entry, and a rewind fills the freed arena bytes with 0xA5, so a
+ * stale tag or a kept pointer fails a test (ADR 0085 decision 7). */
+#ifndef FR_BYTES_CHECKED
+#define FR_BYTES_CHECKED 0
+#endif
+
 #ifndef FR_FEATURE_BLE
 #define FR_FEATURE_BLE 0
 #endif
@@ -679,6 +686,10 @@
 
 #if FR_FEATURE_BLE && !FR_FEATURE_BYTES
 #error "FR_FEATURE_BLE requires FR_FEATURE_BYTES"
+#endif
+
+#if FR_BYTES_CHECKED && !FR_FEATURE_BYTES
+#error "FR_BYTES_CHECKED requires FR_FEATURE_BYTES"
 #endif
 
 #if FR_FEATURE_BLE && !FR_FEATURE_REPL

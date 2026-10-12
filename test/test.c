@@ -331,16 +331,24 @@ enum {
 #define FR_TEST_SYNTHETIC_HANDLE_KIND FR_HANDLE_KIND_PWM
 #define FR_TEST_SYNTHETIC_HANDLE_NAME "pwm"
 
-/* Each loop back-edge emits one FR_OP_BYTES_RESET byte between the body's
-   trailing DROP and the REPEAT_NEXT/JUMP when bytes scratch is enabled
-   (src/compile.c repeat/while/forever). That shifts the compiled-loop layout
-   by one byte under FR_FEATURE_BYTES; the assertions below add this offset to
-   lengths, forward jump targets, and every position from the back-edge on. */
+/* With Bytes, each loop keeps a checkpoint in local 15 (ADR 0085): the word
+   gets the 4-byte locals header with 16 locals, a 2-byte BYTES_BEGIN where
+   the loop opens, and a 2-byte BYTES_REWIND after the trailing DROP of each
+   pass. A while also rewinds at its done target. The layout assertions below
+   use the header size of a word with a loop and the width of one checkpoint
+   opcode. */
 #if FR_FEATURE_BYTES
-#define FR_TEST_LOOP_RESET 1u
+#define FR_TEST_LOOP_HEADER FR_INSTRUCTION_LOCALS_HEADER_SIZE
+#define FR_TEST_ARITY_LOOP_HEADER FR_INSTRUCTION_LOCALS_HEADER_SIZE
+#define FR_TEST_LOOP_CHECKPOINT 2u
 #else
-#define FR_TEST_LOOP_RESET 0u
+#define FR_TEST_LOOP_HEADER FR_INSTRUCTION_MIN_HEADER_SIZE
+#define FR_TEST_ARITY_LOOP_HEADER FR_INSTRUCTION_ARITY_HEADER_SIZE
+#define FR_TEST_LOOP_CHECKPOINT 0u
 #endif
+#define FR_TEST_IS_CHECKPOINT(bytes, ip, op)                                  \
+  (FR_TEST_LOOP_CHECKPOINT == 0u ||                                           \
+   ((bytes)[(ip)] == (op) && (bytes)[(ip) + 1u] == 15u))
 
 #define FR_TEST_INT_BYTE0(value)                                             \
   ((uint8_t)((uint32_t)(int32_t)(value) & 0xffu))
@@ -11138,18 +11146,35 @@ static void test_compile(void) {
                 "boot is fn with count [ repeat count [ wait: 1 ] ]",
                 &update) == FR_OK &&
             update.code_object.instructions.length ==
-                17u + push_size + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[1] == FR_INSTRUCTION_ARITY_HEADER_SIZE &&
+                FR_TEST_ARITY_LOOP_HEADER + 14u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[1] == FR_TEST_ARITY_LOOP_HEADER &&
             update.instruction_bytes[2] == 1 &&
-            update.instruction_bytes[3] == FR_OP_LOAD_ARG &&
-            update.instruction_bytes[4] == 0 &&
-            update.instruction_bytes[5] == FR_OP_REPEAT_BEGIN &&
-            update.instruction_bytes[6] == 15u + push_size + FR_TEST_LOOP_RESET &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[12u + push_size] == FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[12u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_ARITY_LOOP_HEADER] ==
+                FR_OP_LOAD_ARG &&
+            update.instruction_bytes[FR_TEST_ARITY_LOOP_HEADER + 1u] == 0 &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_ARITY_LOOP_HEADER + 2u,
+                                  FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[FR_TEST_ARITY_LOOP_HEADER + 2u +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_REPEAT_BEGIN &&
+            update.instruction_bytes[FR_TEST_ARITY_LOOP_HEADER + 3u +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_ARITY_LOOP_HEADER + 12u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_ARITY_LOOP_HEADER + 9u + push_size +
+                                      FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_ARITY_LOOP_HEADER + 9u +
+                                     push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_REPEAT_NEXT &&
-            update.instruction_bytes[13u + push_size + FR_TEST_LOOP_RESET] == 8);
+            update.instruction_bytes[FR_TEST_ARITY_LOOP_HEADER + 10u +
+                                     push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_ARITY_LOOP_HEADER + 5u + FR_TEST_LOOP_CHECKPOINT);
 
   CHECK("compiled function owns instruction bytes",
         fr_compile_overlay_update("boot is fn [ 1 ]", &update) == FR_OK &&
@@ -11970,61 +11995,101 @@ static void test_compile(void) {
         fr_compile_overlay_update("boot is fn [ repeat 2 [ wait: 1 ] ]",
                                   &update) == FR_OK &&
             update.code_object.instructions.length ==
-                14u + (push_size * 2u) + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[2] == FR_OP_PUSH_INT &&
-            update.instruction_bytes[3] == 2 &&
-            update.instruction_bytes[2u + push_size] == FR_OP_REPEAT_BEGIN &&
-            update.instruction_bytes[3u + push_size] ==
-                12u + (push_size * 2u) + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[5u + push_size] == FR_OP_PUSH_INT &&
-            update.instruction_bytes[6u + push_size] == 1 &&
-            update.instruction_bytes[5u + (push_size * 2u)] ==
+                FR_TEST_LOOP_HEADER + 12u + (push_size * 2u) +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[1] == FR_TEST_LOOP_HEADER &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER] == FR_OP_PUSH_INT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u] == 2 &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + push_size,
+                                  FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_REPEAT_BEGIN &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 10u + (push_size * 2u) +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_PUSH_INT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == 1 &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u +
+                                     (push_size * 2u) +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_CALL_NATIVE_SLOT &&
-            update.instruction_bytes[6u + (push_size * 2u)] == FR_SLOT_WAIT &&
-            update.instruction_bytes[8u + (push_size * 2u)] == FR_OP_DROP &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[9u + (push_size * 2u)] ==
-                 FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[9u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u +
+                                     (push_size * 2u) +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_SLOT_WAIT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 6u +
+                                     (push_size * 2u) +
+                                     FR_TEST_LOOP_CHECKPOINT] == FR_OP_DROP &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 7u + (push_size * 2u) +
+                                      FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 7u +
+                                     (push_size * 2u) +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_REPEAT_NEXT &&
-            update.instruction_bytes[10u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] ==
-                5u + push_size &&
-            update.instruction_bytes[12u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 8u +
+                                     (push_size * 2u) +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 3u + push_size +
+                    FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 10u +
+                                     (push_size * 2u) +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_PUSH_NIL &&
-            update.instruction_bytes[13u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 11u +
+                                     (push_size * 2u) +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_RETURN);
   CHECK("compiled repeat-as owns index in loop opcodes",
         fr_compile_overlay_update("boot is fn [ repeat 2 as i [ i ] ]",
                                   &update) == FR_OK &&
             update.code_object.instructions.length ==
-                17u + push_size + FR_TEST_LOOP_RESET &&
+                17u + push_size + 2u * FR_TEST_LOOP_CHECKPOINT &&
             update.instruction_bytes[1] == FR_INSTRUCTION_LOCALS_HEADER_SIZE &&
-            update.instruction_bytes[3] == 1 &&
+            update.instruction_bytes[3] ==
+                (FR_TEST_LOOP_CHECKPOINT == 0u ? 1u : 16u) &&
             update.instruction_bytes[4] == FR_OP_PUSH_INT &&
             update.instruction_bytes[5] == 2 &&
-            update.instruction_bytes[4u + push_size] ==
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes, 4u + push_size,
+                                  FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[4u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_REPEAT_BEGIN_AS &&
-            update.instruction_bytes[5u + push_size] ==
-                15u + push_size + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[7u + push_size] == 0 &&
-            update.instruction_bytes[8u + push_size] == FR_OP_LOAD_LOCAL &&
-            update.instruction_bytes[9u + push_size] == 0 &&
-            update.instruction_bytes[10u + push_size] == FR_OP_DROP &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[11u + push_size] == FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[11u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[5u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                15u + push_size + 2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[7u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == 0 &&
+            update.instruction_bytes[8u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_LOAD_LOCAL &&
+            update.instruction_bytes[9u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == 0 &&
+            update.instruction_bytes[10u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == FR_OP_DROP &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  11u + push_size + FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[11u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_REPEAT_NEXT_AS &&
-            update.instruction_bytes[12u + push_size + FR_TEST_LOOP_RESET] ==
-                8u + push_size &&
-            update.instruction_bytes[14u + push_size + FR_TEST_LOOP_RESET] ==
-                0 &&
-            update.instruction_bytes[15u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[12u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                8u + push_size + FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[14u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] == 0 &&
+            update.instruction_bytes[15u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_PUSH_NIL &&
-            update.instruction_bytes[16u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[16u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_RETURN);
   CHECK("repeat-as sums zero-based index",
         test_run_boot_source_int("boot is fn [ here t is 0 ; repeat 4 as i "
@@ -12057,40 +12122,73 @@ static void test_compile(void) {
         fr_compile_overlay_update("boot is fn [ repeat 0 [ one ] ]",
                                   &update) == FR_OK &&
             update.code_object.instructions.length ==
-                14u + push_size + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[2] == FR_OP_PUSH_INT &&
-            update.instruction_bytes[3] == 0 &&
-            update.instruction_bytes[2u + push_size] == FR_OP_REPEAT_BEGIN &&
-            update.instruction_bytes[3u + push_size] ==
-                12u + push_size + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[5u + push_size] == FR_OP_LOAD_SLOT &&
-            update.instruction_bytes[6u + push_size] == FR_SLOT_ONE &&
-            update.instruction_bytes[8u + push_size] == FR_OP_DROP &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[9u + push_size] == FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[9u + push_size + FR_TEST_LOOP_RESET] ==
+                FR_TEST_LOOP_HEADER + 12u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER] == FR_OP_PUSH_INT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u] == 0 &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + push_size,
+                                  FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_REPEAT_BEGIN &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 10u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_LOAD_SLOT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == FR_SLOT_ONE &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 6u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == FR_OP_DROP &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 7u + push_size +
+                                      FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 7u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_REPEAT_NEXT &&
-            update.instruction_bytes[10u + push_size + FR_TEST_LOOP_RESET] ==
-                5u + push_size &&
-            update.instruction_bytes[12u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 8u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 3u + push_size +
+                    FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 10u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_PUSH_NIL &&
-            update.instruction_bytes[13u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 11u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_RETURN);
   CHECK("compiled repeat accepts dynamic count",
         fr_base_image_install(&runtime) == FR_OK &&
             fr_compile_overlay_update("boot is fn [ repeat one [ wait: 1 ] ]",
                                       &update) == FR_OK &&
             update.code_object.instructions.length ==
-                17u + push_size + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[2] == FR_OP_LOAD_SLOT &&
-            update.instruction_bytes[3] == FR_SLOT_ONE &&
-            update.instruction_bytes[5] == FR_OP_REPEAT_BEGIN &&
-            update.instruction_bytes[6] == 15u + push_size + FR_TEST_LOOP_RESET &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[12u + push_size] == FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[12u + push_size + FR_TEST_LOOP_RESET] ==
+                FR_TEST_LOOP_HEADER + 15u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER] == FR_OP_LOAD_SLOT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u] == FR_SLOT_ONE &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 3u,
+                                  FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_REPEAT_BEGIN &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 13u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 10u + push_size +
+                                      FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 10u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_REPEAT_NEXT &&
-            update.instruction_bytes[13u + push_size + FR_TEST_LOOP_RESET] == 8 &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 11u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 6u + FR_TEST_LOOP_CHECKPOINT &&
             fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
             fr_vm_run_boot(&runtime, &tagged) == FR_OK &&
             fr_tagged_is_nil(tagged));
@@ -12111,28 +12209,53 @@ static void test_compile(void) {
         fr_compile_overlay_update("boot is fn [ while 0 [ 1 ] ]",
                                   &update) == FR_OK &&
             update.code_object.instructions.length ==
-                11u + (push_size * 2u) + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[2] == FR_OP_PUSH_INT &&
-            update.instruction_bytes[3] == 0 &&
-            update.instruction_bytes[2u + push_size] ==
+                FR_TEST_LOOP_HEADER + 9u + (push_size * 2u) +
+                    3u * FR_TEST_LOOP_CHECKPOINT &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER, FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_PUSH_INT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u +
+                                     FR_TEST_LOOP_CHECKPOINT] == 0 &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_JUMP_IF_FALSY &&
-            update.instruction_bytes[3u + push_size] ==
-                9u + (push_size * 2u) + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[5u + push_size] == FR_OP_PUSH_INT &&
-            update.instruction_bytes[6u + push_size] == 1 &&
-            update.instruction_bytes[5u + (push_size * 2u)] == FR_OP_DROP &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[6u + (push_size * 2u)] ==
-                 FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[6u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] == FR_OP_JUMP &&
-            update.instruction_bytes[7u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] == 2 &&
-            update.instruction_bytes[9u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 7u + (push_size * 2u) +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_PUSH_INT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == 1 &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u +
+                                     (push_size * 2u) +
+                                     FR_TEST_LOOP_CHECKPOINT] == FR_OP_DROP &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 4u + (push_size * 2u) +
+                                      FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u +
+                                     (push_size * 2u) +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_JUMP &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 5u +
+                                     (push_size * 2u) +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + FR_TEST_LOOP_CHECKPOINT &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 7u + (push_size * 2u) +
+                                      2u * FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 7u +
+                                     (push_size * 2u) +
+                                     3u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_PUSH_NIL &&
-            update.instruction_bytes[10u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 8u +
+                                     (push_size * 2u) +
+                                     3u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_RETURN);
   CHECK("compiled while false skips body and yields nil",
         fr_runtime_init(&runtime) == FR_OK &&
@@ -12183,21 +12306,38 @@ static void test_compile(void) {
         fr_compile_overlay_update("boot is fn [ forever [ wait: 1 ] ]",
                                   &update) == FR_OK &&
             update.code_object.instructions.length ==
-                11u + push_size + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[2] == FR_OP_PUSH_INT &&
-            update.instruction_bytes[3] == 1 &&
-            update.instruction_bytes[2u + push_size] ==
+                FR_TEST_LOOP_HEADER + 9u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER, FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_PUSH_INT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u +
+                                     FR_TEST_LOOP_CHECKPOINT] == 1 &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_CALL_NATIVE_SLOT &&
-            update.instruction_bytes[3u + push_size] == FR_SLOT_WAIT &&
-            update.instruction_bytes[5u + push_size] == FR_OP_DROP &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[6u + push_size] == FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[6u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_SLOT_WAIT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == FR_OP_DROP &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 4u + push_size +
+                                      FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_JUMP &&
-            update.instruction_bytes[7u + push_size + FR_TEST_LOOP_RESET] == 2 &&
-            update.instruction_bytes[9u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 5u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 7u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_PUSH_NIL &&
-            update.instruction_bytes[10u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 8u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_RETURN);
   CHECK("compiled pure forever sees pending interrupt",
         fr_base_image_install(&runtime) == FR_OK &&
@@ -17760,16 +17900,29 @@ static void test_repl_capacity_notes(void) {
                           out, sizeof(out)) == FR_ERR_CAPACITY &&
             strstr(out, expected) != NULL);
 
-  /* An entry retires at its last generation, so many short uses fill the
-     table. */
-  snprintf(expected, sizeof(expected),
-           "note: Bytes table is full (limit %u)\n",
-           (unsigned)FR_PROFILE_BYTES_COUNT);
-  CHECK("Bytes table full names the store and its limit",
-        fr_repl_eval_line(&runtime,
-                          "repeat 2000 [ bytes.length: (bytes.from-int: 1) ]",
-                          out, sizeof(out)) == FR_ERR_CAPACITY &&
-            strstr(out, expected) != NULL);
+  /* A loop frees the values of each pass (ADR 0085), so the table fills
+     only when more values are alive at one time than it holds. */
+  {
+    char line[400];
+    int used = 0;
+
+    for (unsigned i = 0; i <= (unsigned)FR_PROFILE_BYTES_COUNT; i++) {
+      used += snprintf(line + used, sizeof(line) - (size_t)used,
+                       "here b%u is bytes.from-int: %u; ", i, i);
+    }
+    snprintf(line + used, sizeof(line) - (size_t)used, "1");
+    snprintf(expected, sizeof(expected),
+             "note: Bytes table is full (limit %u)\n",
+             (unsigned)FR_PROFILE_BYTES_COUNT);
+    CHECK("short uses in a loop do not fill the Bytes table",
+          fr_repl_eval_line(&runtime,
+                            "repeat 2000 [ bytes.length: (bytes.from-int: 1) ]",
+                            out, sizeof(out)) == FR_OK);
+    CHECK("Bytes table full names the store and its limit",
+          fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                  FR_ERR_CAPACITY &&
+              strstr(out, expected) != NULL);
+  }
 #endif
 
 #if FR_FEATURE_PAD
@@ -17841,7 +17994,9 @@ static void test_repl_capacity_notes(void) {
           fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
                   FR_ERR_CAPACITY &&
               strstr(out, expected) != NULL);
-    snprintf(line, sizeof(line), "v is max: (repeat 1 as i [ %s ]), 0",
+    /* random.below exists on every profile; each body counts its locals
+       while it compiles, so an unknown word would fail first. */
+    snprintf(line, sizeof(line), "v is random.below: (repeat 1 as i [ %s ])",
              locals);
     CHECK("too many locals in a value binding name the store and its limit",
           fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==

@@ -123,19 +123,29 @@ typedef struct fr_event_table_t {
 typedef struct fr_bytes_entry_t {
   uint16_t offset;
   uint16_t length;
-  uint8_t generation;
-  bool in_use;
-  bool retired;
+#if FR_BYTES_CHECKED
+  uint16_t rewinds;
+#endif
 } fr_bytes_entry_t;
 
+/* Bytes values grow by two cursors (ADR 0085): a new value takes the next
+ * entry and the next arena bytes. A rewind moves both cursors back to a
+ * mark and frees every value made after that mark. */
 typedef struct fr_bytes_t {
   fr_bytes_entry_t entries[FR_BYTES_TABLE_CAPACITY];
   uint8_t arena[FR_PROFILE_BYTES_ARENA_BYTES > 0
                     ? FR_PROFILE_BYTES_ARENA_BYTES
                     : 1];
   uint16_t arena_used;
-  uint16_t eval_depth;
+  uint8_t entry_count;
 } fr_bytes_t;
+
+/* The two cursors at one point. A loop, an attempt, an event body and the
+ * prompt each keep a mark and rewind to it. */
+typedef struct fr_bytes_mark_t {
+  uint16_t arena_used;
+  uint8_t entry_count;
+} fr_bytes_mark_t;
 #endif
 
 #if FR_FEATURE_NET
@@ -217,5 +227,10 @@ fr_runtime_limits_t fr_runtime_get_limits(void);
 
 #if FR_FEATURE_BYTES
 void fr_bytes_init(fr_runtime_t *runtime);
-void fr_bytes_reset_if_outermost(fr_runtime_t *runtime);
+fr_bytes_mark_t fr_bytes_mark(const fr_runtime_t *runtime);
+/* Free every value made after the mark. A mark above the cursors is
+   invalid. */
+fr_err_t fr_bytes_rewind(fr_runtime_t *runtime, fr_bytes_mark_t mark);
+/* The prompt frees every value after it shows a result. */
+void fr_bytes_reset(fr_runtime_t *runtime);
 #endif

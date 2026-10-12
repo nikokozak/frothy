@@ -431,6 +431,12 @@ _test-unity-run: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIV
 	./$(UNITY_T14_POWER_TEST_BINARY)
 	./$(UNITY_T16_BYTES_TEST_BINARY)
 
+test-bytes-checked: ## Run the host_normal suites with checked Bytes tags (stale tags and kept pointers fail).
+	$(MAKE) BOARD=host PROFILE=host_normal BUILD_DIR=build/host-bytes-checked \
+		CFLAGS=-DFR_BYTES_CHECKED=1 \
+		TEST_BINARY=build/host-bytes-checked/test \
+		test _test-unity-run _test-ble-host-run
+
 test-ble-host: ## Run the deterministic BLE fixture under the host_normal data profile.
 	$(MAKE) BOARD=host PROFILE=host_normal \
 		UNITY_BLE_TEST_BINARY=build/host/test-unity-ble \

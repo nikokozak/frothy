@@ -7,6 +7,9 @@
 #include "platform.h"
 #include "tagged.h"
 
+#if FR_BYTES_CHECKED
+#include <assert.h>
+#endif
 #include <string.h>
 
 fr_err_t fr_runtime_init(fr_runtime_t *runtime) {
@@ -198,24 +201,36 @@ void fr_bytes_init(fr_runtime_t *runtime) {
   memset(&runtime->bytes, 0, sizeof(runtime->bytes));
 }
 
-void fr_bytes_reset_if_outermost(fr_runtime_t *runtime) {
-  if (runtime == NULL || runtime->bytes.eval_depth != 0) {
-    return;
+fr_bytes_mark_t fr_bytes_mark(const fr_runtime_t *runtime) {
+  return (fr_bytes_mark_t){.arena_used = runtime->bytes.arena_used,
+                           .entry_count = runtime->bytes.entry_count};
+}
+
+fr_err_t fr_bytes_rewind(fr_runtime_t *runtime, fr_bytes_mark_t mark) {
+  fr_bytes_t *bytes = &runtime->bytes;
+
+  if (mark.entry_count > bytes->entry_count ||
+      mark.arena_used > bytes->arena_used) {
+    return FR_ERR_INVALID;
   }
-  runtime->bytes.arena_used = 0;
-  for (fr_bytes_id_t i = 0; i < FR_PROFILE_BYTES_COUNT; i++) {
-    fr_bytes_entry_t *entry = &runtime->bytes.entries[i];
-    if (!entry->in_use) {
-      continue;
-    }
-    if (entry->generation == FR_TAGGED_BYTES_MAX_GENERATION) {
-      entry->retired = true;
-    } else {
-      entry->generation =
-          (fr_bytes_generation_t)(entry->generation + 1u);
-    }
-    entry->in_use = false;
+#if FR_BYTES_CHECKED
+  for (uint8_t i = mark.entry_count; i < bytes->entry_count; i++) {
+    bytes->entries[i].rewinds = (uint16_t)(bytes->entries[i].rewinds + 1u);
   }
+  memset(&bytes->arena[mark.arena_used], 0xA5,
+         (size_t)(bytes->arena_used - mark.arena_used));
+#endif
+  bytes->entry_count = mark.entry_count;
+  bytes->arena_used = mark.arena_used;
+  return FR_OK;
+}
+
+void fr_bytes_reset(fr_runtime_t *runtime) {
+#if FR_BYTES_CHECKED
+  /* No VM frame may hold a value at the prompt. */
+  assert(runtime->execution_depth == 0);
+#endif
+  (void)fr_bytes_rewind(runtime, (fr_bytes_mark_t){0});
 }
 #endif
 

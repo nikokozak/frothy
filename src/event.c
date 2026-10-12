@@ -279,6 +279,9 @@ void fr_event_report_overflow(fr_runtime_t *runtime) {
  * are recorded but do not stop the round; the first one is returned. */
 fr_err_t fr_event_dispatch(fr_runtime_t *runtime) {
   fr_err_t first_err = FR_OK;
+#if FR_FEATURE_BYTES
+  fr_bytes_mark_t bytes_mark;
+#endif
 
   if (runtime == NULL) {
     return FR_ERR_INVALID;
@@ -288,7 +291,9 @@ fr_err_t fr_event_dispatch(fr_runtime_t *runtime) {
   }
   runtime->dispatching_event = true;
 #if FR_FEATURE_BYTES
-  runtime->bytes.eval_depth++;
+  /* Each body frees its Bytes values when it ends, so the interrupted
+   * code keeps its own (ADR 0085 decision 3). */
+  bytes_mark = fr_bytes_mark(runtime);
 #endif
 
   for (uint16_t i = 0; i < FR_EVENT_BINDING_COUNT; i++) {
@@ -328,19 +333,20 @@ fr_err_t fr_event_dispatch(fr_runtime_t *runtime) {
     runtime->diag = NULL;
     body_err = fr_vm_run_code_object(runtime, body, &result);
     runtime->diag = previous_diag;
+#if FR_FEATURE_BYTES
+    {
+      fr_err_t rewind_err = fr_bytes_rewind(runtime, bytes_mark);
+
+      if (body_err == FR_OK) {
+        body_err = rewind_err;
+      }
+    }
+#endif
     if (body_err != FR_OK && first_err == FR_OK) {
       first_err = body_err;
     }
   }
 
-#if FR_FEATURE_BYTES
-  runtime->bytes.eval_depth--;
-  /* Idle dispatch owns this evaluation. A dispatch inside the VM leaves
-   * cleanup to the running expression or its next loop back-edge. */
-  if (!fr_runtime_is_executing(runtime)) {
-    fr_bytes_reset_if_outermost(runtime);
-  }
-#endif
   runtime->dispatching_event = false;
   return first_err;
 }

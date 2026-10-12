@@ -3,7 +3,7 @@
 #include "tagged.h"
 
 enum {
-  FR_INSTRUCTION_FORMAT_VERSION = 1u,
+  FR_INSTRUCTION_FORMAT_VERSION = 2u,
   FR_INSTRUCTION_MIN_HEADER_SIZE = 2u,
   FR_INSTRUCTION_ARITY_HEADER_SIZE = 3u,
   FR_INSTRUCTION_LOCALS_HEADER_SIZE = 4u,
@@ -65,7 +65,7 @@ typedef enum fr_opcode_t {
   FR_OP_LOAD_LOCAL = 0x1F,
   FR_OP_STORE_LOCAL = 0x20,
   FR_OP_PUSH_CODE_ID = 0x21,
-  FR_OP_BYTES_RESET = 0x22,
+  /* 0x22 was the Bytes reset of format 1; format 2 has no 0x22. */
   FR_OP_LOAD_CELL_DYNAMIC = 0x23,
   FR_OP_STORE_CELL_DYNAMIC = 0x24,
   FR_OP_SET_LOCAL = 0x25,
@@ -75,6 +75,11 @@ typedef enum fr_opcode_t {
   FR_OP_ATTEMPT_END = 0x29,
   FR_OP_ERROR_CODE = 0x2A,
   FR_OP_ERROR_NAME = 0x2B,
+  /* A loop keeps its Bytes checkpoint in the local of the operand: BEGIN
+     stores the two cursors there, REWIND moves the cursors back to them
+     (ADR 0085). */
+  FR_OP_BYTES_BEGIN = 0x2C,
+  FR_OP_BYTES_REWIND = 0x2D,
 } fr_opcode_t;
 
 fr_err_t fr_instruction_stream_init(fr_instruction_stream_t *view,
