@@ -23,6 +23,11 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ### Changed
 
+- **The note of `other release (27)` names the next step.** After an update
+  that changes the saved image, `restore` answers `other release (27)`. The
+  note now says `the image comes from another release -- send your source
+  again, then save`. Before, the note said that `save` writes a new image. A
+  `save` before you send the source again saves an empty program.
 - **A loop can make Bytes values for as long as it runs.** Before, a board
   failed with `capacity exceeded (4)` and the note `Bytes table is full
   (limit 8)` after about 1,024 Bytes values since the last restart or save,
