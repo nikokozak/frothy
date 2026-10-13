@@ -477,6 +477,46 @@ static void test_failed_mount_commit_drops_candidate_slot_names(void) {
 }
 #endif
 
+#if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0
+/* The number of reserved entries in the name table (ADR 0089). */
+static uint16_t reserved_count(void) {
+  uint16_t count = 0;
+
+  for (uint16_t i = 0; i < fr_slot_project_name_count(&s_runtime); i++) {
+    fr_slot_id_t slot_id = 0;
+    const char *name = NULL;
+    uint8_t length = 0;
+
+    if (fr_slot_reserved_name_at(&s_runtime, i, &slot_id, &name, &length) ==
+        FR_OK) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/* ADR 0089: a save that fails after it marked a slot leaves no mark for the
+ * next save, which no longer writes code that calls that slot. */
+static void test_failed_save_leaves_no_slot_mark(void) {
+  char buf[128];
+  const char *lines[] = {"install-library", "lw is fn [ 42 ]", "install-user",
+                         "f is fn [ lw: ]", "install-library", "install-user"};
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  for (uint8_t i = 0; i < (uint8_t)(sizeof(lines) / sizeof(lines[0])); i++) {
+    TEST_ASSERT_EQUAL(FR_OK, fr_repl_eval_line(&s_runtime, lines[i], buf,
+                                               (uint16_t)sizeof(buf)));
+  }
+  TEST_ASSERT_EQUAL_UINT16(1, reserved_count());
+  fr_host_persist_debug_interrupt_next_header_write();
+  TEST_ASSERT_EQUAL(FR_ERR_IO, fr_persist_save(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK, fr_repl_eval_line(&s_runtime, "f is fn [ 1 ]", buf,
+                                             (uint16_t)sizeof(buf)));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_save(&s_runtime));
+  TEST_ASSERT_EQUAL_UINT16(0, reserved_count());
+}
+#endif
+
 static void test_clear_reports_not_found(void) {
   fr_runtime_t restore_runtime;
 
@@ -654,6 +694,60 @@ static void test_failed_save_with_no_mounted_image_clears_the_project(void) {
   }
 }
 
+/* A wipe whose save fails before its commit leaves no reservation: the
+ * names of the mounted image come back, and the unsaved word `v` is gone. */
+static void test_failed_wipe_save_leaves_no_reservation(void) {
+  boot_saved_words();
+  expect_line("v is fn [ 5 ]", FR_OK, "ok\n");
+  fr_host_persist_debug_fail_stream_step(1);
+  expect_line("wipe-user", FR_ERR_IO, NULL);
+  expect_saved_words();
+  expect_no_name("v");
+  TEST_ASSERT_EQUAL_UINT16(0, reserved_count());
+}
+
+/* In library mode, with `lw` reserved because the user word `f` calls it. */
+static void reserve_called_library_word(void) {
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  expect_line("install-library", FR_OK, "ok\n");
+  expect_line("lw is fn [ 42 ]", FR_OK, "ok\n");
+  expect_line("install-user", FR_OK, "ok\n");
+  expect_line("f is fn [ lw: ]", FR_OK, "ok\n");
+  expect_line("install-library", FR_OK, "ok\n");
+  TEST_ASSERT_EQUAL_UINT16(1, reserved_count());
+}
+
+static void test_failed_save_at_once_keeps_a_reservation(void) {
+  reserve_called_library_word();
+  fr_host_persist_debug_fail_stream_step(1);
+  expect_line("r is fn [ 99 ]", FR_ERR_IO, NULL);
+  expect_no_name("r");
+  TEST_ASSERT_EQUAL_UINT16(1, reserved_count());
+  fr_host_persist_debug_fail_stream_step(1);
+  expect_line("lw is fn [ 43 ]", FR_ERR_IO, NULL);
+  TEST_ASSERT_EQUAL_UINT16(1, reserved_count());
+  expect_line("f:", FR_ERR_TYPE, NULL);
+  boot();
+  TEST_ASSERT_EQUAL_UINT16(1, reserved_count());
+  expect_line("f:", FR_ERR_TYPE, NULL);
+
+  /* After the commit, the newer image wins, also after a failed remount. */
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_persist_clear());
+  reserve_called_library_word();
+  fr_host_persist_debug_fail_after_next_header_write();
+  expect_line("lw is fn [ 43 ]", FR_ERR_IO, NULL);
+  expect_line("f:", FR_OK, "43\nok\n");
+  TEST_ASSERT_EQUAL_UINT16(0, reserved_count());
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_persist_clear());
+  reserve_called_library_word();
+  fr_host_persist_debug_fail_next_mount_commit();
+  expect_line("lw is fn [ 43 ]", FR_ERR_IO, NULL);
+  expect_line("f:", FR_OK, "43\nok\n");
+  boot();
+  expect_line("f:", FR_OK, "43\nok\n");
+  TEST_ASSERT_EQUAL_UINT16(0, reserved_count());
+}
+
 #if FR_FEATURE_HANDLES && FR_FEATURE_PWM
 static const char s_not_saved_h[] =
     "error: not saved (13)\n"
@@ -752,6 +846,17 @@ static void test_refused_library_rebinding_restores_its_target(void) {
   TEST_ASSERT_EQUAL_UINT8(1, open_pwm_handles());
 }
 
+/* A refused value binding of a reserved name gives the reservation back,
+ * and its handle stays open with no name. */
+static void test_refused_binding_of_a_reserved_name_keeps_it(void) {
+  reserve_called_library_word();
+  expect_line("lw is pwm.open: 5, 1000", FR_ERR_VOLATILE, NULL);
+  TEST_ASSERT_EQUAL_UINT16(1, reserved_count());
+  expect_no_name("lw");
+  TEST_ASSERT_EQUAL_UINT8(1, open_pwm_handles());
+  expect_line("f:", FR_ERR_TYPE, NULL);
+}
+
 /* `wipe-user` cannot check before its wipe. A library value that the save
  * cannot store fails the save. The runtime goes back to the mounted image,
  * also when the first remount fails. The command keeps the save error. */
@@ -791,16 +896,22 @@ int main(void) {
   RUN_TEST(test_boot_user_slot_name_survives_clear);
   RUN_TEST(test_failed_mount_commit_drops_candidate_slot_names);
 #endif
+#if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  RUN_TEST(test_failed_save_leaves_no_slot_mark);
+#endif
   RUN_TEST(test_clear_reports_not_found);
 #if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0
   RUN_TEST(test_failed_save_step_restores_the_mounted_image);
   RUN_TEST(test_failed_finalize_follows_the_newest_image);
   RUN_TEST(test_failed_save_with_no_mounted_image_clears_the_project);
+  RUN_TEST(test_failed_save_at_once_keeps_a_reservation);
+  RUN_TEST(test_failed_wipe_save_leaves_no_reservation);
 #if FR_FEATURE_HANDLES && FR_FEATURE_PWM
   RUN_TEST(test_install_library_refuses_a_user_handle_with_no_change);
   RUN_TEST(test_library_definitions_refuse_a_handle_with_no_change);
   RUN_TEST(test_refused_library_rebinding_restores_its_target);
   RUN_TEST(test_failed_rollback_remount_keeps_the_save_error);
+  RUN_TEST(test_refused_binding_of_a_reserved_name_keeps_it);
 #endif
 #endif
 #if FR_FEATURE_TEXT

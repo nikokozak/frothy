@@ -421,8 +421,8 @@ static void fr_compile_note_name_suggestion(const fr_compile_context_t *ctx,
       const char *project_name = NULL;
       uint8_t project_name_length = 0;
 
-      if (fr_slot_name_view(ctx->runtime, slot_id, &project_name,
-                            &project_name_length) != FR_OK) {
+      if (fr_slot_active_name_view(ctx->runtime, slot_id, &project_name,
+                                   &project_name_length) != FR_OK) {
         continue;
       }
       if (call_position && !fr_compile_slot_is_callable(ctx, slot_id)) {

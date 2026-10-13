@@ -110,6 +110,11 @@ fr_err_t fr_instruction_read_local_operand(const fr_instruction_stream_t *view,
 fr_err_t fr_instruction_read_jump_local_operands(
     const fr_instruction_stream_t *view, fr_code_offset_t ip,
     fr_code_offset_t *out_target, uint8_t *out_local_index);
+/* The slot operand of the nine opcodes that name a slot, or FR_ERR_NOT_FOUND
+ * for every other opcode (ADR 0089). */
+fr_err_t fr_instruction_slot_ref_at(const fr_instruction_stream_t *view,
+                                    fr_code_offset_t ip,
+                                    fr_slot_id_t *out_slot_id);
 fr_err_t fr_instruction_read_call_slot_arg_operands(
     const fr_instruction_stream_t *view, fr_code_offset_t ip,
     fr_slot_id_t *out_slot_id, uint8_t *out_arg_count);

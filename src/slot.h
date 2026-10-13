@@ -43,9 +43,8 @@ fr_err_t fr_slot_prepare_project_name(const fr_runtime_t *runtime,
 fr_err_t fr_slot_rollback_project_name(fr_runtime_t *runtime,
                                        const char *name,
                                        fr_slot_id_t slot_id);
-/* Lower slots.count back over trailing slots that are free (unoverlaid, base
- * value, unnamed). Call after freeing user slots so the next project name gets
- * the lowest free id. */
+/* Lower slots.count and slots.base_count over the free slots at their tops.
+ * A tier wipe and a name rollback call it after they free slots. */
 void fr_slot_reclaim_free_tail(fr_runtime_t *runtime);
 fr_err_t fr_slot_validate_project_names(const fr_runtime_t *runtime,
                                         const fr_slot_name_t names[],
@@ -55,5 +54,19 @@ fr_err_t fr_slot_bind_project_name(fr_runtime_t *runtime, const char *name,
                                    fr_slot_id_t slot_id);
 fr_err_t fr_slot_mount_project_name(fr_runtime_t *runtime, const char *name,
                                     uint8_t length, fr_slot_id_t slot_id);
+/* ADR 0089: reserved names. A mount adds the RESERVED_NAME records of the
+ * image; `restore` first drops the reservations in RAM; the save writes the
+ * reserved entries whose slots the written code calls. */
+fr_err_t fr_slot_mount_reserved_name(fr_runtime_t *runtime, const char *name,
+                                     uint8_t length, fr_slot_id_t slot_id);
+void fr_slot_drop_reserved_names(fr_runtime_t *runtime);
+bool fr_slot_project_name_active_at(const fr_runtime_t *runtime,
+                                    uint16_t index);
+fr_err_t fr_slot_active_name_view(const fr_runtime_t *runtime,
+                                  fr_slot_id_t slot_id, const char **out_name,
+                                  uint8_t *out_length);
+fr_err_t fr_slot_reserved_name_at(const fr_runtime_t *runtime, uint16_t index,
+                                  fr_slot_id_t *out_slot_id,
+                                  const char **out_name, uint8_t *out_length);
 void fr_slot_mark_persist_image(fr_runtime_t *runtime);
 void fr_slot_clear_project_names(fr_runtime_t *runtime);

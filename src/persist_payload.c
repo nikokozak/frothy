@@ -29,6 +29,7 @@ enum {
   FR_PERSIST_RECORD_RECORD_SHAPE = 6,
   FR_PERSIST_RECORD_RECORD = 7,
   FR_PERSIST_RECORD_EVENT = 8,
+  FR_PERSIST_RECORD_RESERVED_NAME = 9,
   FR_PERSIST_RECORD_END = 0xff,
   FR_PERSIST_VALUE_NIL = 0,
   FR_PERSIST_VALUE_FALSE = 1,
@@ -59,6 +60,23 @@ static const uint8_t fr_persist_payload_magic[4] = {'F', 'R', 'P', 'O'};
  * file-static for the prototype; the session tier itself is per-runtime
  * (runtime->install_tier) per SPEC D3. */
 static uint8_t fr_persist_slot_tier[FR_PROFILE_MAX_SLOTS];
+
+/* ADR 0089: one bit for each slot that the code of the current save names.
+ * The save keeps a reserved name only when its slot has a mark. */
+static uint8_t fr_persist_slot_marks[(FR_PROFILE_MAX_SLOTS + 7) / 8];
+
+static void fr_persist_marks_reset(void) {
+  memset(fr_persist_slot_marks, 0, sizeof(fr_persist_slot_marks));
+}
+
+static void fr_persist_mark_slot_ref(const fr_instruction_stream_t *view,
+                                     fr_code_offset_t ip) {
+  fr_slot_id_t slot_id = 0;
+
+  if (fr_instruction_slot_ref_at(view, ip, &slot_id) == FR_OK) {
+    fr_persist_slot_marks[slot_id / 8u] |= (uint8_t)(1u << (slot_id % 8u));
+  }
+}
 
 /* D6 boot two-call sequence: the L2 pass must follow a successful L1 pass on
  * the same payload. Code and object ids are already final image ids, so no
@@ -98,9 +116,8 @@ void fr_persist_session_install_tier_stamp_overlay(
  * stamps stay. A slot with no stamp (default 0) encodes as USER, so the
  * non-library check covers both explicitly-USER and unstamped slots. The
  * encoder reads runtime->slots, so a subsequent fr_persist_save writes
- * only the library binds. Overlay-name entries that point at a no-longer-
- * overlaid slot get compacted out so `words` and fr_slot_id_for_name no
- * longer surface the wiped names. */
+ * only the library binds. A dropped project name becomes reserved: `words`
+ * and name lookup do not show reserved names (ADR 0089). */
 void fr_persist_session_wipe_user_tier(fr_runtime_t *runtime) {
   if (runtime == NULL) {
     return;
@@ -126,44 +143,19 @@ void fr_persist_session_wipe_user_tier(fr_runtime_t *runtime) {
     }
   }
 #if FR_PROFILE_MAX_OVERLAY_NAMES > 0
-  {
-    uint16_t dst = 0;
-    for (uint16_t src = 0; src < runtime->slots.overlay_name_count; src++) {
-      fr_slot_id_t s = runtime->slots.overlay_names[src].slot_id;
+  /* A dropped name stays as a reserved name with its slot, so code that
+   * calls it cannot reach another word; the wipe's save keeps it only while
+   * saved code calls it (ADR 0089). */
+  for (uint16_t i = 0; i < runtime->slots.overlay_name_count; i++) {
+    fr_slot_id_t s = runtime->slots.overlay_names[i].slot_id;
 
-      if (fr_slot_is_overlay(runtime, s) ||
-          (s < FR_PROFILE_MAX_SLOTS &&
-           runtime->slots.base_tier[s] == FR_INSTALL_TIER_LIBRARY)) {
-        if (dst != src) {
-          runtime->slots.overlay_names[dst] = runtime->slots.overlay_names[src];
-          if (runtime->slots.overlay_names[src].storage_kind ==
-              FR_SLOT_NAME_STORAGE_OVERLAY_RAM) {
-            memcpy(runtime->slots.overlay_name_bytes[dst],
-                   runtime->slots.overlay_name_bytes[src],
-                   (size_t)FR_PROFILE_MAX_NAME_BYTES + 1);
-            runtime->slots.overlay_names[dst].bytes =
-                runtime->slots.overlay_name_bytes[dst];
-          }
-        }
-        dst = (uint16_t)(dst + 1);
-      }
+    if (!fr_slot_is_overlay(runtime, s) &&
+        !(s < FR_PROFILE_MAX_SLOTS &&
+          runtime->slots.base_tier[s] == FR_INSTALL_TIER_LIBRARY)) {
+      runtime->slots.overlay_names[i].state = FR_SLOT_NAME_RESERVED;
     }
-    for (uint16_t i = dst; i < runtime->slots.overlay_name_count; i++) {
-      runtime->slots.overlay_names[i] = (fr_slot_project_name_entry_t){
-          .storage_kind = FR_SLOT_NAME_STORAGE_OVERLAY_RAM,
-          .slot_id = 0,
-          .bytes = NULL,
-          .length = 0,
-      };
-      runtime->slots.overlay_name_bytes[i][0] = '\0';
-    }
-    runtime->slots.overlay_name_count = dst;
   }
 #endif
-  /* Wiping user slots frees the tail of the table; reclaim it so the next
-   * definition is assigned the lowest free id. Without this, slots.count keeps
-   * counting the wiped slots and the first post-wipe definition is assigned an
-   * id the install validator then rejects (FR_ERR_INVALID). */
   fr_slot_reclaim_free_tail(runtime);
 }
 
@@ -175,7 +167,8 @@ static uint8_t fr_persist_slot_encode_tier(const fr_runtime_t *runtime,
  * fr_persist_session_wipe_user_tier with the tier check inverted, and the
  * slot stamp cleared on wipe so the slot doesn't keep its L1 tag (a later
  * install-library record will stamp it back to L1; an install-user record
- * lands as USER). The name table compacts the same way. */
+ * lands as USER). The name table reserves dropped library names by the
+ * same rule. */
 void fr_persist_session_wipe_library_tier(fr_runtime_t *runtime) {
   if (runtime == NULL) {
     return;
@@ -209,37 +202,14 @@ void fr_persist_session_wipe_library_tier(fr_runtime_t *runtime) {
     }
   }
 #if FR_PROFILE_MAX_OVERLAY_NAMES > 0
-  {
-    uint16_t dst = 0;
-    for (uint16_t src = 0; src < runtime->slots.overlay_name_count; src++) {
-      fr_slot_id_t s = runtime->slots.overlay_names[src].slot_id;
+  /* As in the user wipe: dropped library names stay reserved (ADR 0089). */
+  for (uint16_t i = 0; i < runtime->slots.overlay_name_count; i++) {
+    fr_slot_id_t s = runtime->slots.overlay_names[i].slot_id;
 
-      if (fr_slot_is_overlay(runtime, s) ||
-          (s < FR_PROFILE_MAX_SLOTS && runtime->slots.base_tier[s] != 0)) {
-        if (dst != src) {
-          runtime->slots.overlay_names[dst] = runtime->slots.overlay_names[src];
-          if (runtime->slots.overlay_names[src].storage_kind ==
-              FR_SLOT_NAME_STORAGE_OVERLAY_RAM) {
-            memcpy(runtime->slots.overlay_name_bytes[dst],
-                   runtime->slots.overlay_name_bytes[src],
-                   (size_t)FR_PROFILE_MAX_NAME_BYTES + 1);
-            runtime->slots.overlay_names[dst].bytes =
-                runtime->slots.overlay_name_bytes[dst];
-          }
-        }
-        dst = (uint16_t)(dst + 1);
-      }
+    if (!fr_slot_is_overlay(runtime, s) &&
+        !(s < FR_PROFILE_MAX_SLOTS && runtime->slots.base_tier[s] != 0)) {
+      runtime->slots.overlay_names[i].state = FR_SLOT_NAME_RESERVED;
     }
-    for (uint16_t i = dst; i < runtime->slots.overlay_name_count; i++) {
-      runtime->slots.overlay_names[i] = (fr_slot_project_name_entry_t){
-          .storage_kind = FR_SLOT_NAME_STORAGE_OVERLAY_RAM,
-          .slot_id = 0,
-          .bytes = NULL,
-          .length = 0,
-      };
-      runtime->slots.overlay_name_bytes[i][0] = '\0';
-    }
-    runtime->slots.overlay_name_count = dst;
   }
 #endif
   fr_slot_reclaim_free_tail(runtime);
@@ -310,10 +280,13 @@ typedef struct fr_persist_record_record_t {
   uint16_t field_count;
 } fr_persist_record_record_t;
 
+/* NAME and RESERVED_NAME records share one array: together they cannot
+ * outnumber the name table (ADR 0089). */
 typedef struct fr_persist_name_record_t {
   fr_slot_id_t slot_id;
   const char *name;
   uint8_t length;
+  bool reserved;
 } fr_persist_name_record_t;
 
 typedef struct fr_persist_decoded_payload_t {
@@ -676,6 +649,7 @@ static fr_err_t fr_persist_encode_code_ref(
       patched[ip + 1] = (uint8_t)(inner_local_id & 0xffu);
       patched[ip + 2] = (uint8_t)(inner_local_id >> 8);
     }
+    fr_persist_mark_slot_ref(&view, ip);
     FR_TRY(fr_instruction_disassemble_at(&view, ip, scratch,
                                          (uint16_t)sizeof(scratch), NULL,
                                          &next_ip));
@@ -1737,6 +1711,9 @@ static fr_err_t fr_persist_payload_write_finalized(
     uint8_t name_length = 0;
     char name_scratch[FR_PROFILE_MAX_NAME_BYTES + 1];
 
+    if (!fr_slot_project_name_active_at(runtime, i)) {
+      continue;
+    }
     FR_TRY(fr_slot_project_name_view_at(runtime, i, &name, &name_length));
     memcpy(name_scratch, name, name_length);
     name_scratch[name_length] = '\0';
@@ -1785,6 +1762,30 @@ static fr_err_t fr_persist_payload_write_finalized(
   }
 #endif
 
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  /* Every code walk of this save is done: keep each reserved name whose
+   * slot the written code names (ADR 0089). */
+  for (uint16_t i = 0; i < fr_slot_project_name_count(runtime); i++) {
+    fr_slot_id_t slot_id = 0;
+    const char *name = NULL;
+    uint8_t name_length = 0;
+    fr_err_t err =
+        fr_slot_reserved_name_at(runtime, i, &slot_id, &name, &name_length);
+
+    if (err == FR_ERR_NOT_FOUND) {
+      continue;
+    }
+    FR_TRY(err);
+    if ((fr_persist_slot_marks[slot_id / 8u] & (1u << (slot_id % 8u))) == 0) {
+      continue;
+    }
+    FR_TRY(fr_persist_writer_u8(writer, FR_PERSIST_RECORD_RESERVED_NAME));
+    FR_TRY(fr_persist_writer_u16(writer, slot_id));
+    FR_TRY(fr_persist_writer_u8(writer, name_length));
+    FR_TRY(fr_persist_writer_bytes(writer, (const uint8_t *)name, name_length));
+  }
+#endif
+
   return fr_persist_writer_u8(writer, FR_PERSIST_RECORD_END);
 }
 
@@ -1795,6 +1796,7 @@ fr_err_t fr_persist_payload_encode(const fr_runtime_t *runtime, uint8_t *bytes,
   if (runtime == NULL || bytes == NULL || out_length == NULL) {
     return FR_ERR_INVALID;
   }
+  fr_persist_marks_reset();
   FR_TRY(fr_persist_payload_write_finalized(
       runtime, 0, runtime->code.base_image_count, runtime->objects.base_count,
       0, NULL, 0, true, &writer));
@@ -1811,6 +1813,7 @@ fr_err_t fr_persist_payload_encode_stream(
   if (runtime == NULL || write == NULL || out_length == NULL) {
     return FR_ERR_INVALID;
   }
+  fr_persist_marks_reset();
   FR_TRY(fr_persist_payload_write_finalized(
       runtime, 0, runtime->code.base_image_count, runtime->objects.base_count,
       0, NULL, 0, true, &writer));
@@ -1907,7 +1910,8 @@ static fr_err_t fr_persist_payload_advance_record(
     *out_key = slot_id;
     return FR_OK;
   }
-  if (tag == FR_PERSIST_RECORD_NAME) {
+  if (tag == FR_PERSIST_RECORD_NAME ||
+      tag == FR_PERSIST_RECORD_RESERVED_NAME) {
     FR_TRY(fr_persist_reader_u16(reader, &slot_id));
     FR_TRY(fr_persist_reader_u8(reader, &name_length));
     if (name_length == 0 || name_length > FR_PROFILE_MAX_NAME_BYTES) {
@@ -2017,7 +2021,8 @@ static fr_err_t fr_persist_payload_next_prefix_ids(const uint8_t *prefix,
       }
     } else if (tag == FR_PERSIST_RECORD_BIND) {
       *out_bind_count = (uint16_t)(*out_bind_count + 1u);
-    } else if (tag == FR_PERSIST_RECORD_NAME) {
+    } else if (tag == FR_PERSIST_RECORD_NAME ||
+               tag == FR_PERSIST_RECORD_RESERVED_NAME) {
       /* no count change */
     } else {
       return FR_ERR_CORRUPT;
@@ -2256,7 +2261,8 @@ static fr_err_t fr_persist_payload_scan_l1_records(
       }
       continue;
     }
-    if (tag == FR_PERSIST_RECORD_NAME) {
+    if (tag == FR_PERSIST_RECORD_NAME ||
+        tag == FR_PERSIST_RECORD_RESERVED_NAME) {
       uint16_t slot_id = 0;
       uint8_t name_length = 0;
 
@@ -2337,6 +2343,7 @@ static fr_err_t fr_persist_payload_mark_code_refs(
       FR_TRY(fr_persist_payload_mark_object(out_marks, ref, closure_changed));
     }
 #endif
+    fr_persist_mark_slot_ref(&view, ip);
     FR_TRY(fr_instruction_disassemble_at(&view, ip, scratch,
                                          (uint16_t)sizeof(scratch), NULL,
                                          &next_ip));
@@ -2526,6 +2533,10 @@ static fr_err_t fr_persist_payload_copy_l1_records(
     case FR_PERSIST_RECORD_NAME:
       qualifies = key < FR_PROFILE_MAX_SLOTS && marks->slot_in_l1[key];
       break;
+    case FR_PERSIST_RECORD_RESERVED_NAME:
+      /* The save writes each kept reservation once, at its end. */
+      qualifies = false;
+      break;
 #if FR_FEATURE_EVENTS
     case FR_PERSIST_RECORD_EVENT:
       qualifies = false;
@@ -2537,6 +2548,48 @@ static fr_err_t fr_persist_payload_copy_l1_records(
     if (qualifies) {
       FR_TRY(fr_persist_writer_copy_source_bytes(writer, src + record_start,
                                                  record_length));
+    }
+  }
+  return FR_OK;
+}
+
+/* The buffered fast save gets its library records as a prefix: mark the slot
+ * operands of its CODE records, as the streaming save does in its closure
+ * walk. A CODE record is u8 tag, u16 id, u16 length, the stream, then its
+ * name tail. */
+static fr_err_t fr_persist_mark_prefix_slot_refs(const uint8_t *prefix,
+                                                 uint16_t prefix_length) {
+  fr_persist_reader_t reader = {prefix, prefix_length, 0};
+
+  while (prefix != NULL && reader.offset < reader.used) {
+    uint16_t start = reader.offset;
+    uint8_t tag = 0;
+    uint16_t key = 0;
+
+    FR_TRY(fr_persist_payload_advance_record(&reader, &tag, &key));
+    if (tag == FR_PERSIST_RECORD_CODE) {
+      fr_instruction_stream_t view;
+      fr_instruction_header_t header = {0};
+      fr_code_offset_t ip = 0;
+      char scratch[64];
+
+      FR_TRY(fr_instruction_stream_init(
+          &view, &prefix[start + 5u],
+          (uint16_t)((uint16_t)prefix[start + 3u] |
+                     (uint16_t)(prefix[start + 4u] << 8))));
+      FR_TRY(fr_instruction_read_header(&view, &header));
+      for (ip = (fr_code_offset_t)header.header_size; ip < view.length;) {
+        fr_code_offset_t next_ip = 0;
+
+        fr_persist_mark_slot_ref(&view, ip);
+        FR_TRY(fr_instruction_disassemble_at(&view, ip, scratch,
+                                             (uint16_t)sizeof(scratch), NULL,
+                                             &next_ip));
+        if (next_ip <= ip) {
+          return FR_ERR_CORRUPT;
+        }
+        ip = next_ip;
+      }
     }
   }
   return FR_OK;
@@ -2558,6 +2611,9 @@ fr_err_t fr_persist_payload_save_encode(
   if (runtime == NULL || bytes == NULL || out_length == NULL) {
     return FR_ERR_INVALID;
   }
+  fr_persist_marks_reset();
+  FR_TRY(fr_persist_mark_prefix_slot_refs(library_prefix,
+                                          library_prefix_length));
   FR_TRY(fr_persist_payload_next_prefix_ids(
       library_prefix, library_prefix_length, &prefix_code_count,
       &prefix_object_count, &prefix_bind_count));
@@ -2594,6 +2650,7 @@ fr_err_t fr_persist_payload_save_stream(
     return FR_ERR_INVALID;
   }
   have_old_payload = old_payload != NULL && old_payload_length > 0;
+  fr_persist_marks_reset();
   if (have_old_payload) {
     FR_TRY(fr_persist_payload_mark_l1_closure(old_payload, old_payload_length,
                                               &marks));
@@ -3200,7 +3257,8 @@ static fr_err_t fr_persist_decode_payload(
 #endif
     }
 #if FR_PROFILE_MAX_OVERLAY_NAMES > 0
-    else if (record == FR_PERSIST_RECORD_NAME) {
+    else if (record == FR_PERSIST_RECORD_NAME ||
+             record == FR_PERSIST_RECORD_RESERVED_NAME) {
       fr_persist_name_record_t *name = NULL;
       const uint8_t *name_bytes = NULL;
       uint8_t name_length = 0;
@@ -3225,10 +3283,12 @@ static fr_err_t fr_persist_decode_payload(
       }
       name->name = (const char *)name_bytes;
       name->length = name_length;
+      name->reserved = record == FR_PERSIST_RECORD_RESERVED_NAME;
       *out_name_count = (uint16_t)(*out_name_count + 1);
     }
 #else
-    else if (record == FR_PERSIST_RECORD_NAME) {
+    else if (record == FR_PERSIST_RECORD_NAME ||
+             record == FR_PERSIST_RECORD_RESERVED_NAME) {
       return FR_ERR_UNSUPPORTED;
     }
 #endif
@@ -3530,9 +3590,24 @@ static fr_err_t fr_persist_check_bind_record(
 static fr_err_t fr_persist_check_final_image_refs(
     const fr_runtime_t *runtime,
     const fr_persist_decoded_payload_t *decoded) {
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  /* ADR 0089: code names a project slot only when the image names it, with
+   * a NAME or a RESERVED_NAME record. */
+  uint8_t named[(FR_PROFILE_MAX_SLOTS + 7) / 8];
+  fr_slot_id_t first_project_id = fr_slot_first_project_id();
+#endif
+
   if (runtime == NULL || decoded == NULL) {
     return FR_ERR_INVALID;
   }
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  memset(named, 0, sizeof(named));
+  for (uint16_t i = 0; i < decoded->name_count; i++) {
+    fr_slot_id_t slot_id = decoded->name_records[i].slot_id;
+
+    named[slot_id / 8u] |= (uint8_t)(1u << (slot_id % 8u));
+  }
+#endif
   if (decoded->code_count > 0 &&
       decoded->code_count < runtime->code.base_image_count) {
     return FR_ERR_CORRUPT;
@@ -3615,6 +3690,17 @@ static fr_err_t fr_persist_check_final_image_refs(
          * mounted, so PUSH_OBJECT_ID has no code-style deps-before ordering. */
       }
 #endif
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+      {
+        fr_slot_id_t slot_id = 0;
+
+        if (fr_instruction_slot_ref_at(&view, ip, &slot_id) == FR_OK &&
+            slot_id >= first_project_id &&
+            (named[slot_id / 8u] & (1u << (slot_id % 8u))) == 0) {
+          return FR_ERR_CORRUPT;
+        }
+      }
+#endif
       FR_TRY(fr_instruction_disassemble_at(&view, ip, scratch,
                                            (uint16_t)sizeof(scratch), NULL,
                                            &next_ip));
@@ -3677,6 +3763,44 @@ static fr_err_t fr_persist_check_name_records(
           name_records[i].slot_id == name_records[j].slot_id) {
         return FR_ERR_CORRUPT;
       }
+    }
+  }
+  return FR_OK;
+}
+
+/* ADR 0089: a project NAME names a slot with a BIND, at most one of each
+ * tier (a user redefinition of a library word has both, ADR 0091); a
+ * project BIND has at most one NAME (the C API can bind a project slot with
+ * no name); a RESERVED_NAME has no BIND. */
+static fr_err_t
+fr_persist_check_name_binds(const fr_persist_decoded_payload_t *decoded) {
+  uint8_t library_binds[(FR_PROFILE_MAX_SLOTS + 7) / 8];
+  uint8_t user_binds[(FR_PROFILE_MAX_SLOTS + 7) / 8];
+
+  memset(library_binds, 0, sizeof(library_binds));
+  memset(user_binds, 0, sizeof(user_binds));
+  for (uint16_t i = 0; i < decoded->bind_count; i++) {
+    fr_slot_id_t slot_id = decoded->bind_records[i].slot_id;
+    uint8_t *bits = decoded->bind_records[i].tier == FR_PERSIST_TIER_LIBRARY
+                        ? library_binds
+                        : user_binds;
+    uint8_t bit = (uint8_t)(1u << (slot_id % 8u));
+
+    /* At most one BIND of each tier for any slot, a base slot too. */
+    if ((bits[slot_id / 8u] & bit) != 0) {
+      return FR_ERR_CORRUPT;
+    }
+    bits[slot_id / 8u] |= bit;
+  }
+  /* The decoder already refuses two names for one slot. */
+  for (uint16_t k = 0; k < decoded->name_count; k++) {
+    fr_slot_id_t slot_id = decoded->name_records[k].slot_id;
+    uint8_t bit = (uint8_t)(1u << (slot_id % 8u));
+    bool has_bind = ((library_binds[slot_id / 8u] | user_binds[slot_id / 8u]) &
+                     bit) != 0;
+
+    if (has_bind == decoded->name_records[k].reserved) {
+      return FR_ERR_CORRUPT;
     }
   }
   return FR_OK;
@@ -4020,6 +4144,9 @@ fr_persist_apply_names(fr_runtime_t *runtime,
                        uint8_t tier_filter) {
 #if FR_PROFILE_MAX_OVERLAY_NAMES > 0
   for (uint16_t i = 0; i < decoded->name_count; i++) {
+    if (decoded->name_records[i].reserved) {
+      continue;
+    }
     if (tier_filter != 0) {
       uint8_t name_tier = fr_persist_name_slot_tier(
           decoded, decoded->name_records[i].slot_id);
@@ -4035,6 +4162,27 @@ fr_persist_apply_names(fr_runtime_t *runtime,
   (void)runtime;
   (void)decoded;
   (void)tier_filter;
+#endif
+  return FR_OK;
+}
+
+/* A RESERVED_NAME record has no BIND and so no tier: the full remount, the
+ * library pass of the boot and `restore` mount each one once (ADR 0089). */
+static fr_err_t
+fr_persist_apply_reserved_names(fr_runtime_t *runtime,
+                                const fr_persist_decoded_payload_t *decoded) {
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  for (uint16_t i = 0; i < decoded->name_count; i++) {
+    if (!decoded->name_records[i].reserved) {
+      continue;
+    }
+    FR_TRY(fr_slot_mount_reserved_name(runtime, decoded->name_records[i].name,
+                                       decoded->name_records[i].length,
+                                       decoded->name_records[i].slot_id));
+  }
+#else
+  (void)runtime;
+  (void)decoded;
 #endif
   return FR_OK;
 }
@@ -4086,9 +4234,19 @@ fr_persist_payload_decode_and_validate(const fr_runtime_t *runtime,
     fr_slot_id_t slot_count_after_writes = fr_persist_slot_count_after_restore(
         runtime, decoded->bind_records, decoded->bind_count);
 
+    /* A reserved slot has no BIND but counts in the saved part. */
+    for (uint16_t i = 0; i < decoded->name_count; i++) {
+      if (decoded->name_records[i].reserved &&
+          decoded->name_records[i].slot_id >= slot_count_after_writes &&
+          decoded->name_records[i].slot_id < FR_PROFILE_MAX_SLOTS) {
+        slot_count_after_writes =
+            (fr_slot_id_t)(decoded->name_records[i].slot_id + 1u);
+      }
+    }
     FR_TRY(fr_persist_check_name_records(decoded->name_records,
                                          decoded->name_count,
                                          slot_count_after_writes));
+    FR_TRY(fr_persist_check_name_binds(decoded));
   }
 #endif
   return FR_OK;
@@ -4111,6 +4269,7 @@ fr_err_t fr_persist_payload_restore(fr_runtime_t *runtime, const uint8_t *bytes,
    * skip_on_failure=false matches the strict FULL-restore contract. */
   FR_TRY(fr_persist_apply_binds_tiered(runtime, decoded, 0, false, true));
   FR_TRY(fr_persist_apply_names(runtime, decoded, 0));
+  FR_TRY(fr_persist_apply_reserved_names(runtime, decoded));
   FR_TRY(fr_persist_apply_events(runtime, decoded));
   return FR_OK;
 }
@@ -4140,6 +4299,7 @@ fr_err_t fr_persist_payload_restore_library(fr_runtime_t *runtime,
                                        true));
   FR_TRY(fr_persist_apply_names(runtime, decoded,
                                 (uint8_t)FR_PERSIST_TIER_LIBRARY));
+  FR_TRY(fr_persist_apply_reserved_names(runtime, decoded));
   fr_persist_boot_library_valid = true;
   return FR_OK;
 }
@@ -4376,6 +4536,9 @@ fr_err_t fr_persist_payload_extract_library_records(
     case FR_PERSIST_RECORD_NAME:
       qualifies = key < FR_PROFILE_MAX_SLOTS && slot_in_l1[key];
       break;
+    case FR_PERSIST_RECORD_RESERVED_NAME:
+      qualifies = false;
+      break;
 #if FR_FEATURE_EVENTS
     case FR_PERSIST_RECORD_EVENT:
       qualifies = false;
@@ -4605,6 +4768,9 @@ fr_err_t fr_persist_payload_strip_library_records(
     case FR_PERSIST_RECORD_NAME:
       drop = key < FR_PROFILE_MAX_SLOTS && slot_in_l1[key];
       break;
+    case FR_PERSIST_RECORD_RESERVED_NAME:
+      drop = false;
+      break;
 #if FR_FEATURE_EVENTS
     case FR_PERSIST_RECORD_EVENT:
       drop = false;
@@ -4666,12 +4832,16 @@ fr_err_t fr_persist_payload_restore_user_only(fr_runtime_t *runtime,
   FR_TRY(fr_persist_payload_decode_and_validate(runtime, bytes, length,
                                                 decoded));
   fr_persist_session_wipe_user_tier(runtime);
+  /* The name table becomes the image's: the reservations in RAM go, and the
+   * image's come back below (ADR 0089). */
+  fr_slot_drop_reserved_names(runtime);
   fr_code_restore_base(runtime);
   fr_object_restore_base(runtime);
   FR_TRY(fr_persist_install_resources(runtime, decoded, NULL, NULL));
   fr_object_mark_image(runtime);
   FR_TRY(fr_persist_apply_names(runtime, decoded,
                                 (uint8_t)FR_PERSIST_TIER_LIBRARY));
+  FR_TRY(fr_persist_apply_reserved_names(runtime, decoded));
   FR_TRY(fr_persist_apply_binds_tiered(runtime, decoded,
                                        (uint8_t)FR_PERSIST_TIER_USER, false,
                                        true));

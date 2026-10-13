@@ -18012,30 +18012,75 @@ static void test_repl_capacity_notes(void) {
 #endif
 
 #if FR_FEATURE_PERSISTENCE && FR_PROFILE_MAX_OVERLAY_NAMES > 0
-  /* A library slot made before a user wipe stays below the live user slot,
-   * so repeated installs fill the slot table while few names exist. */
+  /* ADR 0089: a name keeps its slot across tier wipes, and a free slot is
+   * used again, so the slice 9b loop keeps the slot count after round 1,
+   * also when the names change in each round. */
+  {
+    uint16_t count_after_round_1 = 0;
+    bool steps_ok = true;
+
+    (void)fr_platform_persist_clear();
+    CHECK("slot loop install", fr_base_image_install(&runtime) == FR_OK);
+    for (int i = 0; i < 40; i++) {
+      steps_ok = steps_ok &&
+                 fr_repl_eval_line(&runtime, "install-library", out,
+                                   sizeof(out)) == FR_OK &&
+                 fr_repl_eval_line(&runtime, "l is 1", out, sizeof(out)) ==
+                     FR_OK &&
+                 fr_repl_eval_line(&runtime, "install-user", out,
+                                   sizeof(out)) == FR_OK &&
+                 fr_repl_eval_line(&runtime, "wipe-user", out, sizeof(out)) ==
+                     FR_OK &&
+                 fr_repl_eval_line(&runtime, "u is 1", out, sizeof(out)) ==
+                     FR_OK;
+      if (i == 0) {
+        count_after_round_1 = runtime.slots.count;
+      }
+    }
+    CHECK("slice 9b loop keeps the slot count",
+          steps_ok && runtime.slots.count == count_after_round_1);
+
+    (void)fr_platform_persist_clear();
+    CHECK("slot loop with new names install",
+          fr_base_image_install(&runtime) == FR_OK);
+    for (int i = 0; i < 40; i++) {
+      char line[32];
+
+      steps_ok = steps_ok && fr_repl_eval_line(&runtime, "install-library",
+                                               out, sizeof(out)) == FR_OK;
+      snprintf(line, sizeof(line), "l%d is 1", i);
+      steps_ok =
+          steps_ok && fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                          FR_OK;
+      steps_ok = steps_ok &&
+                 fr_repl_eval_line(&runtime, "install-user", out,
+                                   sizeof(out)) == FR_OK &&
+                 fr_repl_eval_line(&runtime, "wipe-user", out, sizeof(out)) ==
+                     FR_OK;
+      snprintf(line, sizeof(line), "u%d is 1", i);
+      steps_ok =
+          steps_ok && fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                          FR_OK &&
+          fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK;
+      if (i == 0) {
+        count_after_round_1 = runtime.slots.count;
+      }
+    }
+    CHECK("a loop with new names and saves keeps the slot count",
+          steps_ok && runtime.slots.count == count_after_round_1);
+  }
+
+  /* The slot-table note stays: every project slot holds a value. */
   snprintf(expected, sizeof(expected), "note: slot table is full (limit %u)\n",
            (unsigned)FR_PROFILE_MAX_SLOTS);
   (void)fr_platform_persist_clear();
   CHECK("capacity notes install for slots",
         fr_base_image_install(&runtime) == FR_OK);
-  for (int i = 0; i < FR_PROFILE_MAX_SLOTS; i++) {
-    /* Any step can meet the full table first; keep the error of that step. */
-    err = fr_repl_eval_line(&runtime, "install-library", out, sizeof(out));
-    if (err != FR_OK) {
-      break;
-    }
-    err = fr_repl_eval_line(&runtime, "l is 1", out, sizeof(out));
-    if (err != FR_OK) {
-      break;
-    }
-    (void)fr_repl_eval_line(&runtime, "install-user", out, sizeof(out));
-    (void)fr_repl_eval_line(&runtime, "wipe-user", out, sizeof(out));
-    err = fr_repl_eval_line(&runtime, "u is 1", out, sizeof(out));
-    if (err != FR_OK) {
-      break;
-    }
+  for (fr_slot_id_t slot_id = fr_slot_first_project_id();
+       slot_id < FR_PROFILE_MAX_SLOTS; slot_id++) {
+    (void)fr_slot_write(&runtime, slot_id, FR_TAGGED_INT_LITERAL(1));
   }
+  err = fr_repl_eval_line(&runtime, "u is 1", out, sizeof(out));
   CHECK("slot table full names the store and its limit",
         err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
   (void)fr_platform_persist_clear();

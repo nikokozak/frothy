@@ -37,13 +37,37 @@ typedef enum fr_slot_name_storage_kind_t {
   FR_SLOT_NAME_STORAGE_PERSIST_IMAGE = 2,
 } fr_slot_name_storage_kind_t;
 
+/* A reserved name is the name of a word that a wipe removed while saved code
+ * still calls its slot; a taken name is a reserved name that an unsaved
+ * definition took back (ADR 0089). */
+typedef enum fr_slot_name_state_t {
+  FR_SLOT_NAME_NAMED = 0,
+  FR_SLOT_NAME_RESERVED = 1,
+  FR_SLOT_NAME_TAKEN = 2,
+} fr_slot_name_state_t;
+
 #if FR_PROFILE_MAX_OVERLAY_NAMES > 0
 typedef struct fr_slot_project_name_entry_t {
   fr_slot_name_storage_kind_t storage_kind;
   fr_slot_id_t slot_id;
   const char *bytes;
   uint8_t length;
+  uint8_t state;
 } fr_slot_project_name_entry_t;
+
+/* The state uses padding: the entry has the size of the same entry without
+ * it on each target (ADR 0089). */
+typedef struct fr_slot_project_name_entry_layout_t {
+  fr_slot_name_storage_kind_t storage_kind;
+  fr_slot_id_t slot_id;
+  const char *bytes;
+  uint8_t length;
+} fr_slot_project_name_entry_layout_t;
+typedef char fr_slot_project_name_entry_size_check
+    [sizeof(fr_slot_project_name_entry_t) ==
+             sizeof(fr_slot_project_name_entry_layout_t)
+         ? 1
+         : -1];
 #endif
 
 /* Base is the installed reset tagged word; current is the live tagged word. */

@@ -100,11 +100,21 @@ fr_err_t fr_runtime_clear_project(fr_runtime_t *runtime) {
     uint16_t dst = 0;
     for (uint16_t src = 0; src < runtime->slots.overlay_name_count; src++) {
       fr_slot_id_t slot_id = runtime->slots.overlay_names[src].slot_id;
+      bool keep = false;
 
-      if (slot_id < runtime->slots.base_count &&
-          runtime->slots.base_tier[slot_id] != 0 &&
-          runtime->slots.overlay_names[src].storage_kind !=
-              FR_SLOT_NAME_STORAGE_IMAGE) {
+      /* A saved name stays. A reserved or taken name below the saved part
+       * becomes reserved again; one at or above it goes, because no saved
+       * code can name a slot that was free at the mount (ADR 0089). */
+      if (runtime->slots.overlay_names[src].state == FR_SLOT_NAME_NAMED) {
+        keep = slot_id < runtime->slots.base_count &&
+               runtime->slots.base_tier[slot_id] != 0 &&
+               runtime->slots.overlay_names[src].storage_kind !=
+                   FR_SLOT_NAME_STORAGE_IMAGE;
+      } else {
+        keep = slot_id < runtime->slots.base_count;
+        runtime->slots.overlay_names[src].state = FR_SLOT_NAME_RESERVED;
+      }
+      if (keep) {
         if (dst != src) {
           runtime->slots.overlay_names[dst] = runtime->slots.overlay_names[src];
           if (runtime->slots.overlay_names[src].storage_kind ==

@@ -1625,8 +1625,12 @@ static fr_err_t fr_repl_write_words(fr_runtime_t *runtime,
     FR_TRY(fr_repl_write_word(writer, &wrote_word, name));
   }
   for (uint16_t i = 0; i < overlay_word_count; i++) {
-    const char *name = fr_slot_project_name_at(runtime, i);
+    const char *name = NULL;
 
+    if (!fr_slot_project_name_active_at(runtime, i)) {
+      continue;
+    }
+    name = fr_slot_project_name_at(runtime, i);
     if (name == NULL) {
       return FR_ERR_INVALID;
     }
@@ -2547,29 +2551,41 @@ fr_repl_eval_value_binding(fr_runtime_t *runtime,
     return FR_ERR_INVALID;
   }
 
+  /* The code stores into the slot, so the slot gets its name first. The
+   * run makes the value, so the library save check comes after it. A
+   * failed bind, run or check takes the name back (ADR 0089); a handle
+   * that the run opened stays open with no name (ADR 0090 amendment). */
+  if (binding->has_slot_name) {
+    err = fr_slot_write(runtime, binding->slot_name.slot_id, fr_tagged_nil());
+    if (err == FR_OK) {
+      err = fr_slot_bind_project_name(runtime, binding->slot_name.name,
+                                      binding->slot_name.slot_id);
+    }
+    if (err == FR_OK) {
+      err = fr_vm_run_instruction_stream(runtime, &binding->instructions, out);
+    }
+#if FR_FEATURE_PERSISTENCE
+    if (err == FR_OK && runtime->install_tier == FR_INSTALL_TIER_LIBRARY) {
+      err = fr_persist_payload_check_savable(runtime);
+    }
+#endif
+    if (err != FR_OK) {
+      (void)fr_slot_rollback_project_name(runtime, binding->slot_name.name,
+                                          binding->slot_name.slot_id);
+    }
+    return err;
+  }
   previous = runtime->slots.current[binding->slot_id];
   previous_overlay = runtime->slots.overlay[binding->slot_id];
   FR_TRY(fr_vm_run_instruction_stream(runtime, &binding->instructions, out));
-  if (binding->has_slot_name) {
-    FR_TRY(fr_slot_bind_project_name(runtime, binding->slot_name.name,
-                                     binding->slot_name.slot_id));
-  }
 #if FR_FEATURE_PERSISTENCE
-  /* A library binding saves at once. The run makes the value, so the check
-   * comes after it. On a refusal, the name and the slot go back. A handle
-   * that the run opened stays open with no name (ADR 0090 amendment). */
   if (runtime->install_tier == FR_INSTALL_TIER_LIBRARY) {
     err = fr_persist_payload_check_savable(runtime);
   }
 #endif
   if (err != FR_OK) {
-    if (binding->has_slot_name) {
-      (void)fr_slot_rollback_project_name(runtime, binding->slot_name.name,
-                                          binding->slot_name.slot_id);
-    } else {
-      runtime->slots.current[binding->slot_id] = previous;
-      runtime->slots.overlay[binding->slot_id] = previous_overlay;
-    }
+    runtime->slots.current[binding->slot_id] = previous;
+    runtime->slots.overlay[binding->slot_id] = previous_overlay;
   }
   return err;
 }

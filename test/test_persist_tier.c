@@ -66,6 +66,7 @@ const uint16_t fr_lib_natives_count = 1;
 #define FR_TEST_TIER_RECORD_CODE 1
 #define FR_TEST_TIER_RECORD_BIND 2
 #define FR_TEST_TIER_RECORD_NAME 3
+#define FR_TEST_TIER_RECORD_RESERVED_NAME 9
 #define FR_TEST_TIER_RECORD_END 0xff
 #define FR_TEST_TIER_VALUE_NIL 0
 #define FR_TEST_TIER_VALUE_FALSE 1
@@ -2324,6 +2325,731 @@ static void test_save_refuses_a_bad_name_tail(void) {
 }
 #endif
 
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+/* ADR 0089: a name keeps its slot across tier wipes. */
+static fr_err_t tier_eval_err(const char *line) {
+  char out[FR_REPL_OUTPUT_BYTES];
+
+  return fr_repl_eval_line(&s_runtime, line, out, (uint16_t)sizeof(out));
+}
+
+static uint16_t tier_reserved_count(void) {
+  uint16_t count = 0;
+
+  for (uint16_t i = 0; i < fr_slot_project_name_count(&s_runtime); i++) {
+    fr_slot_id_t slot_id = 0;
+    const char *name = NULL;
+    uint8_t length = 0;
+
+    if (fr_slot_reserved_name_at(&s_runtime, i, &slot_id, &name, &length) ==
+        FR_OK) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/* The slot of the one reserved entry. */
+static fr_slot_id_t tier_reserved_slot(void) {
+  fr_slot_id_t slot_id = 0;
+
+  TEST_ASSERT_EQUAL_UINT16(1, tier_reserved_count());
+  for (uint16_t i = 0; i < fr_slot_project_name_count(&s_runtime); i++) {
+    fr_slot_id_t found = 0;
+    const char *name = NULL;
+    uint8_t length = 0;
+
+    if (fr_slot_reserved_name_at(&s_runtime, i, &found, &name, &length) ==
+        FR_OK) {
+      slot_id = found;
+    }
+  }
+  return slot_id;
+}
+
+/* Library word `lw` (42), user word `f` that calls it, then the library comes
+ * again: `lw` is reserved, because `f` calls its slot. */
+static void tier_reinstall_with_called_word(void) {
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lw is fn [ 42 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("f is fn [ lw: ]", "ok\n");
+  tier_eval_expect("install-library", "ok\n");
+}
+
+static void test_reinstall_keeps_the_slot_of_a_called_word(void) {
+  tier_reinstall_with_called_word();
+  TEST_ASSERT_EQUAL_UINT16(1, tier_reserved_count());
+  tier_eval_expect("lw is fn [ 43 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("f:", "43\nok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_eval_expect("restore", "ok\n");
+  tier_eval_expect("f:", "43\nok\n");
+  tier_boot();
+  tier_eval_expect("f:", "43\nok\n");
+}
+
+static void test_removed_word_never_takes_another_name(void) {
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("f is fn [ 0 ]", "ok\n");
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lw is fn [ 42 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("f is fn [ lw: ]", "ok\n");
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("r is fn [ 99 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  TEST_ASSERT_EQUAL(FR_ERR_TYPE, tier_eval_err("f:"));
+  tier_eval_expect("see f", "overlay code\nto f [ lw: ]\nok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_boot();
+  TEST_ASSERT_EQUAL(FR_ERR_TYPE, tier_eval_err("f:"));
+  tier_eval_expect("r:", "99\nok\n");
+}
+
+static void test_wipe_sequences_keep_a_called_word(void) {
+  /* (c): a definition in library mode after wipe-user. */
+  tier_reinstall_with_called_word();
+  tier_eval_expect("lw is fn [ 43 ]", "ok\n");
+  tier_eval_expect("wipe-user", "ok\n");
+  tier_eval_expect("f is fn [ lw: ]", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_eval_expect("restore", "ok\n");
+  tier_eval_expect("f:", "43\nok\n");
+  tier_eval_expect("see f", "overlay code\nto f [ lw: ]\nok\n");
+  tier_boot();
+  tier_eval_expect("f:", "43\nok\n");
+  tier_eval_expect("see f", "overlay code\nto f [ lw: ]\nok\n");
+  /* (d): install-user, then wipe-user, then the user word again. */
+  tier_reinstall_with_called_word();
+  tier_eval_expect("lw is fn [ 43 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("wipe-user", "ok\n");
+  tier_eval_expect("f is fn [ lw: ]", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_eval_expect("restore", "ok\n");
+  tier_eval_expect("f:", "43\nok\n");
+  tier_eval_expect("see f", "overlay code\nto f [ lw: ]\nok\n");
+  tier_boot();
+  tier_eval_expect("f:", "43\nok\n");
+  tier_eval_expect("see f", "overlay code\nto f [ lw: ]\nok\n");
+}
+
+static void test_reservation_lives_while_code_calls_it(void) {
+  fr_slot_id_t reserved_slot = 0;
+  fr_slot_id_t slot_id = 0;
+
+  tier_reinstall_with_called_word();
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  reserved_slot = tier_reserved_slot();
+  tier_eval_expect("clear", "ok\n");
+  TEST_ASSERT_EQUAL_UINT16(1, tier_reserved_count());
+  tier_eval_expect("restore", "ok\n");
+  TEST_ASSERT_EQUAL_UINT16(1, tier_reserved_count());
+  tier_boot();
+  TEST_ASSERT_EQUAL_UINT16(1, tier_reserved_count());
+  tier_eval_expect("see f", "overlay code\nto f [ lw: ]\nok\n");
+  /* The last call goes: the next save drops the reservation, and its slot
+   * is free for a new name. */
+  tier_eval_expect("f is fn [ 1 ]", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  TEST_ASSERT_EQUAL_UINT16(0, tier_reserved_count());
+  tier_eval_expect("n is 5", "ok\n");
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, "n", &slot_id));
+  TEST_ASSERT_EQUAL_UINT16(reserved_slot, slot_id);
+}
+
+static void test_rollbacks_keep_a_reservation(void) {
+  fr_slot_id_t slot_id = 0;
+  fr_tagged_t value = FR_TAGGED_INT_LITERAL(1);
+  uint16_t names = 0;
+  uint16_t count = 0;
+
+  tier_reinstall_with_called_word();
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("boom is fn [ 1 / 0 ]", "ok\n");
+  names = fr_slot_project_name_count(&s_runtime);
+  count = fr_slot_count(&s_runtime);
+  /* A body that calls a reserved name fails as an unknown name. */
+  TEST_ASSERT_EQUAL(FR_ERR_NOT_FOUND, tier_eval_err("g is fn [ lw: ]"));
+  /* A definition of the reserved name that fails to compile. */
+  TEST_ASSERT_EQUAL(FR_ERR_NOT_FOUND, tier_eval_err("lw is fn [ nope: ]"));
+  /* A value binding whose code fails, for the reserved and a new name. */
+  TEST_ASSERT_EQUAL(FR_ERR_DOMAIN, tier_eval_err("lw is boom:"));
+  TEST_ASSERT_EQUAL(FR_ERR_DOMAIN, tier_eval_err("x is boom:"));
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, tier_reserved_slot(), &value));
+  TEST_ASSERT_TRUE(fr_tagged_is_nil(value));
+  TEST_ASSERT_EQUAL_UINT16(names, fr_slot_project_name_count(&s_runtime));
+  TEST_ASSERT_EQUAL_UINT16(count, fr_slot_count(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_ERR_NOT_FOUND,
+                    fr_slot_id_for_name(&s_runtime, "x", &slot_id));
+  TEST_ASSERT_EQUAL(FR_ERR_NOT_FOUND,
+                    fr_slot_id_for_name(&s_runtime, "lw", &slot_id));
+}
+
+static void test_clear_keeps_reserved_slots_from_new_names(void) {
+  fr_slot_id_t new_slot = 0;
+  fr_slot_id_t reserved_slot = 0;
+
+  tier_reinstall_with_called_word();
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("clear", "ok\n");
+  reserved_slot = tier_reserved_slot();
+  tier_eval_expect("n is 5", "ok\n");
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, "n", &new_slot));
+  TEST_ASSERT_NOT_EQUAL(reserved_slot, new_slot);
+  TEST_ASSERT_LESS_THAN(fr_slot_count(&s_runtime), reserved_slot);
+}
+
+/* A mount refuses a name whose slot has a reserved entry with another name,
+ * and the entry stays reserved. */
+static void test_mount_refuses_a_name_on_a_reserved_slot(void) {
+  fr_slot_id_t slot_id = 0;
+
+  tier_reinstall_with_called_word();
+  slot_id = tier_reserved_slot();
+  TEST_ASSERT_EQUAL(FR_ERR_CORRUPT, fr_slot_mount_project_name(
+                                        &s_runtime, "other", 5, slot_id));
+  TEST_ASSERT_EQUAL_UINT16(slot_id, tier_reserved_slot());
+  TEST_ASSERT_EQUAL(FR_ERR_NOT_FOUND,
+                    fr_slot_id_for_name(&s_runtime, "other", &slot_id));
+}
+
+static void test_an_event_body_keeps_a_reservation(void) {
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lw is fn [ 42 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("to start [ every 1000 [ lw: ] ]", "ok\n");
+  tier_eval_expect("start:", "ok\n");
+  /* Only the event table holds the body that calls `lw` now. */
+  tier_eval_expect("to start [ 1 ]", "ok\n");
+  tier_eval_expect("install-library", "ok\n");
+  TEST_ASSERT_EQUAL_UINT16(1, tier_reserved_count());
+  tier_boot();
+  TEST_ASSERT_EQUAL_UINT16(1, tier_reserved_count());
+}
+
+/* Library code that calls a removed user word keeps the reservation through
+ * the copied library records, and the buffered and the streaming fast save
+ * write the same image. The library word has a named parameter, so its CODE
+ * record has a name tail after the stream. */
+static void test_library_code_keeps_a_user_reservation(void) {
+  uint8_t old_header[FR_PERSIST_HEADER_BYTES];
+  uint8_t old_payload[FR_PROFILE_PERSISTENCE_BYTES];
+  uint8_t prefix[FR_PROFILE_PERSISTENCE_BYTES];
+  uint8_t expected_image[FR_PROFILE_PERSISTENCE_BYTES];
+  uint8_t saved_image[FR_PROFILE_PERSISTENCE_BYTES];
+  fr_persist_format_info_t old_info = {0};
+  uint16_t old_length = 0;
+  uint16_t prefix_length = 0;
+  uint16_t expected_payload_length = 0;
+  uint16_t saved_payload_length = 0;
+
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("ub is fn [ 5 ]", "ok\n");
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("la is fn with n [ ub: ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("wipe-user", "ok\n");
+  TEST_ASSERT_EQUAL_UINT16(1, tier_reserved_count());
+  tier_boot();
+  TEST_ASSERT_EQUAL_UINT16(1, tier_reserved_count());
+  TEST_ASSERT_EQUAL(FR_ERR_TYPE, tier_eval_err("la: 1"));
+
+  read_committed_payload(old_header, old_payload, &old_length);
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_format_read_header(old_header, &old_info));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_payload_extract_library_records(
+                               old_payload, old_length, prefix,
+                               (uint16_t)sizeof(prefix), &prefix_length));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_payload_save_encode(
+                               &s_runtime, prefix, prefix_length,
+                               &expected_image[FR_PERSIST_HEADER_BYTES],
+                               (uint16_t)(sizeof(expected_image) -
+                                          FR_PERSIST_HEADER_BYTES),
+                               &expected_payload_length));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_save(&s_runtime));
+  read_committed_payload(saved_image, &saved_image[FR_PERSIST_HEADER_BYTES],
+                         &saved_payload_length);
+  TEST_ASSERT_EQUAL_UINT16(expected_payload_length, saved_payload_length);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(&expected_image[FR_PERSIST_HEADER_BYTES],
+                                &saved_image[FR_PERSIST_HEADER_BYTES],
+                                saved_payload_length);
+  TEST_ASSERT_EQUAL_UINT16(1, tier_reserved_count());
+}
+
+/* Decision 8: each malformed image is refused before any runtime change.
+ * The runtime holds the valid image and the unsaved word `keep`. */
+static void tier_expect_refused(const uint8_t *payload, uint16_t length,
+                                fr_err_t expected) {
+  uint16_t names = fr_slot_project_name_count(&s_runtime);
+  fr_slot_id_t count = fr_slot_count(&s_runtime);
+  fr_slot_id_t lw_slot = tier_reserved_slot();
+  fr_slot_id_t f_slot = 0;
+  fr_slot_id_t slot_id = 0;
+  fr_tagged_t f_value = 0;
+  fr_tagged_t value = FR_TAGGED_INT_LITERAL(1);
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, "f", &f_slot));
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, f_slot, &f_value));
+  TEST_ASSERT_EQUAL(expected,
+                    fr_persist_payload_restore(&s_runtime, payload, length));
+  TEST_ASSERT_EQUAL_UINT16(names, fr_slot_project_name_count(&s_runtime));
+  TEST_ASSERT_EQUAL_UINT16(count, fr_slot_count(&s_runtime));
+  TEST_ASSERT_EQUAL_UINT16(lw_slot, tier_reserved_slot());
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, lw_slot, &value));
+  TEST_ASSERT_TRUE(fr_tagged_is_nil(value));
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, "f", &slot_id));
+  TEST_ASSERT_EQUAL_UINT16(f_slot, slot_id);
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, f_slot, &value));
+  TEST_ASSERT_EQUAL(f_value, value);
+  tier_eval_expect("keep", "7\nok\n");
+}
+
+/* The image with one more RESERVED_NAME record before its END. */
+static uint16_t tier_add_reservation(const uint8_t *payload, uint16_t length,
+                                     uint8_t *out, fr_slot_id_t slot_id,
+                                     const char *name, uint8_t name_length) {
+  uint16_t used = (uint16_t)(length - 1u);
+
+  memcpy(out, payload, used);
+  out[used] = FR_TEST_TIER_RECORD_RESERVED_NAME;
+  write_u16_le(&out[used + 1u], slot_id);
+  out[used + 3u] = name_length;
+  memcpy(&out[used + 4u], name, name_length);
+  used = (uint16_t)(used + 4u + name_length);
+  out[used] = FR_TEST_TIER_RECORD_END;
+  return (uint16_t)(used + 1u);
+}
+
+static void test_malformed_reservation_images_are_refused(void) {
+  uint8_t payload[FR_PROFILE_PERSISTENCE_BYTES];
+  uint8_t bad[FR_PROFILE_PERSISTENCE_BYTES];
+  char long_name[FR_PROFILE_MAX_NAME_BYTES + 1];
+  uint16_t length = 0;
+  uint16_t at = 0;
+  uint16_t used = 0;
+  fr_slot_id_t f_slot = 0;
+  fr_slot_id_t lw_slot = 0;
+  fr_slot_id_t free_slot = 0;
+
+  tier_reinstall_with_called_word();
+  tier_eval_expect("install-user", "ok\n");
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, "f", &f_slot));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_payload_encode(
+                               &s_runtime, payload, (uint16_t)sizeof(payload),
+                               &length));
+  /* The RESERVED_NAME of `lw` (6 bytes) is the last record before END; the
+   * image has one more name, the NAME of `f`. */
+  at = (uint16_t)(length - 7u);
+  TEST_ASSERT_EQUAL_HEX8(FR_TEST_TIER_RECORD_RESERVED_NAME, payload[at]);
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_payload_restore(&s_runtime, payload,
+                                                      length));
+  tier_eval_expect("keep is 7", "ok\n");
+  lw_slot = tier_reserved_slot();
+  free_slot = fr_slot_count(&s_runtime);
+  TEST_ASSERT_LESS_THAN(FR_PROFILE_MAX_SLOTS, free_slot);
+
+  /* Code names a project slot that the image does not name. */
+  memcpy(bad, payload, at);
+  bad[at] = payload[length - 1u];
+  tier_expect_refused(bad, (uint16_t)(at + 1u), FR_ERR_CORRUPT);
+
+  /* A NAME with no BIND for its slot. */
+  memcpy(bad, payload, length);
+  bad[at] = FR_TEST_TIER_RECORD_NAME;
+  tier_expect_refused(bad, length, FR_ERR_CORRUPT);
+
+  /* A reserved slot with a BIND. */
+  memcpy(bad, payload, length - 1u);
+  bad[length - 1u] = FR_TEST_TIER_RECORD_BIND;
+  bad[length] = payload[at + 1u];
+  bad[length + 1u] = payload[at + 2u];
+  bad[length + 2u] = FR_TEST_TIER_USER;
+  bad[length + 3u] = FR_TEST_TIER_VALUE_NIL;
+  bad[length + 4u] = payload[length - 1u];
+  tier_expect_refused(bad, (uint16_t)(length + 5u), FR_ERR_CORRUPT);
+
+  /* Two BINDs of one tier for one slot. */
+  memcpy(bad, payload, length - 1u);
+  bad[length - 1u] = FR_TEST_TIER_RECORD_BIND;
+  write_u16_le(&bad[length], f_slot);
+  bad[length + 2u] = FR_TEST_TIER_USER;
+  bad[length + 3u] = FR_TEST_TIER_VALUE_NIL;
+  bad[length + 4u] = payload[length - 1u];
+  tier_expect_refused(bad, (uint16_t)(length + 5u), FR_ERR_CORRUPT);
+
+  /* Two user BINDs for one base slot. */
+  memcpy(bad, payload, length - 1u);
+  for (uint8_t k = 0; k < 2; k++) {
+    uint16_t at_bind = (uint16_t)(length - 1u + 5u * k);
+
+    bad[at_bind] = FR_TEST_TIER_RECORD_BIND;
+    write_u16_le(&bad[at_bind + 1u], FR_TEST_TIER_SLOT);
+    bad[at_bind + 3u] = FR_TEST_TIER_USER;
+    bad[at_bind + 4u] = FR_TEST_TIER_VALUE_NIL;
+  }
+  bad[length + 9u] = payload[length - 1u];
+  tier_expect_refused(bad, (uint16_t)(length + 10u), FR_ERR_CORRUPT);
+
+  /* One more RESERVED_NAME, refused in phase D: a slot past the slot table,
+   * a length of 0 or above the limit, a NUL byte in the name. */
+  memset(long_name, 'z', sizeof(long_name));
+  tier_expect_refused(bad,
+                      tier_add_reservation(payload, length, bad,
+                                           FR_PROFILE_MAX_SLOTS, "zz", 2),
+                      FR_ERR_CORRUPT);
+  tier_expect_refused(
+      bad, tier_add_reservation(payload, length, bad, free_slot, "zz", 0),
+      FR_ERR_CORRUPT);
+  tier_expect_refused(bad,
+                      tier_add_reservation(payload, length, bad, free_slot,
+                                           long_name, sizeof(long_name)),
+                      FR_ERR_CORRUPT);
+  tier_expect_refused(
+      bad, tier_add_reservation(payload, length, bad, free_slot, "z\0", 2),
+      FR_ERR_CORRUPT);
+  /* In phase F: a slot below the first project id, a base name, a name or a
+   * slot that another record has. */
+  tier_expect_refused(bad,
+                      tier_add_reservation(
+                          payload, length, bad,
+                          (fr_slot_id_t)(fr_slot_first_project_id() - 1u),
+                          "zz", 2),
+                      FR_ERR_CORRUPT);
+  tier_expect_refused(
+      bad, tier_add_reservation(payload, length, bad, free_slot, "boot", 4),
+      FR_ERR_CORRUPT);
+  tier_expect_refused(
+      bad, tier_add_reservation(payload, length, bad, free_slot, "lw", 2),
+      FR_ERR_CORRUPT);
+  tier_expect_refused(
+      bad, tier_add_reservation(payload, length, bad, lw_slot, "zz", 2),
+      FR_ERR_CORRUPT);
+  /* More NAME and RESERVED_NAME records than the name table holds: the
+   * image has two, so FR_PROFILE_MAX_OVERLAY_NAMES - 1 more go one past it.
+   * Phase D counts them before phase F looks for repeats. */
+  used = (uint16_t)(length - 1u);
+  memcpy(bad, payload, used);
+  for (uint16_t i = 0; i + 2u <= FR_PROFILE_MAX_OVERLAY_NAMES; i++) {
+    bad[used] = FR_TEST_TIER_RECORD_RESERVED_NAME;
+    write_u16_le(&bad[used + 1u], free_slot);
+    bad[used + 3u] = 2;
+    bad[used + 4u] = 'z';
+    bad[used + 5u] = 'z';
+    used = (uint16_t)(used + 6u);
+  }
+  bad[used] = FR_TEST_TIER_RECORD_END;
+  tier_expect_refused(bad, (uint16_t)(used + 1u), FR_ERR_CAPACITY);
+
+  /* The same record with a free slot and a new name mounts. */
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_persist_payload_restore(
+                        &s_runtime, bad,
+                        tier_add_reservation(payload, length, bad, free_slot,
+                                             "zz", 2)));
+  TEST_ASSERT_EQUAL_UINT16(2, tier_reserved_count());
+}
+
+/* A seeded random sequence of tier commands against a model. Library words
+ * lw0..lw2 return a constant; user words u0..u2 return a constant or call a
+ * library word; a user word can also take the name of a library word
+ * (ADR 0091). After each step: no `corrupt data (11)`, each word gives the
+ * model's result, and the slot count stays bounded. */
+typedef struct tier_model_t {
+  bool lib_defined[3];
+  int lib_value[3];
+  bool redef_defined[3]; /* a user word named lwK */
+  int redef_value[3];
+  bool user_defined[3];
+  int user_calls[3]; /* -1: a constant */
+  int user_value[3];
+} tier_model_t;
+
+/* The user value of a slot hides its library value. */
+static bool tier_model_word(const tier_model_t *model, int k, int *out) {
+  if (model->redef_defined[k]) {
+    *out = model->redef_value[k];
+    return true;
+  }
+  if (model->lib_defined[k]) {
+    *out = model->lib_value[k];
+    return true;
+  }
+  return false;
+}
+
+static uint32_t tier_random_state;
+
+static uint32_t tier_random(void) {
+  tier_random_state = tier_random_state * 1103515245u + 12345u;
+  return tier_random_state >> 16;
+}
+
+static void tier_check_model(const tier_model_t *model) {
+  char line[48];
+  char expected[48];
+  char out[FR_REPL_OUTPUT_BYTES];
+
+  for (int k = 0; k < 3; k++) {
+    int value = 0;
+
+    snprintf(line, sizeof(line), "lw%d:", k);
+    if (tier_model_word(model, k, &value)) {
+      snprintf(expected, sizeof(expected), "%d\nok\n", value);
+      tier_eval_expect(line, expected);
+    } else {
+      TEST_ASSERT_EQUAL_MESSAGE(FR_ERR_NOT_FOUND, tier_eval_err(line), line);
+    }
+  }
+  for (int j = 0; j < 3; j++) {
+    int value = 0;
+
+    snprintf(line, sizeof(line), "u%d:", j);
+    if (!model->user_defined[j]) {
+      TEST_ASSERT_EQUAL_MESSAGE(FR_ERR_NOT_FOUND, tier_eval_err(line), line);
+    } else if (model->user_calls[j] < 0) {
+      snprintf(expected, sizeof(expected), "%d\nok\n", model->user_value[j]);
+      tier_eval_expect(line, expected);
+    } else if (tier_model_word(model, model->user_calls[j], &value)) {
+      snprintf(expected, sizeof(expected), "%d\nok\n", value);
+      tier_eval_expect(line, expected);
+    } else {
+      TEST_ASSERT_EQUAL_MESSAGE(
+          FR_ERR_TYPE, fr_repl_eval_line(&s_runtime, line, out,
+                                         (uint16_t)sizeof(out)),
+          line);
+    }
+  }
+  TEST_ASSERT_LESS_OR_EQUAL(fr_slot_first_project_id() + 8u,
+                            fr_slot_count(&s_runtime));
+}
+
+/* A definition answers `ok`, after a notice when it replaces a word. */
+static void tier_define(const char *line) {
+  char out[FR_REPL_OUTPUT_BYTES];
+  size_t used = 0;
+
+  TEST_ASSERT_EQUAL_MESSAGE(
+      FR_OK, fr_repl_eval_line(&s_runtime, line, out, (uint16_t)sizeof(out)),
+      line);
+  used = strlen(out);
+  TEST_ASSERT_TRUE_MESSAGE(used >= 3 && strcmp(&out[used - 3], "ok\n") == 0,
+                           line);
+}
+
+static void tier_run_random_sequence(uint32_t seed, int steps) {
+  tier_model_t current = {0};
+  tier_model_t saved = {0};
+  bool library_mode = false;
+  bool have_image = false;
+  char line[48];
+
+  tier_random_state = seed;
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  for (int step = 0; step < steps; step++) {
+    uint32_t command = tier_random() % 10u;
+
+    switch (command) {
+    case 0:
+      tier_eval_expect("install-library", "ok\n");
+      memset(current.lib_defined, 0, sizeof(current.lib_defined));
+      saved = current;
+      have_image = true;
+      library_mode = true;
+      break;
+    case 1:
+    case 2:
+      if (library_mode) {
+        int k = (int)(tier_random() % 3u);
+        int v = (int)(tier_random() % 100u);
+
+        snprintf(line, sizeof(line), "lw%d is fn [ %d ]", k, v);
+        tier_define(line);
+        /* A library definition replaces a user value (ADR 0091). */
+        current.lib_defined[k] = true;
+        current.lib_value[k] = v;
+        current.redef_defined[k] = false;
+        saved = current;
+        have_image = true;
+      } else if (tier_random() % 4u == 0) {
+        int k = (int)(tier_random() % 3u);
+        int v = (int)(tier_random() % 100u);
+
+        snprintf(line, sizeof(line), "lw%d is fn [ %d ]", k, v);
+        tier_define(line);
+        current.redef_defined[k] = true;
+        current.redef_value[k] = v;
+      } else {
+        int j = (int)(tier_random() % 3u);
+        int k = (int)(tier_random() % 4u) - 1;
+        int v = (int)(tier_random() % 100u);
+
+        if (k < 0) {
+          snprintf(line, sizeof(line), "u%d is fn [ %d ]", j, v);
+          tier_define(line);
+        } else {
+          snprintf(line, sizeof(line), "u%d is fn [ lw%d: ]", j, k);
+          if (!current.lib_defined[k] && !current.redef_defined[k]) {
+            TEST_ASSERT_EQUAL_MESSAGE(FR_ERR_NOT_FOUND, tier_eval_err(line),
+                                      line);
+            break;
+          }
+          tier_define(line);
+        }
+        current.user_defined[j] = true;
+        current.user_calls[j] = k;
+        current.user_value[j] = v;
+      }
+      break;
+    case 3:
+      tier_eval_expect("install-user", "ok\n");
+      library_mode = false;
+      break;
+    case 4:
+      tier_eval_expect("wipe-user", "ok\n");
+      memset(current.user_defined, 0, sizeof(current.user_defined));
+      memset(current.redef_defined, 0, sizeof(current.redef_defined));
+      saved = current;
+      have_image = true;
+      break;
+    case 5:
+      tier_eval_expect("save", "ok\n");
+      saved = current;
+      have_image = true;
+      break;
+    case 6:
+      if (have_image) {
+        tier_eval_expect("restore", "ok\n");
+        current = saved;
+      } else {
+        TEST_ASSERT_EQUAL(FR_ERR_NOT_FOUND, tier_eval_err("restore"));
+      }
+      break;
+    case 7:
+      tier_eval_expect("clear", "ok\n");
+      current = saved;
+      break;
+    case 8: {
+      /* A restart; before the first save there is no image. */
+      fr_err_t err = FR_OK;
+
+      TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+      err = fr_persist_restore_library(&s_runtime);
+      TEST_ASSERT_TRUE(err == FR_OK || err == FR_ERR_NOT_FOUND);
+      err = fr_persist_restore_user(&s_runtime);
+      TEST_ASSERT_TRUE(err == FR_OK || err == FR_ERR_NOT_FOUND);
+      current = saved;
+      library_mode = false;
+      break;
+    }
+    default:
+      if (tier_random() % 8u == 0) {
+        tier_eval_expect("dangerous.wipe", "ok\n");
+        memset(&current, 0, sizeof(current));
+        saved = current;
+        have_image = false;
+        library_mode = false;
+      }
+      break;
+    }
+    tier_check_model(&current);
+  }
+}
+
+static void test_random_tier_sequences_keep_the_model(void) {
+  tier_run_random_sequence(1u, 300);
+  tier_run_random_sequence(2026u, 300);
+  tier_run_random_sequence(89u, 300);
+}
+
+/* A body nested in a word (an `every` body that never ran) keeps the
+ * reservation: the encoder reaches it through the word's code. */
+static void test_a_nested_body_keeps_a_reservation(void) {
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lw is fn [ 42 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("to start [ every 1000 [ lw: ] ]", "ok\n");
+  tier_eval_expect("install-library", "ok\n");
+  TEST_ASSERT_EQUAL_UINT16(1, tier_reserved_count());
+  tier_boot();
+  TEST_ASSERT_EQUAL_UINT16(1, tier_reserved_count());
+}
+
+/* A reserved name counts in the name table and the slot table. While it is
+ * reserved, the note of the table that fills first says so; after a
+ * definition takes the name back, the note is the plain one. */
+static void test_full_table_with_a_reservation_gives_the_note(void) {
+  char line[48];
+  char out[FR_REPL_OUTPUT_BYTES];
+  uint16_t project_slots =
+      (uint16_t)(FR_PROFILE_MAX_SLOTS - fr_slot_first_project_id());
+  uint16_t room = project_slots < FR_PROFILE_MAX_OVERLAY_NAMES
+                      ? project_slots
+                      : FR_PROFILE_MAX_OVERLAY_NAMES;
+  uint16_t names = 0;
+
+  tier_reinstall_with_called_word();
+  tier_eval_expect("install-user", "ok\n");
+  for (uint16_t i = 2; i < room; i++) {
+    snprintf(line, sizeof(line), "x%u is %u", (unsigned)i, (unsigned)i);
+    tier_eval_expect(line, "ok\n");
+  }
+  names = fr_slot_project_name_count(&s_runtime);
+  TEST_ASSERT_EQUAL(FR_ERR_CAPACITY,
+                    fr_repl_eval_line(&s_runtime, "n is fn [ 1 ]", out,
+                                      (uint16_t)sizeof(out)));
+  TEST_ASSERT_NOT_NULL(strstr(out, "names of removed words count too"));
+  TEST_ASSERT_EQUAL_UINT16(names, fr_slot_project_name_count(&s_runtime));
+  tier_eval_expect("lw is fn [ 43 ]", "ok\n");
+  TEST_ASSERT_EQUAL(FR_ERR_CAPACITY,
+                    fr_repl_eval_line(&s_runtime, "n is fn [ 1 ]", out,
+                                      (uint16_t)sizeof(out)));
+  TEST_ASSERT_NULL(strstr(out, "names of removed words"));
+}
+
+static void test_each_slot_opcode_names_its_slot(void) {
+  static const uint8_t ops[] = {
+      FR_OP_LOAD_SLOT,      FR_OP_STORE_SLOT,          FR_OP_CALL_SLOT,
+      FR_OP_CALL_NATIVE_SLOT, FR_OP_CALL_SLOT_ARG,     FR_OP_LOAD_CELL,
+      FR_OP_STORE_CELL,     FR_OP_LOAD_CELL_DYNAMIC,   FR_OP_STORE_CELL_DYNAMIC,
+  };
+
+  for (uint8_t i = 0; i < (uint8_t)sizeof(ops); i++) {
+    uint8_t bytes[] = {FR_INSTRUCTION_FORMAT_VERSION, 2, ops[i], 0x11, 0x00,
+                       0, 0, FR_OP_RETURN};
+    fr_instruction_stream_t view;
+    fr_slot_id_t slot_id = 0;
+
+    TEST_ASSERT_EQUAL(FR_OK, fr_instruction_stream_init(
+                                 &view, bytes, (uint16_t)sizeof(bytes)));
+    TEST_ASSERT_EQUAL(FR_OK, fr_instruction_slot_ref_at(&view, 2, &slot_id));
+    TEST_ASSERT_EQUAL_UINT16(0x0011, slot_id);
+  }
+  {
+    uint8_t bytes[] = {FR_INSTRUCTION_FORMAT_VERSION, 2, FR_OP_PUSH_NIL,
+                       FR_OP_RETURN};
+    fr_instruction_stream_t view;
+    fr_slot_id_t slot_id = 0;
+
+    TEST_ASSERT_EQUAL(FR_OK, fr_instruction_stream_init(
+                                 &view, bytes, (uint16_t)sizeof(bytes)));
+    TEST_ASSERT_EQUAL(FR_ERR_NOT_FOUND,
+                      fr_instruction_slot_ref_at(&view, 2, &slot_id));
+  }
+}
+#endif
+
 static void test_repl_install_library_replies_ok(void) {
   char out[FR_REPL_OUTPUT_BYTES];
 
@@ -2372,6 +3098,22 @@ int main(void) {
   RUN_TEST(test_install_library_drops_l1_runtime_and_nvs_preserves_user);
   RUN_TEST(test_install_library_persists_replacement_l1);
   RUN_TEST(test_save_with_no_mounted_image_keeps_its_own_code);
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  RUN_TEST(test_reinstall_keeps_the_slot_of_a_called_word);
+  RUN_TEST(test_removed_word_never_takes_another_name);
+  RUN_TEST(test_wipe_sequences_keep_a_called_word);
+  RUN_TEST(test_reservation_lives_while_code_calls_it);
+  RUN_TEST(test_rollbacks_keep_a_reservation);
+  RUN_TEST(test_clear_keeps_reserved_slots_from_new_names);
+  RUN_TEST(test_mount_refuses_a_name_on_a_reserved_slot);
+  RUN_TEST(test_an_event_body_keeps_a_reservation);
+  RUN_TEST(test_library_code_keeps_a_user_reservation);
+  RUN_TEST(test_malformed_reservation_images_are_refused);
+  RUN_TEST(test_random_tier_sequences_keep_the_model);
+  RUN_TEST(test_a_nested_body_keeps_a_reservation);
+  RUN_TEST(test_full_table_with_a_reservation_gives_the_note);
+  RUN_TEST(test_each_slot_opcode_names_its_slot);
+#endif
   RUN_TEST(test_library_closure_first_keeps_user_code);
   RUN_TEST(test_user_redefinition_of_library_word_survives_save);
   RUN_TEST(test_library_definition_replaces_a_user_redefinition);
