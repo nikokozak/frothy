@@ -104,6 +104,19 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   was not saved yet, with no message. Now the user word stays, and only the
   library value under it goes. A library definition of the same name still
   replaces the user word.
+- **A word keeps its slot when a library comes again.** Before,
+  `install-library` gave each library word a new slot. Saved code that
+  called the word then failed with `wrong type (2)`. A new word could also
+  take a slot that old code still called, so the old code called the wrong
+  word. Now a word keeps its slot across `wipe-user` and `install-library`.
+  While saved code calls a removed word, the device keeps the name of that
+  word as reserved. `words` does not list a reserved name, `see` shows it,
+  and a call gives `wrong type (2)` as before. A later definition with that
+  name takes the slot back. A `save` frees each reserved name that no saved
+  code calls. Repeated `install-library` and `wipe-user` no longer fill the
+  slot table, because the device uses a free slot again. When the name
+  table or the slot table is full while reserved names exist, the note says
+  that they count too.
 - **A `save` in safe boot keeps only what the device holds.** In safe boot the
   device does not load the saved program, so `save` writes only the words that
   you define. Before, a new word could take the slot of a saved library word,
