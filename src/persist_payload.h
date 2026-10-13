@@ -9,11 +9,10 @@
  * Current payload version carries 32-bit int value fields. Independent from
  * the overlay update version in config.h. Project policy is no backwards
  * compatibility (D7 in T12L-7); the decoder only accepts the current version.
- * Older payloads are invalid and the recovery path is dangerous.wipe +
- * re-install.
+ * An older payload does not load; a later save or a wipe replaces it.
  */
 enum {
-  FR_PERSIST_PAYLOAD_VERSION = 5,
+  FR_PERSIST_PAYLOAD_VERSION = 6,
 };
 
 typedef fr_err_t (*fr_persist_payload_write_fn_t)(void *ctx,

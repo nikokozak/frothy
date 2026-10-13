@@ -488,10 +488,9 @@ static void test_clear_reports_not_found(void) {
 }
 
 #if FR_FEATURE_TEXT
-/* T10c: restore drops stored param names, so the renderer must fall back to
- * canonical argN display. The full REPL path catches both the renderer
- * result and the "source reconstruction unavailable" fallback line. */
-static void test_see_after_restore_renders_canonical_arg_names(void) {
+/* A saved word keeps its parameter names, so `see` after a restore shows the
+ * names the author wrote (payload v6). */
+static void test_see_after_restore_renders_parameter_names(void) {
   fr_runtime_t runtime;
   char buf[128];
 
@@ -508,7 +507,7 @@ static void test_see_after_restore_renders_canonical_arg_names(void) {
       FR_OK, fr_repl_eval_line(&runtime, "see greet", buf, sizeof(buf)));
   TEST_ASSERT_EQUAL_STRING(
       "overlay code\n"
-      "to greet with arg0 [ text.concat: \"led=\", text.from-int: arg0 ]\n"
+      "to greet with x [ text.concat: \"led=\", text.from-int: x ]\n"
       "ok\n",
       buf);
 }
@@ -769,6 +768,7 @@ static void test_failed_rollback_remount_keeps_the_save_error(void) {
   expect_saved_words();
 }
 #endif
+
 #endif
 
 int main(void) {
@@ -804,7 +804,7 @@ int main(void) {
 #endif
 #endif
 #if FR_FEATURE_TEXT
-  RUN_TEST(test_see_after_restore_renders_canonical_arg_names);
+  RUN_TEST(test_see_after_restore_renders_parameter_names);
 #endif
   return UNITY_END();
 }

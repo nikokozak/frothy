@@ -721,8 +721,9 @@ static void test_persist_header_refusal_classes(void) {
         fr_persist_format_read_header(image, &info) ==
             FR_ERR_OTHER_RELEASE);
 
+  CHECK("persist header holds format version 3", original[4] == 3u);
   memcpy(image, original, sizeof(image));
-  image[4] ^= 1u;
+  image[4] = 2u;
   write_persist_header_crc(image);
   CHECK("persist refusal classifies another format version",
         fr_persist_format_read_header(image, &info) ==
@@ -2073,6 +2074,8 @@ static void test_persist_rejects_code_record_below_base_partition(void) {
   off = (uint16_t)(off + 2);
   memcpy(&payload[off], body_bytes, sizeof(body_bytes));
   off = (uint16_t)(off + sizeof(body_bytes));
+  payload[off++] = 0; /* no parameter names */
+  payload[off++] = 0;
   payload[off++] = FR_TEST_PERSIST_RECORD_BIND;
   write_u16_little_endian(&payload[off], FR_TEST_FIRST_USER_SLOT);
   off = (uint16_t)(off + 2);
@@ -2117,6 +2120,8 @@ static void test_persist_restore_falls_back_from_semantic_corrupt_newer(void) {
   off = (uint16_t)(off + 2);
   payload[off++] = FR_INSTRUCTION_FORMAT_VERSION;
   payload[off++] = 1;
+  payload[off++] = 0; /* no parameter names */
+  payload[off++] = 0;
   payload[off++] = FR_TEST_PERSIST_RECORD_END;
 
   CHECK("semantic fallback commit corrupt newer",
@@ -13551,8 +13556,8 @@ static void test_persist(void) {
                   FR_OK &&
               strcmp(out,
                      "overlay code\n"
-                     "to greet with arg0 [ text.concat: \"led=\", "
-                     "text.from-int: arg0 ]\n"
+                     "to greet with x [ text.concat: \"led=\", "
+                     "text.from-int: x ]\n"
                      "ok\n") == 0 &&
               fr_repl_eval_line(&runtime, "labeled is greet: 1", out,
                                 sizeof(out)) == FR_OK &&
@@ -14146,7 +14151,7 @@ static void test_persist_payload_rejects_seventeenth_event_record(void) {
       'F', 'R', 'P', 'O',
       FR_PERSIST_PAYLOAD_VERSION,
       0x01, 0, 0, 3, 0, FR_INSTRUCTION_FORMAT_VERSION,
-      FR_INSTRUCTION_MIN_HEADER_SIZE, FR_OP_RETURN,
+      FR_INSTRUCTION_MIN_HEADER_SIZE, FR_OP_RETURN, 0, 0,
       FR_TEST_PERSIST_RECORD_EVENT, FR_EVENT_KIND_GPIO_RISING, 0, 0, 0, 0, 0, 0,
       FR_TEST_PERSIST_RECORD_EVENT, FR_EVENT_KIND_GPIO_RISING, 0, 0, 0, 0, 0, 0,
       FR_TEST_PERSIST_RECORD_EVENT, FR_EVENT_KIND_GPIO_RISING, 0, 0, 0, 0, 0, 0,

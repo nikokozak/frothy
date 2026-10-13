@@ -10,6 +10,7 @@
 #include "image.h"
 #include "instruction.h"
 #include "object.h"
+#include "parse.h"
 #include "persist_format.h"
 #include "platform.h"
 #include "slot.h"
@@ -264,6 +265,10 @@ typedef struct fr_persist_reader_t {
 
 typedef struct fr_persist_code_record_t {
   uint16_t local_id;
+  /* Parameter names ride after the instruction bytes: u16 length, then that
+   * many bytes, one NUL-terminated name per parameter. They are read in place
+   * at bytes + length + 2, so the decoded record only keeps the length. */
+  uint16_t names_length;
   const uint8_t *bytes;
   uint16_t length;
 } fr_persist_code_record_t;
@@ -356,6 +361,10 @@ static fr_err_t fr_persist_code_bytes_equal(
     fr_code_object_id_t rhs_id, bool *out_equal) {
   fr_instruction_stream_t lhs;
   fr_instruction_stream_t rhs;
+  const char *lhs_names = NULL;
+  const char *rhs_names = NULL;
+  uint16_t lhs_names_length = 0;
+  uint16_t rhs_names_length = 0;
 
   if (runtime == NULL || out_equal == NULL) {
     return FR_ERR_INVALID;
@@ -363,7 +372,16 @@ static fr_err_t fr_persist_code_bytes_equal(
 
   FR_TRY(fr_code_get_instructions(runtime, lhs_id, &lhs));
   FR_TRY(fr_code_get_instructions(runtime, rhs_id, &rhs));
-  if (lhs.length != rhs.length) {
+  /* Two words with the same bytecode but different parameter names are
+   * different records: merging them would give one of them the other's
+   * names in `see`. */
+  FR_TRY(fr_code_get_param_names(runtime, lhs_id, &lhs_names,
+                                 &lhs_names_length));
+  FR_TRY(fr_code_get_param_names(runtime, rhs_id, &rhs_names,
+                                 &rhs_names_length));
+  if (lhs.length != rhs.length || lhs_names_length != rhs_names_length ||
+      (lhs_names_length > 0 &&
+       memcmp(lhs_names, rhs_names, lhs_names_length) != 0)) {
     *out_equal = false;
     return FR_OK;
   }
@@ -525,6 +543,44 @@ static fr_err_t fr_persist_encode_text_ref(
     uint16_t *out_local_id);
 #endif
 
+/* The name tail of a CODE record: no names, or one name per parameter, each
+ * ended by NUL, each a name that the parser takes, no name twice. Only code
+ * with at most the parameters of a definition has names; `apply` can make
+ * longer code with no names (ADR 0084). */
+static fr_err_t fr_persist_check_name_tail(const uint8_t *tail,
+                                           uint16_t length, uint8_t arity) {
+  uint16_t start = 0;
+  uint8_t count = 0;
+
+  if (length == 0) {
+    return FR_OK;
+  }
+  if (arity > FR_PROFILE_PARSE_MAX_PARAMS ||
+      length > FR_MAX_DEFINITION_PARAM_NAME_BYTES ||
+      tail[length - 1u] != '\0') {
+    return FR_ERR_CORRUPT;
+  }
+  for (uint16_t i = 0; i < length; i++) {
+    const char *name = (const char *)&tail[start];
+
+    if (tail[i] != '\0') {
+      continue;
+    }
+    if (!fr_parse_param_name_ok(name)) {
+      return FR_ERR_CORRUPT;
+    }
+    for (uint16_t j = 0; j < start;
+         j = (uint16_t)(j + strlen((const char *)&tail[j]) + 1u)) {
+      if (strcmp((const char *)&tail[j], name) == 0) {
+        return FR_ERR_CORRUPT;
+      }
+    }
+    count = (uint8_t)(count + 1u);
+    start = (uint16_t)(i + 1u);
+  }
+  return count == arity ? FR_OK : FR_ERR_CORRUPT;
+}
+
 static fr_err_t fr_persist_encode_code_ref(
     fr_persist_writer_t *writer, const fr_runtime_t *runtime,
     fr_code_object_id_t runtime_code_id, fr_code_object_id_t runtime_code_ids[],
@@ -540,6 +596,8 @@ static fr_err_t fr_persist_encode_code_ref(
   fr_instruction_header_t header = {0};
   fr_code_offset_t ip = 0;
   char scratch[64];
+  const char *param_names = NULL;
+  uint16_t param_names_length = 0;
 
   if (runtime_code_id >= FR_PROFILE_CODE_OBJECT_TABLE_SIZE) {
     return FR_ERR_CORRUPT;
@@ -632,10 +690,18 @@ static fr_err_t fr_persist_encode_code_ref(
   (void)object_count;
 #endif
 
+  FR_TRY(fr_code_get_param_names(runtime, runtime_code_id, &param_names,
+                                 &param_names_length));
+  /* The save writes only names that the mount takes. */
+  FR_TRY(fr_persist_check_name_tail((const uint8_t *)param_names,
+                                    param_names_length, header.arity));
   FR_TRY(fr_persist_writer_u8(writer, FR_PERSIST_RECORD_CODE));
   FR_TRY(fr_persist_writer_u16(writer, *code_count));
   FR_TRY(fr_persist_writer_u16(writer, instructions.length));
   FR_TRY(fr_persist_writer_bytes(writer, patched, instructions.length));
+  FR_TRY(fr_persist_writer_u16(writer, param_names_length));
+  FR_TRY(fr_persist_writer_bytes(writer, (const uint8_t *)param_names,
+                                 param_names_length));
 
   runtime_code_ids[*code_count] = runtime_code_id;
   *out_local_id = *code_count;
@@ -1482,7 +1548,7 @@ void fr_persist_payload_note_held_slots(const fr_runtime_t *runtime,
   fr_persist_diag_name_slot(runtime, first_slot_id);
 }
 
-/* Finalize/remap coverage for payload v5:
+/* Finalize/remap coverage for payload v6:
  * 1. PUSH_CODE_ID operands in code bytes become final code ids.
  * 2. PUSH_OBJECT_ID operands become final object ids.
  * 3. Slot-init / BIND CODE, NATIVE, and OBJECT values become final ids.
@@ -1824,6 +1890,10 @@ static fr_err_t fr_persist_payload_advance_record(
     FR_TRY(fr_persist_reader_u16(reader, &local_id));
     FR_TRY(fr_persist_reader_u16(reader, &length));
     FR_TRY(fr_persist_reader_bytes(reader, length, &bytes));
+    if (tag == FR_PERSIST_RECORD_CODE) {
+      FR_TRY(fr_persist_reader_u16(reader, &length));
+      FR_TRY(fr_persist_reader_bytes(reader, length, &bytes));
+    }
     *out_key = local_id;
     return FR_OK;
   }
@@ -2053,6 +2123,8 @@ static fr_err_t fr_persist_payload_scan_l1_records(
     }
     if (tag == FR_PERSIST_RECORD_CODE) {
       FR_TRY(fr_persist_reader_u16(&reader, &local_id));
+      FR_TRY(fr_persist_reader_u16(&reader, &length));
+      FR_TRY(fr_persist_reader_bytes(&reader, length, &bytes));
       FR_TRY(fr_persist_reader_u16(&reader, &length));
       FR_TRY(fr_persist_reader_bytes(&reader, length, &bytes));
       if (local_id >= FR_PROFILE_CODE_OBJECT_TABLE_SIZE ||
@@ -2878,6 +2950,7 @@ static fr_err_t fr_persist_decode_payload(
       fr_persist_code_record_t *code = NULL;
       fr_instruction_stream_t instructions;
       fr_instruction_header_t header = {0};
+      const uint8_t *names = NULL;
       uint16_t final_id = 0;
 
       FR_TRY(fr_persist_reader_u16(&reader, &final_id));
@@ -2889,9 +2962,13 @@ static fr_err_t fr_persist_decode_payload(
       code->local_id = final_id;
       FR_TRY(fr_persist_reader_u16(&reader, &code->length));
       FR_TRY(fr_persist_reader_bytes(&reader, code->length, &code->bytes));
+      FR_TRY(fr_persist_reader_u16(&reader, &code->names_length));
+      FR_TRY(fr_persist_reader_bytes(&reader, code->names_length, &names));
       FR_TRY(fr_instruction_stream_init(&instructions, code->bytes,
                                         code->length));
       FR_TRY(fr_instruction_read_header(&instructions, &header));
+      FR_TRY(fr_persist_check_name_tail(names, code->names_length,
+                                        header.arity));
       code_present[final_id] = true;
       if (final_id >= *out_code_count) {
         *out_code_count = (uint16_t)(final_id + 1u);
@@ -3287,8 +3364,10 @@ static fr_err_t fr_persist_check_restore_capacity(
         break;
       }
     }
+    /* The mount would give two equal Text records one id: refuse them
+     * before any change (the payload-6 schema). */
     if (duplicate) {
-      continue;
+      return FR_ERR_CORRUPT;
     }
     if (used_text_bytes + text_records[i].length >
         FR_PROFILE_MAX_TEXT_BYTES) {
@@ -3323,6 +3402,21 @@ static fr_err_t fr_persist_check_restore_capacity(
         shape->name.length > FR_PROFILE_MAX_NAME_BYTES ||
         shape->name.bytes == NULL) {
       return FR_ERR_CORRUPT;
+    }
+    /* The mount would merge two shapes with the same name and fields. */
+    for (uint16_t j = 0; j < i; j++) {
+      const fr_persist_record_shape_record_t *earlier = &shape_records[j];
+      bool same = earlier->field_count == shape->field_count &&
+                  fr_persist_record_name_same(earlier->name, shape->name);
+
+      for (uint16_t k = 0; same && k < shape->field_count; k++) {
+        same = fr_persist_record_name_same(
+            record_fields[earlier->first_field + k],
+            record_fields[shape->first_field + k]);
+      }
+      if (same) {
+        return FR_ERR_CORRUPT;
+      }
     }
     used_record_names += (uint32_t)1 + shape->field_count;
     used_record_shape_fields += shape->field_count;
@@ -3878,7 +3972,12 @@ fr_persist_install_resources(fr_runtime_t *runtime,
     }
     FR_TRY(fr_instruction_stream_init(&instructions, code_records[i].bytes,
                                       code_records[i].length));
-    FR_TRY(fr_code_mount_image(runtime, &instructions, NULL, 0, &mounted_id));
+    FR_TRY(fr_code_mount_image(
+        runtime, &instructions,
+        code_records[i].names_length > 0
+            ? (const char *)&code_records[i].bytes[code_records[i].length + 2u]
+            : NULL,
+        code_records[i].names_length, &mounted_id));
     if (mounted_id != i) {
       return FR_ERR_CORRUPT;
     }

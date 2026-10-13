@@ -740,6 +740,19 @@ static bool fr_parse_is_reserved_parameter(fr_parse_span_t name) {
          fr_parse_is_event_keyword(name);
 }
 
+bool fr_parse_param_name_ok(const char *name) {
+  fr_parser_t parser = {0};
+
+  if (name == NULL) {
+    return false;
+  }
+  parser.cursor = name;
+  return fr_parse_read_token(&parser) == FR_OK &&
+         parser.token.kind == FR_TOKEN_NAME &&
+         parser.token.span.start == name && *parser.cursor == '\0' &&
+         !fr_parse_is_reserved_parameter(parser.token.span);
+}
+
 static bool fr_parse_is_reserved_is_definition_name(fr_parse_span_t name) {
   return fr_parse_span_equals(name, "is") ||
          fr_parse_span_equals(name, "true") ||

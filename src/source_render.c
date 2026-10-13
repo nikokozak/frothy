@@ -18,6 +18,7 @@
 #include "tagged.h"
 
 #include <stdbool.h>
+#include <string.h>
 
 /* Single-shot scratch: see finishes before the next REPL line, the same
  * lifetime the apply/run wire buffers in repl.c rely on. */
@@ -339,21 +340,21 @@ static fr_err_t fr_source_native_arity(fr_source_render_t *r,
 }
 
 /* Names are packed one per arg, each NUL-terminated. */
-static uint8_t fr_source_param_count(const char *names, uint16_t names_len) {
-  uint8_t count = 0;
+static uint16_t fr_source_param_count(const char *names, uint16_t names_len) {
+  uint16_t count = 0;
 
   for (uint16_t pos = 0; pos < names_len; pos++) {
     if (names[pos] == '\0') {
-      count = (uint8_t)(count + 1u);
+      count = (uint16_t)(count + 1u);
     }
   }
   return count;
 }
 
-/* Restored code installs with no stored parameter names (persist payload
- * stays param-name-less). Render canonical `argN` into the caller buffer
- * when that case shows up; the VM never sees these names. canon[7] holds
- * "arg" + up to three decimal digits (index is uint8_t) + NUL. */
+/* Code with no stored parameter names, such as code from `apply`, renders
+ * canonical `argN` into the caller buffer; the VM never sees these names.
+ * canon[7] holds "arg" + up to three decimal digits (index is uint8_t) +
+ * NUL. */
 static fr_err_t fr_source_param_name_at(const char *names, uint16_t names_len,
                                         uint8_t index, char canon[7],
                                         const char **out_name) {
@@ -398,7 +399,26 @@ static fr_err_t fr_source_param_name_at(const char *names, uint16_t names_len,
   return FR_OK;
 }
 
-static void fr_source_local_name(uint8_t index, char canon[9]) {
+/* `see` names a local `local<N>`. When a parameter has that name, it adds
+ * `_` until no parameter has it, so the source parses back (ADR 0084). */
+enum { FR_SOURCE_LOCAL_NAME_BYTES = 9 + FR_PROFILE_PARSE_MAX_PARAMS };
+
+static bool fr_source_names_hold(const char *names, uint16_t names_len,
+                                 const char *candidate) {
+  uint16_t pos = 0;
+
+  while (names != NULL && pos < names_len) {
+    if (strcmp(&names[pos], candidate) == 0) {
+      return true;
+    }
+    pos = (uint16_t)(pos + strlen(&names[pos]) + 1u);
+  }
+  return false;
+}
+
+static void fr_source_local_name(uint8_t index, const char *names,
+                                 uint16_t names_len,
+                                 char canon[FR_SOURCE_LOCAL_NAME_BYTES]) {
   char digits[3];
   uint8_t digit_count = 0;
   uint8_t magnitude = index;
@@ -420,6 +440,11 @@ static void fr_source_local_name(uint8_t index, char canon[9]) {
     canon[out_pos++] = digits[digit_count];
   }
   canon[out_pos] = '\0';
+  while (fr_source_names_hold(names, names_len, canon) &&
+         out_pos + 1u < FR_SOURCE_LOCAL_NAME_BYTES) {
+    canon[out_pos++] = '_';
+    canon[out_pos] = '\0';
+  }
 }
 
 static fr_err_t fr_source_render_span(fr_source_render_t *r,
@@ -747,7 +772,7 @@ static fr_err_t fr_source_render_repeat(fr_source_render_t *r,
   uint8_t next_index_local = 0;
   uint8_t begin_width = 3;
   uint8_t next_width = 3;
-  char index_name[9];
+  char index_name[FR_SOURCE_LOCAL_NAME_BYTES];
   bool has_index = (fr_opcode_t)view->bytes[ip] == FR_OP_REPEAT_BEGIN_AS;
 
   if (r->depth < 1) {
@@ -758,7 +783,7 @@ static fr_err_t fr_source_render_repeat(fr_source_render_t *r,
     next_width = 4;
     FR_TRY(fr_instruction_read_jump_local_operands(view, ip, &done_target,
                                                    &index_local));
-    fr_source_local_name(index_local, index_name);
+    fr_source_local_name(index_local, names, names_len, index_name);
   } else {
     index_name[0] = '\0';
     FR_TRY(fr_instruction_read_jump_operand(view, ip, &done_target));
@@ -1315,10 +1340,10 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
 #endif
     case FR_OP_LOAD_LOCAL: {
       uint8_t local_index = 0;
-      char canon[9];
+      char canon[FR_SOURCE_LOCAL_NAME_BYTES];
 
       FR_TRY(fr_instruction_read_local_operand(view, ip, &local_index));
-      fr_source_local_name(local_index, canon);
+      fr_source_local_name(local_index, names, names_len, canon);
       FR_TRY(fr_source_push_text(r, canon));
       ip = (fr_code_offset_t)(ip + 2u);
       break;
@@ -1327,7 +1352,7 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
       uint8_t local_index = 0;
       fr_source_frag_t value;
       uint16_t start = r->used;
-      char canon[9];
+      char canon[FR_SOURCE_LOCAL_NAME_BYTES];
 
       FR_TRY(fr_instruction_read_local_operand(view, ip, &local_index));
       if (r->depth < 1) {
@@ -1336,7 +1361,7 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
       value = r->stack[r->depth - 1];
       r->depth = (uint8_t)(r->depth - 1);
 
-      fr_source_local_name(local_index, canon);
+      fr_source_local_name(local_index, names, names_len, canon);
       FR_TRY(fr_source_puts(r, canon));
       FR_TRY(fr_source_puts(r, " is "));
       FR_TRY(fr_source_puts(r, &fr_source_render_arena[value.start]));
@@ -1348,7 +1373,7 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
       uint8_t local_index = 0;
       fr_source_frag_t value;
       uint16_t start = r->used;
-      char canon[9];
+      char canon[FR_SOURCE_LOCAL_NAME_BYTES];
 
       FR_TRY(fr_instruction_read_local_operand(view, ip, &local_index));
       if (r->depth < 1) {
@@ -1357,7 +1382,7 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
       value = r->stack[r->depth - 1];
       r->depth = (uint8_t)(r->depth - 1);
 
-      fr_source_local_name(local_index, canon);
+      fr_source_local_name(local_index, names, names_len, canon);
       FR_TRY(fr_source_puts(r, "set "));
       FR_TRY(fr_source_puts(r, canon));
       FR_TRY(fr_source_puts(r, " to "));
@@ -1524,8 +1549,12 @@ static fr_err_t fr_source_build(fr_source_render_t *r,
   FR_TRY(fr_instruction_read_header(&view, out_header));
   FR_TRY(fr_code_get_param_names(r->runtime, code_object_id, out_names,
                                  out_names_len));
-  if (out_header->arity > 0 && *out_names_len > 0 &&
-      fr_source_param_count(*out_names, *out_names_len) != out_header->arity) {
+  /* The readers below find each name by its NUL: refuse a run that a C
+   * caller installed with no final NUL or with another count. */
+  if (*out_names_len > 0 &&
+      ((*out_names)[*out_names_len - 1u] != '\0' ||
+       fr_source_param_count(*out_names, *out_names_len) !=
+           out_header->arity)) {
     return FR_ERR_UNSUPPORTED;
   }
   /* The body is one expression followed by a trailing RETURN. */

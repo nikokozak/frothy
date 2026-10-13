@@ -10,7 +10,7 @@
 #include <string.h>
 
 enum {
-  FR_PERSIST_FORMAT_VERSION = 2,
+  FR_PERSIST_FORMAT_VERSION = 3,
 };
 
 typedef char fr_persist_storage_must_fit_uint16[

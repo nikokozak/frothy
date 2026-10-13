@@ -16,6 +16,10 @@
 
 #include "base_image.h"
 #include "base_defs.h"
+#include "code.h"
+#include "compile.h"
+#include "image.h"
+#include "instruction.h"
 #include "config.h"
 #include "crc.h"
 #include "lib_native.h"
@@ -56,8 +60,8 @@ const fr_lib_native_def_t fr_lib_natives[] = {
 const uint16_t fr_lib_natives_count = 1;
 
 /* Mirror persist_payload.c's enum so a public test can shape the bytes. */
-#define FR_TEST_TIER_PAYLOAD_VERSION 5
-#define FR_TEST_TIER_PAYLOAD_VERSION_LEGACY 4
+#define FR_TEST_TIER_PAYLOAD_VERSION 6
+#define FR_TEST_TIER_PAYLOAD_VERSION_LEGACY 5
 
 #define FR_TEST_TIER_RECORD_CODE 1
 #define FR_TEST_TIER_RECORD_BIND 2
@@ -436,6 +440,12 @@ static int find_bind_tier_for_slot(const uint8_t *encoded, uint16_t len,
       }
       length = (uint16_t)encoded[i + 3] | ((uint16_t)encoded[i + 4] << 8);
       i = (uint16_t)(i + 5 + length);
+      /* v6: a u16 name-run length and that many name bytes follow the code. */
+      if ((uint16_t)(i + 2) > len) {
+        return -1;
+      }
+      length = (uint16_t)encoded[i] | ((uint16_t)encoded[i + 1] << 8);
+      i = (uint16_t)(i + 2 + length);
       continue;
     }
     if (tag == FR_TEST_TIER_RECORD_BIND) {
@@ -571,6 +581,7 @@ static void test_wipe_user_preserves_library_word(void) {
                         find_bind_tier_for_slot(encoded, encoded_len,
                                                 usr_slot));
 }
+
 
 /* Acceptance #5: save reads the existing payload's L1 records from NVS,
  * encodes the runtime's L2 records, and writes the merged payload. L1 bytes
@@ -1710,8 +1721,14 @@ static void test_user_redefinition_of_library_text_survives_save(void) {
 /* The bytes of a CODE, BIND or NAME record at `i`, or 0. */
 static uint16_t tier_record_length(const uint8_t *p, uint16_t i) {
   switch (p[i]) {
-  case FR_TEST_TIER_RECORD_CODE:
-    return (uint16_t)(5u + ((uint16_t)p[i + 3] | ((uint16_t)p[i + 4] << 8)));
+  case FR_TEST_TIER_RECORD_CODE: {
+    /* Payload 6: the name tail follows the instructions. */
+    uint16_t code_length = (uint16_t)p[i + 3] | ((uint16_t)p[i + 4] << 8);
+    uint16_t tail_at = (uint16_t)(i + 5u + code_length);
+
+    return (uint16_t)(5u + code_length + 2u +
+                      ((uint16_t)p[tail_at] | ((uint16_t)p[tail_at + 1] << 8)));
+  }
   case FR_TEST_TIER_RECORD_NAME:
     return (uint16_t)(4u + p[i + 3]);
   case FR_TEST_TIER_RECORD_BIND:
@@ -1926,6 +1943,387 @@ static void test_install_library_keeps_an_unstamped_overlay(void) {
   tier_eval_expect("lv", "7\nok\n");
 }
 
+#if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0
+/* ADR 0084: a saved word keeps its parameter names. */
+
+/* The saved image of `f is fn with a, b [ 0 ]`, with the name tail of its
+ * CODE record (the first record) and the arity of its instruction header
+ * replaced, given to the restore of a fresh runtime. The mount points into
+ * the payload, as into flash, so the payload lives on after the call. */
+static fr_err_t tier_restore_with_name_tail(const uint8_t *tail,
+                                            uint16_t tail_length,
+                                            uint8_t arity) {
+  static uint8_t spliced[FR_PROFILE_PERSISTENCE_BYTES];
+  uint8_t payload[FR_PROFILE_PERSISTENCE_BYTES];
+  uint16_t length = 0;
+  uint16_t code_length = 0;
+  uint16_t tail_at = 0;
+  uint16_t rest_at = 0;
+  uint16_t used = 0;
+
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("f is fn with a, b [ 0 ]", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  read_committed_payload(NULL, payload, &length);
+  TEST_ASSERT_EQUAL_UINT8(FR_TEST_TIER_RECORD_CODE, payload[5]);
+  code_length = (uint16_t)payload[8] | ((uint16_t)payload[9] << 8);
+  tail_at = (uint16_t)(10u + code_length);
+  rest_at = (uint16_t)(tail_at + 2u +
+                       ((uint16_t)payload[tail_at] |
+                        ((uint16_t)payload[tail_at + 1] << 8)));
+  memcpy(spliced, payload, tail_at);
+  spliced[12] = arity; /* CODE at 5: tag, id, length, then the header */
+  used = tail_at;
+  write_u16_le(&spliced[used], tail_length);
+  used = (uint16_t)(used + 2u);
+  if (tail_length > 0) {
+    memcpy(&spliced[used], tail, tail_length);
+  }
+  used = (uint16_t)(used + tail_length);
+  memcpy(&spliced[used], &payload[rest_at], (size_t)(length - rest_at));
+  used = (uint16_t)(used + (length - rest_at));
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("keep is 7", "ok\n");
+  return fr_persist_payload_restore(&s_runtime, spliced, used);
+}
+
+/* A refused restore changes nothing: the runtime still holds only `keep`. */
+static void tier_expect_only_keep(void) {
+  fr_slot_id_t slot_id = 0;
+
+  TEST_ASSERT_EQUAL_UINT16(1, fr_slot_project_name_count(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_ERR_NOT_FOUND,
+                    fr_slot_id_for_name(&s_runtime, "f", &slot_id));
+  tier_eval_expect("keep", "7\nok\n");
+}
+
+/* Each bad name tail is refused, and the runtime does not change. The count
+ * rule also refuses names on a word with no parameters. */
+static void test_saved_name_tails_are_checked(void) {
+  static const struct {
+    const char *tail;
+    uint16_t length;
+    uint8_t arity;
+    fr_err_t expected;
+  } cases[] = {
+      {"a\0b", 4, 2, FR_OK},           /* two names */
+      {"", 0, 2, FR_OK},               /* no names */
+      {"\0b", 3, 2, FR_ERR_CORRUPT},   /* an empty name */
+      {"a+b\0c", 6, 2, FR_ERR_CORRUPT}, /* not one name token */
+      {"if\0b", 5, 2, FR_ERR_CORRUPT}, /* a reserved name */
+      {"a\0a", 4, 2, FR_ERR_CORRUPT},  /* one name twice */
+      {"a\0b", 3, 2, FR_ERR_CORRUPT},  /* no final NUL */
+      {"a", 2, 2, FR_ERR_CORRUPT},     /* one name for two parameters */
+      {"", 0, 0, FR_OK},               /* no parameters, no names */
+      {"a", 2, 0, FR_ERR_CORRUPT},     /* a name with no parameters */
+  };
+  static uint8_t long_name[FR_PROFILE_PARSE_MAX_TOKEN_BYTES + 4];
+  static uint8_t long_tail[FR_MAX_DEFINITION_PARAM_NAME_BYTES + 1];
+  fr_slot_id_t slot_id = 0;
+
+  for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+    TEST_ASSERT_EQUAL(cases[i].expected,
+                      tier_restore_with_name_tail(
+                          (const uint8_t *)cases[i].tail, cases[i].length,
+                          cases[i].arity));
+    if (cases[i].expected == FR_OK) {
+      TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, "f", &slot_id));
+    } else {
+      tier_expect_only_keep();
+    }
+  }
+  /* With no names, `see` shows `arg0` and so on. */
+  TEST_ASSERT_EQUAL(FR_OK, tier_restore_with_name_tail(NULL, 0, 2));
+  tier_eval_expect("see f", "overlay code\nto f with arg0, arg1 [ 0 ]\nok\n");
+
+  /* A name one byte above the token limit, then a second name. */
+  memset(long_name, 'x', FR_PROFILE_PARSE_MAX_TOKEN_BYTES + 1);
+  long_name[FR_PROFILE_PARSE_MAX_TOKEN_BYTES + 1] = '\0';
+  long_name[FR_PROFILE_PARSE_MAX_TOKEN_BYTES + 2] = 'b';
+  long_name[FR_PROFILE_PARSE_MAX_TOKEN_BYTES + 3] = '\0';
+  TEST_ASSERT_EQUAL(FR_ERR_CORRUPT, tier_restore_with_name_tail(
+                                       long_name, sizeof(long_name), 2));
+  tier_expect_only_keep();
+  /* A tail one byte above the bound of a definition. */
+  memset(long_tail, 'a', sizeof(long_tail));
+  long_tail[sizeof(long_tail) - 1u] = '\0';
+  TEST_ASSERT_EQUAL(FR_ERR_CORRUPT, tier_restore_with_name_tail(
+                                       long_tail, sizeof(long_tail), 2));
+  tier_expect_only_keep();
+  /* Names on code with more parameters than a definition can have: one
+   * valid name for each parameter, and still refused. */
+  {
+    static uint8_t names[(FR_PROFILE_PARSE_MAX_PARAMS + 1) * 3];
+    uint16_t length = 0;
+
+    for (int i = 0; i <= FR_PROFILE_PARSE_MAX_PARAMS; i++) {
+      names[length++] = 'p';
+      names[length++] = (uint8_t)('a' + i);
+      names[length++] = '\0';
+    }
+    TEST_ASSERT_EQUAL(FR_ERR_CORRUPT,
+                      tier_restore_with_name_tail(
+                          names, length,
+                          (uint8_t)(FR_PROFILE_PARSE_MAX_PARAMS + 1)));
+  }
+  tier_expect_only_keep();
+}
+
+/* Every parameter name at the token limit survives a save and a boot. */
+static void test_longest_parameter_names_survive_save(void) {
+  static fr_compile_overlay_update_t update;
+  static char line[FR_MAX_DEFINITION_PARAM_NAME_BYTES + 64];
+  const char *names = NULL;
+  uint16_t names_len = 0;
+  fr_slot_id_t slot_id = 0;
+  fr_tagged_t value = 0;
+  fr_code_object_id_t code_id = 0;
+  int used = 0;
+
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  used = snprintf(line, sizeof(line), "to long with ");
+  for (int i = 0; i < FR_PROFILE_PARSE_MAX_PARAMS; i++) {
+    if (i > 0) {
+      used += snprintf(line + used, sizeof(line) - (size_t)used, ", ");
+    }
+    memset(line + used, 'a' + i, FR_PROFILE_PARSE_MAX_TOKEN_BYTES);
+    used += FR_PROFILE_PARSE_MAX_TOKEN_BYTES;
+  }
+  snprintf(line + used, sizeof(line) - (size_t)used, " [ 0 ]");
+  TEST_ASSERT_EQUAL(FR_OK, fr_compile_overlay_update_for_runtime(
+                               &s_runtime, line, &update));
+  TEST_ASSERT_EQUAL(FR_OK, fr_overlay_apply(&s_runtime, &update.overlay_update));
+  tier_eval_expect("save", "ok\n");
+  tier_boot();
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, "long", &slot_id));
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, slot_id, &value));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_code_object_id(value, &code_id));
+  TEST_ASSERT_EQUAL(FR_OK, fr_code_get_param_names(&s_runtime, code_id,
+                                                   &names, &names_len));
+  TEST_ASSERT_EQUAL_UINT16(FR_MAX_DEFINITION_PARAM_NAME_BYTES, names_len);
+  for (int i = 0; i < FR_PROFILE_PARSE_MAX_PARAMS; i++) {
+    const char *name = &names[i * (FR_PROFILE_PARSE_MAX_TOKEN_BYTES + 1)];
+
+    TEST_ASSERT_EQUAL_size_t(FR_PROFILE_PARSE_MAX_TOKEN_BYTES, strlen(name));
+    TEST_ASSERT_EQUAL_CHAR('a' + i, name[0]);
+  }
+}
+
+/* A library word and a user word with the same body and other parameter
+ * names keep their own names: the save writes one CODE record for two code
+ * entries only when their names are equal too. */
+static void test_equal_bodies_keep_their_own_names(void) {
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("install-library", "ok\n");
+  tier_eval_expect("lib_inc is fn with lib_arg [ lib_arg + 1 ]", "ok\n");
+  tier_eval_expect("install-user", "ok\n");
+  tier_eval_expect("user_inc is fn with user_arg [ user_arg + 1 ]", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_boot();
+  tier_eval_expect("see lib_inc",
+                   "overlay code\nto lib_inc with lib_arg [ lib_arg + 1 ]\n"
+                   "ok\n");
+  tier_eval_expect("see user_inc",
+                   "overlay code\nto user_inc with user_arg [ user_arg + 1 ]\n"
+                   "ok\n");
+}
+
+/* `see` never shows a local with the name of a parameter, and its source
+ * parses back. */
+static void test_see_keeps_a_local_apart_from_the_parameters(void) {
+  char line[256];
+  char expected[256];
+  char out[FR_REPL_OUTPUT_BYTES];
+  int used = 0;
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  used = snprintf(line, sizeof(line), "to f with ");
+  for (int i = 0; i < FR_PROFILE_PARSE_MAX_PARAMS; i++) {
+    used += snprintf(line + used, sizeof(line) - (size_t)used, "%slocal0%.*s",
+                     i > 0 ? ", " : "", i, "________");
+  }
+  snprintf(line + used, sizeof(line) - (size_t)used, " [ x is 5 ; x ]");
+  tier_eval_expect(line, "ok\n");
+  snprintf(expected, sizeof(expected), "%s",
+           "overlay code\n");
+  used = snprintf(line, sizeof(line), "to f with ");
+  for (int i = 0; i < FR_PROFILE_PARSE_MAX_PARAMS; i++) {
+    used += snprintf(line + used, sizeof(line) - (size_t)used, "%slocal0%.*s",
+                     i > 0 ? ", " : "", i, "________");
+  }
+  snprintf(line + used, sizeof(line) - (size_t)used,
+           " [ local0%.*s is 5 ; local0%.*s ]", FR_PROFILE_PARSE_MAX_PARAMS,
+           "________", FR_PROFILE_PARSE_MAX_PARAMS, "________");
+  snprintf(expected, sizeof(expected), "overlay code\n%s\nok\n", line);
+  TEST_ASSERT_EQUAL(FR_OK, fr_repl_eval_line(&s_runtime, "see f", out,
+                                             (uint16_t)sizeof(out)));
+  TEST_ASSERT_EQUAL_STRING(expected, out);
+  /* The shown source defines the same word again. */
+  tier_eval_expect(line, "ok\n");
+  used = snprintf(line, sizeof(line), "f: 1");
+  for (int i = 1; i < FR_PROFILE_PARSE_MAX_PARAMS; i++) {
+    used += snprintf(line + used, sizeof(line) - (size_t)used, ", %d", i + 1);
+  }
+  tier_eval_expect(line, "5\nok\n");
+}
+
+/* `see` does not render a name run that a C caller installed with no final
+ * NUL or with another count, so it reads no byte past the run. It shows the
+ * instructions. */
+static void test_see_refuses_a_bad_name_run(void) {
+  static const char empty_names[256] = {0};
+  static const struct {
+    uint8_t arity;
+    const char *names;
+    uint16_t length;
+  } cases[] = {
+      {0, "local0", 6},                         /* no final NUL */
+      {1, "a\0b", 3},                           /* the count fits, no final NUL */
+      {0, "a", 2},                              /* a name with no parameters */
+      {0, empty_names, sizeof(empty_names)},    /* 256 names, no parameters */
+  };
+  char out[FR_REPL_OUTPUT_BYTES];
+
+  for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+    uint8_t code[] = {FR_INSTRUCTION_FORMAT_VERSION, 3, cases[i].arity,
+                      FR_OP_PUSH_NIL, FR_OP_RETURN};
+    const fr_image_code_object_t objects[] = {
+        {.instructions = {.bytes = code, .length = sizeof(code)},
+         .param_names = cases[i].names,
+         .param_names_length = cases[i].length},
+    };
+    const fr_image_slot_init_t slots[] = {
+        {FR_SLOT_BOOT, {FR_IMAGE_REF_CODE_OBJECT, 0, 0}},
+    };
+    const fr_overlay_update_t update = {
+        .slot_inits = slots,
+        .slot_init_count = 1,
+        .code_objects = objects,
+        .code_object_count = 1,
+    };
+
+    TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+    if ((uint32_t)s_runtime.code.ram_code_used + sizeof(code) +
+            cases[i].length >
+        sizeof(s_runtime.code.ram_code_bytes)) {
+      continue; /* the pending code area of a small profile has no room */
+    }
+    TEST_ASSERT_EQUAL(FR_OK, fr_overlay_apply(&s_runtime, &update));
+    TEST_ASSERT_EQUAL(FR_OK, fr_repl_eval_line(&s_runtime, "see boot", out,
+                                               (uint16_t)sizeof(out)));
+    TEST_ASSERT_NOT_NULL(strstr(out, ";; source reconstruction unavailable"));
+  }
+}
+
+#if FR_FEATURE_RECORDS
+/* Two equal TEXT records, or two shapes with the same name and fields,
+ * would get one id at the mount: phase C refuses them before any change. */
+static void test_repeated_text_and_shape_records_are_refused(void) {
+  static const uint8_t texts[] = {
+      'F', 'R', 'P', 'O', FR_TEST_TIER_PAYLOAD_VERSION,
+      5, 0, 0, 2, 0, 'h', 'i', /* TEXT 0 "hi" */
+      5, 1, 0, 2, 0, 'h', 'i', /* TEXT 1 "hi" */
+      FR_TEST_TIER_RECORD_END};
+  static const uint8_t shapes[] = {
+      'F', 'R', 'P', 'O', FR_TEST_TIER_PAYLOAD_VERSION,
+      6, 0, 0, 1, 0, 'P', 1, 0, 1, 0, 'x', /* SHAPE 0 P { x } */
+      6, 1, 0, 1, 0, 'P', 1, 0, 1, 0, 'x', /* SHAPE 1 P { x } */
+      FR_TEST_TIER_RECORD_END};
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_ERR_CORRUPT,
+                    fr_persist_payload_restore(&s_runtime, texts,
+                                               (uint16_t)sizeof(texts)));
+  TEST_ASSERT_EQUAL_UINT16(0, s_runtime.objects.count);
+  TEST_ASSERT_EQUAL(FR_ERR_CORRUPT,
+                    fr_persist_payload_restore(&s_runtime, shapes,
+                                               (uint16_t)sizeof(shapes)));
+  TEST_ASSERT_EQUAL_UINT16(0, s_runtime.objects.count);
+}
+#endif
+
+/* No profile has base objects, so a CELLS or RECORD value names only
+ * objects of its own image (the payload-6 schema; ADR 0035). */
+static void test_base_image_has_no_objects(void) {
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  TEST_ASSERT_EQUAL_UINT16(0, s_runtime.objects.base_count);
+}
+
+/* Code with more parameters than a definition can have comes only from
+ * `apply`, with no names: it saves and mounts, as before. */
+static void test_unnamed_code_above_the_parameter_limit_saves(void) {
+  uint8_t code[] = {FR_INSTRUCTION_FORMAT_VERSION, 3,
+                    (uint8_t)(FR_PROFILE_PARSE_MAX_PARAMS + 1), FR_OP_PUSH_NIL,
+                    FR_OP_RETURN};
+  const fr_image_code_object_t objects[] = {
+      {.instructions = {.bytes = code, .length = sizeof(code)}},
+  };
+  const fr_image_slot_init_t slots[] = {
+      {FR_SLOT_BOOT, {FR_IMAGE_REF_CODE_OBJECT, 0, 0}},
+  };
+  const fr_overlay_update_t update = {
+      .slot_inits = slots,
+      .slot_init_count = 1,
+      .code_objects = objects,
+      .code_object_count = 1,
+  };
+  static fr_overlay_update_decoded_t decoded;
+  uint8_t bytes[128];
+  uint16_t length = 0;
+
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK, fr_overlay_update_encode(&update, bytes,
+                                                    (uint16_t)sizeof(bytes),
+                                                    &length));
+  TEST_ASSERT_EQUAL(FR_OK, fr_overlay_update_decode(bytes, length, &decoded));
+  TEST_ASSERT_EQUAL(FR_OK, fr_overlay_apply(&s_runtime, &decoded.update));
+  tier_eval_expect("save", "ok\n");
+  tier_boot();
+}
+
+/* Only a C caller can install a bad name tail. The save refuses it before
+ * its commit, so no image holds names that the mount refuses. */
+static void test_save_refuses_a_bad_name_tail(void) {
+  uint8_t code[] = {FR_INSTRUCTION_FORMAT_VERSION, 3, 1, FR_OP_PUSH_NIL,
+                    FR_OP_RETURN};
+  const fr_image_code_object_t objects[] = {
+      {.instructions = {.bytes = code, .length = sizeof(code)},
+       .param_names = "if",
+       .param_names_length = 3},
+  };
+  const fr_image_slot_init_t slots[] = {
+      {FR_SLOT_BOOT, {FR_IMAGE_REF_CODE_OBJECT, 0, 0}},
+  };
+  const fr_overlay_update_t update = {
+      .slot_inits = slots,
+      .slot_init_count = 1,
+      .code_objects = objects,
+      .code_object_count = 1,
+  };
+  static uint8_t before[FR_PROFILE_PERSISTENCE_BYTES];
+  static uint8_t after[FR_PROFILE_PERSISTENCE_BYTES];
+  char out[FR_REPL_OUTPUT_BYTES];
+  uint16_t before_length = 0;
+  uint16_t after_length = 0;
+
+  fr_platform_persist_clear();
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("save", "ok\n");
+  read_committed_payload(NULL, before, &before_length);
+  TEST_ASSERT_EQUAL(FR_OK, fr_overlay_apply(&s_runtime, &update));
+  TEST_ASSERT_EQUAL(FR_ERR_CORRUPT, fr_repl_eval_line(&s_runtime, "save", out,
+                                                      (uint16_t)sizeof(out)));
+  read_committed_payload(NULL, after, &after_length);
+  TEST_ASSERT_EQUAL_UINT16(before_length, after_length);
+  TEST_ASSERT_EQUAL_MEMORY(before, after, before_length);
+}
+#endif
+
 static void test_repl_install_library_replies_ok(void) {
   char out[FR_REPL_OUTPUT_BYTES];
 
@@ -1986,6 +2384,19 @@ int main(void) {
 #endif
 #if FR_FEATURE_TEXT
   RUN_TEST(test_library_closure_first_keeps_user_text);
+#endif
+#if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  RUN_TEST(test_saved_name_tails_are_checked);
+  RUN_TEST(test_longest_parameter_names_survive_save);
+  RUN_TEST(test_equal_bodies_keep_their_own_names);
+  RUN_TEST(test_see_keeps_a_local_apart_from_the_parameters);
+  RUN_TEST(test_see_refuses_a_bad_name_run);
+  RUN_TEST(test_base_image_has_no_objects);
+  RUN_TEST(test_unnamed_code_above_the_parameter_limit_saves);
+  RUN_TEST(test_save_refuses_a_bad_name_tail);
+#if FR_FEATURE_RECORDS
+  RUN_TEST(test_repeated_text_and_shape_records_are_refused);
+#endif
 #endif
   RUN_TEST(test_repl_install_library_replies_ok);
   RUN_TEST(test_repl_install_user_replies_ok);

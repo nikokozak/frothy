@@ -1488,7 +1488,7 @@ static fr_err_t fr_overlay_update_decode_code(
                                     &out->instruction_bytes
                                          [*instruction_bytes_used],
                                 .length = length};
-  /* Persisted code carries no param names yet; the renderer falls back. */
+  /* Code from `apply` has no parameter names; `see` shows `arg0` and so on. */
   code->param_names = NULL;
   code->param_names_length = 0;
   *instruction_bytes_used = (uint16_t)(*instruction_bytes_used + length);
