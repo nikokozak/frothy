@@ -824,8 +824,8 @@ static void test_persist_other_release_reports_and_falls_back(void) {
                 FR_ERR_OTHER_RELEASE &&
             strcmp(out,
                    "error: other release (27)\n"
-                   "note: the image comes from another release -- save writes "
-                   "a new one\n") == 0);
+                   "note: the image comes from another release -- send your "
+                   "source again, then save\n") == 0);
 
   CHECK("other release boot starts from the base image",
         fr_base_image_install(&runtime) == FR_OK);

@@ -482,8 +482,8 @@ fr_err_t fr_persist_restore(fr_runtime_t *runtime) {
   if (err == FR_ERR_OTHER_RELEASE && runtime->diag != NULL &&
       runtime->diag->kind == FR_DIAG_NONE) {
     runtime->diag->kind = FR_DIAG_NOTE;
-    runtime->diag->note =
-        "the image comes from another release -- save writes a new one";
+    runtime->diag->note = "the image comes from another release -- send your "
+                          "source again, then save";
   }
   return err;
 }
