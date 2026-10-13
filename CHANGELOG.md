@@ -13,6 +13,13 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   in one write, so an event cannot print inside the line. Neither word makes a
   Text or Bytes value, so a loop can print for as long as it runs. A label has
   1 to 48 bytes: a letter or `_` first, then letters, digits, `_`, `.` or `-`.
+- **A saved word keeps its parameter names.** Before, after `save` and a
+  restart or `restore`, `see` showed the parameters of a saved word as `arg0`,
+  `arg1` and so on. Now the saved image holds the names, and `see` shows the
+  names that you wrote. When a parameter has the name of a local, such as
+  `local0`, `see` adds `_` to the local's name, so its source still defines
+  the same word. The saved image moves to a new format (payload 6, envelope
+  3): a v0.1.22 image answers `other release (27)`.
 
 ### Changed
 
