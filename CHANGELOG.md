@@ -21,6 +21,10 @@ image stays on the board until `save` or a wipe.
 5. Type `save`. Do not type `save` first: a `save` before you send your
    program writes an empty program over the old image.
 
+If you updated without your source, do not type `save` or a wipe command.
+Unless the browser flasher erased an ESP32 board, the old image stays on the
+board, and v0.1.22 firmware can read it again.
+
 ### Added
 
 - **`print` writes an integer, and `print.value` writes one named line.**
@@ -97,11 +101,13 @@ image stays on the board until `save` or a wipe.
   counts the names. The area keeps the size of the two old areas together.
 - **The instruction format moves to 2.** Code saved by v0.1.22 does not load:
   the device answers `other release (27)`.
-- **The profile hash moves on every profile.**
-  `printf 'status\n' | frothy` shows these values for the host build of
-  each profile: `host_normal` 676c476c, `host_small` 6c81f7c3,
-  `esp32_plain` bb8d1b12, `esp32c3_plain` 24c3e661, `rp2040_plain` a2ed0ffc
-  and `rp2040_nina` 792ff572. `make test-profile-hashes` checks them.
+- **The profile hash moves on every profile.** A board build also hashes the
+  constants of its board and the natives of its libraries. So each board and
+  each library set has its own value, and `status` shows it.
+  `make test-profile-hashes` checks the values of the host builds:
+  `host_normal` 676c476c, `host_small` 6c81f7c3, `esp32_plain` bb8d1b12,
+  `esp32c3_plain` 24c3e661, `rp2040_plain` a2ed0ffc and `rp2040_nina`
+  792ff572.
 - **A reply starts on its own line.** A word such as `print` or `pad.type`
   can leave the console line open. Then the device writes LF before its next
   reply, prompt, event line or error. `print: "hi"` at the prompt now
@@ -118,8 +124,12 @@ image stays on the board until `save` or a wipe.
   - the data of `ble.gatt.set`, `ble.gatt.notify`, `ble.gatt.indicate` and
     `ble.gatt.write`.
 - **`buffer` is a reserved word.** A parameter, a local or a `repeat ... as`
-  name cannot be `buffer`. Names such as `rx-buffer` and `buffer.size` stay
-  valid. Rename a parameter or a local called `buffer` before you update.
+  name cannot be `buffer`. A top-level definition such as
+  `buffer is cells: 4` still answers `ok`, and a bare `buffer` at the prompt
+  still reads the value. Uses such as `buffer[0]`, `g: buffer`,
+  `y is buffer` and a use in a word body answer `invalid (8)`. Names such as
+  `rx-buffer` and `buffer.size` stay valid. Rename each name `buffer` in your
+  source before you update.
 - **The detail of a refused save names a Bytes value.** It now says
   `bound to a live handle or a Bytes value`, because a save keeps a buffer.
   The help of the Bytes words also says "Bytes value", and their parameter
@@ -163,7 +173,9 @@ image stays on the board until `save` or a wipe.
   back. The other effects of the expression stay, and a handle that it opened
   stays open, with no name. When the save fails for another reason, the device
   goes back to the saved program, as after `restore`. Other unsaved changes
-  go, and open handles close. In safe boot, the device clears the project.
+  go, and open handles close. The device has no mounted image in safe boot,
+  on a new or wiped board, and with an image from another release. Then it
+  clears the project instead.
   When the last write of the save fails, the device runs the newest saved
   program that it can load. That program can hold the change.
 - **`install-library` keeps a user word that has the name of a library word.**
