@@ -2251,7 +2251,7 @@ static void test_repeated_text_and_shape_records_are_refused(void) {
 #endif
 
 /* No profile has base objects, so a CELLS or RECORD value names only
- * objects of its own image (the payload-6 schema; ADR 0035). */
+ * objects of its own image (ADR 0084, ADR 0035). */
 static void test_base_image_has_no_objects(void) {
   TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
   TEST_ASSERT_EQUAL_UINT16(0, s_runtime.objects.base_count);

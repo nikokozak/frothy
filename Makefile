@@ -448,10 +448,9 @@ test-bytes-checked: ## Run the host_normal suites with checked Bytes tags (stale
 		TEST_BINARY=build/host-bytes-checked/test \
 		test _test-unity-run _test-ble-host-run
 
-# The profile hash of each profile in a host build: the release check of the
-# plan (printf 'status\n' | build/<board>/frothy). A new base word, limit,
-# feature or source base moves a hash. Then update this list and name the
-# move in the CHANGELOG.
+# The profile hash of each profile in a host build of one board, as `status`
+# shows it. A new base word, limit, feature or source base moves a hash. Then
+# update this list and name the move in the CHANGELOG.
 PROFILE_HASHES = \
 	host:host_normal:676c476c \
 	host:host_small:6c81f7c3 \
@@ -476,7 +475,7 @@ test-profile-hashes: ## Check the profile hash of each profile against its recor
 	done; \
 	printf 'profile hashes ok\n'
 
-test-buffers-off: ## Run the host_normal suite with buffers off (ADR 0088 gate).
+test-buffers-off: ## Run the host_normal suite with buffers off (FR_FEATURE_BUFFERS=0).
 	$(MAKE) BOARD=host PROFILE=host_normal BUILD_DIR=build/host-buffers-off \
 		CFLAGS=-DFR_FEATURE_BUFFERS=0 \
 		TEST_BINARY=build/host-buffers-off/test \

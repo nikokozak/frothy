@@ -17836,17 +17836,17 @@ static void test_pending_area_holds_code_and_names(void) {
             test_pending_room(&runtime) == 0);
 
 #if FR_FEATURE_TEXT
-  /* Pressure test t-leak2: refused definitions that contain Text leave no
-   * object, Text byte, slot or pending byte behind. */
-  CHECK("t-leak2 state before",
+  /* Refused definitions that contain Text leave no object, Text byte, slot
+   * or pending byte behind. */
+  CHECK("refused Text definitions: state before",
         fr_repl_eval_line(&runtime, "mem", before, sizeof(before)) == FR_OK);
   for (int i = 0; i < 4; i++) {
     snprintf(line, sizeof(line), "to leak%d [ \"refused text %d\" ]", i, i);
-    CHECK("t-leak2 definition is refused",
+    CHECK("refused Text definitions: each is refused",
           fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
               FR_ERR_CAPACITY);
   }
-  CHECK("t-leak2 changes nothing",
+  CHECK("refused Text definitions: nothing changes",
         fr_repl_eval_line(&runtime, "mem", out, sizeof(out)) == FR_OK &&
             strcmp(out, before) == 0);
 #endif
@@ -18048,7 +18048,7 @@ static void test_repl_capacity_notes(void) {
 
 #if FR_FEATURE_PERSISTENCE && FR_PROFILE_MAX_OVERLAY_NAMES > 0
   /* ADR 0089: a name keeps its slot across tier wipes, and a free slot is
-   * used again, so the slice 9b loop keeps the slot count after round 1,
+   * used again, so a loop of tier wipes keeps the slot count after round 1,
    * also when the names change in each round. */
   {
     uint16_t count_after_round_1 = 0;
@@ -18072,7 +18072,7 @@ static void test_repl_capacity_notes(void) {
         count_after_round_1 = runtime.slots.count;
       }
     }
-    CHECK("slice 9b loop keeps the slot count",
+    CHECK("a loop of tier wipes keeps the slot count",
           steps_ok && runtime.slots.count == count_after_round_1);
 
     (void)fr_platform_persist_clear();

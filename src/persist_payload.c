@@ -264,7 +264,7 @@ typedef struct fr_persist_cell_record_t {
 
 /* TEXT and BUFFER records share one array. A TEXT has capacity 0; a
  * BUFFER never has (ADR 0088). The capacity uses the padding after the id,
- * so the decoded payload keeps its size (the payload-6 schema). */
+ * so the decoded payload keeps its size (ADR 0084). */
 typedef struct fr_persist_text_buffer_record_t {
   uint16_t local_id;
   uint16_t capacity;
@@ -3500,7 +3500,7 @@ static fr_err_t fr_persist_check_restore_capacity(
       }
     }
     /* The mount would give two equal Text records one id: refuse them
-     * before any change (the payload-6 schema). */
+     * before any change (ADR 0084). */
     if (duplicate) {
       return FR_ERR_CORRUPT;
     }
@@ -4366,7 +4366,7 @@ fr_err_t fr_persist_payload_restore(fr_runtime_t *runtime, const uint8_t *bytes,
 /* D6 boot L1 pass: reset the runtime, install all resources the payload
  * references (codes, texts, buffers, shapes, records, cells), then apply
  * only L1 binds and the names whose slot is L1. A per-bind failure here
- * writes the SPEC-shaped warning and the walk continues; binding L1 names
+ * writes its warning and the walk continues; binding L1 names
  * in this pass is what makes a library word resolve via
  * fr_slot_id_for_name before the L2 pass runs. */
 fr_err_t fr_persist_payload_restore_library(fr_runtime_t *runtime,

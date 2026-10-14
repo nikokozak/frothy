@@ -159,7 +159,7 @@ repeat 10 as light [
 ```
 
 Each call writes `light:0`, `light:1`, and so on, followed by LF. Both operations
-return nil. Integer output uses a fixed local buffer and creates no Text or Bytes.
+return nil. Integer output uses a fixed local array and creates no Text or Bytes.
 A label has 1 to 48 bytes: a letter or `_` first, then letters, digits, `_`,
 `.` or `-`.
 
