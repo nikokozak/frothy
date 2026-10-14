@@ -768,6 +768,13 @@ static void test_persist_header_refusal_classes(void) {
   CHECK("persist refusal keeps bad magic corrupt",
         fr_persist_format_read_header(image, &info) == FR_ERR_CORRUPT);
 
+  memset(image, 0xff, FR_PERSIST_HEADER_BYTES);
+  CHECK("persist refusal reads an erased header as empty",
+        fr_persist_format_read_header(image, &info) == FR_ERR_NOT_FOUND);
+  image[FR_PERSIST_HEADER_BYTES - 1u] = 0xfeu;
+  CHECK("persist refusal keeps a header with one byte not erased corrupt",
+        fr_persist_format_read_header(image, &info) == FR_ERR_CORRUPT);
+
   memcpy(image, original, sizeof(image));
   image[FR_PERSIST_HEADER_CRC_OFFSET] ^= 1u;
   CHECK("persist refusal keeps bad header crc corrupt",

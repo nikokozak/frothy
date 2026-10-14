@@ -421,39 +421,19 @@ static fr_err_t fr_rp2040_persist_pick_read_slot(
     uint8_t image_index, uint8_t *out_slot,
     fr_persist_format_info_t *out_info) {
   fr_persist_format_info_t info[FR_RP2040_PERSIST_SLOT_COUNT] = {};
-  bool valid[FR_RP2040_PERSIST_SLOT_COUNT] = {false, false};
-  bool saw_corrupt = false;
-  uint8_t slots[FR_RP2040_PERSIST_SLOT_COUNT] = {0, 1};
-  uint8_t valid_count = 0;
+  fr_err_t err[FR_RP2040_PERSIST_SLOT_COUNT];
+  fr_err_t picked = FR_OK;
 
   if (out_slot == NULL || out_info == NULL) {
     return FR_ERR_INVALID;
   }
   for (uint8_t slot = 0; slot < FR_RP2040_PERSIST_SLOT_COUNT; slot++) {
-    fr_err_t err = fr_rp2040_persist_slot_info(slot, &info[slot]);
-    valid[slot] = err == FR_OK;
-    if (err != FR_OK && err != FR_ERR_NOT_FOUND) {
-      saw_corrupt = true;
-    }
+    err[slot] = fr_rp2040_persist_slot_info(slot, &info[slot]);
   }
-  if (valid[0] && valid[1]) {
-    if (info[1].backend_generation > info[0].backend_generation) {
-      slots[0] = 1;
-      slots[1] = 0;
-    }
-    valid_count = 2;
-  } else if (valid[1]) {
-    slots[0] = 1;
-    valid_count = 1;
-  } else if (valid[0]) {
-    valid_count = 1;
-  } else {
-    return saw_corrupt ? FR_ERR_CORRUPT : FR_ERR_NOT_FOUND;
+  picked = fr_persist_format_pick_read_slot(err, info, image_index, out_slot);
+  if (picked != FR_OK) {
+    return picked;
   }
-  if (image_index >= valid_count) {
-    return FR_ERR_NOT_FOUND;
-  }
-  *out_slot = slots[image_index];
   *out_info = info[*out_slot];
   return FR_OK;
 }

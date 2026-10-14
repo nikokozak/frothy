@@ -2541,7 +2541,6 @@ static fr_err_t fr_esp_persist_slot_info(const esp_partition_t *partition,
   uint8_t header[FR_PERSIST_HEADER_BYTES];
   fr_persist_format_info_t info = {0};
   uint32_t payload_crc = 0;
-  bool erased = true;
 
   if (partition == NULL || out == NULL) {
     return FR_ERR_INVALID;
@@ -2551,15 +2550,6 @@ static fr_err_t fr_esp_persist_slot_info(const esp_partition_t *partition,
   }
   FR_TRY(fr_esp_err(esp_partition_read(
       partition, fr_esp_persist_slot_offset(slot), header, sizeof(header))));
-  for (uint16_t i = 0; i < sizeof(header); i++) {
-    if (header[i] != 0xffu) {
-      erased = false;
-      break;
-    }
-  }
-  if (erased) {
-    return FR_ERR_NOT_FOUND;
-  }
   FR_TRY(fr_persist_format_read_header(header, &info));
   if (info.total_length > FR_ESP_PERSIST_SLOT_BYTES ||
       info.total_length > UINT16_MAX) {
@@ -2576,49 +2566,16 @@ static fr_err_t fr_esp_persist_slot_info(const esp_partition_t *partition,
 static fr_err_t fr_esp_persist_pick_read_slot(
     const esp_partition_t *partition, uint8_t image_index, uint8_t *out_slot,
     fr_persist_format_info_t *out_info) {
-  fr_persist_format_info_t info[FR_ESP_PERSIST_SLOT_COUNT];
-  bool valid[FR_ESP_PERSIST_SLOT_COUNT] = {false, false};
-  bool saw_corrupt = false;
-  bool saw_other_release = false;
-  uint8_t slots[FR_ESP_PERSIST_SLOT_COUNT] = {0, 1};
-  uint8_t valid_count = 0;
+  fr_persist_format_info_t info[FR_ESP_PERSIST_SLOT_COUNT] = {{0}};
+  fr_err_t err[FR_ESP_PERSIST_SLOT_COUNT];
 
   if (out_slot == NULL || out_info == NULL) {
     return FR_ERR_INVALID;
   }
-
   for (uint8_t slot = 0; slot < FR_ESP_PERSIST_SLOT_COUNT; slot++) {
-    fr_err_t err = fr_esp_persist_slot_info(partition, slot, &info[slot]);
-    valid[slot] = err == FR_OK;
-    if (err == FR_ERR_OTHER_RELEASE) {
-      saw_other_release = true;
-    } else if (err != FR_OK && err != FR_ERR_NOT_FOUND) {
-      saw_corrupt = true;
-    }
+    err[slot] = fr_esp_persist_slot_info(partition, slot, &info[slot]);
   }
-
-  if (valid[0] && valid[1]) {
-    if (info[1].backend_generation > info[0].backend_generation) {
-      slots[0] = 1;
-      slots[1] = 0;
-    }
-    valid_count = 2;
-  } else if (valid[1]) {
-    slots[0] = 1;
-    valid_count = 1;
-  } else if (valid[0]) {
-    valid_count = 1;
-  } else {
-    if (saw_corrupt) {
-      return FR_ERR_CORRUPT;
-    }
-    return saw_other_release ? FR_ERR_OTHER_RELEASE : FR_ERR_NOT_FOUND;
-  }
-
-  if (image_index >= valid_count) {
-    return FR_ERR_NOT_FOUND;
-  }
-  *out_slot = slots[image_index];
+  FR_TRY(fr_persist_format_pick_read_slot(err, info, image_index, out_slot));
   *out_info = info[*out_slot];
   return FR_OK;
 }

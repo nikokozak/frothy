@@ -211,6 +211,75 @@ static void test_commit_slot_choice(void) {
   }
 }
 
+/* ADR 0076: erased flash is an empty slot on every platform. A save that
+ * stops before its header write leaves its slot erased, as on a board. With
+ * no valid slot, `restore` answers not found (7). With an image of another
+ * release in the other slot, it answers other release (27), not corrupt
+ * data (11). */
+static void test_erased_slots_read_as_empty(void) {
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  fr_host_persist_debug_interrupt_next_header_write();
+  TEST_ASSERT_EQUAL(FR_ERR_IO, fr_persist_save(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_ERR_NOT_FOUND, fr_persist_restore(&s_runtime));
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_save(&s_runtime));
+  fr_host_persist_debug_interrupt_next_header_write();
+  TEST_ASSERT_EQUAL(FR_ERR_IO, fr_persist_save(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK, fr_host_persist_debug_corrupt_newest(4, 2));
+  TEST_ASSERT_EQUAL(FR_ERR_OTHER_RELEASE, fr_persist_restore(&s_runtime));
+}
+
+/* ADR 0076: the slot that a mount or a read uses, on every platform. With
+ * no valid slot, damage comes before another release. */
+static void test_read_slot_choice(void) {
+  enum { NONE = 0xff };
+  static const struct {
+    fr_err_t err0;
+    fr_err_t err1;
+    uint32_t generation0;
+    uint32_t generation1;
+    uint8_t image_index;
+    fr_err_t result;
+    uint8_t slot;
+  } cases[] = {
+      {FR_ERR_NOT_FOUND, FR_ERR_NOT_FOUND, 0, 0, 0, FR_ERR_NOT_FOUND, NONE},
+      {FR_ERR_OTHER_RELEASE, FR_ERR_NOT_FOUND, 0, 0, 0, FR_ERR_OTHER_RELEASE,
+       NONE},
+      {FR_ERR_NOT_FOUND, FR_ERR_OTHER_RELEASE, 0, 0, 0, FR_ERR_OTHER_RELEASE,
+       NONE},
+      {FR_ERR_OTHER_RELEASE, FR_ERR_OTHER_RELEASE, 0, 0, 0,
+       FR_ERR_OTHER_RELEASE, NONE},
+      {FR_ERR_CORRUPT, FR_ERR_OTHER_RELEASE, 0, 0, 0, FR_ERR_CORRUPT, NONE},
+      {FR_ERR_OTHER_RELEASE, FR_ERR_IO, 0, 0, 0, FR_ERR_CORRUPT, NONE},
+      {FR_ERR_CAPACITY, FR_ERR_NOT_FOUND, 0, 0, 0, FR_ERR_CORRUPT, NONE},
+      {FR_OK, FR_ERR_CORRUPT, 4, 0, 0, FR_OK, 0},
+      {FR_OK, FR_ERR_NOT_FOUND, 4, 0, 0, FR_OK, 0},
+      {FR_ERR_IO, FR_OK, 0, 4, 0, FR_OK, 1},
+      {FR_OK, FR_ERR_CORRUPT, 4, 0, 1, FR_ERR_NOT_FOUND, NONE},
+      {FR_ERR_OTHER_RELEASE, FR_OK, 0, 4, 0, FR_OK, 1},
+      {FR_OK, FR_OK, 3, 5, 0, FR_OK, 1},
+      {FR_OK, FR_OK, 3, 5, 1, FR_OK, 0},
+      {FR_OK, FR_OK, 5, 3, 0, FR_OK, 0},
+      {FR_OK, FR_OK, 5, 3, 1, FR_OK, 1},
+      {FR_OK, FR_OK, 4, 4, 0, FR_OK, 0},
+      {FR_OK, FR_OK, 4, 4, 1, FR_OK, 1},
+      {FR_OK, FR_OK, 5, 3, 2, FR_ERR_NOT_FOUND, NONE},
+  };
+
+  for (uint8_t i = 0; i < (uint8_t)(sizeof(cases) / sizeof(cases[0])); i++) {
+    fr_err_t err[2] = {cases[i].err0, cases[i].err1};
+    fr_persist_format_info_t info[2] = {{0}};
+    uint8_t slot = NONE;
+
+    info[0].backend_generation = cases[i].generation0;
+    info[1].backend_generation = cases[i].generation1;
+    TEST_ASSERT_EQUAL(cases[i].result,
+                      fr_persist_format_pick_read_slot(
+                          err, info, cases[i].image_index, &slot));
+    TEST_ASSERT_EQUAL_UINT8(cases[i].slot, slot);
+  }
+}
+
 #if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0
 /* ADR 0090: after a fallback to an older image, a save reads the records
  * that it keeps from the mounted image and writes the other slot, so the
@@ -883,6 +952,8 @@ int main(void) {
   RUN_TEST(test_bad_payload_newer_image_falls_back_to_older_good_image);
   RUN_TEST(test_corrupt_newer_image_falls_back_to_older_good_image);
   RUN_TEST(test_commit_slot_choice);
+  RUN_TEST(test_read_slot_choice);
+  RUN_TEST(test_erased_slots_read_as_empty);
 #if FR_FEATURE_COMPILER && FR_PROFILE_MAX_OVERLAY_NAMES > 0
   RUN_TEST(test_save_after_fallback_keeps_the_mounted_image);
   RUN_TEST(test_failed_save_remount_returns_its_error);
