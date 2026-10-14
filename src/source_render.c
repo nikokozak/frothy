@@ -403,19 +403,6 @@ static fr_err_t fr_source_param_name_at(const char *names, uint16_t names_len,
  * `_` until no parameter has it, so the source parses back (ADR 0084). */
 enum { FR_SOURCE_LOCAL_NAME_BYTES = 9 + FR_PROFILE_PARSE_MAX_PARAMS };
 
-static bool fr_source_names_hold(const char *names, uint16_t names_len,
-                                 const char *candidate) {
-  uint16_t pos = 0;
-
-  while (names != NULL && pos < names_len) {
-    if (strcmp(&names[pos], candidate) == 0) {
-      return true;
-    }
-    pos = (uint16_t)(pos + strlen(&names[pos]) + 1u);
-  }
-  return false;
-}
-
 static void fr_source_local_name(uint8_t index, const char *names,
                                  uint16_t names_len,
                                  char canon[FR_SOURCE_LOCAL_NAME_BYTES]) {
@@ -440,10 +427,16 @@ static void fr_source_local_name(uint8_t index, const char *names,
     canon[out_pos++] = digits[digit_count];
   }
   canon[out_pos] = '\0';
-  while (fr_source_names_hold(names, names_len, canon) &&
-         out_pos + 1u < FR_SOURCE_LOCAL_NAME_BYTES) {
-    canon[out_pos++] = '_';
-    canon[out_pos] = '\0';
+  /* A parameter with the name adds `_`, and the scan starts again. */
+  for (uint16_t pos = 0; names != NULL && pos < names_len &&
+                         out_pos + 1u < FR_SOURCE_LOCAL_NAME_BYTES;) {
+    if (strcmp(&names[pos], canon) == 0) {
+      canon[out_pos++] = '_';
+      canon[out_pos] = '\0';
+      pos = 0;
+    } else {
+      pos = (uint16_t)(pos + strlen(&names[pos]) + 1u);
+    }
   }
 }
 
@@ -700,22 +693,6 @@ static bool fr_source_is_rewind(const fr_instruction_stream_t *view,
 #endif
 }
 
-/* A loop body starts after its BEGIN, and a statement that is a while or a
- * forever starts with the BEGIN of that loop. Both name one statement start
- * when the BEGIN run is skipped. */
-static fr_code_offset_t fr_source_skip_begins(
-    const fr_instruction_stream_t *view, fr_code_offset_t ip) {
-#if FR_FEATURE_BYTES
-  while ((uint32_t)ip + 1u < view->length &&
-         (fr_opcode_t)view->bytes[ip] == FR_OP_BYTES_BEGIN) {
-    ip = (fr_code_offset_t)(ip + 2u);
-  }
-#else
-  (void)view;
-#endif
-  return ip;
-}
-
 /* cond JUMP_IF_FALSY(done) <body> DROP [REWIND] JUMP(cond) done:[REWIND]
  * PUSH_NIL — the loop's value is that nil, so skip it and let the while text
  * stand in its place. */
@@ -841,6 +818,7 @@ static fr_err_t fr_source_render_forever(
     fr_code_offset_t jump_ip, fr_code_offset_t end,
     fr_code_offset_t *out_ip) {
   fr_code_offset_t target = 0;
+  fr_code_offset_t target_start = 0;
   fr_code_offset_t drop_ip = 0;
   uint8_t body_base = r->depth;
 
@@ -860,9 +838,26 @@ static fr_err_t fr_source_render_forever(
   if (target >= jump_ip) {
     return FR_ERR_UNSUPPORTED;
   }
+  /* A loop body starts after its BEGIN, and a statement that is a while or
+   * a forever starts with the BEGIN of that loop. Both name one statement
+   * start when the BEGIN run is skipped. */
+  target_start = target;
+#if FR_FEATURE_BYTES
+  while ((uint32_t)target_start + 1u < view->length &&
+         (fr_opcode_t)view->bytes[target_start] == FR_OP_BYTES_BEGIN) {
+    target_start = (fr_code_offset_t)(target_start + 2u);
+  }
+#endif
   for (uint8_t i = base; i < r->depth; i++) {
-    if (fr_source_skip_begins(view, r->stack[i].statement_start) ==
-        fr_source_skip_begins(view, target)) {
+    fr_code_offset_t start = r->stack[i].statement_start;
+
+#if FR_FEATURE_BYTES
+    while ((uint32_t)start + 1u < view->length &&
+           (fr_opcode_t)view->bytes[start] == FR_OP_BYTES_BEGIN) {
+      start = (fr_code_offset_t)(start + 2u);
+    }
+#endif
+    if (start == target_start) {
       body_base = i;
       break;
     }

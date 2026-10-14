@@ -528,24 +528,6 @@ static bool fr_slot_is_free(const fr_runtime_t *runtime, fr_slot_id_t slot_id) {
          !fr_slot_project_name_points_to(runtime, slot_id);
 }
 
-/* The lowest free project slot from `from` up, or the first id past the
- * table's top. */
-static fr_slot_id_t fr_slot_next_free_project_id(const fr_runtime_t *runtime,
-                                                 fr_slot_id_t from) {
-  fr_slot_id_t first_project_id = fr_slot_first_project_id();
-
-  if (from < first_project_id) {
-    from = first_project_id;
-  }
-  for (fr_slot_id_t slot_id = from; slot_id < runtime->slots.count;
-       slot_id++) {
-    if (fr_slot_is_free(runtime, slot_id)) {
-      return slot_id;
-    }
-  }
-  return from > runtime->slots.count ? from : runtime->slots.count;
-}
-
 /* Lower slots.count and slots.base_count over the free slots at their tops,
  * so that each count ends just above the highest slot in use. */
 void fr_slot_reclaim_free_tail(fr_runtime_t *runtime) {
@@ -607,7 +589,11 @@ fr_err_t fr_slot_prepare_project_name(const fr_runtime_t *runtime,
     return FR_ERR_CAPACITY;
   }
 
-  next = fr_slot_next_free_project_id(runtime, 0);
+  /* The lowest free project slot, or the first id past the table's top. */
+  next = fr_slot_first_project_id();
+  while (next < runtime->slots.count && !fr_slot_is_free(runtime, next)) {
+    next = (fr_slot_id_t)(next + 1u);
+  }
   if (next >= FR_PROFILE_MAX_SLOTS) {
     fr_slot_note_table_full(runtime, "slot table", FR_PROFILE_MAX_SLOTS,
                             NULL);
@@ -744,8 +730,12 @@ fr_err_t fr_slot_validate_project_names(const fr_runtime_t *runtime,
       return FR_ERR_CAPACITY;
     }
     /* New names take the free slots in order, as prepare gives them. */
-    next_new_slot = fr_slot_next_free_project_id(
-        runtime, has_next_new_slot ? (fr_slot_id_t)(next_new_slot + 1u) : 0);
+    next_new_slot = has_next_new_slot ? (fr_slot_id_t)(next_new_slot + 1u)
+                                      : fr_slot_first_project_id();
+    while (next_new_slot < runtime->slots.count &&
+           !fr_slot_is_free(runtime, next_new_slot)) {
+      next_new_slot = (fr_slot_id_t)(next_new_slot + 1u);
+    }
     has_next_new_slot = true;
     if (next_new_slot >= FR_PROFILE_MAX_SLOTS) {
       fr_slot_note_table_full(runtime, "slot table", FR_PROFILE_MAX_SLOTS,

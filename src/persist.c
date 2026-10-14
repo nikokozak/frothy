@@ -245,17 +245,6 @@ static fr_err_t fr_persist_remount(fr_runtime_t *runtime, bool latest_only) {
                                            true, latest_only, NULL);
 }
 
-/* A save mounts only the image that it wrote. When that fails, the ordinary
- * loop brings back a mounted program, and the save keeps its own error. */
-static fr_err_t fr_persist_remount_saved(fr_runtime_t *runtime) {
-  fr_err_t err = fr_persist_remount(runtime, true);
-
-  if (err != FR_OK) {
-    (void)fr_persist_remount(runtime, false);
-  }
-  return err;
-}
-
 /* D5: save persists the user tier only and preserves the library tier in
  * durable storage byte-for-byte. The mounted payload (if any) is scanned for
  * L1 record spans, those source bytes are copied into the new stream in
@@ -331,7 +320,13 @@ static fr_err_t fr_persist_save_at_once(fr_runtime_t *runtime, bool full) {
     (void)fr_runtime_reset(runtime);
     return err;
   }
-  mount_err = fr_persist_remount_saved(runtime);
+  /* A save mounts only the image that it wrote. When that fails, the
+   * ordinary loop brings back a mounted program, and the save keeps its own
+   * error. */
+  mount_err = fr_persist_remount(runtime, true);
+  if (mount_err != FR_OK) {
+    (void)fr_persist_remount(runtime, false);
+  }
   return err != FR_OK ? err : mount_err;
 }
 
@@ -354,9 +349,17 @@ static fr_err_t fr_persist_check_prompt_only(const fr_runtime_t *runtime) {
 }
 
 fr_err_t fr_persist_save(fr_runtime_t *runtime) {
+  fr_err_t err = FR_OK;
+
   FR_TRY(fr_persist_check_prompt_only(runtime));
   FR_TRY(fr_persist_commit_image(runtime));
-  return fr_persist_remount_saved(runtime);
+  /* As in fr_persist_save_at_once: mount the image that the save wrote, or
+   * else the newest image that mounts. */
+  err = fr_persist_remount(runtime, true);
+  if (err != FR_OK) {
+    (void)fr_persist_remount(runtime, false);
+  }
+  return err;
 }
 
 void fr_persist_note_save_rejection(fr_runtime_t *runtime, fr_err_t err) {

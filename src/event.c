@@ -6,27 +6,6 @@
 #include <stdbool.h>
 #include <string.h>
 
-#if FR_FEATURE_REPL
-/* One tracked write, with no stdio formatting in the event path. */
-static void fr_event_write_dropped_line(fr_runtime_t *runtime,
-                                        uint32_t dropped) {
-  static const char prefix[] = "! events dropped: ";
-  uint8_t line[sizeof(prefix) - 1u + 10u + 1u];
-  uint8_t *start = line + sizeof(line);
-
-  *--start = '\n';
-  do {
-    *--start = (uint8_t)('0' + (dropped % 10u));
-    dropped /= 10u;
-  } while (dropped > 0);
-  start -= sizeof(prefix) - 1u;
-  memcpy(start, prefix, sizeof(prefix) - 1u);
-  if (fr_console_start_line(runtime) == FR_OK) {
-    (void)fr_console_write(runtime, start, (uint16_t)(line + sizeof(line) - start));
-  }
-}
-#endif
-
 static bool fr_event_kind_is_gpio(fr_event_kind_t kind) {
   return kind == FR_EVENT_KIND_GPIO_RISING ||
          kind == FR_EVENT_KIND_GPIO_FALLING ||
@@ -254,6 +233,9 @@ fr_err_t fr_event_drain(fr_runtime_t *runtime) {
 /* Best-effort: losing this notice must not change dispatch or eval results. */
 void fr_event_report_overflow(fr_runtime_t *runtime) {
 #if FR_FEATURE_REPL
+  static const char prefix[] = "! events dropped: ";
+  uint8_t line[sizeof(prefix) - 1u + 10u + 1u];
+  uint8_t *start = line + sizeof(line);
   uint32_t dropped;
 
   if (runtime == NULL) {
@@ -267,7 +249,18 @@ void fr_event_report_overflow(fr_runtime_t *runtime) {
   dropped =
       runtime->events.overflow_count - runtime->events.overflow_reported_count;
   runtime->events.overflow_reported_count = runtime->events.overflow_count;
-  fr_event_write_dropped_line(runtime, dropped);
+  /* One tracked write, with no stdio formatting in the event path. */
+  *--start = '\n';
+  do {
+    *--start = (uint8_t)('0' + (dropped % 10u));
+    dropped /= 10u;
+  } while (dropped > 0);
+  start -= sizeof(prefix) - 1u;
+  memcpy(start, prefix, sizeof(prefix) - 1u);
+  if (fr_console_start_line(runtime) == FR_OK) {
+    (void)fr_console_write(runtime, start,
+                           (uint16_t)(line + sizeof(line) - start));
+  }
 #else
   (void)runtime;
 #endif

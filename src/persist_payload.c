@@ -2034,7 +2034,10 @@ static fr_err_t fr_persist_payload_advance_record(
 
 /* Walk a prefix span (a slice of an encoded payload, starting at the first
  * record byte after magic+version) and return the next final code/object ids
- * after the preserved L1 records. */
+ * after the preserved L1 records. The walk also marks the slot operands of
+ * the CODE records, as the streaming save does in its closure walk (ADR
+ * 0089). A CODE record is u8 tag, u16 id, u16 length, the stream, then its
+ * name tail. */
 static fr_err_t fr_persist_payload_next_prefix_ids(const uint8_t *prefix,
                                                    uint16_t prefix_length,
                                                    uint16_t *out_code_count,
@@ -2054,6 +2057,7 @@ static fr_err_t fr_persist_payload_next_prefix_ids(const uint8_t *prefix,
   }
 
   while (reader.offset < reader.used) {
+    uint16_t start = reader.offset;
     uint8_t tag = 0;
     uint16_t key = 0;
 
@@ -2062,8 +2066,30 @@ static fr_err_t fr_persist_payload_next_prefix_ids(const uint8_t *prefix,
       return FR_ERR_CORRUPT;
     }
     if (tag == FR_PERSIST_RECORD_CODE) {
+      fr_instruction_stream_t view;
+      fr_instruction_header_t header = {0};
+      fr_code_offset_t ip = 0;
+      char scratch[64];
+
       if (key >= *out_code_count) {
         *out_code_count = (uint16_t)(key + 1u);
+      }
+      FR_TRY(fr_instruction_stream_init(
+          &view, &prefix[start + 5u],
+          (uint16_t)((uint16_t)prefix[start + 3u] |
+                     (uint16_t)(prefix[start + 4u] << 8))));
+      FR_TRY(fr_instruction_read_header(&view, &header));
+      for (ip = (fr_code_offset_t)header.header_size; ip < view.length;) {
+        fr_code_offset_t next_ip = 0;
+
+        fr_persist_mark_slot_ref(&view, ip);
+        FR_TRY(fr_instruction_disassemble_at(&view, ip, scratch,
+                                             (uint16_t)sizeof(scratch), NULL,
+                                             &next_ip));
+        if (next_ip <= ip) {
+          return FR_ERR_CORRUPT;
+        }
+        ip = next_ip;
       }
     } else if (tag == FR_PERSIST_RECORD_TEXT ||
                tag == FR_PERSIST_RECORD_BUFFER
@@ -2618,48 +2644,6 @@ static fr_err_t fr_persist_payload_copy_l1_records(
   return FR_OK;
 }
 
-/* The buffered fast save gets its library records as a prefix: mark the slot
- * operands of its CODE records, as the streaming save does in its closure
- * walk. A CODE record is u8 tag, u16 id, u16 length, the stream, then its
- * name tail. */
-static fr_err_t fr_persist_mark_prefix_slot_refs(const uint8_t *prefix,
-                                                 uint16_t prefix_length) {
-  fr_persist_reader_t reader = {prefix, prefix_length, 0};
-
-  while (prefix != NULL && reader.offset < reader.used) {
-    uint16_t start = reader.offset;
-    uint8_t tag = 0;
-    uint16_t key = 0;
-
-    FR_TRY(fr_persist_payload_advance_record(&reader, &tag, &key));
-    if (tag == FR_PERSIST_RECORD_CODE) {
-      fr_instruction_stream_t view;
-      fr_instruction_header_t header = {0};
-      fr_code_offset_t ip = 0;
-      char scratch[64];
-
-      FR_TRY(fr_instruction_stream_init(
-          &view, &prefix[start + 5u],
-          (uint16_t)((uint16_t)prefix[start + 3u] |
-                     (uint16_t)(prefix[start + 4u] << 8))));
-      FR_TRY(fr_instruction_read_header(&view, &header));
-      for (ip = (fr_code_offset_t)header.header_size; ip < view.length;) {
-        fr_code_offset_t next_ip = 0;
-
-        fr_persist_mark_slot_ref(&view, ip);
-        FR_TRY(fr_instruction_disassemble_at(&view, ip, scratch,
-                                             (uint16_t)sizeof(scratch), NULL,
-                                             &next_ip));
-        if (next_ip <= ip) {
-          return FR_ERR_CORRUPT;
-        }
-        ip = next_ip;
-      }
-    }
-  }
-  return FR_OK;
-}
-
 /* D5: save encodes only L2 from runtime and prefixes the existing payload's
  * L1 records (CODE / TEXT / BIND / NAME — the closure of records L1 BINDs
  * reference) verbatim. Callers (fr_persist_save) extract the prefix via
@@ -2677,8 +2661,6 @@ fr_err_t fr_persist_payload_save_encode(
     return FR_ERR_INVALID;
   }
   fr_persist_marks_reset();
-  FR_TRY(fr_persist_mark_prefix_slot_refs(library_prefix,
-                                          library_prefix_length));
   FR_TRY(fr_persist_payload_next_prefix_ids(
       library_prefix, library_prefix_length, &prefix_code_count,
       &prefix_object_count, &prefix_bind_count));

@@ -585,23 +585,6 @@ static fr_err_t fr_vm_store_local(fr_runtime_t *runtime,
   return fr_vm_push(runtime, state, fr_tagged_nil());
 }
 
-#if FR_FEATURE_BYTES
-static fr_err_t fr_vm_bytes_checkpoint(fr_runtime_t *runtime,
-                                       const fr_instruction_stream_t *view,
-                                       fr_vm_state_t *state) {
-  uint8_t local_index = 0;
-
-  /* The frame checked the header when it began, so the operand needs only
-   * its bounds and the local count of the frame. */
-  if ((uint32_t)state->ip + 1u >= view->length) {
-    return FR_ERR_INVALID;
-  }
-  local_index = view->bytes[state->ip + 1u];
-  return fr_vm_bytes_checkpoint_at(
-      runtime, state, (fr_opcode_t)view->bytes[state->ip], local_index);
-}
-#endif
-
 static fr_err_t fr_vm_repeat_begin_as(fr_runtime_t *runtime,
                                       const fr_instruction_stream_t *view,
                                       fr_vm_state_t *state) {
@@ -1774,20 +1757,6 @@ static fr_err_t fr_vm_reader_store_local(fr_runtime_t *runtime,
   return fr_vm_push(runtime, state, fr_tagged_nil());
 }
 
-#if FR_FEATURE_BYTES
-static fr_err_t fr_vm_reader_bytes_checkpoint(
-    fr_runtime_t *runtime, fr_code_object_id_t code_object_id, uint16_t length,
-    fr_vm_state_t *state, fr_opcode_t op) {
-  uint8_t local_index = 0;
-
-  /* As in fr_vm_bytes_checkpoint: no second read of the header. */
-  FR_TRY(fr_vm_reader_require(length, state->ip, 2));
-  FR_TRY(fr_code_read_u8(runtime, code_object_id, (uint16_t)(state->ip + 1u),
-                         &local_index));
-  return fr_vm_bytes_checkpoint_at(runtime, state, op, local_index);
-}
-#endif
-
 #if FR_FEATURE_CELLS
 static fr_err_t fr_vm_reader_load_cell(fr_runtime_t *runtime,
                                        fr_code_object_id_t code_object_id,
@@ -2291,13 +2260,20 @@ static fr_err_t fr_vm_reader_step(fr_runtime_t *runtime,
   case FR_OP_REPEAT_NEXT_AS:
     return fr_vm_reader_repeat_next_as(runtime, code_object_id, length, state);
   case FR_OP_BYTES_BEGIN:
-  case FR_OP_BYTES_REWIND:
+  case FR_OP_BYTES_REWIND: {
 #if FR_FEATURE_BYTES
-    return fr_vm_reader_bytes_checkpoint(runtime, code_object_id, length,
-                                         state, op);
+    uint8_t local_index = 0;
+
+    /* The frame checked the header when it began, so the operand needs
+     * only its bounds and the local count of the frame. */
+    FR_TRY(fr_vm_reader_require(length, state->ip, 2));
+    FR_TRY(fr_code_read_u8(runtime, code_object_id,
+                           (uint16_t)(state->ip + 1u), &local_index));
+    return fr_vm_bytes_checkpoint_at(runtime, state, op, local_index);
 #else
     return FR_ERR_UNSUPPORTED;
 #endif
+  }
   default:
     return FR_ERR_INVALID;
   }
@@ -2405,7 +2381,14 @@ static fr_err_t fr_vm_step(fr_runtime_t *runtime,
   case FR_OP_BYTES_BEGIN:
   case FR_OP_BYTES_REWIND:
 #if FR_FEATURE_BYTES
-    return fr_vm_bytes_checkpoint(runtime, view, state);
+    /* The frame checked the header when it began, so the operand needs
+     * only its bounds and the local count of the frame. */
+    if ((uint32_t)state->ip + 1u >= view->length) {
+      return FR_ERR_INVALID;
+    }
+    return fr_vm_bytes_checkpoint_at(runtime, state,
+                                     (fr_opcode_t)view->bytes[state->ip],
+                                     view->bytes[state->ip + 1u]);
 #else
     return FR_ERR_UNSUPPORTED;
 #endif
