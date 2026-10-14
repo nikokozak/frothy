@@ -31,9 +31,9 @@ image stays on the board until `save` or a wipe.
 - **A saved word keeps its parameter names.** Before, after `save` and a
   restart or `restore`, `see` showed the parameters of a saved word as `arg0`,
   `arg1` and so on. Now the saved image holds the names, and `see` shows the
-  names that you wrote. When a parameter has the name of a local, such as
-  `local0`, `see` adds `_` to the local's name, so its source still defines
-  the same word. The saved image moves to a new format (payload 6, envelope
+  names that you wrote. A parameter can have the name of a local, such as
+  `local0`. Then `see` adds `_` to the local's name, so its source still
+  defines the same word. The saved image moves to a new format (payload 6, envelope
   3): a v0.1.22 image answers `other release (27)`.
 - **A buffer keeps a value that changes many times.** `reply is buffer: 256`
   makes a buffer that holds up to 256 bytes. Six words use it:
@@ -41,12 +41,14 @@ image stays on the board until `save` or a wipe.
   `buffer.at` and `buffer.equals?`. A value can be Text, Bytes, an integer or
   a buffer. A value that does not fit answers `capacity exceeded (4)` with the
   note `buffer is full (limit 256 bytes)`, and the contents do not change. A
-  loop or an event body can change a buffer for as long as it runs, because a
-  buffer takes no new storage after its definition. A definition with the
-  same capacity keeps the buffer and empties it, so a file can run again and
-  again. A save keeps the contents, as it keeps Cells. A buffer takes its
-  capacity from the Text pool, and `mem objects` shows the total in the new
-  row `objects.buffers.used`.
+  buffer takes no new storage after its definition, so a loop or an event
+  body can change it for as long as it runs. A definition with the same
+  capacity keeps the buffer and empties it, so a file can run again and
+  again. A save keeps the current contents of a buffer that only the user
+  tier holds. A library buffer, and a buffer that both tiers hold, goes back
+  at each save to its contents in the library image. A library Cells value
+  does the same. A buffer takes its capacity from the Text pool, and
+  `mem objects` shows the total in the new row `objects.buffers.used`.
 
 ### Changed
 
@@ -56,9 +58,9 @@ image stays on the board until `save` or a wipe.
   again, then save`. Before, the note said that `save` writes a new image. A
   `save` before you send the source again saves an empty program.
 - **A loop can make Bytes values for as long as it runs.** Before, a board
-  failed with `capacity exceeded (4)` and the note `Bytes table is full
-  (limit 8)` after about 1,024 Bytes values since the last restart or save,
-  also when no value was in use. Now each loop pass, each event body and each
+  failed after about 1,024 Bytes values since the last restart or save, also
+  when no value was in use. It answered `capacity exceeded (4)` with the note
+  `Bytes table is full (limit 8)`. Now each loop pass, each event body and each
   failed `attempt` body frees the Bytes values that it made. A loop that calls
   `i2c.read` has no pass limit, and an `on` body can loop over
   `bytes.from-byte`.
@@ -70,22 +72,25 @@ image stays on the board until `save` or a wipe.
   `space for locals in one form is full (limit 16)`. An event body has its own
   16 locals: before, the word and its event body shared one limit.
 - **The `esp32_plain` native table has more room.** On `esp32_plain` (ESP32
-  DevKit V1, NodeMCU ESP-32S, XIAO ESP32S3, XIAO ESP32C6) the native table
-  grows from 163 to 192 rows, and 49 rows stay free after the base words. The
+  DevKit V1, NodeMCU ESP-32S, XIAO ESP32S3, XIAO ESP32C6), the native table
+  grows from 163 to 192 rows. After the base words, 43 rows stay free. The
   stepper and synth libraries use 23 rows together, so both fit on the boards
   that support both (ESP32 DevKit V1 and XIAO ESP32S3). The XIAO ESP32C3 keeps
   163 rows. `make test-native-budget` checks the room for the first-party
   libraries on each shipped board.
-- **More unsaved code fits before a `save`.** On the profiles `esp32_plain`
-  (ESP32 DevKit V1, NodeMCU ESP-32S, XIAO ESP32S3, XIAO ESP32C6),
-  `rp2040_plain` (XIAO RP2040) and `rp2040_nina` (Nano RP2040 Connect), the
-  area for unsaved code and parameter names grows from 1,544 to 4,608 bytes:
-  at least 70 small definitions fit, where about 15 did before. The XIAO
+- **More unsaved code fits before a `save`.** The area for unsaved code and
+  parameter names grows from 1,544 to 4,608 bytes on these profiles:
+  - `esp32_plain`: ESP32 DevKit V1, NodeMCU ESP-32S, XIAO ESP32S3 and XIAO
+    ESP32C6;
+  - `rp2040_plain`: XIAO RP2040;
+  - `rp2040_nina`: Nano RP2040 Connect.
+
+  At least 70 small definitions fit, where about 15 did before. The XIAO
   ESP32C3 (`esp32c3_plain`) keeps 1,544 bytes because of its small free heap.
   `mem code` shows the free space.
 - **Unsaved code and its parameter names share one area.** Before, the names
-  had their own area of 520 bytes, and when it was full the device dropped the
-  names of the next word with no message, so `see` showed `arg0`. Now a
+  had their own area of 520 bytes. When it was full, the device dropped the
+  names of the next word with no message, and `see` showed `arg0`. Now a
   definition whose code and names do not fit answers `capacity exceeded (4)`
   with the note `pending code is full`, and nothing changes. `mem code`
   counts the names. The area keeps the size of the two old areas together.
@@ -96,19 +101,21 @@ image stays on the board until `save` or a wipe.
   each profile: `host_normal` 676c476c, `host_small` 6c81f7c3,
   `esp32_plain` bb8d1b12, `esp32c3_plain` 3a366ee5, `rp2040_plain` a2ed0ffc
   and `rp2040_nina` 792ff572. `make test-profile-hashes` checks them.
-- **A reply starts on its own line.** When a word such as `print` or
-  `pad.type` leaves the console line open, the device writes LF before its
-  next reply, prompt, event line or error. `print: "hi"` at the prompt now
+- **A reply starts on its own line.** A word such as `print` or `pad.type`
+  can leave the console line open. Then the device writes LF before its next
+  reply, prompt, event line or error. `print: "hi"` at the prompt now
   answers `hi`, LF, `ok` instead of `hiok`, and `frothy send` no longer waits
   until its timeout after such a form. After an interrupted
   `console.read-line`, a reply can start with one empty line.
 - **The words that send bytes take a buffer.** The value of `print` takes an
   integer, Text, Bytes or a buffer, and its signature shows
   `int|text|bytes|buffer`. These parameters take Text, Bytes or a buffer, and
-  their signatures show `text|bytes|buffer`: the bytes of `i2c.write` and
-  `tcp.write`, the body of `http.post`, the two payloads of
-  `ble.advertise.start`, and the data of `ble.gatt.set`, `ble.gatt.notify`,
-  `ble.gatt.indicate` and `ble.gatt.write`.
+  their signatures show `text|bytes|buffer`:
+  - the bytes of `i2c.write` and `tcp.write`;
+  - the body of `http.post`;
+  - the two payloads of `ble.advertise.start`;
+  - the data of `ble.gatt.set`, `ble.gatt.notify`, `ble.gatt.indicate` and
+    `ble.gatt.write`.
 - **`buffer` is a reserved word.** A parameter, a local or a `repeat ... as`
   name cannot be `buffer`. Names such as `rx-buffer` and `buffer.size` stay
   valid. Rename a parameter or a local called `buffer` before you update.
