@@ -20,6 +20,18 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   `local0`, `see` adds `_` to the local's name, so its source still defines
   the same word. The saved image moves to a new format (payload 6, envelope
   3): a v0.1.22 image answers `other release (27)`.
+- **A buffer keeps a value that changes many times.** `reply is buffer: 256`
+  makes a buffer that holds up to 256 bytes. Six words use it:
+  `buffer.set`, `buffer.append`, `buffer.length`, `buffer.capacity`,
+  `buffer.at` and `buffer.equals?`. A value can be Text, Bytes, an integer or
+  a buffer. A value that does not fit answers `capacity exceeded (4)` with the
+  note `buffer is full (limit 256 bytes)`, and the contents do not change. A
+  loop or an event body can change a buffer for as long as it runs, because a
+  buffer takes no new storage after its definition. A definition with the
+  same capacity keeps the buffer and empties it, so a file can run again and
+  again. A save keeps the contents, as it keeps Cells. A buffer takes its
+  capacity from the Text pool, and `mem objects` shows the total in the new
+  row `objects.buffers.used`.
 
 ### Changed
 
@@ -70,6 +82,23 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   answers `hi`, LF, `ok` instead of `hiok`, and `frothy send` no longer waits
   until its timeout after such a form. After an interrupted
   `console.read-line`, a reply can start with one empty line.
+- **The words that send bytes take a buffer.** The value of `print` takes an
+  integer, Text, Bytes or a buffer, and its signature shows
+  `int|text|bytes|buffer`. These parameters take Text, Bytes or a buffer, and
+  their signatures show `text|bytes|buffer`: the bytes of `i2c.write` and
+  `tcp.write`, the body of `http.post`, the two payloads of
+  `ble.advertise.start`, and the data of `ble.gatt.set`, `ble.gatt.notify`,
+  `ble.gatt.indicate` and `ble.gatt.write`.
+- **`buffer` is a reserved word.** A parameter, a local or a `repeat ... as`
+  name cannot be `buffer`. Names such as `rx-buffer` and `buffer.size` stay
+  valid. Rename a parameter or a local called `buffer` before you update.
+- **The detail of a refused save names a Bytes value.** It now says
+  `bound to a live handle or a Bytes value`, because a save keeps a buffer.
+  The help of the Bytes words also says "Bytes value", and their parameter
+  `buf` is now `bytes`.
+- **The note of a full object table is shorter.** It is now
+  `object table is full (limit N)`. The old note names cells, text and
+  records, but the table also holds buffers.
 
 ### Fixed
 
