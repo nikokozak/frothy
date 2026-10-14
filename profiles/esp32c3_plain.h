@@ -11,7 +11,8 @@
 #undef FR_PROFILE_RAM_CODE_BYTES
 #define FR_PROFILE_RAM_CODE_BYTES 1544
 
-/* 163 rows hold the base and stepper, the one library with natives that the
-   C3 supports, and the heap does not grow. */
+/* 176 rows hold the base and stepper, the one library with natives that the
+   C3 supports, with rows to spare. Each row takes 12 bytes of heap, so the C3
+   does not take the 192 rows of esp32_plain (ADR 0082). */
 #undef FR_PROFILE_NATIVE_TABLE_SIZE
-#define FR_PROFILE_NATIVE_TABLE_SIZE 163
+#define FR_PROFILE_NATIVE_TABLE_SIZE 176

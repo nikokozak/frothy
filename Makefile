@@ -456,7 +456,7 @@ PROFILE_HASHES = \
 	host:host_normal:676c476c \
 	host:host_small:6c81f7c3 \
 	esp32_devkit_v1:esp32_plain:bb8d1b12 \
-	seeed_xiao_esp32c3:esp32c3_plain:3a366ee5 \
+	seeed_xiao_esp32c3:esp32c3_plain:24c3e661 \
 	host:rp2040_plain:a2ed0ffc \
 	host:rp2040_nina:792ff572
 
@@ -1219,7 +1219,7 @@ NATIVE_BUDGET_BOARDS := \
 	seeed_xiao_esp32s3:192:23 \
 	seeed_xiao_esp32c6:192:15 \
 	nodemcu_esp32s:192:0 \
-	seeed_xiao_esp32c3:163:15 \
+	seeed_xiao_esp32c3:176:15 \
 	seeed_xiao_rp2040:129:15 \
 	arduino_nano_rp2040_connect:152:15
 
