@@ -129,6 +129,11 @@ image stays on the board until `save` or a wipe.
 
 ### Fixed
 
+- **The RP2040 boards answer `not found (7)` and `other release (27)`.**
+  Before, the XIAO RP2040 and the Nano RP2040 Connect answered
+  `corrupt data (11)` in two cases. A board with no saved image gave it at
+  `restore`. A saved image from another release gave it with no note. Now
+  these boards answer as the ESP32 boards do. The defect came in v0.1.16.
 - **A `save` after `install-library` keeps every word.** Before, in some
   orders, a `save` answered `ok` but lost the newest word. The next `save`
   then answered `corrupt data (11)`, and only `dangerous.wipe` helped. For
