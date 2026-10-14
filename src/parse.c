@@ -733,6 +733,7 @@ static bool fr_parse_is_reserved_parameter(fr_parse_span_t name) {
          fr_parse_span_equals(name, "while") ||
          fr_parse_span_equals(name, "forever") ||
          fr_parse_span_equals(name, "cells") ||
+         fr_parse_span_equals(name, "buffer") ||
          fr_parse_span_equals(name, "record") ||
          fr_parse_span_equals(name, "set") ||
          fr_parse_span_equals(name, "to") ||
@@ -1075,6 +1076,37 @@ static fr_err_t fr_parse_cells(fr_parser_t *parser,
   return fr_parse_add_expr(parser,
                            (fr_parse_expr_t){.kind = FR_PARSE_EXPR_CELLS,
                                              .int_value = length},
+                           out_id);
+}
+#endif
+
+#if FR_FEATURE_BUFFERS
+/* `buffer: 64` asks for a buffer with a fixed capacity (ADR 0088). As for
+ * cells, the capacity is a literal, because the definition takes it from
+ * the Text pool once. */
+static fr_err_t fr_parse_buffer(fr_parser_t *parser,
+                                fr_parse_expr_id_t *out_id) {
+  fr_int_t capacity = 0;
+
+  FR_TRY(fr_parse_advance(parser));
+  if (parser->token.kind != FR_TOKEN_COLON) {
+    return fr_parse_fail_token(parser, FR_DIAG_MSG_PARSE_BUFFER_COLON,
+                               FR_ERR_INVALID);
+  }
+  FR_TRY(fr_parse_advance(parser));
+  if (parser->token.kind != FR_TOKEN_INT) {
+    return fr_parse_fail_token(parser, FR_DIAG_MSG_PARSE_UNEXPECTED_TOKEN,
+                               FR_ERR_INVALID);
+  }
+  capacity = parser->token.int_value;
+  if (capacity <= 0) {
+    return fr_parse_fail_token(parser, FR_DIAG_MSG_PARSE_INTEGER_RANGE,
+                               FR_ERR_RANGE);
+  }
+  FR_TRY(fr_parse_advance(parser));
+  return fr_parse_add_expr(parser,
+                           (fr_parse_expr_t){.kind = FR_PARSE_EXPR_BUFFER,
+                                             .int_value = capacity},
                            out_id);
 }
 #endif
@@ -1784,6 +1816,14 @@ static fr_err_t fr_parse_expression_inner(fr_parser_t *parser,
                                  FR_ERR_UNSUPPORTED);
 #else
       return fr_parse_cells(parser, out_id);
+#endif
+    }
+    if (fr_parse_span_equals(parser->token.span, "buffer")) {
+#if !FR_FEATURE_BUFFERS
+      return fr_parse_fail_token(parser, FR_DIAG_MSG_PARSE_BUFFERS_DISABLED,
+                                 FR_ERR_UNSUPPORTED);
+#else
+      return fr_parse_buffer(parser, out_id);
 #endif
     }
     if (fr_parse_span_equals(parser->token.span, "set")) {

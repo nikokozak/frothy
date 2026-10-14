@@ -205,6 +205,10 @@
 #define FR_PROFILE_HASH_FEATURE_RECORDS FR_FEATURE_RECORDS
 #endif
 
+#ifndef FR_PROFILE_HASH_FEATURE_BUFFERS
+#define FR_PROFILE_HASH_FEATURE_BUFFERS FR_FEATURE_BUFFERS
+#endif
+
 #ifndef FR_PROFILE_HASH_FEATURE_HANDLES
 #define FR_PROFILE_HASH_FEATURE_HANDLES FR_FEATURE_HANDLES
 #endif
@@ -384,6 +388,7 @@ static uint32_t fr_profile_hash_body(uint16_t word_size,
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_CELLS);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_TEXT);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_RECORDS);
+  fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_BUFFERS);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_HANDLES);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_PAD);
 

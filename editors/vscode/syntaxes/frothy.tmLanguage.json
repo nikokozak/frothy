@@ -42,7 +42,7 @@
     },
     "keyword": {
       "name": "keyword.control.frothy",
-      "match": "(?<![A-Za-z0-9_.?\\-$])(after|and|as|attempt|boot|cancel|cells|changes|debounce|else|every|falling|fn|forever|here|if|is|not|on|or|record|repeat|rescue|rising|set|to|unless|when|while|with)(?![A-Za-z0-9_.?\\-$])"
+      "match": "(?<![A-Za-z0-9_.?\\-$])(after|and|as|attempt|boot|buffer|cancel|cells|changes|debounce|else|every|falling|fn|forever|here|if|is|not|on|or|record|repeat|rescue|rising|set|to|unless|when|while|with)(?![A-Za-z0-9_.?\\-$])"
     },
     "repl-command": {
       "name": "keyword.other.repl.frothy",

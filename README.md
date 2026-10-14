@@ -148,7 +148,7 @@ teaching the chip one word at a time.
 
 ### Print numeric samples
 
-`print:` accepts an integer, Text, or Bytes. Foreground output has no automatic
+`print:` accepts an integer, Text, Bytes, or a buffer. Foreground output has no automatic
 newline. Use `print.value:` for a complete named integer line:
 
 ```frothy

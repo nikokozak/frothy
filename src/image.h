@@ -16,6 +16,7 @@ typedef enum fr_image_ref_kind_t {
   FR_IMAGE_REF_TEXT_OBJECT,
   FR_IMAGE_REF_RECORD_SHAPE_OBJECT,
   FR_IMAGE_REF_RECORD_OBJECT,
+  FR_IMAGE_REF_BUFFER_OBJECT,
 } fr_image_ref_kind_t;
 
 typedef struct fr_image_ref_t {
@@ -39,6 +40,10 @@ typedef struct fr_image_cell_object_t {
   uint16_t length;
   const fr_tagged_t *initial_values;
 } fr_image_cell_object_t;
+
+typedef struct fr_image_buffer_object_t {
+  uint16_t capacity;
+} fr_image_buffer_object_t;
 
 typedef struct fr_image_text_object_t {
   const uint8_t *bytes;
@@ -114,6 +119,8 @@ typedef struct fr_overlay_update_t {
   uint16_t record_shape_object_count;
   const fr_image_record_object_t *record_objects;
   uint16_t record_object_count;
+  const fr_image_buffer_object_t *buffer_objects;
+  uint16_t buffer_object_count;
   const fr_image_native_t *natives;
   uint16_t native_count;
   const fr_slot_name_t *slot_names;

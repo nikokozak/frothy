@@ -3145,11 +3145,23 @@ void fr_host_capture_text(char *out, uint16_t cap) {
 #endif
 
 /* Host read blocks on fgets with no poll loop, so there is no idle window in
- * which to service events; registration is a no-op. */
+ * which to service events. The host keeps the handler only for a test that
+ * runs it (fr_host_debug_run_idle). */
+static fr_platform_idle_fn fr_host_idle_handler;
+static void *fr_host_idle_ctx;
+
 void fr_platform_set_idle_handler(fr_platform_idle_fn handler, void *ctx) {
-  (void)handler;
-  (void)ctx;
+  fr_host_idle_handler = handler;
+  fr_host_idle_ctx = ctx;
 }
+
+#ifdef FR_HOST_TEST_HELPERS
+void fr_host_debug_run_idle(void) {
+  if (fr_host_idle_handler != NULL) {
+    (void)fr_host_idle_handler(fr_host_idle_ctx);
+  }
+}
+#endif
 
 /* The last line ended at CR or at Ctrl-C: an LF that comes next belongs to
  * it. The reader never waits for that LF, so an interactive line ends at once. */
@@ -3393,19 +3405,11 @@ fr_err_t fr_platform_i2c_open(uint16_t port, uint16_t sda, uint16_t scl,
   return FR_ERR_CAPACITY;
 }
 
+/* The host bus records a plain write as a write with no read. */
 fr_err_t fr_platform_i2c_write(uint16_t platform_index, uint8_t addr,
                                const uint8_t *bytes, uint16_t length) {
-  fr_host_i2c_t *i2c = NULL;
-
-  if (addr > FR_HOST_I2C_ADDR_MAX) {
-    return FR_ERR_DOMAIN;
-  }
-  if (bytes == NULL && length > 0) {
-    return FR_ERR_INVALID;
-  }
-  FR_TRY(fr_host_i2c_entry(platform_index, &i2c));
-  (void)i2c;
-  return FR_OK;
+  return fr_platform_i2c_write_read(platform_index, addr, bytes, length, NULL,
+                                    0);
 }
 
 /* Deterministic per-address pattern so tests can assert exact bytes without

@@ -203,10 +203,14 @@ void fr_host_capture_text(char *out, uint16_t cap);
 #endif
 /* Idle-servicing hook. The REPL registers a handler the platform calls while
  * read_line waits for the next byte, so timer and interrupt events fire at an
- * idle prompt instead of only while a program runs. A platform whose read
- * blocks with no poll loop (host stdin) treats registration as a no-op. */
+ * idle prompt instead of only while a program runs. The host read blocks
+ * with no poll loop, so only a test runs the handler there. */
 typedef fr_err_t (*fr_platform_idle_fn)(void *ctx);
 void fr_platform_set_idle_handler(fr_platform_idle_fn handler, void *ctx);
+#ifdef FR_HOST_TEST_HELPERS
+/* Test-only: run the idle handler once, as a device does while it waits. */
+void fr_host_debug_run_idle(void);
+#endif
 #endif
 
 #if FR_FEATURE_REPL || FR_FEATURE_PAD

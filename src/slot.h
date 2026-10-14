@@ -8,7 +8,7 @@ typedef struct fr_slot_name_t {
   const char *name;
 } fr_slot_name_t;
 
-fr_err_t fr_slot_read(fr_runtime_t *runtime, fr_slot_id_t slot_id,
+fr_err_t fr_slot_read(const fr_runtime_t *runtime, fr_slot_id_t slot_id,
                       fr_tagged_t *out_tagged);
 fr_err_t fr_slot_write(fr_runtime_t *runtime, fr_slot_id_t slot_id,
                        fr_tagged_t tagged);

@@ -168,6 +168,23 @@ static fr_err_t test_persist_apply_user_overlay(
 #define FR_TEST_BYTES_SLOT_COUNT 0
 #endif
 
+#if FR_FEATURE_BUFFERS
+#define FR_TEST_BUFFER_WORDS                                                 \
+  " buffer.set buffer.append buffer.length buffer.capacity buffer.at "        \
+  "buffer.equals?"
+#define FR_TEST_BUFFER_SLOT_COUNT 6
+/* The signature names of the parameters that take Text, Bytes or a buffer. */
+#define FR_TEST_BYTES_TYPE "text|bytes|buffer"
+#define FR_TEST_VALUE_TYPE "int|text|bytes|buffer"
+#define FR_TEST_VALUE_KINDS "int, text, bytes, or buffer"
+#else
+#define FR_TEST_BUFFER_WORDS ""
+#define FR_TEST_BUFFER_SLOT_COUNT 0
+#define FR_TEST_BYTES_TYPE "text|bytes"
+#define FR_TEST_VALUE_TYPE "int|text|bytes"
+#define FR_TEST_VALUE_KINDS "int, text, or bytes"
+#endif
+
 #if FR_FEATURE_TRACE
 #define FR_TEST_TRACE_WORDS                                                  \
   " trace.open trace.watch trace.arm trace.wait trace.stop trace.count "     \
@@ -230,6 +247,7 @@ enum {
           FR_TEST_MATH_WORDS FR_TEST_PAD_WORDS FR_TEST_TEXT_WORDS             \
               FR_TEST_EVENT_REGISTER_WORDS                                    \
               FR_TEST_NET_WORDS FR_TEST_POWER_WORDS FR_TEST_BYTES_WORDS       \
+              FR_TEST_BUFFER_WORDS                                            \
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
@@ -241,6 +259,7 @@ enum {
           FR_TEST_MATH_WORDS FR_TEST_PAD_WORDS FR_TEST_TEXT_WORDS             \
               FR_TEST_EVENT_REGISTER_WORDS                                    \
               FR_TEST_NET_WORDS FR_TEST_POWER_WORDS FR_TEST_BYTES_WORDS       \
+              FR_TEST_BUFFER_WORDS                                            \
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
@@ -253,6 +272,7 @@ enum {
           FR_TEST_MATH_WORDS FR_TEST_PAD_WORDS FR_TEST_TEXT_WORDS             \
               FR_TEST_EVENT_REGISTER_WORDS                                    \
               FR_TEST_NET_WORDS FR_TEST_POWER_WORDS FR_TEST_BYTES_WORDS       \
+              FR_TEST_BUFFER_WORDS                                            \
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
@@ -264,7 +284,8 @@ enum {
    FR_TEST_MATH_SLOT_COUNT + FR_TEST_PAD_SLOT_COUNT +                         \
    FR_TEST_TEXT_SLOT_COUNT + FR_TEST_EVENT_REGISTER_SLOT_COUNT +              \
    FR_TEST_NET_SLOT_COUNT + FR_TEST_POWER_SLOT_COUNT +                        \
-   FR_TEST_BYTES_SLOT_COUNT + FR_TEST_RELEASE_SLOT_COUNT +                    \
+   FR_TEST_BYTES_SLOT_COUNT + FR_TEST_BUFFER_SLOT_COUNT +                     \
+   FR_TEST_RELEASE_SLOT_COUNT +                                               \
    FR_TEST_EVENT_TEST_SLOT_COUNT +                                            \
    FR_TEST_TRACE_SLOT_COUNT + FR_TEST_PULSE_SLOT_COUNT +                      \
    FR_TEST_CONSOLE_INPUT_SLOT_COUNT + FR_TEST_CONSOLE_SLOT_COUNT)
@@ -275,6 +296,7 @@ enum {
       FR_TEST_PWM_WORDS FR_TEST_I2C_WORDS FR_TEST_MATH_WORDS FR_TEST_PAD_WORDS \
           FR_TEST_TEXT_WORDS FR_TEST_EVENT_REGISTER_WORDS                      \
               FR_TEST_NET_WORDS FR_TEST_POWER_WORDS FR_TEST_BYTES_WORDS       \
+              FR_TEST_BUFFER_WORDS                                            \
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
@@ -285,6 +307,7 @@ enum {
       FR_TEST_PWM_WORDS FR_TEST_I2C_WORDS FR_TEST_MATH_WORDS FR_TEST_PAD_WORDS \
           FR_TEST_TEXT_WORDS FR_TEST_EVENT_REGISTER_WORDS                      \
               FR_TEST_NET_WORDS FR_TEST_POWER_WORDS FR_TEST_BYTES_WORDS       \
+              FR_TEST_BUFFER_WORDS                                            \
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
@@ -296,6 +319,7 @@ enum {
       FR_TEST_PWM_WORDS FR_TEST_I2C_WORDS FR_TEST_MATH_WORDS FR_TEST_PAD_WORDS \
           FR_TEST_TEXT_WORDS FR_TEST_EVENT_REGISTER_WORDS                      \
               FR_TEST_NET_WORDS FR_TEST_POWER_WORDS FR_TEST_BYTES_WORDS       \
+              FR_TEST_BUFFER_WORDS                                            \
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
@@ -307,7 +331,8 @@ enum {
    FR_TEST_MATH_SLOT_COUNT + FR_TEST_PAD_SLOT_COUNT +                         \
    FR_TEST_TEXT_SLOT_COUNT + FR_TEST_EVENT_REGISTER_SLOT_COUNT +              \
    FR_TEST_NET_SLOT_COUNT + FR_TEST_POWER_SLOT_COUNT +                        \
-   FR_TEST_BYTES_SLOT_COUNT + FR_TEST_RELEASE_SLOT_COUNT +                    \
+   FR_TEST_BYTES_SLOT_COUNT + FR_TEST_BUFFER_SLOT_COUNT +                     \
+   FR_TEST_RELEASE_SLOT_COUNT +                                               \
    FR_TEST_EVENT_TEST_SLOT_COUNT +                                            \
    FR_TEST_TRACE_SLOT_COUNT + FR_TEST_PULSE_SLOT_COUNT +                      \
    FR_TEST_CONSOLE_INPUT_SLOT_COUNT + FR_TEST_CONSOLE_SLOT_COUNT)
@@ -491,6 +516,7 @@ static void test_base_def_contract(void) {
       (FR_FEATURE_RANDOM ? 3 : 0) + (FR_FEATURE_PWM ? 3 : 0) +
       (FR_FEATURE_I2C ? 8 : 0) + (FR_FEATURE_NET ? 14 : 0) +
       (FR_FEATURE_POWER ? 4 : 0) + (FR_FEATURE_BYTES ? 8 : 0) +
+      FR_TEST_BUFFER_SLOT_COUNT +
       (FR_FEATURE_TRACE ? 12 : 0) + (FR_FEATURE_PULSE ? 9 : 0) +
       FR_TEST_CONSOLE_INPUT_SLOT_COUNT +
       (FR_FEATURE_CONSOLE_ROUTING ? 3 : 0) +
@@ -4396,7 +4422,8 @@ static void test_i2c(void) {
         fr_repl_eval_line(&runtime, "see i2c.write", out, sizeof(out)) ==
                 FR_OK &&
             strcmp(out,
-                   "i2c.write(bus: handle, addr: int, bytes: text|bytes) -> nil\n"
+                   "i2c.write(bus: handle, addr: int, bytes: "
+                   FR_TEST_BYTES_TYPE ") -> nil\n"
                    "write bytes to a 7-bit i2c address\n"
                    "ok\n") == 0);
   CHECK("i2c see read renders signature",
@@ -5243,8 +5270,8 @@ static void test_text_natives(void) {
   CHECK("print renders signature",
         fr_repl_eval_line(&runtime, "see print", out, sizeof(out)) == FR_OK &&
             strcmp(out,
-                   "print(value: int|text|bytes) -> nil\n"
-                   "write an int, text, or bytes to the console output\n"
+                   "print(value: " FR_TEST_VALUE_TYPE ") -> nil\n"
+                   "write an " FR_TEST_VALUE_KINDS " to the console output\n"
                    "ok\n") == 0);
   CHECK("print.value renders signature",
         fr_repl_eval_line(&runtime, "see print.value", out, sizeof(out)) ==
@@ -6536,8 +6563,8 @@ static void test_save_beyond_hold_capacity_stays_strict(void) {
                 FR_ERR_VOLATILE &&
             strcmp(out,
                    "notice: not saved (13)\n"
-                   "detail: cannot save slot 'h' - bound to a live handle or "
-                   "buffer\n"
+                   "detail: cannot save slot 'h' - bound to a live handle or a "
+                   "Bytes value\n"
                    "ok\n") == 0);
   CHECK("cap small buffer keeps the headline and the prompt completion",
         fr_repl_eval_line(&runtime, "save", compact_notice_out,
@@ -16537,7 +16564,8 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out,
                                    "error: wrong type: cells 1 (2)") &&
             strstr(out,
-                   "print argument 1 expects int, text, or bytes, got cells\n") !=
+                   "print argument 1 expects " FR_TEST_VALUE_KINDS
+                   ", got cells\n") !=
                 NULL);
 #endif
 
@@ -18089,7 +18117,7 @@ static void test_repl_capacity_notes(void) {
 #if FR_FEATURE_TEXT
   /* Short texts fill the object table before the Text pool. */
   snprintf(expected, sizeof(expected),
-           "note: object table (cells, text and records) is full (limit %u)\n",
+           "note: object table is full (limit %u)\n",
            (unsigned)FR_PROFILE_OBJECT_TABLE_SIZE);
   CHECK("capacity notes install for objects",
         fr_base_image_install(&runtime) == FR_OK);

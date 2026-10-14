@@ -20,12 +20,14 @@ fr_native_value_diag_kind(fr_native_value_kind_t kind) {
   case FR_NATIVE_VALUE_TEXT:
   case FR_NATIVE_VALUE_SECRET_TEXT:
     return FR_DIAG_VALUE_TEXT;
-  case FR_NATIVE_VALUE_TEXT_OR_BYTES:
-    return FR_DIAG_VALUE_TEXT_OR_BYTES;
+  case FR_NATIVE_VALUE_TEXT_BYTES_OR_BUFFER:
+    return FR_DIAG_VALUE_TEXT_BYTES_OR_BUFFER;
   case FR_NATIVE_VALUE_BYTES:
     return FR_DIAG_VALUE_BYTES;
-  case FR_NATIVE_VALUE_INT_OR_TEXT_OR_BYTES:
-    return FR_DIAG_VALUE_INT_OR_TEXT_OR_BYTES;
+  case FR_NATIVE_VALUE_INT_TEXT_BYTES_OR_BUFFER:
+    return FR_DIAG_VALUE_INT_TEXT_BYTES_OR_BUFFER;
+  case FR_NATIVE_VALUE_BUFFER:
+    return FR_DIAG_VALUE_BUFFER;
   default:
     return FR_DIAG_VALUE_NONE;
   }
@@ -98,9 +100,9 @@ static bool fr_native_value_matches(const fr_runtime_t *runtime,
 #endif
   case FR_NATIVE_VALUE_NIL:
     return fr_tagged_is_nil(value);
-  case FR_NATIVE_VALUE_INT_OR_TEXT_OR_BYTES:
-  case FR_NATIVE_VALUE_TEXT_OR_BYTES: {
-    if (kind == FR_NATIVE_VALUE_INT_OR_TEXT_OR_BYTES &&
+  case FR_NATIVE_VALUE_INT_TEXT_BYTES_OR_BUFFER:
+  case FR_NATIVE_VALUE_TEXT_BYTES_OR_BUFFER: {
+    if (kind == FR_NATIVE_VALUE_INT_TEXT_BYTES_OR_BUFFER &&
         fr_tagged_kind(value) == FR_TAGGED_INT) {
       return true;
     }
@@ -116,6 +118,9 @@ static bool fr_native_value_matches(const fr_runtime_t *runtime,
       return true;
     }
 #endif
+    if (fr_native_value_matches(runtime, FR_NATIVE_VALUE_BUFFER, value)) {
+      return true;
+    }
 #if FR_FEATURE_BYTES
     {
       fr_bytes_ref_t bytes_ref = {0};
@@ -128,6 +133,22 @@ static bool fr_native_value_matches(const fr_runtime_t *runtime,
   case FR_NATIVE_VALUE_BYTES:
 #if FR_FEATURE_BYTES
     return fr_tagged_kind(value) == FR_TAGGED_BYTES;
+#else
+    return false;
+#endif
+  case FR_NATIVE_VALUE_BUFFER:
+#if FR_FEATURE_BUFFERS
+  {
+    fr_object_id_t buffer_id = 0;
+    const uint8_t *ignored_bytes = NULL;
+    uint16_t ignored_length = 0;
+    uint16_t ignored_capacity = 0;
+
+    return runtime != NULL &&
+           fr_tagged_decode_object_id(value, &buffer_id) == FR_OK &&
+           fr_buffer_view(runtime, buffer_id, &ignored_bytes, &ignored_length,
+                          &ignored_capacity) == FR_OK;
+  }
 #else
     return false;
 #endif

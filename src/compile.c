@@ -2513,6 +2513,26 @@ fr_compile_overlay_update_with_context(const fr_compile_context_t *ctx,
   }
 #endif
 
+#if FR_FEATURE_BUFFERS
+  if (value->kind == FR_PARSE_EXPR_BUFFER) {
+    if (value->int_value > FR_TEXT_BYTE_CAPACITY) {
+      return FR_ERR_RANGE;
+    }
+    out->buffer_object =
+        (fr_image_buffer_object_t){.capacity = (uint16_t)value->int_value};
+    out->slot_inits[0] =
+        (fr_image_slot_init_t){slot_id, {FR_IMAGE_REF_BUFFER_OBJECT, 0, 0}};
+    out->overlay_update = (fr_overlay_update_t){
+        .slot_inits = out->slot_inits,
+        .slot_init_count = 1,
+        .buffer_objects = &out->buffer_object,
+        .buffer_object_count = 1,
+    };
+    fr_compile_attach_slot_name(out, has_slot_name);
+    return FR_OK;
+  }
+#endif
+
 #if FR_FEATURE_TEXT
   if (value->kind == FR_PARSE_EXPR_TEXT) {
     uint16_t copied_length = 0;

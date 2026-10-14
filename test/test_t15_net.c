@@ -277,6 +277,28 @@ static void test_wifi_reconnected_event_runs_body(void) {
   TEST_ASSERT_EQUAL_STRING("99\nok\n", out);
 }
 
+#if FR_FEATURE_BUFFERS
+/* The body of http.post can be a buffer (ADR 0088). */
+static void test_http_post_takes_a_buffer(void) {
+  const uint8_t response[2] = {'o', 'k'};
+  uint8_t captured[16] = {0};
+  uint16_t captured_length = 0;
+
+  install_base();
+  fr_host_wifi_set_connected(true);
+  fr_host_http_queue_response(200, response, sizeof(response));
+  eval_ok("body is buffer: 16");
+  eval_ok("buffer.set: body, \"reading=\"");
+  eval_ok("buffer.append: body, 42");
+  eval_ok("http.post: \"http://example.com/\", body");
+  TEST_ASSERT_EQUAL(
+      FR_OK,
+      fr_host_http_last_post(captured, sizeof(captured), &captured_length));
+  TEST_ASSERT_EQUAL_UINT16(10, captured_length);
+  TEST_ASSERT_EQUAL_MEMORY("reading=42", captured, captured_length);
+}
+#endif
+
 #endif /* FR_FEATURE_NET */
 
 int main(void) {
@@ -292,6 +314,9 @@ int main(void) {
   RUN_TEST(test_http_get_oversized_too_large);
   RUN_TEST(test_http_get_success_returns_body);
   RUN_TEST(test_http_post_captures_body_and_returns_response);
+#if FR_FEATURE_BUFFERS
+  RUN_TEST(test_http_post_takes_a_buffer);
+#endif
   RUN_TEST(test_http_post_oversized_response_too_large);
   RUN_TEST(test_wifi_host_sets_state_and_ready);
   RUN_TEST(test_wifi_ip_in_station_and_host_modes);

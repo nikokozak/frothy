@@ -245,6 +245,13 @@ UNITY_T16_BYTES_TEST_SOURCES = \
 	$(PLATFORM_SOURCES) \
 	$(PERSISTENCE_KERNEL_SOURCES)
 
+UNITY_BUFFERS_TEST_SOURCES = \
+	test/test_buffers.c \
+	test/unity/unity.c \
+	$(KERNEL_SOURCES) \
+	$(PLATFORM_SOURCES) \
+	$(PERSISTENCE_KERNEL_SOURCES)
+
 UNITY_BLE_TEST_SOURCES = \
 	test/test_ble.c \
 	test/unity/unity.c \
@@ -325,6 +332,7 @@ UNITY_T15_NET_TEST_BINARY ?= $(BUILD_DIR)/test-unity-t15-net
 UNITY_T15B_TCP_TEST_BINARY ?= $(BUILD_DIR)/test-unity-t15b-tcp
 UNITY_T14_POWER_TEST_BINARY ?= $(BUILD_DIR)/test-unity-t14-power
 UNITY_T16_BYTES_TEST_BINARY ?= $(BUILD_DIR)/test-unity-t16-bytes
+UNITY_BUFFERS_TEST_BINARY ?= $(BUILD_DIR)/test-unity-buffers
 UNITY_BLE_TEST_BINARY ?= $(BUILD_DIR)/test-unity-ble
 BLE_TEST_CFLAGS = \
 	-DFR_FEATURE_BLE=1 \
@@ -391,7 +399,7 @@ test-esp-idf-i2c-timeout: ## Check that each ESP32 I2C transfer passes FR_ESP_I2
 		awk '{ n += 1; if ($$0 !~ /,[[:space:]]*FR_ESP_I2C_TIMEOUT_MS[[:space:]]*[)]/) { print "I2C transfer without FR_ESP_I2C_TIMEOUT_MS: " $$0; bad = 1 } } \
 		END { if (n < 3) { print "expected at least 3 I2C transfer calls, found " n; bad = 1 } exit bad }'
 
-test-unity: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TEST_BINARY) $(UNITY_PERSIST_TIER_TEST_BINARY) $(UNITY_T12_SERVO_TEST_BINARY) $(UNITY_T21_MEM_TEST_BINARY) $(UNITY_T15_NET_TEST_BINARY) $(UNITY_T15B_TCP_TEST_BINARY) $(UNITY_T14_POWER_TEST_BINARY) $(UNITY_T16_BYTES_TEST_BINARY) ## Run all Unity host binaries.
+test-unity: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TEST_BINARY) $(UNITY_PERSIST_TIER_TEST_BINARY) $(UNITY_T12_SERVO_TEST_BINARY) $(UNITY_T21_MEM_TEST_BINARY) $(UNITY_T15_NET_TEST_BINARY) $(UNITY_T15B_TCP_TEST_BINARY) $(UNITY_T14_POWER_TEST_BINARY) $(UNITY_T16_BYTES_TEST_BINARY) $(UNITY_BUFFERS_TEST_BINARY) ## Run all Unity host binaries.
 	./$(UNITY_TEST_BINARY)
 	./$(UNITY_I2C_TEST_BINARY)
 	./$(UNITY_LIB_NATIVES_TEST_BINARY)
@@ -402,6 +410,7 @@ test-unity: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TE
 	./$(UNITY_T15B_TCP_TEST_BINARY)
 	./$(UNITY_T14_POWER_TEST_BINARY)
 	./$(UNITY_T16_BYTES_TEST_BINARY)
+	./$(UNITY_BUFFERS_TEST_BINARY)
 	$(MAKE) test-ble-host
 	$(MAKE) BOARD=host PROFILE=host_normal \
 		UNITY_TEST_BINARY=build/host/test-unity-host-normal \
@@ -414,12 +423,13 @@ test-unity: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TE
 		UNITY_T15B_TCP_TEST_BINARY=build/host/test-unity-t15b-tcp-host-normal \
 		UNITY_T14_POWER_TEST_BINARY=build/host/test-unity-t14-power-host-normal \
 		UNITY_T16_BYTES_TEST_BINARY=build/host/test-unity-t16-bytes-host-normal \
+		UNITY_BUFFERS_TEST_BINARY=build/host/test-unity-buffers-host-normal \
 		_test-unity-run
 
 help: ## Show common make targets.
 	@awk 'BEGIN { FS = ":.*##"; printf "Targets:\n" } /^[A-Za-z0-9_.-]+:.*##/ { printf "  %-38s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
-_test-unity-run: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TEST_BINARY) $(UNITY_PERSIST_TIER_TEST_BINARY) $(UNITY_T12_SERVO_TEST_BINARY) $(UNITY_T21_MEM_TEST_BINARY) $(UNITY_T15_NET_TEST_BINARY) $(UNITY_T15B_TCP_TEST_BINARY) $(UNITY_T14_POWER_TEST_BINARY) $(UNITY_T16_BYTES_TEST_BINARY)
+_test-unity-run: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TEST_BINARY) $(UNITY_PERSIST_TIER_TEST_BINARY) $(UNITY_T12_SERVO_TEST_BINARY) $(UNITY_T21_MEM_TEST_BINARY) $(UNITY_T15_NET_TEST_BINARY) $(UNITY_T15B_TCP_TEST_BINARY) $(UNITY_T14_POWER_TEST_BINARY) $(UNITY_T16_BYTES_TEST_BINARY) $(UNITY_BUFFERS_TEST_BINARY)
 	./$(UNITY_TEST_BINARY)
 	./$(UNITY_I2C_TEST_BINARY)
 	./$(UNITY_LIB_NATIVES_TEST_BINARY)
@@ -430,12 +440,19 @@ _test-unity-run: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIV
 	./$(UNITY_T15B_TCP_TEST_BINARY)
 	./$(UNITY_T14_POWER_TEST_BINARY)
 	./$(UNITY_T16_BYTES_TEST_BINARY)
+	./$(UNITY_BUFFERS_TEST_BINARY)
 
 test-bytes-checked: ## Run the host_normal suites with checked Bytes tags (stale tags and kept pointers fail).
 	$(MAKE) BOARD=host PROFILE=host_normal BUILD_DIR=build/host-bytes-checked \
 		CFLAGS=-DFR_BYTES_CHECKED=1 \
 		TEST_BINARY=build/host-bytes-checked/test \
 		test _test-unity-run _test-ble-host-run
+
+test-buffers-off: ## Run the host_normal suite with buffers off (ADR 0088 gate).
+	$(MAKE) BOARD=host PROFILE=host_normal BUILD_DIR=build/host-buffers-off \
+		CFLAGS=-DFR_FEATURE_BUFFERS=0 \
+		TEST_BINARY=build/host-buffers-off/test \
+		test _test-unity-run
 
 test-ble-host: ## Run the deterministic BLE fixture under the host_normal data profile.
 	$(MAKE) BOARD=host PROFILE=host_normal \
@@ -1117,6 +1134,10 @@ $(UNITY_T14_POWER_TEST_BINARY): $(UNITY_T14_POWER_TEST_SOURCES) $(KERNEL_DEPS) $
 $(UNITY_T16_BYTES_TEST_BINARY): $(UNITY_T16_BYTES_TEST_SOURCES) $(KERNEL_DEPS) $(BUILD_DEPS) \
 		test/unity/unity.h test/unity/unity_internals.h | $(BUILD_DIR)
 	$(FR_CC) $(FR_CFLAGS) -DFR_INCLUDE_TEST_NATIVES=1 -DFR_HOST_TEST_HELPERS=1 $(UNITY_T16_BYTES_TEST_SOURCES) $(FR_LDFLAGS) -o $@
+
+$(UNITY_BUFFERS_TEST_BINARY): $(UNITY_BUFFERS_TEST_SOURCES) $(KERNEL_DEPS) $(BUILD_DEPS) \
+		test/unity/unity.h test/unity/unity_internals.h | $(BUILD_DIR)
+	$(FR_CC) $(FR_CFLAGS) -DFR_INCLUDE_TEST_NATIVES=1 -DFR_LIB_NATIVES_PROVIDED=1 -DFR_HOST_TEST_HELPERS=1 $(UNITY_BUFFERS_TEST_SOURCES) $(FR_LDFLAGS) -o $@
 
 $(UNITY_BLE_TEST_BINARY): $(UNITY_BLE_TEST_SOURCES) $(KERNEL_DEPS) $(BUILD_DEPS) \
 		test/unity/unity.h test/unity/unity_internals.h | $(BUILD_DIR)

@@ -30,6 +30,7 @@ enum {
   FR_PERSIST_RECORD_RECORD = 7,
   FR_PERSIST_RECORD_EVENT = 8,
   FR_PERSIST_RECORD_RESERVED_NAME = 9,
+  FR_PERSIST_RECORD_BUFFER = 10,
   FR_PERSIST_RECORD_END = 0xff,
   FR_PERSIST_VALUE_NIL = 0,
   FR_PERSIST_VALUE_FALSE = 1,
@@ -48,6 +49,7 @@ typedef enum fr_persist_object_record_kind_t {
   FR_PERSIST_OBJECT_TEXT = 2,
   FR_PERSIST_OBJECT_RECORD_SHAPE = 3,
   FR_PERSIST_OBJECT_RECORD = 4,
+  FR_PERSIST_OBJECT_BUFFER = 5,
 } fr_persist_object_record_kind_t;
 
 static const uint8_t fr_persist_payload_magic[4] = {'F', 'R', 'P', 'O'};
@@ -260,11 +262,25 @@ typedef struct fr_persist_cell_record_t {
   uint16_t length;
 } fr_persist_cell_record_t;
 
-typedef struct fr_persist_text_record_t {
+/* TEXT and BUFFER records share one array. A TEXT has capacity 0; a
+ * BUFFER never has (ADR 0088). The capacity uses the padding after the id,
+ * so the decoded payload keeps its size (the payload-6 schema). */
+typedef struct fr_persist_text_buffer_record_t {
   uint16_t local_id;
+  uint16_t capacity;
   const uint8_t *bytes;
   uint16_t length;
-} fr_persist_text_record_t;
+} fr_persist_text_buffer_record_t;
+
+typedef char fr_persist_text_buffer_record_must_keep_its_size[
+    sizeof(fr_persist_text_buffer_record_t) ==
+            sizeof(struct {
+              uint16_t local_id;
+              const uint8_t *bytes;
+              uint16_t length;
+            })
+        ? 1
+        : -1];
 
 typedef struct fr_persist_record_shape_record_t {
   uint16_t local_id;
@@ -292,7 +308,7 @@ typedef struct fr_persist_name_record_t {
 typedef struct fr_persist_decoded_payload_t {
   fr_persist_code_record_t code_records[FR_PROFILE_CODE_OBJECT_TABLE_SIZE];
   bool code_present[FR_PROFILE_CODE_OBJECT_TABLE_SIZE];
-  fr_persist_text_record_t text_records[FR_OBJECT_TABLE_CAPACITY];
+  fr_persist_text_buffer_record_t text_buffer_records[FR_OBJECT_TABLE_CAPACITY];
   fr_persist_record_shape_record_t shape_records[FR_OBJECT_TABLE_CAPACITY];
   fr_record_name_t record_fields[FR_RECORD_SHAPE_FIELD_CAPACITY];
   fr_persist_record_record_t record_records[FR_OBJECT_TABLE_CAPACITY];
@@ -307,7 +323,7 @@ typedef struct fr_persist_decoded_payload_t {
                                              : 1];
   fr_image_event_binding_t event_records[FR_EVENT_BINDING_COUNT];
   uint16_t code_count;
-  uint16_t text_count;
+  uint16_t text_buffer_count;
   uint16_t shape_count;
   uint16_t record_field_count;
   uint16_t record_count;
@@ -740,6 +756,13 @@ static fr_err_t fr_persist_object_kind(const fr_runtime_t *runtime,
     *out = FR_PERSIST_OBJECT_RECORD;
     return FR_OK;
   }
+#if FR_FEATURE_BUFFERS
+  if (fr_buffer_view(runtime, runtime_object_id, &bytes, &length,
+                     &(uint16_t){0}) == FR_OK) {
+    *out = FR_PERSIST_OBJECT_BUFFER;
+    return FR_OK;
+  }
+#endif
   return FR_ERR_TYPE;
 }
 
@@ -1659,6 +1682,35 @@ static fr_err_t fr_persist_payload_write_finalized(
                                               runtime_object_ids, object_kinds,
                                               &object_count, &ignored));
 #endif
+#if FR_FEATURE_BUFFERS
+        } else if (kind == FR_PERSIST_OBJECT_BUFFER) {
+          /* One BUFFER record for each buffer, however many names hold it.
+           * Two buffers with the same contents stay two buffers. Each
+           * record is a live buffer with its own part of the Text pool, so
+           * the capacities of an image fit the pool, as phase C of the
+           * decoder requires. */
+          const uint8_t *contents = NULL;
+          uint16_t length = 0;
+          uint16_t capacity = 0;
+
+          if (fr_persist_find_object_ref(runtime, object_id,
+                                         runtime_object_ids, object_kinds,
+                                         object_count, &ignored) != FR_OK) {
+            if (object_count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
+              return FR_ERR_CAPACITY;
+            }
+            FR_TRY(fr_buffer_view(runtime, object_id, &contents, &length,
+                                  &capacity));
+            FR_TRY(fr_persist_writer_u8(writer, FR_PERSIST_RECORD_BUFFER));
+            FR_TRY(fr_persist_writer_u16(writer, object_count));
+            FR_TRY(fr_persist_writer_u16(writer, capacity));
+            FR_TRY(fr_persist_writer_u16(writer, length));
+            FR_TRY(fr_persist_writer_bytes(writer, contents, length));
+            runtime_object_ids[object_count] = object_id;
+            object_kinds[object_count] = FR_PERSIST_OBJECT_BUFFER;
+            object_count = (uint16_t)(object_count + 1);
+          }
+#endif
         } else {
           return FR_ERR_TYPE;
         }
@@ -1889,8 +1941,14 @@ static fr_err_t fr_persist_payload_advance_record(
   if (tag == FR_PERSIST_RECORD_END) {
     return FR_OK;
   }
-  if (tag == FR_PERSIST_RECORD_CODE || tag == FR_PERSIST_RECORD_TEXT) {
+  if (tag == FR_PERSIST_RECORD_CODE || tag == FR_PERSIST_RECORD_TEXT ||
+      tag == FR_PERSIST_RECORD_BUFFER) {
     FR_TRY(fr_persist_reader_u16(reader, &local_id));
+    if (tag == FR_PERSIST_RECORD_BUFFER) {
+      uint16_t capacity = 0;
+
+      FR_TRY(fr_persist_reader_u16(reader, &capacity));
+    }
     FR_TRY(fr_persist_reader_u16(reader, &length));
     FR_TRY(fr_persist_reader_bytes(reader, length, &bytes));
     if (tag == FR_PERSIST_RECORD_CODE) {
@@ -2007,7 +2065,8 @@ static fr_err_t fr_persist_payload_next_prefix_ids(const uint8_t *prefix,
       if (key >= *out_code_count) {
         *out_code_count = (uint16_t)(key + 1u);
       }
-    } else if (tag == FR_PERSIST_RECORD_TEXT
+    } else if (tag == FR_PERSIST_RECORD_TEXT ||
+               tag == FR_PERSIST_RECORD_BUFFER
 #if FR_FEATURE_RECORDS
                || tag == FR_PERSIST_RECORD_RECORD_SHAPE ||
                tag == FR_PERSIST_RECORD_RECORD
@@ -2141,8 +2200,13 @@ static fr_err_t fr_persist_payload_scan_l1_records(
       marks->code_length[local_id] = (uint16_t)(reader.offset - record_start);
       continue;
     }
-    if (tag == FR_PERSIST_RECORD_TEXT) {
+    if (tag == FR_PERSIST_RECORD_TEXT || tag == FR_PERSIST_RECORD_BUFFER) {
       FR_TRY(fr_persist_reader_u16(&reader, &local_id));
+      if (tag == FR_PERSIST_RECORD_BUFFER) {
+        uint16_t capacity = 0;
+
+        FR_TRY(fr_persist_reader_u16(&reader, &capacity));
+      }
       FR_TRY(fr_persist_reader_u16(&reader, &length));
       FR_TRY(fr_persist_reader_bytes(&reader, length, &bytes));
       if (local_id >= FR_OBJECT_TABLE_CAPACITY ||
@@ -2510,6 +2574,7 @@ static fr_err_t fr_persist_payload_copy_l1_records(
                   marks->code_in_l1[key];
       break;
     case FR_PERSIST_RECORD_TEXT:
+    case FR_PERSIST_RECORD_BUFFER:
 #if FR_FEATURE_RECORDS
     case FR_PERSIST_RECORD_RECORD_SHAPE:
     case FR_PERSIST_RECORD_RECORD:
@@ -2768,15 +2833,16 @@ static fr_err_t fr_persist_decode_cell_value(
 #endif
 
 #if FR_FEATURE_TEXT
-static fr_err_t fr_persist_find_text_record(
-    const fr_persist_text_record_t text_records[], uint16_t text_count,
-    uint16_t local_id, const fr_persist_text_record_t **out_text) {
-  if (text_records == NULL || out_text == NULL) {
+static fr_err_t fr_persist_find_text_buffer_record(
+    const fr_persist_text_buffer_record_t text_buffer_records[],
+    uint16_t text_buffer_count, uint16_t local_id,
+    const fr_persist_text_buffer_record_t **out_text_buffer_record) {
+  if (text_buffer_records == NULL || out_text_buffer_record == NULL) {
     return FR_ERR_INVALID;
   }
-  for (uint16_t i = 0; i < text_count; i++) {
-    if (text_records[i].local_id == local_id) {
-      *out_text = &text_records[i];
+  for (uint16_t i = 0; i < text_buffer_count; i++) {
+    if (text_buffer_records[i].local_id == local_id) {
+      *out_text_buffer_record = &text_buffer_records[i];
       return FR_OK;
     }
   }
@@ -2904,7 +2970,7 @@ static fr_err_t fr_persist_decode_payload(
   uint8_t version = 0;
   uint8_t record = 0;
   fr_persist_code_record_t *code_records = NULL;
-  fr_persist_text_record_t *text_records = NULL;
+  fr_persist_text_buffer_record_t *text_buffer_records = NULL;
   fr_persist_record_shape_record_t *shape_records = NULL;
   fr_record_name_t *record_fields = NULL;
   fr_persist_record_record_t *record_records = NULL;
@@ -2917,7 +2983,7 @@ static fr_err_t fr_persist_decode_payload(
   fr_persist_bind_record_t *bind_records = NULL;
   fr_persist_name_record_t *name_records = NULL;
   uint16_t *out_code_count = NULL;
-  uint16_t *out_text_count = NULL;
+  uint16_t *out_text_buffer_count = NULL;
   uint16_t *out_shape_count = NULL;
   uint16_t *out_record_field_count = NULL;
   uint16_t *out_record_count = NULL;
@@ -2934,7 +3000,7 @@ static fr_err_t fr_persist_decode_payload(
 
   fr_persist_decoded_payload_reset(decoded);
   code_records = decoded->code_records;
-  text_records = decoded->text_records;
+  text_buffer_records = decoded->text_buffer_records;
   shape_records = decoded->shape_records;
   record_fields = decoded->record_fields;
   record_records = decoded->record_records;
@@ -2947,7 +3013,7 @@ static fr_err_t fr_persist_decode_payload(
   bind_records = decoded->bind_records;
   name_records = decoded->name_records;
   out_code_count = &decoded->code_count;
-  out_text_count = &decoded->text_count;
+  out_text_buffer_count = &decoded->text_buffer_count;
   out_shape_count = &decoded->shape_count;
   out_record_field_count = &decoded->record_field_count;
   out_record_count = &decoded->record_count;
@@ -2958,8 +3024,8 @@ static fr_err_t fr_persist_decode_payload(
   out_bind_count = &decoded->bind_count;
   out_name_count = &decoded->name_count;
 #if !FR_FEATURE_TEXT
-  (void)text_records;
-  (void)out_text_count;
+  (void)text_buffer_records;
+  (void)out_text_buffer_count;
 #endif
 #if !FR_FEATURE_RECORDS
   (void)shape_records;
@@ -3030,31 +3096,46 @@ static fr_err_t fr_persist_decode_payload(
       if (final_id >= *out_code_count) {
         *out_code_count = (uint16_t)(final_id + 1u);
       }
-    } else if (record == FR_PERSIST_RECORD_TEXT) {
+    } else if (record == FR_PERSIST_RECORD_TEXT ||
+               record == FR_PERSIST_RECORD_BUFFER) {
 #if !FR_FEATURE_TEXT
       return FR_ERR_UNSUPPORTED;
 #else
-      fr_persist_text_record_t *text = NULL;
+      fr_persist_text_buffer_record_t *text_buffer_record = NULL;
+      bool buffer = record == FR_PERSIST_RECORD_BUFFER;
       uint16_t final_id = 0;
 
-      if (*out_text_count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
+      if (buffer && !FR_FEATURE_BUFFERS) {
+        return FR_ERR_UNSUPPORTED;
+      }
+      if (*out_text_buffer_count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
         return FR_ERR_CAPACITY;
       }
-      text = &text_records[*out_text_count];
+      text_buffer_record = &text_buffer_records[*out_text_buffer_count];
       FR_TRY(fr_persist_reader_u16(&reader, &final_id));
       if (final_id >= FR_OBJECT_TABLE_CAPACITY ||
           object_present[final_id]) {
         return FR_ERR_CORRUPT;
       }
-      text->local_id = final_id;
-      FR_TRY(fr_persist_reader_u16(&reader, &text->length));
-      if (text->length > FR_PROFILE_MAX_TEXT_LENGTH) {
+      text_buffer_record->local_id = final_id;
+      if (buffer) {
+        FR_TRY(fr_persist_reader_u16(&reader, &text_buffer_record->capacity));
+        if (text_buffer_record->capacity == 0 ||
+            text_buffer_record->capacity > FR_PROFILE_MAX_OVERLAY_TEXT_BYTES) {
+          return FR_ERR_CORRUPT;
+        }
+      }
+      FR_TRY(fr_persist_reader_u16(&reader, &text_buffer_record->length));
+      if (text_buffer_record->length > (buffer ? text_buffer_record->capacity
+                                               : FR_PROFILE_MAX_TEXT_LENGTH)) {
         return FR_ERR_CORRUPT;
       }
-      FR_TRY(fr_persist_reader_bytes(&reader, text->length, &text->bytes));
-      object_kinds[final_id] = FR_PERSIST_OBJECT_TEXT;
+      FR_TRY(fr_persist_reader_bytes(&reader, text_buffer_record->length,
+                                     &text_buffer_record->bytes));
+      object_kinds[final_id] =
+          buffer ? FR_PERSIST_OBJECT_BUFFER : FR_PERSIST_OBJECT_TEXT;
       object_present[final_id] = true;
-      *out_text_count = (uint16_t)(*out_text_count + 1);
+      *out_text_buffer_count = (uint16_t)(*out_text_buffer_count + 1);
       if (final_id >= *out_object_count) {
         *out_object_count = (uint16_t)(final_id + 1u);
       }
@@ -3340,19 +3421,20 @@ static fr_err_t fr_persist_check_restore_capacity(
     const fr_persist_decoded_payload_t *decoded) {
   uint32_t used_cell_words = 0;
   uint32_t used_text_bytes = 0;
+  uint32_t used_buffer_bytes = 0;
   uint32_t used_record_names = 0;
   uint32_t used_record_shape_fields = 0;
   uint32_t used_record_values = 0;
   uint32_t used_record_name_bytes = 0;
   const fr_persist_code_record_t *code_records = NULL;
-  const fr_persist_text_record_t *text_records = NULL;
+  const fr_persist_text_buffer_record_t *text_buffer_records = NULL;
   const fr_persist_record_shape_record_t *shape_records = NULL;
   const fr_record_name_t *record_fields = NULL;
   const fr_persist_record_record_t *record_records = NULL;
   const fr_persist_cell_record_t *cell_records = NULL;
   const bool *code_present = NULL;
   uint16_t code_count = 0;
-  uint16_t text_count = 0;
+  uint16_t text_buffer_count = 0;
   uint16_t shape_count = 0;
   uint16_t record_field_count = 0;
   uint16_t record_count = 0;
@@ -3364,21 +3446,21 @@ static fr_err_t fr_persist_check_restore_capacity(
   }
   code_records = decoded->code_records;
   code_present = decoded->code_present;
-  text_records = decoded->text_records;
+  text_buffer_records = decoded->text_buffer_records;
   shape_records = decoded->shape_records;
   record_fields = decoded->record_fields;
   record_records = decoded->record_records;
   cell_records = decoded->cell_records;
   code_count = decoded->code_count;
-  text_count = decoded->text_count;
+  text_buffer_count = decoded->text_buffer_count;
   shape_count = decoded->shape_count;
   record_field_count = decoded->record_field_count;
   record_count = decoded->record_count;
   cell_count = decoded->cell_count;
   object_count = decoded->object_count;
 #if !FR_FEATURE_TEXT
-  (void)text_records;
-  (void)text_count;
+  (void)text_buffer_records;
+  (void)text_buffer_count;
 #endif
 #if !FR_FEATURE_RECORDS
   (void)shape_records;
@@ -3408,18 +3490,29 @@ static fr_err_t fr_persist_check_restore_capacity(
 
 #if FR_FEATURE_TEXT
   used_text_bytes = runtime->objects.base_used_text_bytes;
-  for (uint16_t i = 0; i < text_count; i++) {
+  used_buffer_bytes = runtime->objects.base_used_text_bytes;
+  for (uint16_t i = 0; i < text_buffer_count; i++) {
     bool duplicate = false;
 
-    if (text_records[i].length > FR_PROFILE_MAX_TEXT_LENGTH ||
-        (text_records[i].bytes == NULL && text_records[i].length > 0)) {
+    /* A mount puts each buffer in the Text pool (ADR 0088). */
+    if (text_buffer_records[i].capacity > 0) {
+      used_buffer_bytes += text_buffer_records[i].capacity;
+      if (used_buffer_bytes > FR_PROFILE_MAX_OVERLAY_TEXT_BYTES) {
+        return FR_ERR_CAPACITY;
+      }
+      continue;
+    }
+    if (text_buffer_records[i].length > FR_PROFILE_MAX_TEXT_LENGTH ||
+        (text_buffer_records[i].bytes == NULL &&
+         text_buffer_records[i].length > 0)) {
       return FR_ERR_CORRUPT;
     }
     for (uint16_t j = 0; j < i; j++) {
-      if (text_records[j].length == text_records[i].length &&
-          (text_records[i].length == 0 ||
-           memcmp(text_records[j].bytes, text_records[i].bytes,
-                  text_records[i].length) == 0)) {
+      if (text_buffer_records[j].capacity == 0 &&
+          text_buffer_records[j].length == text_buffer_records[i].length &&
+          (text_buffer_records[i].length == 0 ||
+           memcmp(text_buffer_records[j].bytes, text_buffer_records[i].bytes,
+                  text_buffer_records[i].length) == 0)) {
         duplicate = true;
         break;
       }
@@ -3429,17 +3522,18 @@ static fr_err_t fr_persist_check_restore_capacity(
     if (duplicate) {
       return FR_ERR_CORRUPT;
     }
-    if (used_text_bytes + text_records[i].length >
+    if (used_text_bytes + text_buffer_records[i].length >
         FR_PROFILE_MAX_TEXT_BYTES) {
       return FR_ERR_CAPACITY;
     }
-    used_text_bytes += text_records[i].length;
+    used_text_bytes += text_buffer_records[i].length;
   }
 #else
-  if (text_count > 0) {
+  if (text_buffer_count > 0) {
     return FR_ERR_UNSUPPORTED;
   }
   (void)used_text_bytes;
+  (void)used_buffer_bytes;
 #endif
 
 #if FR_FEATURE_RECORDS
@@ -3921,12 +4015,13 @@ static fr_err_t fr_persist_apply_binds_tiered(
   return FR_OK;
 }
 
-/* Tier-agnostic resource install: texts, codes, shapes, records, cells. Codes
- * are not deduped — they always append — and final ids must match installed
- * ids because mount does not patch immutable image bytes.
- * Objects dedupe by content via fr_text_install_since's find path, but the
- * encoder also dedupes by content so within a single payload no two records
- * carry the same bytes; the dedup never collapses two distinct local ids.
+/* Tier-agnostic resource install: texts, buffers, codes, shapes, records,
+ * cells. Codes are not deduped — they always append — and final ids must
+ * match installed ids because mount does not patch immutable image bytes.
+ * Text objects dedupe by content via fr_text_install_since's find path, but
+ * the encoder also dedupes by content so within a single payload no two
+ * records carry the same bytes; the dedup never collapses two distinct local
+ * ids.
  *
  * Optional code_filter / object_filter masks limit the install to closure
  * subsets — used by the L2-only public restore (D5 acceptance #6) so L1
@@ -3938,7 +4033,8 @@ fr_persist_install_resources(fr_runtime_t *runtime,
                              const bool *code_filter,
                              const bool *object_filter) {
   const fr_persist_code_record_t *code_records = decoded->code_records;
-  const fr_persist_text_record_t *text_records = decoded->text_records;
+  const fr_persist_text_buffer_record_t *text_buffer_records =
+      decoded->text_buffer_records;
   const fr_persist_record_shape_record_t *shape_records =
       decoded->shape_records;
   const fr_record_name_t *record_fields = decoded->record_fields;
@@ -3948,7 +4044,7 @@ fr_persist_install_resources(fr_runtime_t *runtime,
   const fr_tagged_t *cell_values = decoded->cell_values;
   const fr_persist_object_record_kind_t *object_kinds = decoded->object_kinds;
   uint16_t code_count = decoded->code_count;
-  uint16_t text_count = decoded->text_count;
+  uint16_t text_buffer_count = decoded->text_buffer_count;
   uint16_t shape_count = decoded->shape_count;
   uint16_t record_count = decoded->record_count;
   uint16_t cell_count = decoded->cell_count;
@@ -3956,8 +4052,8 @@ fr_persist_install_resources(fr_runtime_t *runtime,
   fr_tagged_t cell_install_values[FR_CELL_WORD_CAPACITY];
 
 #if !FR_FEATURE_TEXT
-  (void)text_records;
-  (void)text_count;
+  (void)text_buffer_records;
+  (void)text_buffer_count;
 #endif
 #if !FR_FEATURE_RECORDS
   (void)shape_records;
@@ -3989,13 +4085,24 @@ fr_persist_install_resources(fr_runtime_t *runtime,
 #if !FR_FEATURE_TEXT
       return FR_ERR_UNSUPPORTED;
 #else
-      const fr_persist_text_record_t *text = NULL;
+      const fr_persist_text_buffer_record_t *text = NULL;
 
-      FR_TRY(fr_persist_find_text_record(text_records, text_count, object_id,
-                                         &text));
+      FR_TRY(fr_persist_find_text_buffer_record(
+          text_buffer_records, text_buffer_count, object_id, &text));
       FR_TRY(fr_text_mount_image_since(runtime, text->bytes, text->length,
                                        runtime->objects.base_count,
                                        &installed_id));
+#endif
+    } else if (object_kinds[object_id] == FR_PERSIST_OBJECT_BUFFER) {
+#if !FR_FEATURE_BUFFERS
+      return FR_ERR_UNSUPPORTED;
+#else
+      const fr_persist_text_buffer_record_t *buffer = NULL;
+
+      FR_TRY(fr_persist_find_text_buffer_record(
+          text_buffer_records, text_buffer_count, object_id, &buffer));
+      FR_TRY(fr_buffer_install(runtime, buffer->capacity, buffer->bytes,
+                               buffer->length, &installed_id));
 #endif
     } else if (object_kinds[object_id] == FR_PERSIST_OBJECT_RECORD_SHAPE) {
 #if !FR_FEATURE_RECORDS
@@ -4275,11 +4382,11 @@ fr_err_t fr_persist_payload_restore(fr_runtime_t *runtime, const uint8_t *bytes,
 }
 
 /* D6 boot L1 pass: reset the runtime, install all resources the payload
- * references (codes, texts, shapes, records, cells), then apply only L1
- * binds and the names whose slot is L1. A per-bind failure here writes
- * the SPEC-shaped warning and the walk continues; binding L1 names in
- * this pass is what makes a library word resolve via fr_slot_id_for_name
- * before the L2 pass runs. */
+ * references (codes, texts, buffers, shapes, records, cells), then apply
+ * only L1 binds and the names whose slot is L1. A per-bind failure here
+ * writes the SPEC-shaped warning and the walk continues; binding L1 names
+ * in this pass is what makes a library word resolve via
+ * fr_slot_id_for_name before the L2 pass runs. */
 fr_err_t fr_persist_payload_restore_library(fr_runtime_t *runtime,
                                             const uint8_t *bytes,
                                             uint16_t length) {
@@ -4325,9 +4432,9 @@ fr_err_t fr_persist_payload_restore_library(fr_runtime_t *runtime,
  *      stable so an L1 record that points at another record that points at
  *      a text still reaches the text.
  *
- * Object closure no longer narrows to TEXT — an L1 BIND of a CELLS / RECORD
- * / RECORD_SHAPE object reaches the matching object record and the second-
- * pass walker emits it verbatim. */
+ * Object closure no longer narrows to TEXT — an L1 BIND of a BUFFER / CELLS
+ * / RECORD / RECORD_SHAPE object reaches the matching object record and the
+ * second-pass walker emits it verbatim. */
 fr_err_t fr_persist_payload_extract_library_records(
     const uint8_t *src, uint16_t src_length, uint8_t *dst, uint16_t dst_cap,
     uint16_t *out_length) {
@@ -4520,6 +4627,7 @@ fr_err_t fr_persist_payload_extract_library_records(
           key < FR_PROFILE_CODE_OBJECT_TABLE_SIZE && code_in_l1[key];
       break;
     case FR_PERSIST_RECORD_TEXT:
+    case FR_PERSIST_RECORD_BUFFER:
 #if FR_FEATURE_RECORDS
     case FR_PERSIST_RECORD_RECORD_SHAPE:
     case FR_PERSIST_RECORD_RECORD:

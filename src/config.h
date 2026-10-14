@@ -86,6 +86,13 @@
 #define FR_FEATURE_RECORDS 0
 #endif
 
+/* Buffers (ADR 0088) live in the Text pool and keep their capacity in the
+ * record field `aux`, so they follow Text and records unless a build says
+ * otherwise. */
+#ifndef FR_FEATURE_BUFFERS
+#define FR_FEATURE_BUFFERS (FR_FEATURE_TEXT && FR_FEATURE_RECORDS)
+#endif
+
 #ifndef FR_FEATURE_HANDLES
 #define FR_FEATURE_HANDLES 0
 #endif
@@ -605,6 +612,22 @@
 
 #if FR_FEATURE_RECORDS && !FR_FEATURE_TEXT
 #error "FR_FEATURE_RECORDS requires FR_FEATURE_TEXT in this tranche"
+#endif
+
+#if FR_FEATURE_BUFFERS && !FR_FEATURE_TEXT
+#error "FR_FEATURE_BUFFERS requires FR_FEATURE_TEXT"
+#endif
+
+#if FR_FEATURE_BUFFERS && !FR_FEATURE_RECORDS
+#error "FR_FEATURE_BUFFERS requires FR_FEATURE_RECORDS"
+#endif
+
+#if FR_FEATURE_BUFFERS && FR_PROFILE_MAX_OVERLAY_TEXT_BYTES == 0
+#error "FR_FEATURE_BUFFERS requires FR_PROFILE_MAX_OVERLAY_TEXT_BYTES"
+#endif
+
+#if FR_FEATURE_BUFFERS && !FR_FEATURE_REPL
+#error "FR_FEATURE_BUFFERS requires FR_FEATURE_REPL"
 #endif
 
 #if FR_FEATURE_RECORDS && FR_PROFILE_MAX_RECORD_NAME_BYTES == 0

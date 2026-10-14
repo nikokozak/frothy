@@ -751,10 +751,10 @@ static void test_failed_save_at_once_keeps_a_reservation(void) {
 #if FR_FEATURE_HANDLES && FR_FEATURE_PWM
 static const char s_not_saved_h[] =
     "error: not saved (13)\n"
-    "detail: cannot save slot 'h' - bound to a live handle or buffer\n";
+    "detail: cannot save slot 'h' - bound to a live handle or a Bytes value\n";
 static const char s_not_saved_u[] =
     "error: not saved (13)\n"
-    "detail: cannot save slot 'u' - bound to a live handle or buffer\n";
+    "detail: cannot save slot 'u' - bound to a live handle or a Bytes value\n";
 
 static uint8_t open_pwm_handles(void) {
   uint8_t count = 0;

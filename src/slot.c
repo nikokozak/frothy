@@ -238,7 +238,7 @@ static void fr_slot_project_name_move(fr_runtime_t *runtime, uint16_t dst,
 }
 #endif
 
-fr_err_t fr_slot_read(fr_runtime_t *runtime, fr_slot_id_t slot_id,
+fr_err_t fr_slot_read(const fr_runtime_t *runtime, fr_slot_id_t slot_id,
                       fr_tagged_t *out_tagged) {
   if (runtime == NULL || out_tagged == NULL) {
     return FR_ERR_INVALID;

@@ -883,6 +883,21 @@ static fr_err_t fr_repl_write_tagged_value(
       return FR_OK;
     }
 #endif
+#if FR_FEATURE_BUFFERS
+    {
+      const uint8_t *ignored_bytes = NULL;
+      uint16_t buffer_length = 0;
+      uint16_t buffer_capacity = 0;
+
+      if (fr_buffer_view(runtime, object_id, &ignored_bytes, &buffer_length,
+                         &buffer_capacity) == FR_OK) {
+        FR_TRY(fr_repl_append(out, out_cap, used, "buffer "));
+        FR_TRY(fr_repl_append_u16(out, out_cap, used, buffer_length));
+        FR_TRY(fr_repl_append(out, out_cap, used, "/"));
+        return fr_repl_append_u16(out, out_cap, used, buffer_capacity);
+      }
+    }
+#endif
     if (fr_cells_length(runtime, object_id, &cell_length) == FR_OK) {
       FR_TRY(fr_repl_append(out, out_cap, used, "cells "));
       return fr_repl_append_u16(out, out_cap, used, cell_length);
@@ -1106,13 +1121,14 @@ static const char *fr_repl_diag_value_article(uint16_t value_kind) {
   case FR_DIAG_VALUE_RESERVED:
   case FR_DIAG_VALUE_RECORD:
   case FR_DIAG_VALUE_RECORD_SHAPE:
+  case FR_DIAG_VALUE_BUFFER:
     return "a ";
   case FR_DIAG_VALUE_NIL:
   case FR_DIAG_VALUE_BYTES:
   case FR_DIAG_VALUE_ANY:
   case FR_DIAG_VALUE_TEXT:
-  case FR_DIAG_VALUE_TEXT_OR_BYTES:
-  case FR_DIAG_VALUE_INT_OR_TEXT_OR_BYTES:
+  case FR_DIAG_VALUE_TEXT_BYTES_OR_BUFFER:
+  case FR_DIAG_VALUE_INT_TEXT_BYTES_OR_BUFFER:
   case FR_DIAG_VALUE_CELLS:
   case FR_DIAG_VALUE_NONE:
   default:
@@ -1230,7 +1246,7 @@ static fr_err_t fr_repl_append_runtime_context_line(
       message = "bound to a word this firmware does not provide";
       break;
     case FR_DIAG_UNPERSISTABLE_VOLATILE_VALUE:
-      message = "bound to a live handle or buffer";
+      message = "bound to a live handle or a Bytes value";
       break;
     case FR_DIAG_UNPERSISTABLE_UNSUPPORTED_VALUE:
     default:
@@ -1768,6 +1784,10 @@ static fr_err_t fr_repl_write_mem_objects(fr_runtime_t *runtime,
                                 runtime->objects.used_text_bytes));
   FR_TRY(fr_repl_write_mem_pair(writer, "objects.text.total",
                                 FR_TEXT_BYTE_CAPACITY));
+#if FR_FEATURE_BUFFERS
+  FR_TRY(fr_repl_write_mem_pair(writer, "objects.buffers.used",
+                                fr_buffer_used_bytes(runtime)));
+#endif
 #if FR_FEATURE_RECORDS
   FR_TRY(fr_repl_write_mem_pair(writer, "objects.record_names.used",
                                 runtime->objects.used_record_names));
@@ -1926,12 +1946,21 @@ static fr_err_t fr_repl_write_value_kind(const fr_repl_writer_t *writer,
   case FR_NATIVE_VALUE_TEXT:
   case FR_NATIVE_VALUE_SECRET_TEXT:
     return fr_repl_writer_write(writer, "text");
-  case FR_NATIVE_VALUE_TEXT_OR_BYTES:
+#if FR_FEATURE_BUFFERS
+  case FR_NATIVE_VALUE_TEXT_BYTES_OR_BUFFER:
+    return fr_repl_writer_write(writer, "text|bytes|buffer");
+  case FR_NATIVE_VALUE_INT_TEXT_BYTES_OR_BUFFER:
+    return fr_repl_writer_write(writer, "int|text|bytes|buffer");
+#else
+  case FR_NATIVE_VALUE_TEXT_BYTES_OR_BUFFER:
     return fr_repl_writer_write(writer, "text|bytes");
-  case FR_NATIVE_VALUE_INT_OR_TEXT_OR_BYTES:
+  case FR_NATIVE_VALUE_INT_TEXT_BYTES_OR_BUFFER:
     return fr_repl_writer_write(writer, "int|text|bytes");
+#endif
   case FR_NATIVE_VALUE_BYTES:
     return fr_repl_writer_write(writer, "bytes");
+  case FR_NATIVE_VALUE_BUFFER:
+    return fr_repl_writer_write(writer, "buffer");
   }
   return FR_ERR_INVALID;
 }
