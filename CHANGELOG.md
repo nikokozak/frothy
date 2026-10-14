@@ -6,6 +6,21 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+**Upgrade from v0.1.22.** This release changes the saved image and the
+profile hash of every profile, and it has no migration. A board with a
+v0.1.22 image answers `other release (27)` and does not load the image. The
+image stays on the board until `save` or a wipe.
+
+1. Before you update, keep your source: the editor project or your `.fr`
+   files. `see` is not a full backup.
+2. Flash v0.1.23. The browser flasher erases all flash on ESP32 boards, so
+   the board then starts empty.
+3. Install your libraries again and send your program again.
+4. Set again the state that your program needs: cell contents, records, and
+   `wifi.save` credentials after a browser flash.
+5. Type `save`. Do not type `save` first: a `save` before you send your
+   program writes an empty program over the old image.
+
 ### Added
 
 - **`print` writes an integer, and `print.value` writes one named line.**
@@ -76,6 +91,11 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
   counts the names. The area keeps the size of the two old areas together.
 - **The instruction format moves to 2.** Code saved by v0.1.22 does not load:
   the device answers `other release (27)`.
+- **The profile hash moves on every profile.**
+  `printf 'status\n' | frothy` shows these values for the host build of
+  each profile: `host_normal` 676c476c, `host_small` 6c81f7c3,
+  `esp32_plain` bb8d1b12, `esp32c3_plain` 3a366ee5, `rp2040_plain` a2ed0ffc
+  and `rp2040_nina` 792ff572. `make test-profile-hashes` checks them.
 - **A reply starts on its own line.** When a word such as `print` or
   `pad.type` leaves the console line open, the device writes LF before its
   next reply, prompt, event line or error. `print: "hi"` at the prompt now
