@@ -23,8 +23,11 @@
 #include "config.h"
 #include "crc.h"
 #include "lib_native.h"
+#include "object.h"
 #include "persist.h"
+#include "persist_format.h"
 #include "persist_payload.h"
+#include "profile.h"
 #include "platform.h"
 #include "repl.h"
 #include "runtime.h"
@@ -3068,6 +3071,738 @@ static void test_repl_install_user_replies_ok(void) {
   TEST_ASSERT_EQUAL_STRING("ok\n", out);
 }
 
+#if FR_FEATURE_BUFFERS && FR_FEATURE_CELLS && FR_FEATURE_EVENTS &&          \
+    FR_PROFILE_MAX_OVERLAY_NAMES > 0
+/* The golden image of payload 6 and envelope 3: one record of each kind,
+ * in the order of a full save. The first code id, the first project slot
+ * and the native id of `millis` come from the profile. Each other byte is
+ * written here by hand. */
+enum {
+  GOLDEN_CODE,
+  GOLDEN_BUFFER,
+  GOLDEN_SHAPE,
+  GOLDEN_TEXT,
+  GOLDEN_RECORD,
+  GOLDEN_CELLS,
+  GOLDEN_BIND_CODE,
+  GOLDEN_BIND_NATIVE,
+  GOLDEN_BIND_BUFFER,
+  GOLDEN_BIND_CELLS,
+  GOLDEN_NAME_CODE,
+  GOLDEN_NAME_NATIVE,
+  GOLDEN_NAME_BUFFER,
+  GOLDEN_NAME_CELLS,
+  GOLDEN_EVENT,
+  GOLDEN_RESERVED,
+  GOLDEN_END,
+  GOLDEN_RECORDS
+};
+
+typedef struct golden_record_t {
+  uint8_t bytes[24];
+  uint8_t length;
+} golden_record_t;
+
+#define GOLDEN_U16(v) (uint8_t)((v) & 0xffu), (uint8_t)(((v) >> 8) & 0xffu)
+
+/* Slots: the word `lw` (library), `nat`, `buf`, `tbl`, then the reserved
+ * name `old`. Objects: BUFFER 0, RECORD_SHAPE 1, TEXT 2, RECORD 3,
+ * CELLS 4. */
+static void golden_records(golden_record_t out[GOLDEN_RECORDS]) {
+  uint16_t c0 = s_runtime.code.base_image_count;
+  fr_slot_id_t s = fr_slot_first_project_id();
+  fr_tagged_t millis = 0;
+  fr_native_id_t n = 0;
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, FR_SLOT_MILLIS, &millis));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_native_id(millis, &n));
+  {
+    const golden_record_t records[GOLDEN_RECORDS] = {
+        /* CODE: id, 7 instruction bytes (format 2, header 3, arity 1,
+         * LOAD_SLOT of `old`, RETURN), then the name tail "n". */
+        {{1, GOLDEN_U16(c0), 7, 0, 2, 3, 1, FR_OP_LOAD_SLOT,
+          GOLDEN_U16(s + 4u), FR_OP_RETURN, 2, 0, 'n', 0},
+         16},
+        /* BUFFER 0: capacity 8, contents "hi". */
+        {{10, 0, 0, 8, 0, 2, 0, 'h', 'i'}, 9},
+        /* RECORD_SHAPE 1: P [ a, b ]. */
+        {{6, 1, 0, 1, 0, 'P', 2, 0, 1, 0, 'a', 1, 0, 'b'}, 14},
+        /* TEXT 2: "ok". */
+        {{5, 2, 0, 2, 0, 'o', 'k'}, 7},
+        /* RECORD 3: P with OBJECT 2 and INT 7. */
+        {{7, 3, 0, 1, 0, 2, 0, 6, 2, 0, 3, 7, 0, 0, 0}, 15},
+        /* CELLS 4: NIL, FALSE, TRUE, OBJECT 3. */
+        {{4, 4, 0, 4, 0, 0, 1, 2, 6, 3, 0}, 11},
+        /* BIND: `lw` library CODE, then user NATIVE, BUFFER and CELLS. */
+        {{2, GOLDEN_U16(s), 1, 4, GOLDEN_U16(c0)}, 7},
+        {{2, GOLDEN_U16(s + 1u), 2, 5, GOLDEN_U16(n)}, 7},
+        {{2, GOLDEN_U16(s + 2u), 2, 6, 0, 0}, 7},
+        {{2, GOLDEN_U16(s + 3u), 2, 6, 4, 0}, 7},
+        /* NAME, in the order of the name table. */
+        {{3, GOLDEN_U16(s), 2, 'l', 'w'}, 6},
+        {{3, GOLDEN_U16(s + 1u), 3, 'n', 'a', 't'}, 7},
+        {{3, GOLDEN_U16(s + 2u), 3, 'b', 'u', 'f'}, 7},
+        {{3, GOLDEN_U16(s + 3u), 3, 't', 'b', 'l'}, 7},
+        /* EVENT: every 50 ms, no debounce, body CODE. */
+        {{8, 4, 50, 0, 0, 0, GOLDEN_U16(c0)}, 8},
+        /* RESERVED_NAME: `old`, which the CODE reads. */
+        {{9, GOLDEN_U16(s + 4u), 3, 'o', 'l', 'd'}, 7},
+        {{0xff}, 1},
+    };
+
+    memcpy(out, records, sizeof(records));
+  }
+}
+
+static uint16_t golden_payload(const golden_record_t records[GOLDEN_RECORDS],
+                               uint8_t *out) {
+  static const uint8_t preamble[] = {'F', 'R', 'P', 'O', 6};
+  uint16_t used = (uint16_t)sizeof(preamble);
+
+  memcpy(out, preamble, sizeof(preamble));
+  for (int i = 0; i < GOLDEN_RECORDS; i++) {
+    memcpy(&out[used], records[i].bytes, records[i].length);
+    used = (uint16_t)(used + records[i].length);
+  }
+  return used;
+}
+
+static void golden_write_u32(uint8_t *p, uint32_t v) {
+  p[0] = (uint8_t)(v & 0xffu);
+  p[1] = (uint8_t)((v >> 8) & 0xffu);
+  p[2] = (uint8_t)((v >> 16) & 0xffu);
+  p[3] = (uint8_t)((v >> 24) & 0xffu);
+}
+
+/* A v0.1.22 image (envelope 2, payload 5) answers other release (27) at the
+ * boot mount, and it stays in storage: a second boot answers 27 again. A
+ * save after the program is sent again writes an image that mounts. */
+static void test_v0122_image_answers_other_release(void) {
+  static const uint8_t payload[] = {'F', 'R', 'P', 'O', 5, 0xff};
+  uint8_t image[FR_PERSIST_HEADER_BYTES + sizeof(payload)];
+  uint32_t crc = 0;
+
+  memcpy(&image[FR_PERSIST_HEADER_BYTES], payload, sizeof(payload));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_format_build_header(
+                               image, sizeof(payload),
+                               fr_crc32(payload, sizeof(payload))));
+  image[4] = 2;
+  memset(&image[FR_PERSIST_HEADER_CRC_OFFSET], 0, 4);
+  crc = fr_crc32(image, FR_PERSIST_HEADER_BYTES);
+  golden_write_u32(&image[FR_PERSIST_HEADER_CRC_OFFSET], crc);
+  TEST_ASSERT_EQUAL(FR_OK, test_persist_commit_image(image, sizeof(image)));
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_ERR_OTHER_RELEASE,
+                    fr_persist_restore_library(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_ERR_OTHER_RELEASE,
+                    fr_persist_restore_library(&s_runtime));
+  tier_eval_expect("keep is 7", "ok\n");
+  tier_eval_expect("save", "ok\n");
+  tier_boot();
+  tier_eval_expect("keep", "7\nok\n");
+}
+
+/* Envelope 3, phase E: a stored length below 32 is damaged; the version
+ * comes before the CRCs, so another release answers 27 also with a bad
+ * header CRC; with only a damaged image in storage, a mount answers 11. */
+static void test_envelope_3_refusals(void) {
+  golden_record_t records[GOLDEN_RECORDS];
+  uint8_t image[FR_PERSIST_HEADER_BYTES + 256];
+  fr_persist_format_info_t info = {0};
+  uint16_t length = 0;
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  golden_records(records);
+  length = golden_payload(records, &image[FR_PERSIST_HEADER_BYTES]);
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_format_build_header(
+                               image, length,
+                               fr_crc32(&image[FR_PERSIST_HEADER_BYTES],
+                                        length)));
+  TEST_ASSERT_EQUAL(FR_ERR_CORRUPT,
+                    fr_persist_format_validate(image, 31, &info));
+  image[4] = 2;
+  image[FR_PERSIST_HEADER_CRC_OFFSET] ^= 1u;
+  TEST_ASSERT_EQUAL(FR_ERR_OTHER_RELEASE,
+                    fr_persist_format_read_header(image, &info));
+  image[4] = 3;
+  image[FR_PERSIST_HEADER_CRC_OFFSET] ^= 1u;
+  image[FR_PERSIST_HEADER_BYTES + 5u] ^= 1u;
+  TEST_ASSERT_EQUAL(FR_OK, test_persist_commit_image(
+                               image, (uint16_t)(FR_PERSIST_HEADER_BYTES +
+                                                 length)));
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_ERR_CORRUPT, fr_persist_restore_library(&s_runtime));
+}
+
+static void test_golden_payload_6_decodes_and_encodes_again(void) {
+  golden_record_t records[GOLDEN_RECORDS];
+  uint8_t payload[256];
+  uint8_t again[256];
+  uint8_t header[FR_PERSIST_HEADER_BYTES];
+  uint8_t expected[FR_PERSIST_HEADER_BYTES] = {'F', 'R', 'P', 'H', 3, 32};
+  uint16_t length = 0;
+  uint16_t again_length = 0;
+  fr_slot_id_t s = fr_slot_first_project_id();
+  fr_slot_id_t slot_id = 0;
+  fr_tagged_t value = 0;
+  fr_tagged_t other = 0;
+  fr_code_object_id_t code_id = 0;
+  fr_object_id_t object_id = 0;
+  fr_object_id_t shape_id = 0;
+  fr_record_name_t name = {0};
+  const uint8_t *bytes = NULL;
+  const char *names = NULL;
+  uint16_t count = 0;
+  uint16_t capacity = 0;
+  fr_int_t number = 0;
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  golden_records(records);
+  length = golden_payload(records, payload);
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_persist_payload_restore(&s_runtime, payload, length));
+
+  /* `lw`: the library CODE with its parameter name. */
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, "lw", &slot_id));
+  TEST_ASSERT_EQUAL_UINT16(s, slot_id);
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, s, &value));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_code_object_id(value, &code_id));
+  TEST_ASSERT_EQUAL_UINT16(s_runtime.code.base_image_count, code_id);
+  TEST_ASSERT_EQUAL(FR_INSTALL_TIER_LIBRARY, s_runtime.slots.base_tier[s]);
+  TEST_ASSERT_EQUAL(FR_OK, fr_code_get_param_names(&s_runtime, code_id, &names,
+                                                   &count));
+  TEST_ASSERT_EQUAL_UINT16(2, count);
+  TEST_ASSERT_EQUAL_MEMORY("n", names, 2);
+  /* `nat`: the native `millis`. */
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_id_for_name(&s_runtime, "nat", &slot_id));
+  TEST_ASSERT_EQUAL_UINT16(s + 1u, slot_id);
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, s + 1u, &value));
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, FR_SLOT_MILLIS, &other));
+  TEST_ASSERT_EQUAL_HEX32(other, value);
+  /* `buf`: capacity 8, contents "hi". */
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, s + 2u, &value));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_object_id(value, &object_id));
+  TEST_ASSERT_EQUAL(FR_OK, fr_buffer_view(&s_runtime, object_id, &bytes, &count,
+                                          &capacity));
+  TEST_ASSERT_EQUAL_UINT16(8, capacity);
+  TEST_ASSERT_EQUAL_UINT16(2, count);
+  TEST_ASSERT_EQUAL_MEMORY("hi", bytes, 2);
+  /* `tbl`: NIL, FALSE, TRUE and the record P with "ok" and 7. */
+  TEST_ASSERT_EQUAL(FR_OK, fr_slot_read(&s_runtime, s + 3u, &value));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_object_id(value, &object_id));
+  TEST_ASSERT_EQUAL(FR_OK, fr_cells_read(&s_runtime, object_id, 0, &value));
+  TEST_ASSERT_TRUE(fr_tagged_is_nil(value));
+  TEST_ASSERT_EQUAL(FR_OK, fr_cells_read(&s_runtime, object_id, 1, &value));
+  TEST_ASSERT_TRUE(fr_tagged_is_false(value));
+  TEST_ASSERT_EQUAL(FR_OK, fr_cells_read(&s_runtime, object_id, 2, &value));
+  TEST_ASSERT_TRUE(fr_tagged_is_true(value));
+  TEST_ASSERT_EQUAL(FR_OK, fr_cells_read(&s_runtime, object_id, 3, &value));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_object_id(value, &object_id));
+  TEST_ASSERT_EQUAL(FR_OK, fr_record_view(&s_runtime, object_id, &shape_id,
+                                          &count));
+  TEST_ASSERT_EQUAL(FR_OK, fr_record_shape_view(&s_runtime, shape_id, &name,
+                                                &count));
+  TEST_ASSERT_EQUAL_UINT16(2, count);
+  TEST_ASSERT_EQUAL_MEMORY("P", name.bytes, 1);
+  TEST_ASSERT_EQUAL(FR_OK, fr_record_read_index(&s_runtime, object_id, 0,
+                                                &value));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_object_id(value, &shape_id));
+  TEST_ASSERT_EQUAL(FR_OK, fr_text_view(&s_runtime, shape_id, &bytes, &count));
+  TEST_ASSERT_EQUAL_UINT16(2, count);
+  TEST_ASSERT_EQUAL_MEMORY("ok", bytes, 2);
+  TEST_ASSERT_EQUAL(FR_OK, fr_record_read_index(&s_runtime, object_id, 1,
+                                                &value));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_int(value, &number));
+  TEST_ASSERT_EQUAL_INT(7, number);
+  /* The event and the reserved name. */
+  TEST_ASSERT_EQUAL(FR_EVENT_KIND_EVERY, s_runtime.events.entries[0].kind);
+  TEST_ASSERT_EQUAL_UINT16(50, s_runtime.events.entries[0].source);
+  TEST_ASSERT_EQUAL_UINT16(0, s_runtime.events.entries[0].debounce_ms);
+  TEST_ASSERT_EQUAL_UINT16(code_id, s_runtime.events.entries[0].body);
+  TEST_ASSERT_EQUAL_UINT16(1, tier_reserved_count());
+  TEST_ASSERT_EQUAL_UINT16(s + 4u, tier_reserved_slot());
+
+  /* The same runtime encodes the same bytes, and the header holds them. */
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_payload_encode(&s_runtime, again,
+                                                     (uint16_t)sizeof(again),
+                                                     &again_length));
+  TEST_ASSERT_EQUAL_UINT16(length, again_length);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(payload, again, length);
+  TEST_ASSERT_EQUAL_HEX8(0xff, again[again_length - 1u]);
+  golden_write_u32(&expected[8], fr_profile_hash());
+  golden_write_u32(&expected[12], 1);
+  golden_write_u32(&expected[16], length);
+  golden_write_u32(&expected[20], fr_crc32(payload, length));
+  golden_write_u32(&expected[24], fr_crc32(expected, FR_PERSIST_HEADER_BYTES));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_format_build_header(
+                               header, length, fr_crc32(payload, length)));
+  TEST_ASSERT_EQUAL(FR_OK, fr_persist_format_stamp_generation(header, 1));
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, header, FR_PERSIST_HEADER_BYTES);
+}
+
+/* One change to the golden image: a field of one record, or a whole
+ * record. */
+typedef struct golden_change_t {
+  int8_t record;
+  uint8_t offset;
+  uint8_t width; /* 1 or 2; 0 replaces the record with `bytes` */
+  uint16_t value;
+  const uint8_t *bytes;
+  uint8_t length;
+} golden_change_t;
+
+typedef struct golden_case_t {
+  const char *name;
+  fr_err_t expected;
+  golden_change_t changes[3];
+} golden_case_t;
+
+#define GOLDEN_SET(r, o, w, v) {(r), (o), (w), (v), NULL, 0}
+#define GOLDEN_REPLACE(r, b) {(r), 0, 0, 0, (b), (uint8_t)sizeof(b)}
+
+/* Each refused image leaves the runtime as it was: the name, slot, code,
+ * object and event counts, the Text pool use and the word `keep` (7). */
+static void golden_expect_refused(const char *name, const uint8_t *payload,
+                                  uint16_t length, fr_err_t expected) {
+  const uint16_t before[] = {
+      fr_slot_project_name_count(&s_runtime), fr_slot_count(&s_runtime),
+      s_runtime.code.count,                   s_runtime.objects.count,
+      s_runtime.objects.used_text_bytes,      s_runtime.events.active_count};
+
+  TEST_ASSERT_EQUAL_MESSAGE(expected,
+                            fr_persist_payload_restore(&s_runtime, payload,
+                                                       length),
+                            name);
+  {
+    const uint16_t after[] = {
+        fr_slot_project_name_count(&s_runtime), fr_slot_count(&s_runtime),
+        s_runtime.code.count,                   s_runtime.objects.count,
+        s_runtime.objects.used_text_bytes,      s_runtime.events.active_count};
+
+    TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(before, after, 6, name);
+  }
+  tier_eval_expect("keep", "7\nok\n");
+}
+
+
+static void test_golden_payload_6_refusals(void) {
+  uint16_t c0 = 0;
+  fr_slot_id_t s = fr_slot_first_project_id();
+  uint8_t payload[1024];
+  uint16_t length = 0;
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("keep is 7", "ok\n");
+  c0 = s_runtime.code.base_image_count;
+  {
+    /* CODE records that a field change cannot make. */
+    const uint8_t header_above_length[] = {1, GOLDEN_U16(c0), 3, 0, 2, 4, 1,
+                                           0, 0};
+    const uint8_t too_many_locals[] = {
+        1, GOLDEN_U16(c0), 8, 0, 2, 4, 1, FR_PROFILE_MAX_STACK_DEPTH,
+        FR_OP_LOAD_SLOT, GOLDEN_U16(s + 4u), FR_OP_RETURN, 2, 0, 'n', 0};
+    /* The instructions end after one of the two bytes of the slot. */
+    const uint8_t cut_operand[] = {1, GOLDEN_U16(c0), 5, 0, 2, 3, 1,
+                                   FR_OP_LOAD_SLOT,
+                                   (uint8_t)((s + 4u) & 0xffu), 2, 0, 'n', 0};
+    const uint8_t pushes_itself[] = {
+        1, GOLDEN_U16(c0), 10, 0, 2, 3, 1, FR_OP_PUSH_CODE_ID,
+        GOLDEN_U16(c0), FR_OP_LOAD_SLOT, GOLDEN_U16(s + 4u), FR_OP_RETURN, 2, 0,
+        'n', 0};
+    const uint8_t pushes_a_buffer[] = {
+        1, GOLDEN_U16(c0), 10, 0, 2, 3, 1, FR_OP_PUSH_OBJECT_ID, 0, 0,
+        FR_OP_LOAD_SLOT, GOLDEN_U16(s + 4u), FR_OP_RETURN, 2, 0, 'n', 0};
+    const golden_case_t cases[] = {
+        /* The end record and the tags. */
+        {"another tag", FR_ERR_CORRUPT, {GOLDEN_SET(GOLDEN_END, 0, 1, 0x0b)}},
+        /* Values. */
+        {"another value kind", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_CELLS, 5, 1, 7)}},
+        {"an int above the range", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_RECORD, 14, 1, 0x40)}},
+        {"a code value in cells", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_CELLS, 5, 1, 4)}},
+        {"a native value in a record", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_RECORD, 7, 1, 5)}},
+        {"a shape in cells", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_CELLS, 9, 2, 1)}},
+        {"a record names itself", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_RECORD, 8, 2, 3)}},
+        {"a bind to absent code", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_BIND_CODE, 5, 2, (uint16_t)(c0 + 1u))}},
+        {"a bind to a native past the base", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_BIND_NATIVE, 5, 2, 0xffff)}},
+        {"a bind to an absent object", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_BIND_BUFFER, 5, 2, 9)}},
+        /* CODE, phase D. */
+        {"a code id past the table", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_CODE, 1, 2, 0xffff)}},
+        {"instruction format 3", FR_ERR_UNSUPPORTED,
+         {GOLDEN_SET(GOLDEN_CODE, 5, 1, 3)}},
+        {"header size 1", FR_ERR_INVALID, {GOLDEN_SET(GOLDEN_CODE, 6, 1, 1)}},
+        {"header size 5", FR_ERR_INVALID, {GOLDEN_SET(GOLDEN_CODE, 6, 1, 5)}},
+        {"header size above the length", FR_ERR_INVALID,
+         {GOLDEN_REPLACE(GOLDEN_CODE, header_above_length)}},
+        {"arity above the stack", FR_ERR_RANGE,
+         {GOLDEN_SET(GOLDEN_CODE, 7, 1, FR_PROFILE_MAX_STACK_DEPTH + 1)}},
+        {"arity and locals above the stack", FR_ERR_RANGE,
+         {GOLDEN_REPLACE(GOLDEN_CODE, too_many_locals)}},
+        /* CODE, phase F. */
+        {"an unknown opcode", FR_ERR_INVALID,
+         {GOLDEN_SET(GOLDEN_CODE, 11, 1, 0xee)}},
+        {"a cut operand", FR_ERR_INVALID,
+         {GOLDEN_REPLACE(GOLDEN_CODE, cut_operand)}},
+        {"a slot operand past the table", FR_ERR_RANGE,
+         {GOLDEN_SET(GOLDEN_CODE, 9, 2, 0xffff)}},
+        {"code that pushes itself", FR_ERR_CORRUPT,
+         {GOLDEN_REPLACE(GOLDEN_CODE, pushes_itself)}},
+        {"code that pushes a buffer", FR_ERR_CORRUPT,
+         {GOLDEN_REPLACE(GOLDEN_CODE, pushes_a_buffer)}},
+        {"a gap in the code ids", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_CODE, 1, 2, (uint16_t)(c0 + 1u)),
+          GOLDEN_SET(GOLDEN_BIND_CODE, 5, 2, (uint16_t)(c0 + 1u)),
+          GOLDEN_SET(GOLDEN_EVENT, 6, 2, (uint16_t)(c0 + 1u))}},
+        /* BIND and NAME. */
+        {"a bind slot past the table", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_BIND_NATIVE, 1, 2, 0xffff)}},
+        {"a name slot past the table", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_NAME_NATIVE, 1, 2, 0xffff)}},
+        {"an empty name", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_NAME_NATIVE, 3, 1, 0)}},
+        {"a name above the limit", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_NAME_NATIVE, 3, 1, FR_PROFILE_MAX_NAME_BYTES + 1)}},
+        {"a name with NUL", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_NAME_NATIVE, 4, 1, 0)}},
+        {"a name on a base slot", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_NAME_NATIVE, 1, 2, (uint16_t)(s - 1u))}},
+        {"a base name", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_NAME_NATIVE, 4, 1, 'o'),
+          GOLDEN_SET(GOLDEN_NAME_NATIVE, 5, 1, 'n'),
+          GOLDEN_SET(GOLDEN_NAME_NATIVE, 6, 1, 'e')}},
+        {"a name twice", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_NAME_NATIVE, 4, 1, 'b'),
+          GOLDEN_SET(GOLDEN_NAME_NATIVE, 5, 1, 'u'),
+          GOLDEN_SET(GOLDEN_NAME_NATIVE, 6, 1, 'f')}},
+        {"a slot with two names", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_NAME_NATIVE, 1, 2, (uint16_t)(s + 2u))}},
+        /* CELLS, TEXT, BUFFER, RECORD_SHAPE and RECORD, phase D. */
+        {"a cells id past the table", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_CELLS, 1, 2, 0xffff)}},
+        {"a cells id taken", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_CELLS, 1, 2, 0)}},
+        {"cells of length 0", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_CELLS, 3, 2, 0)}},
+        {"cells above the length limit", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_CELLS, 3, 2, FR_PROFILE_MAX_CELL_LENGTH + 1)}},
+        {"a text id past the table", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_TEXT, 1, 2, 0xffff)}},
+        {"a text id taken", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_TEXT, 1, 2, 0)}},
+        {"a text above the length limit", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_TEXT, 3, 2, FR_PROFILE_MAX_TEXT_LENGTH + 1)}},
+        {"a buffer id past the table", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_BUFFER, 1, 2, 0xffff)}},
+        {"a shape id past the table", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_SHAPE, 1, 2, 0xffff)}},
+        {"a shape id taken", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_SHAPE, 1, 2, 0)}},
+        {"an empty shape name", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_SHAPE, 3, 2, 0)}},
+        {"a shape name above the limit", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_SHAPE, 3, 2, FR_PROFILE_MAX_NAME_BYTES + 1)}},
+        {"a shape name with NUL", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_SHAPE, 5, 1, 0)}},
+        {"a shape name with a dot", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_SHAPE, 5, 1, '.')}},
+        {"no fields", FR_ERR_CORRUPT, {GOLDEN_SET(GOLDEN_SHAPE, 6, 2, 0)}},
+        {"fields above the limit", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_SHAPE, 6, 2,
+                     FR_PROFILE_MAX_RECORD_FIELDS_PER_SHAPE + 1)}},
+        {"an empty field name", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_SHAPE, 8, 2, 0)}},
+        {"a field name above the limit", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_SHAPE, 8, 2, FR_PROFILE_MAX_NAME_BYTES + 1)}},
+        {"a field name with NUL", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_SHAPE, 10, 1, 0)}},
+        {"a field name with a dot", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_SHAPE, 10, 1, '.')}},
+        {"a field name twice", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_SHAPE, 13, 1, 'a')}},
+        {"a record id past the table", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_RECORD, 1, 2, 0xffff)}},
+        {"a record id taken", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_RECORD, 1, 2, 0)}},
+        {"a record of a text", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_RECORD, 3, 2, 2)}},
+        {"a record with too few values", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_RECORD, 5, 2, 1)}},
+        /* EVENT. */
+        {"event kind 0", FR_ERR_CORRUPT, {GOLDEN_SET(GOLDEN_EVENT, 1, 1, 0)}},
+        {"event kind 8", FR_ERR_CORRUPT, {GOLDEN_SET(GOLDEN_EVENT, 1, 1, 8)}},
+        {"an event body that is absent", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_EVENT, 6, 2, (uint16_t)(c0 + 1u))}},
+        /* Image-wide. */
+        {"a gap in the object ids", FR_ERR_CORRUPT,
+         {GOLDEN_SET(GOLDEN_CELLS, 1, 2, 5),
+          GOLDEN_SET(GOLDEN_BIND_CELLS, 5, 2, 5)}},
+    };
+
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+      golden_record_t records[GOLDEN_RECORDS];
+
+      golden_records(records);
+      /* An empty entry (no width and no bytes) ends the list. */
+      for (int j = 0; j < 3 && (cases[i].changes[j].width > 0 ||
+                                cases[i].changes[j].bytes != NULL);
+           j++) {
+        const golden_change_t *change = &cases[i].changes[j];
+        golden_record_t *record = &records[change->record];
+
+        if (change->width == 0) {
+          memcpy(record->bytes, change->bytes, change->length);
+          record->length = change->length;
+        } else {
+          record->bytes[change->offset] = (uint8_t)(change->value & 0xffu);
+          if (change->width == 2) {
+            record->bytes[change->offset + 1u] =
+                (uint8_t)(change->value >> 8);
+          }
+        }
+      }
+      length = golden_payload(records, payload);
+      golden_expect_refused(cases[i].name, payload, length,
+                            cases[i].expected);
+    }
+  }
+}
+
+/* The refusals that change the order or the number of records. Each image
+ * is the golden image with records added or moved. */
+static uint16_t golden_with(const int order[], int order_length,
+                            const uint8_t *extra, uint16_t extra_length,
+                            uint8_t *out) {
+  golden_record_t records[GOLDEN_RECORDS];
+  uint16_t used = 5;
+
+  golden_records(records);
+  memcpy(out, "FRPO\x06", 5);
+  for (int i = 0; i < order_length; i++) {
+    memcpy(&out[used], records[order[i]].bytes, records[order[i]].length);
+    used = (uint16_t)(used + records[order[i]].length);
+  }
+  if (extra_length > 0) {
+    memcpy(&out[used], extra, extra_length);
+    used = (uint16_t)(used + extra_length);
+  }
+  out[used] = 0xff;
+  return (uint16_t)(used + 1u);
+}
+
+static void test_golden_payload_6_structure_refusals(void) {
+  /* Every golden record but END, in the order of a full save. */
+  static const int full[] = {
+      GOLDEN_CODE,        GOLDEN_BUFFER,      GOLDEN_SHAPE,
+      GOLDEN_TEXT,        GOLDEN_RECORD,      GOLDEN_CELLS,
+      GOLDEN_BIND_CODE,   GOLDEN_BIND_NATIVE, GOLDEN_BIND_BUFFER,
+      GOLDEN_BIND_CELLS,  GOLDEN_NAME_CODE,   GOLDEN_NAME_NATIVE,
+      GOLDEN_NAME_BUFFER, GOLDEN_NAME_CELLS,  GOLDEN_EVENT,
+      GOLDEN_RESERVED};
+  static const int text_after_record[] = {
+      GOLDEN_CODE,        GOLDEN_BUFFER,      GOLDEN_SHAPE,
+      GOLDEN_RECORD,      GOLDEN_TEXT,        GOLDEN_CELLS,
+      GOLDEN_BIND_CODE,   GOLDEN_BIND_NATIVE, GOLDEN_BIND_BUFFER,
+      GOLDEN_BIND_CELLS,  GOLDEN_NAME_CODE,   GOLDEN_NAME_NATIVE,
+      GOLDEN_NAME_BUFFER, GOLDEN_NAME_CELLS,  GOLDEN_EVENT,
+      GOLDEN_RESERVED};
+  static const int cells_before_record[] = {
+      GOLDEN_CODE,        GOLDEN_BUFFER,      GOLDEN_SHAPE,
+      GOLDEN_TEXT,        GOLDEN_CELLS,       GOLDEN_RECORD,
+      GOLDEN_BIND_CODE,   GOLDEN_BIND_NATIVE, GOLDEN_BIND_BUFFER,
+      GOLDEN_BIND_CELLS,  GOLDEN_NAME_CODE,   GOLDEN_NAME_NATIVE,
+      GOLDEN_NAME_BUFFER, GOLDEN_NAME_CELLS,  GOLDEN_EVENT,
+      GOLDEN_RESERVED};
+  enum { FULL = sizeof(full) / sizeof(full[0]) };
+  static uint8_t payload[4096];
+  static uint8_t extra[3600];
+  golden_record_t records[GOLDEN_RECORDS];
+  fr_slot_id_t s = fr_slot_first_project_id();
+  uint16_t length = 0;
+  uint16_t used = 0;
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("keep is 7", "ok\n");
+  golden_records(records);
+
+  /* The preamble and the end. */
+  length = golden_with(full, FULL, NULL, 0, payload);
+  payload[0] = 'X';
+  golden_expect_refused("another magic", payload, length, FR_ERR_CORRUPT);
+  length = golden_with(full, FULL, NULL, 0, payload);
+  payload[4] = 5;
+  golden_expect_refused("payload 5", payload, length, FR_ERR_CORRUPT);
+  length = golden_with(full, FULL, NULL, 0, payload);
+  payload[length] = 0;
+  golden_expect_refused("a byte after END", payload, (uint16_t)(length + 1u),
+                        FR_ERR_CORRUPT);
+  golden_expect_refused("no END", payload, (uint16_t)(length - 1u),
+                        FR_ERR_CORRUPT);
+
+  /* The order of the object records. */
+  length = golden_with(text_after_record, FULL, NULL, 0, payload);
+  golden_expect_refused("a record before its text", payload, length,
+                        FR_ERR_CORRUPT);
+  length = golden_with(cells_before_record, FULL, NULL, 0, payload);
+  golden_expect_refused("cells before their record", payload, length,
+                        FR_ERR_CORRUPT);
+
+  /* A second CODE with the id of the first. */
+  memcpy(extra, records[GOLDEN_CODE].bytes, records[GOLDEN_CODE].length);
+  length = golden_with(full, FULL, extra, records[GOLDEN_CODE].length,
+                       payload);
+  golden_expect_refused("a code id taken", payload, length, FR_ERR_CORRUPT);
+
+  /* An instruction length above the limit. */
+  used = 0;
+  extra[used++] = 1;
+  extra[used++] = (uint8_t)((s_runtime.code.base_image_count + 1u) & 0xffu);
+  extra[used++] = (uint8_t)((s_runtime.code.base_image_count + 1u) >> 8);
+  extra[used++] = (uint8_t)((FR_PROFILE_MAX_INSTRUCTION_BYTES + 1u) & 0xffu);
+  extra[used++] = (uint8_t)((FR_PROFILE_MAX_INSTRUCTION_BYTES + 1u) >> 8);
+  extra[used++] = 2;
+  extra[used++] = 2;
+  memset(&extra[used], FR_OP_RETURN, FR_PROFILE_MAX_INSTRUCTION_BYTES - 1u);
+  used = (uint16_t)(used + FR_PROFILE_MAX_INSTRUCTION_BYTES - 1u);
+  extra[used++] = 0;
+  extra[used++] = 0;
+  length = golden_with(full, FULL, extra, used, payload);
+  golden_expect_refused("instructions above the limit", payload, length,
+                        FR_ERR_RANGE);
+
+  /* The BIND count. */
+  used = 0;
+  for (uint16_t i = 0; i <= FR_PROFILE_MAX_SLOTS - 4u; i++) {
+    extra[used++] = 2;
+    extra[used++] = (uint8_t)((s + 1u) & 0xffu);
+    extra[used++] = (uint8_t)((s + 1u) >> 8);
+    extra[used++] = 2;
+    extra[used++] = 0;
+  }
+  length = golden_with(full, FULL, extra, used, payload);
+  golden_expect_refused("too many binds", payload, length, FR_ERR_CAPACITY);
+
+  /* The cell words of all CELLS: one-word CELLS until the words pass the
+   * limit. */
+  used = 0;
+  for (uint16_t i = 0; i < FR_PROFILE_MAX_CELL_WORDS - 3u; i++) {
+    extra[used++] = 4;
+    extra[used++] = (uint8_t)(5u + i);
+    extra[used++] = 0;
+    extra[used++] = 1;
+    extra[used++] = 0;
+    extra[used++] = 0;
+  }
+  length = golden_with(full, FULL, extra, used, payload);
+  golden_expect_refused("too many cell words", payload, length,
+                        FR_ERR_CAPACITY);
+
+  /* The fields of all shapes: four-field shapes until the fields pass the
+   * capacity. */
+  used = 0;
+  for (uint16_t i = 0; i < FR_RECORD_SHAPE_FIELD_CAPACITY / 4u; i++) {
+    static const uint8_t fields[] = {4, 0, 1, 0, 'w', 1, 0, 'x',
+                                     1, 0, 'y', 1, 0, 'z'};
+
+    extra[used++] = 6;
+    extra[used++] = (uint8_t)(5u + i);
+    extra[used++] = 0;
+    extra[used++] = 1;
+    extra[used++] = 0;
+    extra[used++] = (uint8_t)('A' + i);
+    memcpy(&extra[used], fields, sizeof(fields));
+    used = (uint16_t)(used + sizeof(fields));
+  }
+  length = golden_with(full, FULL, extra, used, payload);
+  golden_expect_refused("too many shape fields", payload, length,
+                        FR_ERR_CAPACITY);
+
+  /* The values of all records: records of P until the values pass the
+   * capacity. */
+  used = 0;
+  for (uint16_t i = 0; i < FR_RECORD_VALUE_FIELD_CAPACITY / 2u; i++) {
+    extra[used++] = 7;
+    extra[used++] = (uint8_t)(5u + i);
+    extra[used++] = 0;
+    extra[used++] = 1;
+    extra[used++] = 0;
+    extra[used++] = 2;
+    extra[used++] = 0;
+    extra[used++] = 0;
+    extra[used++] = 0;
+  }
+  length = golden_with(full, FULL, extra, used, payload);
+  golden_expect_refused("too many record values", payload, length,
+                        FR_ERR_CAPACITY);
+
+  /* Phase C: the name bytes of all shapes. Each shape has a name of the
+   * longest length and one field. */
+  used = 0;
+  for (uint16_t i = 0;
+       i < FR_PROFILE_MAX_RECORD_NAME_BYTES / FR_PROFILE_MAX_NAME_BYTES + 1u;
+       i++) {
+    extra[used++] = 6;
+    extra[used++] = (uint8_t)(5u + i);
+    extra[used++] = 0;
+    extra[used++] = FR_PROFILE_MAX_NAME_BYTES;
+    extra[used++] = 0;
+    memset(&extra[used], 'A', FR_PROFILE_MAX_NAME_BYTES);
+    extra[used] = (uint8_t)('A' + i);
+    used = (uint16_t)(used + FR_PROFILE_MAX_NAME_BYTES);
+    extra[used++] = 1;
+    extra[used++] = 0;
+    extra[used++] = 1;
+    extra[used++] = 0;
+    extra[used++] = 'v';
+  }
+  length = golden_with(full, FULL, extra, used, payload);
+  golden_expect_refused("too many shape name bytes", payload, length,
+                        FR_ERR_CAPACITY);
+}
+
+/* The object count of TEXT and BUFFER records: they share one count. */
+static void test_golden_payload_6_object_count_refusals(void) {
+  static uint8_t payload[2048];
+  uint16_t used = 5;
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  tier_eval_expect("keep is 7", "ok\n");
+  memcpy(payload, "FRPO\x06", 5);
+  for (uint16_t i = 0; i <= FR_PROFILE_OBJECT_TABLE_SIZE; i++) {
+    payload[used++] = 10;
+    payload[used++] = (uint8_t)(i & 0xffu);
+    payload[used++] = (uint8_t)(i >> 8);
+    payload[used++] = 1;
+    payload[used++] = 0;
+    payload[used++] = 0;
+    payload[used++] = 0;
+  }
+  payload[used++] = 0xff;
+  golden_expect_refused("too many buffers", payload, used, FR_ERR_CAPACITY);
+  used = 5;
+  for (uint16_t i = 0; i <= FR_PROFILE_OBJECT_TABLE_SIZE; i++) {
+    payload[used++] = 5;
+    payload[used++] = (uint8_t)(i & 0xffu);
+    payload[used++] = (uint8_t)(i >> 8);
+    payload[used++] = 2;
+    payload[used++] = 0;
+    payload[used++] = (uint8_t)('a' + i % 26u);
+    payload[used++] = (uint8_t)('a' + i / 26u);
+  }
+  payload[used++] = 0xff;
+  golden_expect_refused("too many texts", payload, used, FR_ERR_CAPACITY);
+}
+#endif
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_current_payload_accepts_user_tier);
@@ -3139,6 +3874,15 @@ int main(void) {
 #if FR_FEATURE_RECORDS
   RUN_TEST(test_repeated_text_and_shape_records_are_refused);
 #endif
+#endif
+#if FR_FEATURE_BUFFERS && FR_FEATURE_CELLS && FR_FEATURE_EVENTS &&          \
+    FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  RUN_TEST(test_v0122_image_answers_other_release);
+  RUN_TEST(test_envelope_3_refusals);
+  RUN_TEST(test_golden_payload_6_decodes_and_encodes_again);
+  RUN_TEST(test_golden_payload_6_refusals);
+  RUN_TEST(test_golden_payload_6_structure_refusals);
+  RUN_TEST(test_golden_payload_6_object_count_refusals);
 #endif
   RUN_TEST(test_repl_install_library_replies_ok);
   RUN_TEST(test_repl_install_user_replies_ok);

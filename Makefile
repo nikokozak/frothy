@@ -448,6 +448,34 @@ test-bytes-checked: ## Run the host_normal suites with checked Bytes tags (stale
 		TEST_BINARY=build/host-bytes-checked/test \
 		test _test-unity-run _test-ble-host-run
 
+# The profile hash of each profile in a host build: the release check of the
+# plan (printf 'status\n' | build/<board>/frothy). A new base word, limit,
+# feature or source base moves a hash. Then update this list and name the
+# move in the CHANGELOG.
+PROFILE_HASHES = \
+	host:host_normal:676c476c \
+	host:host_small:6c81f7c3 \
+	esp32_devkit_v1:esp32_plain:bb8d1b12 \
+	seeed_xiao_esp32c3:esp32c3_plain:3a366ee5 \
+	host:rp2040_plain:a2ed0ffc \
+	host:rp2040_nina:792ff572
+
+test-profile-hashes: ## Check the profile hash of each profile against its recorded value.
+	@for entry in $(PROFILE_HASHES); do \
+		board=$${entry%%:*}; rest=$${entry#*:}; profile=$${rest%%:*}; \
+		hash=$${rest#*:}; \
+		$(MAKE) -s BOARD=$$board TARGET=host PROFILE=$$profile \
+			BUILD_DIR=build/hash-$$profile \
+			FROTHY_BINARY=build/hash-$$profile/frothy frothy >/dev/null || exit 1; \
+		got=$$(printf 'status\n' | build/hash-$$profile/frothy | \
+			grep -o 'profile_hash=[0-9a-f]*'); \
+		if [ "$$got" != "profile_hash=$$hash" ]; then \
+			printf '%s: %s, recorded profile_hash=%s\n' "$$profile" "$$got" "$$hash"; \
+			exit 1; \
+		fi; \
+	done; \
+	printf 'profile hashes ok\n'
+
 test-buffers-off: ## Run the host_normal suite with buffers off (ADR 0088 gate).
 	$(MAKE) BOARD=host PROFILE=host_normal BUILD_DIR=build/host-buffers-off \
 		CFLAGS=-DFR_FEATURE_BUFFERS=0 \
@@ -1226,4 +1254,4 @@ vsix: ## Build the VS Code extension package.
 clean: ## Remove generated build outputs.
 	rm -rf build frothy test/test test/test-host-normal test/fixtures/projects/*/.frothy
 
-.PHONY: print-native-budget test-native-budget test test-esp-idf-console-boundary test-esp-idf-i2c-timeout test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config print-target-facts vsix clean
+.PHONY: print-native-budget test-native-budget test-buffers-off test-profile-hashes test test-esp-idf-console-boundary test-esp-idf-i2c-timeout test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config print-target-facts vsix clean
