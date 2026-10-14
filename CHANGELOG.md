@@ -71,12 +71,13 @@ image stays on the board until `save` or a wipe.
   locals and a loop answers `capacity exceeded (4)` with the note
   `space for locals in one form is full (limit 16)`. An event body has its own
   16 locals: before, the word and its event body shared one limit.
-- **The `esp32_plain` native table has more room.** On `esp32_plain` (ESP32
+- **The ESP32 native tables have more room.** On `esp32_plain` (ESP32
   DevKit V1, NodeMCU ESP-32S, XIAO ESP32S3, XIAO ESP32C6), the native table
   grows from 163 to 192 rows. After the base words, 43 rows stay free. The
   stepper and synth libraries use 23 rows together, so both fit on the boards
-  that support both (ESP32 DevKit V1 and XIAO ESP32S3). The XIAO ESP32C3 keeps
-  163 rows. `make test-native-budget` checks the room for the first-party
+  that support both (ESP32 DevKit V1 and XIAO ESP32S3). On the XIAO ESP32C3
+  (`esp32c3_plain`), the table grows from 163 to 176 rows, and 39 rows stay
+  free. `make test-native-budget` checks the room for the first-party
   libraries on each shipped board.
 - **More unsaved code fits before a `save`.** The area for unsaved code and
   parameter names grows from 1,544 to 4,608 bytes on these profiles:
@@ -99,7 +100,7 @@ image stays on the board until `save` or a wipe.
 - **The profile hash moves on every profile.**
   `printf 'status\n' | frothy` shows these values for the host build of
   each profile: `host_normal` 676c476c, `host_small` 6c81f7c3,
-  `esp32_plain` bb8d1b12, `esp32c3_plain` 3a366ee5, `rp2040_plain` a2ed0ffc
+  `esp32_plain` bb8d1b12, `esp32c3_plain` 24c3e661, `rp2040_plain` a2ed0ffc
   and `rp2040_nina` 792ff572. `make test-profile-hashes` checks them.
 - **A reply starts on its own line.** A word such as `print` or `pad.type`
   can leave the console line open. Then the device writes LF before its next
