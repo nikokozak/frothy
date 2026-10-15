@@ -31,16 +31,14 @@ typedef struct fr_code_table_t {
    * may drop only the overlay range.
    */
   fr_code_object_t entries[FR_PROFILE_CODE_OBJECT_TABLE_SIZE];
-  uint8_t overlay_instruction_bytes[FR_PROFILE_MAX_OVERLAY_CODE_BYTES > 0
-                                        ? FR_PROFILE_MAX_OVERLAY_CODE_BYTES
-                                        : 1];
-  char overlay_param_name_bytes[FR_PROFILE_MAX_OVERLAY_PARAM_NAME_BYTES > 0
-                                    ? FR_PROFILE_MAX_OVERLAY_PARAM_NAME_BYTES
-                                    : 1];
-  uint16_t overlay_used_instruction_bytes;
-  uint16_t overlay_used_param_name_bytes;
-  uint16_t base_ram_used_instruction_bytes;
-  uint16_t base_ram_used_param_name_bytes;
+  /* RAM code (ADR 0084): each instruction stream, then its parameter names,
+   * each ended by NUL. The base words come first. The two counters count
+   * code and names. */
+  uint8_t ram_code_bytes[FR_PROFILE_RAM_CODE_BYTES > 0
+                             ? FR_PROFILE_RAM_CODE_BYTES
+                             : 1];
+  uint16_t ram_code_used;
+  uint16_t ram_code_base_used;
   uint16_t count;
   uint16_t image_count;
   uint16_t base_image_count;

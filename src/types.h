@@ -107,6 +107,9 @@ typedef enum fr_diag_message_id_t {
   /* A fixed store is full: context_name names it, expected holds its limit,
    * unit says what the limit counts, note holds a remedy or NULL. */
   FR_DIAG_MSG_RUNTIME_CAPACITY,
+  /* Appended in v0.1.23. */
+  FR_DIAG_MSG_PARSE_BUFFERS_DISABLED,
+  FR_DIAG_MSG_PARSE_BUFFER_COLON,
 } fr_diag_message_id_t;
 
 const char *fr_diag_message(uint16_t message_id);
@@ -138,10 +141,12 @@ typedef enum fr_diag_value_kind_t {
   FR_DIAG_VALUE_RESERVED,
   FR_DIAG_VALUE_ANY,
   FR_DIAG_VALUE_TEXT,
-  FR_DIAG_VALUE_TEXT_OR_BYTES,
+  FR_DIAG_VALUE_TEXT_BYTES_OR_BUFFER,
   FR_DIAG_VALUE_CELLS,
   FR_DIAG_VALUE_RECORD,
   FR_DIAG_VALUE_RECORD_SHAPE,
+  FR_DIAG_VALUE_INT_TEXT_BYTES_OR_BUFFER,
+  FR_DIAG_VALUE_BUFFER,
 } fr_diag_value_kind_t;
 
 const char *fr_diag_value_kind_name(uint16_t value_kind);
@@ -215,11 +220,12 @@ typedef struct fr_handle_ref_t {
 } fr_handle_ref_t;
 
 typedef uint8_t fr_bytes_id_t;
-typedef uint8_t fr_bytes_generation_t;
 
+/* A Bytes tag names an entry. In a checked build (FR_BYTES_CHECKED) it also
+ * carries the rewind count of the entry; otherwise the count is 0. */
 typedef struct fr_bytes_ref_t {
   fr_bytes_id_t id;
-  fr_bytes_generation_t generation;
+  uint16_t rewinds;
 } fr_bytes_ref_t;
 
 /* T12L-7 D3: session-scoped install tier on the runtime. Wire-byte values

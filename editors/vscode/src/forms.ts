@@ -27,7 +27,7 @@ interface FormState {
   endLine: number;
 }
 
-// ponytail: This mirror stops at selecting source spans. Replace it if the
+// This mirror stops at selecting source spans. Replace it if the
 // compiler/session exposes spans; do not grow it into a second parser.
 export function splitForms(text: string): SourceForm[] {
   const forms: SourceForm[] = [];

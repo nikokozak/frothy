@@ -110,6 +110,10 @@ const char *fr_diag_message(uint16_t message_id) {
       [FR_DIAG_MSG_PARSE_TOO_DEEP] = "expression is too deeply nested",
       [FR_DIAG_MSG_PARSE_CELLS_COLON] =
           "cells takes its length after ':' -- write cells: 3",
+      [FR_DIAG_MSG_PARSE_BUFFERS_DISABLED] =
+          "buffers are not enabled in this build",
+      [FR_DIAG_MSG_PARSE_BUFFER_COLON] =
+          "buffer takes its capacity after ':' -- write buffer: 64",
       [FR_DIAG_MSG_PARSE_CHAINED_COMPARISON] =
           "comparisons don't chain -- join two comparisons with and",
       [FR_DIAG_MSG_PARSE_RUN_ON_STATEMENT] =
@@ -192,8 +196,19 @@ const char *fr_diag_value_kind_name(uint16_t value_kind) {
     return "anything";
   case FR_DIAG_VALUE_TEXT:
     return "text";
-  case FR_DIAG_VALUE_TEXT_OR_BYTES:
+#if FR_FEATURE_BUFFERS
+  case FR_DIAG_VALUE_TEXT_BYTES_OR_BUFFER:
+    return "text, bytes, or buffer";
+  case FR_DIAG_VALUE_INT_TEXT_BYTES_OR_BUFFER:
+    return "int, text, bytes, or buffer";
+#else
+  case FR_DIAG_VALUE_TEXT_BYTES_OR_BUFFER:
     return "text or bytes";
+  case FR_DIAG_VALUE_INT_TEXT_BYTES_OR_BUFFER:
+    return "int, text, or bytes";
+#endif
+  case FR_DIAG_VALUE_BUFFER:
+    return "buffer";
   case FR_DIAG_VALUE_CELLS:
     return "cells";
   case FR_DIAG_VALUE_RECORD:

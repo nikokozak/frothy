@@ -18,6 +18,7 @@
 #include "tagged.h"
 
 #include <stdbool.h>
+#include <string.h>
 
 /* Single-shot scratch: see finishes before the next REPL line, the same
  * lifetime the apply/run wire buffers in repl.c rely on. */
@@ -339,21 +340,21 @@ static fr_err_t fr_source_native_arity(fr_source_render_t *r,
 }
 
 /* Names are packed one per arg, each NUL-terminated. */
-static uint8_t fr_source_param_count(const char *names, uint16_t names_len) {
-  uint8_t count = 0;
+static uint16_t fr_source_param_count(const char *names, uint16_t names_len) {
+  uint16_t count = 0;
 
   for (uint16_t pos = 0; pos < names_len; pos++) {
     if (names[pos] == '\0') {
-      count = (uint8_t)(count + 1u);
+      count = (uint16_t)(count + 1u);
     }
   }
   return count;
 }
 
-/* Restored code installs with no stored parameter names (persist payload
- * stays param-name-less). Render canonical `argN` into the caller buffer
- * when that case shows up; the VM never sees these names. canon[7] holds
- * "arg" + up to three decimal digits (index is uint8_t) + NUL. */
+/* Code with no stored parameter names, such as code from `apply`, renders
+ * canonical `argN` into the caller buffer; the VM never sees these names.
+ * canon[7] holds "arg" + up to three decimal digits (index is uint8_t) +
+ * NUL. */
 static fr_err_t fr_source_param_name_at(const char *names, uint16_t names_len,
                                         uint8_t index, char canon[7],
                                         const char **out_name) {
@@ -398,7 +399,13 @@ static fr_err_t fr_source_param_name_at(const char *names, uint16_t names_len,
   return FR_OK;
 }
 
-static void fr_source_local_name(uint8_t index, char canon[9]) {
+/* `see` names a local `local<N>`. When a parameter has that name, it adds
+ * `_` until no parameter has it, so the source parses back (ADR 0084). */
+enum { FR_SOURCE_LOCAL_NAME_BYTES = 9 + FR_PROFILE_PARSE_MAX_PARAMS };
+
+static void fr_source_local_name(uint8_t index, const char *names,
+                                 uint16_t names_len,
+                                 char canon[FR_SOURCE_LOCAL_NAME_BYTES]) {
   char digits[3];
   uint8_t digit_count = 0;
   uint8_t magnitude = index;
@@ -420,6 +427,17 @@ static void fr_source_local_name(uint8_t index, char canon[9]) {
     canon[out_pos++] = digits[digit_count];
   }
   canon[out_pos] = '\0';
+  /* A parameter with the name adds `_`, and the scan starts again. */
+  for (uint16_t pos = 0; names != NULL && pos < names_len &&
+                         out_pos + 1u < FR_SOURCE_LOCAL_NAME_BYTES;) {
+    if (strcmp(&names[pos], canon) == 0) {
+      canon[out_pos++] = '_';
+      canon[out_pos] = '\0';
+      pos = 0;
+    } else {
+      pos = (uint16_t)(pos + strlen(&names[pos]) + 1u);
+    }
+  }
 }
 
 static fr_err_t fr_source_render_span(fr_source_render_t *r,
@@ -653,18 +671,31 @@ static fr_err_t fr_source_render_if(fr_source_render_t *r,
   return FR_OK;
 }
 
-/* When bytes scratch is enabled the compiler emits one FR_OP_BYTES_RESET byte
- * at each loop back-edge, between the body's trailing DROP and the
- * REPEAT_NEXT/JUMP (src/compile.c). */
+/* With Bytes, each loop keeps a checkpoint (ADR 0085): BYTES_BEGIN opens the
+ * loop, and a 2-byte BYTES_REWIND sits between the trailing DROP of the body
+ * and REPEAT_NEXT or JUMP (src/compile.c). A while also rewinds at its done
+ * target. The renderer skips both opcodes. */
 #if FR_FEATURE_BYTES
-#define FR_SOURCE_LOOP_RESET 1u
+#define FR_SOURCE_LOOP_REWIND 2u
 #else
-#define FR_SOURCE_LOOP_RESET 0u
+#define FR_SOURCE_LOOP_REWIND 0u
 #endif
 
-/* cond JUMP_IF_FALSY(done) <body> DROP [BYTES_RESET] JUMP(cond) done:PUSH_NIL —
- * the loop's value is that nil, so skip it and let the while text stand in its
- * place. */
+static bool fr_source_is_rewind(const fr_instruction_stream_t *view,
+                                fr_code_offset_t ip) {
+#if FR_FEATURE_BYTES
+  return (uint32_t)ip + 1u < view->length &&
+         (fr_opcode_t)view->bytes[ip] == FR_OP_BYTES_REWIND;
+#else
+  (void)view;
+  (void)ip;
+  return true;
+#endif
+}
+
+/* cond JUMP_IF_FALSY(done) <body> DROP [REWIND] JUMP(cond) done:[REWIND]
+ * PUSH_NIL — the loop's value is that nil, so skip it and let the while text
+ * stand in its place. */
 static fr_err_t fr_source_render_while(fr_source_render_t *r,
                                        const fr_instruction_stream_t *view,
                                        const char *names, uint16_t names_len,
@@ -672,15 +703,20 @@ static fr_err_t fr_source_render_while(fr_source_render_t *r,
                                        fr_code_offset_t false_target,
                                        fr_code_offset_t *out_ip) {
   fr_code_offset_t drop_ip =
-      (fr_code_offset_t)(false_target - 4u - FR_SOURCE_LOOP_RESET);
+      (fr_code_offset_t)(false_target - 4u - FR_SOURCE_LOOP_REWIND);
+  fr_code_offset_t nil_ip =
+      (fr_code_offset_t)(false_target + FR_SOURCE_LOOP_REWIND);
   fr_source_frag_t cond;
   uint16_t body_start = 0;
 
-  if (r->depth < 1) {
+  if (r->depth < 1 || (uint32_t)drop_ip < (uint32_t)ip + 3u ||
+      (uint32_t)false_target + FR_SOURCE_LOOP_REWIND >= view->length) {
     return FR_ERR_UNSUPPORTED;
   }
   if ((fr_opcode_t)view->bytes[drop_ip] != FR_OP_DROP ||
-      (fr_opcode_t)view->bytes[false_target] != FR_OP_PUSH_NIL) {
+      !fr_source_is_rewind(view, (fr_code_offset_t)(drop_ip + 1u)) ||
+      !fr_source_is_rewind(view, false_target) ||
+      (fr_opcode_t)view->bytes[nil_ip] != FR_OP_PUSH_NIL) {
     return FR_ERR_UNSUPPORTED;
   }
   cond = r->stack[r->depth - 1];
@@ -690,13 +726,13 @@ static fr_err_t fr_source_render_while(fr_source_render_t *r,
                                  (fr_code_offset_t)(ip + 3u), drop_ip,
                                  &body_start));
   FR_TRY(fr_source_reduce_while(r, cond, body_start));
-  *out_ip = (fr_code_offset_t)(false_target + 1u);
+  *out_ip = (fr_code_offset_t)(nil_ip + 1u);
   return FR_OK;
 }
 
-/* count REPEAT_BEGIN(done) <body> DROP [BYTES_RESET] REPEAT_NEXT(body)
+/* count [BEGIN] REPEAT_BEGIN(done) <body> DROP [REWIND] REPEAT_NEXT(body)
  * done:PUSH_NIL — same shape as while, with the count already on the stack as
- * the operand. */
+ * the operand. The main span skips the BEGIN. */
 static fr_err_t fr_source_render_repeat(fr_source_render_t *r,
                                         const fr_instruction_stream_t *view,
                                         const char *names, uint16_t names_len,
@@ -713,7 +749,7 @@ static fr_err_t fr_source_render_repeat(fr_source_render_t *r,
   uint8_t next_index_local = 0;
   uint8_t begin_width = 3;
   uint8_t next_width = 3;
-  char index_name[9];
+  char index_name[FR_SOURCE_LOCAL_NAME_BYTES];
   bool has_index = (fr_opcode_t)view->bytes[ip] == FR_OP_REPEAT_BEGIN_AS;
 
   if (r->depth < 1) {
@@ -724,7 +760,7 @@ static fr_err_t fr_source_render_repeat(fr_source_render_t *r,
     next_width = 4;
     FR_TRY(fr_instruction_read_jump_local_operands(view, ip, &done_target,
                                                    &index_local));
-    fr_source_local_name(index_local, index_name);
+    fr_source_local_name(index_local, names, names_len, index_name);
   } else {
     index_name[0] = '\0';
     FR_TRY(fr_instruction_read_jump_operand(view, ip, &done_target));
@@ -735,9 +771,11 @@ static fr_err_t fr_source_render_repeat(fr_source_render_t *r,
     return FR_ERR_UNSUPPORTED;
   }
   drop_ip = (fr_code_offset_t)(done_target - next_width - 1u -
-                               FR_SOURCE_LOOP_RESET);
+                               FR_SOURCE_LOOP_REWIND);
   next_ip = (fr_code_offset_t)(done_target - next_width);
-  if ((fr_opcode_t)view->bytes[drop_ip] != FR_OP_DROP ||
+  if (drop_ip < body_ip ||
+      (fr_opcode_t)view->bytes[drop_ip] != FR_OP_DROP ||
+      !fr_source_is_rewind(view, (fr_code_offset_t)(drop_ip + 1u)) ||
       (fr_opcode_t)view->bytes[done_target] != FR_OP_PUSH_NIL) {
     return FR_ERR_UNSUPPORTED;
   }
@@ -772,39 +810,54 @@ static fr_err_t fr_source_render_repeat(fr_source_render_t *r,
   return FR_OK;
 }
 
-/* The compiler ends a forever body with DROP, an optional bytes reset,
- * a backward JUMP, and PUSH_NIL. The first body fragment keeps the jump
- * target as its statement start. */
+/* The compiler opens a forever with BEGIN and ends its body with DROP, a
+ * REWIND, a backward JUMP to the statement after BEGIN, and PUSH_NIL. The
+ * first body fragment keeps the jump target as its statement start. */
 static fr_err_t fr_source_render_forever(
     fr_source_render_t *r, const fr_instruction_stream_t *view, uint8_t base,
     fr_code_offset_t jump_ip, fr_code_offset_t end,
     fr_code_offset_t *out_ip) {
   fr_code_offset_t target = 0;
+  fr_code_offset_t target_start = 0;
   fr_code_offset_t drop_ip = 0;
   uint8_t body_base = r->depth;
 
-  if (jump_ip < (fr_code_offset_t)(1u + FR_SOURCE_LOOP_RESET) ||
+  if (jump_ip < (fr_code_offset_t)(1u + FR_SOURCE_LOOP_REWIND) ||
       (fr_code_offset_t)(jump_ip + 3u) >= end ||
       (fr_opcode_t)view->bytes[jump_ip] != FR_OP_JUMP ||
       (fr_opcode_t)view->bytes[jump_ip + 3u] != FR_OP_PUSH_NIL) {
     return FR_ERR_UNSUPPORTED;
   }
   drop_ip =
-      (fr_code_offset_t)(jump_ip - 1u - FR_SOURCE_LOOP_RESET);
-  if ((fr_opcode_t)view->bytes[drop_ip] != FR_OP_DROP) {
+      (fr_code_offset_t)(jump_ip - 1u - FR_SOURCE_LOOP_REWIND);
+  if ((fr_opcode_t)view->bytes[drop_ip] != FR_OP_DROP ||
+      !fr_source_is_rewind(view, (fr_code_offset_t)(drop_ip + 1u))) {
     return FR_ERR_UNSUPPORTED;
   }
-#if FR_FEATURE_BYTES
-  if ((fr_opcode_t)view->bytes[jump_ip - 1u] != FR_OP_BYTES_RESET) {
-    return FR_ERR_UNSUPPORTED;
-  }
-#endif
   FR_TRY(fr_instruction_read_jump_operand(view, jump_ip, &target));
   if (target >= jump_ip) {
     return FR_ERR_UNSUPPORTED;
   }
+  /* A loop body starts after its BEGIN, and a statement that is a while or
+   * a forever starts with the BEGIN of that loop. Both name one statement
+   * start when the BEGIN run is skipped. */
+  target_start = target;
+#if FR_FEATURE_BYTES
+  while ((uint32_t)target_start + 1u < view->length &&
+         (fr_opcode_t)view->bytes[target_start] == FR_OP_BYTES_BEGIN) {
+    target_start = (fr_code_offset_t)(target_start + 2u);
+  }
+#endif
   for (uint8_t i = base; i < r->depth; i++) {
-    if (r->stack[i].statement_start == target) {
+    fr_code_offset_t start = r->stack[i].statement_start;
+
+#if FR_FEATURE_BYTES
+    while ((uint32_t)start + 1u < view->length &&
+           (fr_opcode_t)view->bytes[start] == FR_OP_BYTES_BEGIN) {
+      start = (fr_code_offset_t)(start + 2u);
+    }
+#endif
+    if (start == target_start) {
       body_base = i;
       break;
     }
@@ -1282,10 +1335,10 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
 #endif
     case FR_OP_LOAD_LOCAL: {
       uint8_t local_index = 0;
-      char canon[9];
+      char canon[FR_SOURCE_LOCAL_NAME_BYTES];
 
       FR_TRY(fr_instruction_read_local_operand(view, ip, &local_index));
-      fr_source_local_name(local_index, canon);
+      fr_source_local_name(local_index, names, names_len, canon);
       FR_TRY(fr_source_push_text(r, canon));
       ip = (fr_code_offset_t)(ip + 2u);
       break;
@@ -1294,7 +1347,7 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
       uint8_t local_index = 0;
       fr_source_frag_t value;
       uint16_t start = r->used;
-      char canon[9];
+      char canon[FR_SOURCE_LOCAL_NAME_BYTES];
 
       FR_TRY(fr_instruction_read_local_operand(view, ip, &local_index));
       if (r->depth < 1) {
@@ -1303,7 +1356,7 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
       value = r->stack[r->depth - 1];
       r->depth = (uint8_t)(r->depth - 1);
 
-      fr_source_local_name(local_index, canon);
+      fr_source_local_name(local_index, names, names_len, canon);
       FR_TRY(fr_source_puts(r, canon));
       FR_TRY(fr_source_puts(r, " is "));
       FR_TRY(fr_source_puts(r, &fr_source_render_arena[value.start]));
@@ -1315,7 +1368,7 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
       uint8_t local_index = 0;
       fr_source_frag_t value;
       uint16_t start = r->used;
-      char canon[9];
+      char canon[FR_SOURCE_LOCAL_NAME_BYTES];
 
       FR_TRY(fr_instruction_read_local_operand(view, ip, &local_index));
       if (r->depth < 1) {
@@ -1324,7 +1377,7 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
       value = r->stack[r->depth - 1];
       r->depth = (uint8_t)(r->depth - 1);
 
-      fr_source_local_name(local_index, canon);
+      fr_source_local_name(local_index, names, names_len, canon);
       FR_TRY(fr_source_puts(r, "set "));
       FR_TRY(fr_source_puts(r, canon));
       FR_TRY(fr_source_puts(r, " to "));
@@ -1427,17 +1480,21 @@ static fr_err_t fr_source_render_span(fr_source_render_t *r,
       ip = (fr_code_offset_t)(ip + 4u);
       break;
     }
-    case FR_OP_BYTES_RESET:
 #if FR_FEATURE_BYTES
-      if ((fr_code_offset_t)(ip + 1u) >= end ||
-          (fr_opcode_t)view->bytes[ip + 1u] != FR_OP_JUMP) {
+    case FR_OP_BYTES_BEGIN:
+      /* A loop checkpoint has no source text. */
+      ip = (fr_code_offset_t)(ip + 2u);
+      break;
+    case FR_OP_BYTES_REWIND:
+      /* Only the end of a forever body reaches here; while and repeat take
+       * their rewinds with their own shapes. */
+      if ((fr_code_offset_t)(ip + 2u) >= end ||
+          (fr_opcode_t)view->bytes[ip + 2u] != FR_OP_JUMP) {
         return FR_ERR_UNSUPPORTED;
       }
       FR_TRY(fr_source_render_forever(
-          r, view, base, (fr_code_offset_t)(ip + 1u), end, &ip));
+          r, view, base, (fr_code_offset_t)(ip + 2u), end, &ip));
       break;
-#else
-      return FR_ERR_UNSUPPORTED;
 #endif
     case FR_OP_JUMP:
 #if FR_FEATURE_BYTES
@@ -1487,8 +1544,12 @@ static fr_err_t fr_source_build(fr_source_render_t *r,
   FR_TRY(fr_instruction_read_header(&view, out_header));
   FR_TRY(fr_code_get_param_names(r->runtime, code_object_id, out_names,
                                  out_names_len));
-  if (out_header->arity > 0 && *out_names_len > 0 &&
-      fr_source_param_count(*out_names, *out_names_len) != out_header->arity) {
+  /* The readers below find each name by its NUL: refuse a run that a C
+   * caller installed with no final NUL or with another count. */
+  if (*out_names_len > 0 &&
+      ((*out_names)[*out_names_len - 1u] != '\0' ||
+       fr_source_param_count(*out_names, *out_names_len) !=
+           out_header->arity)) {
     return FR_ERR_UNSUPPORTED;
   }
   /* The body is one expression followed by a trailing RETURN. */

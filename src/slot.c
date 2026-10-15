@@ -167,8 +167,58 @@ static void fr_slot_project_name_clear(fr_runtime_t *runtime, uint16_t index) {
       .slot_id = 0,
       .bytes = NULL,
       .length = 0,
+      .state = FR_SLOT_NAME_NAMED,
   };
   runtime->slots.overlay_name_bytes[index][0] = '\0';
+}
+
+/* The one visibility rule of ADR 0089: an entry is active unless it is
+ * reserved. Lookup, `words`, the suggestions and the NAME records see active
+ * entries; the slot-to-name view also sees reserved ones. */
+static bool fr_slot_entry_is_active(const fr_slot_project_name_entry_t *entry) {
+  return entry->state != FR_SLOT_NAME_RESERVED;
+}
+
+static bool fr_slot_entry_has_name(const fr_runtime_t *runtime,
+                                   const fr_slot_project_name_entry_t *entry,
+                                   const char *name, uint16_t name_length) {
+  const char *stored = NULL;
+  uint8_t stored_length = 0;
+
+  return fr_slot_project_name_entry_view(runtime, entry, &stored,
+                                         &stored_length) == FR_OK &&
+         stored_length == name_length &&
+         memcmp(stored, name, name_length) == 0;
+}
+
+/* The index of the reserved entry with this name, or -1. */
+static int32_t fr_slot_reserved_index(const fr_runtime_t *runtime,
+                                      const char *name, uint16_t name_length) {
+  for (uint16_t i = 0; i < runtime->slots.overlay_name_count; i++) {
+    const fr_slot_project_name_entry_t *entry = &runtime->slots.overlay_names[i];
+
+    if (entry->state == FR_SLOT_NAME_RESERVED &&
+        fr_slot_entry_has_name(runtime, entry, name, name_length)) {
+      return (int32_t)i;
+    }
+  }
+  return -1;
+}
+
+/* The note of a full name or slot table. While a reserved entry exists, the
+ * note says that removed words count too (ADR 0089). */
+static void fr_slot_note_table_full(const fr_runtime_t *runtime,
+                                    const char *table, fr_int_t limit,
+                                    const char *remedy) {
+  for (uint16_t i = 0; i < runtime->slots.overlay_name_count; i++) {
+    if (runtime->slots.overlay_names[i].state == FR_SLOT_NAME_RESERVED) {
+      remedy = "names of removed words count too; a save frees the ones "
+               "that no code calls";
+      break;
+    }
+  }
+  fr_diag_note_capacity(runtime->diag, table, limit, FR_DIAG_UNIT_COUNT,
+                        remedy);
 }
 
 static void fr_slot_project_name_move(fr_runtime_t *runtime, uint16_t dst,
@@ -188,7 +238,7 @@ static void fr_slot_project_name_move(fr_runtime_t *runtime, uint16_t dst,
 }
 #endif
 
-fr_err_t fr_slot_read(fr_runtime_t *runtime, fr_slot_id_t slot_id,
+fr_err_t fr_slot_read(const fr_runtime_t *runtime, fr_slot_id_t slot_id,
                       fr_tagged_t *out_tagged) {
   if (runtime == NULL || out_tagged == NULL) {
     return FR_ERR_INVALID;
@@ -327,7 +377,8 @@ fr_err_t fr_slot_id_for_name(const fr_runtime_t *runtime, const char *name,
     FR_TRY(fr_slot_project_name_entry_view(
         runtime, &runtime->slots.overlay_names[i], &stored,
         &stored_length));
-    if (stored_length == name_length &&
+    if (fr_slot_entry_is_active(&runtime->slots.overlay_names[i]) &&
+        stored_length == name_length &&
         memcmp(stored, name, name_length) == 0) {
       *out_slot_id = runtime->slots.overlay_names[i].slot_id;
       return FR_OK;
@@ -465,51 +516,38 @@ static bool fr_slot_project_name_points_to(const fr_runtime_t *runtime,
 #endif
 }
 
-/* Drop the top of the slot table back down over any trailing slots that are no
- * longer in use: not overlaid, holding their base value, and unnamed. Keeps
- * slots.count == (highest live slot)+1 so the next project name is assigned the
- * lowest free id. Both name rollback and a user wipe free trailing slots and
- * must call this, or a later definition is assigned an id past what the install
- * validator will accept. */
+/* A free project slot has no name entry, holds its base value nil, is not
+ * an overlay, and has no tier and no library copy. No code names it (ADR
+ * 0089), so a new name can take it. */
+static bool fr_slot_is_free(const fr_runtime_t *runtime, fr_slot_id_t slot_id) {
+  return !runtime->slots.overlay[slot_id] &&
+         runtime->slots.current[slot_id] == runtime->slots.base[slot_id] &&
+         fr_tagged_is_nil(runtime->slots.base[slot_id]) &&
+         runtime->slots.base_tier[slot_id] == 0 &&
+         !runtime->slots.library_base_present[slot_id] &&
+         !fr_slot_project_name_points_to(runtime, slot_id);
+}
+
+/* Lower slots.count and slots.base_count over the free slots at their tops,
+ * so that each count ends just above the highest slot in use. */
 void fr_slot_reclaim_free_tail(fr_runtime_t *runtime) {
   fr_slot_id_t first_project_id = fr_slot_first_project_id();
 
   if (runtime == NULL) {
     return;
   }
-  while (runtime->slots.count > runtime->slots.base_count) {
-    fr_slot_id_t last = (fr_slot_id_t)(runtime->slots.count - 1);
-
-    if (runtime->slots.overlay[last] ||
-        runtime->slots.current[last] != runtime->slots.base[last] ||
-        fr_slot_project_name_points_to(runtime, last)) {
-      break;
-    }
-    runtime->slots.count = last;
+  while (runtime->slots.count > runtime->slots.base_count &&
+         fr_slot_is_free(runtime, (fr_slot_id_t)(runtime->slots.count - 1))) {
+    runtime->slots.count = (uint16_t)(runtime->slots.count - 1);
   }
-  while (runtime->slots.base_count > first_project_id) {
-    fr_slot_id_t last = (fr_slot_id_t)(runtime->slots.base_count - 1);
-
-    if (runtime->slots.base_tier[last] != 0 ||
-        runtime->slots.library_base_present[last]) {
-      break;
-    }
-    if (runtime->slots.overlay[last] ||
-        runtime->slots.current[last] != runtime->slots.base[last] ||
-        fr_slot_project_name_points_to(runtime, last)) {
-      break;
-    }
-    runtime->slots.base_count = last;
+  while (runtime->slots.base_count > first_project_id &&
+         fr_slot_is_free(runtime,
+                         (fr_slot_id_t)(runtime->slots.base_count - 1))) {
+    runtime->slots.base_count = (uint16_t)(runtime->slots.base_count - 1);
   }
-  while (runtime->slots.count > runtime->slots.base_count) {
-    fr_slot_id_t last = (fr_slot_id_t)(runtime->slots.count - 1);
-
-    if (runtime->slots.overlay[last] ||
-        runtime->slots.current[last] != runtime->slots.base[last] ||
-        fr_slot_project_name_points_to(runtime, last)) {
-      break;
-    }
-    runtime->slots.count = last;
+  while (runtime->slots.count > runtime->slots.base_count &&
+         fr_slot_is_free(runtime, (fr_slot_id_t)(runtime->slots.count - 1))) {
+    runtime->slots.count = (uint16_t)(runtime->slots.count - 1);
   }
 }
 
@@ -534,22 +572,31 @@ fr_err_t fr_slot_prepare_project_name(const fr_runtime_t *runtime,
   }
 
 #if FR_PROFILE_MAX_OVERLAY_NAMES > 0
-  fr_slot_id_t next = runtime->slots.count;
-  fr_slot_id_t first_project_id = fr_slot_first_project_id();
+  fr_slot_id_t next = 0;
+  uint16_t name_length = 0;
+  int32_t reserved = -1;
 
+  FR_TRY(fr_slot_name_length(name, &name_length));
+  reserved = fr_slot_reserved_index(runtime, name, name_length);
+  if (reserved >= 0) {
+    *out_slot_id = runtime->slots.overlay_names[reserved].slot_id;
+    return FR_OK;
+  }
   if (runtime->slots.overlay_name_count >= FR_PROFILE_MAX_OVERLAY_NAMES) {
-    fr_diag_note_capacity(runtime->diag, "name table",
-                          FR_PROFILE_MAX_OVERLAY_NAMES, FR_DIAG_UNIT_COUNT,
-                          "saved names count too");
+    fr_slot_note_table_full(runtime, "name table",
+                            FR_PROFILE_MAX_OVERLAY_NAMES,
+                            "saved names count too");
     return FR_ERR_CAPACITY;
   }
 
-  if (next < first_project_id) {
-    next = first_project_id;
+  /* The lowest free project slot, or the first id past the table's top. */
+  next = fr_slot_first_project_id();
+  while (next < runtime->slots.count && !fr_slot_is_free(runtime, next)) {
+    next = (fr_slot_id_t)(next + 1u);
   }
   if (next >= FR_PROFILE_MAX_SLOTS) {
-    fr_diag_note_capacity(runtime->diag, "slot table", FR_PROFILE_MAX_SLOTS,
-                          FR_DIAG_UNIT_COUNT, NULL);
+    fr_slot_note_table_full(runtime, "slot table", FR_PROFILE_MAX_SLOTS,
+                            NULL);
     return FR_ERR_CAPACITY;
   }
 
@@ -575,23 +622,23 @@ fr_err_t fr_slot_rollback_project_name(fr_runtime_t *runtime,
 
 #if FR_PROFILE_MAX_OVERLAY_NAMES > 0
   for (uint16_t i = 0; i < runtime->slots.overlay_name_count; i++) {
-    const char *stored = NULL;
-    uint8_t stored_length = 0;
+    fr_slot_project_name_entry_t *entry = &runtime->slots.overlay_names[i];
     uint16_t name_length = 0;
 
     FR_TRY(fr_slot_name_length(name, &name_length));
-    FR_TRY(fr_slot_project_name_entry_view(
-        runtime, &runtime->slots.overlay_names[i], &stored,
-        &stored_length));
-    if (runtime->slots.overlay_names[i].slot_id == slot_id &&
-        stored_length == name_length &&
-        memcmp(stored, name, name_length) == 0) {
-      for (uint16_t j = i + 1; j < runtime->slots.overlay_name_count; j++) {
-        fr_slot_project_name_move(runtime, (uint16_t)(j - 1), j);
+    if (entry->slot_id == slot_id &&
+        fr_slot_entry_has_name(runtime, entry, name, name_length)) {
+      /* A reserved name goes back to reserved; a new name goes. */
+      if (entry->state != FR_SLOT_NAME_NAMED) {
+        entry->state = FR_SLOT_NAME_RESERVED;
+      } else {
+        for (uint16_t j = i + 1; j < runtime->slots.overlay_name_count; j++) {
+          fr_slot_project_name_move(runtime, (uint16_t)(j - 1), j);
+        }
+        runtime->slots.overlay_name_count =
+            (uint16_t)(runtime->slots.overlay_name_count - 1);
+        fr_slot_project_name_clear(runtime, runtime->slots.overlay_name_count);
       }
-      runtime->slots.overlay_name_count =
-          (uint16_t)(runtime->slots.overlay_name_count - 1);
-      fr_slot_project_name_clear(runtime, runtime->slots.overlay_name_count);
       removed_name = true;
       break;
     }
@@ -649,6 +696,18 @@ fr_err_t fr_slot_validate_project_names(const fr_runtime_t *runtime,
     if (err != FR_ERR_NOT_FOUND) {
       return err;
     }
+    {
+      int32_t reserved = fr_slot_reserved_index(
+          runtime, names[i].name, (uint16_t)strlen(names[i].name));
+
+      if (reserved >= 0) {
+        if (runtime->slots.overlay_names[reserved].slot_id !=
+            names[i].slot_id) {
+          return FR_ERR_INVALID;
+        }
+        continue;
+      }
+    }
 
     for (uint16_t j = 0; j < new_name_count; j++) {
       if (strcmp(new_names[j], names[i].name) == 0) {
@@ -665,15 +724,23 @@ fr_err_t fr_slot_validate_project_names(const fr_runtime_t *runtime,
 
     if ((uint32_t)runtime->slots.overlay_name_count + new_name_count >=
         FR_PROFILE_MAX_OVERLAY_NAMES) {
-      fr_diag_note_capacity(runtime->diag, "name table",
-                            FR_PROFILE_MAX_OVERLAY_NAMES, FR_DIAG_UNIT_COUNT,
+      fr_slot_note_table_full(runtime, "name table",
+                            FR_PROFILE_MAX_OVERLAY_NAMES,
                             "saved names count too");
       return FR_ERR_CAPACITY;
     }
-    if (!has_next_new_slot) {
-      FR_TRY(fr_slot_prepare_project_name(runtime, names[i].name,
-                                          &next_new_slot));
-      has_next_new_slot = true;
+    /* New names take the free slots in order, as prepare gives them. */
+    next_new_slot = has_next_new_slot ? (fr_slot_id_t)(next_new_slot + 1u)
+                                      : fr_slot_first_project_id();
+    while (next_new_slot < runtime->slots.count &&
+           !fr_slot_is_free(runtime, next_new_slot)) {
+      next_new_slot = (fr_slot_id_t)(next_new_slot + 1u);
+    }
+    has_next_new_slot = true;
+    if (next_new_slot >= FR_PROFILE_MAX_SLOTS) {
+      fr_slot_note_table_full(runtime, "slot table", FR_PROFILE_MAX_SLOTS,
+                            NULL);
+      return FR_ERR_CAPACITY;
     }
     if (names[i].slot_id != next_new_slot) {
       return FR_ERR_INVALID;
@@ -682,7 +749,6 @@ fr_err_t fr_slot_validate_project_names(const fr_runtime_t *runtime,
     new_names[new_name_count] = names[i].name;
     new_slots[new_name_count] = names[i].slot_id;
     new_name_count = (uint16_t)(new_name_count + 1);
-    next_new_slot = (fr_slot_id_t)(next_new_slot + 1);
   }
 
   return FR_OK;
@@ -712,10 +778,21 @@ fr_err_t fr_slot_bind_project_name(fr_runtime_t *runtime, const char *name,
   }
 
 #if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  {
+    int32_t reserved = fr_slot_reserved_index(runtime, name, length);
+
+    if (reserved >= 0) {
+      if (runtime->slots.overlay_names[reserved].slot_id != slot_id) {
+        return FR_ERR_INVALID;
+      }
+      runtime->slots.overlay_names[reserved].state = FR_SLOT_NAME_TAKEN;
+      return FR_OK;
+    }
+  }
   if (runtime->slots.overlay_name_count >= FR_PROFILE_MAX_OVERLAY_NAMES) {
-    fr_diag_note_capacity(runtime->diag, "name table",
-                          FR_PROFILE_MAX_OVERLAY_NAMES, FR_DIAG_UNIT_COUNT,
-                          "saved names count too");
+    fr_slot_note_table_full(runtime, "name table",
+                            FR_PROFILE_MAX_OVERLAY_NAMES,
+                            "saved names count too");
     return FR_ERR_CAPACITY;
   }
   if (slot_id < fr_slot_first_project_id() || slot_id >= runtime->slots.count) {
@@ -732,6 +809,7 @@ fr_err_t fr_slot_bind_project_name(fr_runtime_t *runtime, const char *name,
               runtime->slots
                   .overlay_name_bytes[runtime->slots.overlay_name_count],
           .length = (uint8_t)length,
+          .state = FR_SLOT_NAME_NAMED,
       };
   runtime->slots.overlay_name_count =
       (uint16_t)(runtime->slots.overlay_name_count + 1);
@@ -766,11 +844,17 @@ fr_err_t fr_slot_mount_project_name(fr_runtime_t *runtime, const char *name,
   }
   for (uint16_t i = 0; i < runtime->slots.overlay_name_count; i++) {
     if (runtime->slots.overlay_names[i].slot_id == slot_id) {
+      /* One entry per slot: another name on this slot is refused. */
+      if (!fr_slot_entry_has_name(runtime, &runtime->slots.overlay_names[i],
+                                  name, length)) {
+        return FR_ERR_CORRUPT;
+      }
       runtime->slots.overlay_names[i] = (fr_slot_project_name_entry_t){
           .storage_kind = FR_SLOT_NAME_STORAGE_IMAGE,
           .slot_id = slot_id,
           .bytes = name,
           .length = length,
+          .state = FR_SLOT_NAME_NAMED,
       };
       return FR_OK;
     }
@@ -795,6 +879,7 @@ fr_err_t fr_slot_mount_project_name(fr_runtime_t *runtime, const char *name,
           .slot_id = slot_id,
           .bytes = name,
           .length = length,
+          .state = FR_SLOT_NAME_NAMED,
       };
   runtime->slots.overlay_name_count =
       (uint16_t)(runtime->slots.overlay_name_count + 1);
@@ -804,6 +889,123 @@ fr_err_t fr_slot_mount_project_name(fr_runtime_t *runtime, const char *name,
   (void)err;
   (void)slot_id;
   return FR_ERR_UNSUPPORTED;
+#endif
+}
+
+fr_err_t fr_slot_mount_reserved_name(fr_runtime_t *runtime, const char *name,
+                                     uint8_t length, fr_slot_id_t slot_id) {
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  if (runtime == NULL || name == NULL || length == 0 ||
+      length > FR_PROFILE_MAX_NAME_BYTES || slot_id >= FR_PROFILE_MAX_SLOTS ||
+      slot_id < fr_slot_first_project_id()) {
+    return FR_ERR_INVALID;
+  }
+  for (uint16_t i = 0; i < runtime->slots.overlay_name_count; i++) {
+    const fr_slot_project_name_entry_t *entry = &runtime->slots.overlay_names[i];
+
+    if (entry->slot_id == slot_id ||
+        fr_slot_entry_has_name(runtime, entry, name, length)) {
+      return FR_ERR_CORRUPT;
+    }
+  }
+  if (runtime->slots.overlay_name_count >= FR_PROFILE_MAX_OVERLAY_NAMES) {
+    return FR_ERR_CAPACITY;
+  }
+  /* A reserved slot counts in the saved part, so `clear` keeps the next new
+   * id above it (ADR 0089). */
+  fr_slot_note_base_id(&runtime->slots, slot_id);
+  runtime->slots.overlay_names[runtime->slots.overlay_name_count] =
+      (fr_slot_project_name_entry_t){
+          .storage_kind = FR_SLOT_NAME_STORAGE_IMAGE,
+          .slot_id = slot_id,
+          .bytes = name,
+          .length = length,
+          .state = FR_SLOT_NAME_RESERVED,
+      };
+  runtime->slots.overlay_name_count =
+      (uint16_t)(runtime->slots.overlay_name_count + 1);
+  return FR_OK;
+#else
+  (void)runtime;
+  (void)name;
+  (void)length;
+  (void)slot_id;
+  return FR_ERR_UNSUPPORTED;
+#endif
+}
+
+void fr_slot_drop_reserved_names(fr_runtime_t *runtime) {
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  uint16_t dst = 0;
+
+  if (runtime == NULL) {
+    return;
+  }
+  /* One pass: each named entry moves down over the dropped ones. */
+  for (uint16_t src = 0; src < runtime->slots.overlay_name_count; src++) {
+    if (runtime->slots.overlay_names[src].state == FR_SLOT_NAME_NAMED) {
+      fr_slot_project_name_move(runtime, dst, src);
+      dst = (uint16_t)(dst + 1u);
+    }
+  }
+  for (uint16_t i = dst; i < runtime->slots.overlay_name_count; i++) {
+    fr_slot_project_name_clear(runtime, i);
+  }
+  runtime->slots.overlay_name_count = dst;
+#else
+  (void)runtime;
+#endif
+}
+
+bool fr_slot_project_name_active_at(const fr_runtime_t *runtime,
+                                    uint16_t index) {
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  return runtime != NULL && index < runtime->slots.overlay_name_count &&
+         fr_slot_entry_is_active(&runtime->slots.overlay_names[index]);
+#else
+  (void)runtime;
+  (void)index;
+  return false;
+#endif
+}
+
+fr_err_t fr_slot_active_name_view(const fr_runtime_t *runtime,
+                                  fr_slot_id_t slot_id, const char **out_name,
+                                  uint8_t *out_length) {
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  if (runtime != NULL) {
+    for (uint16_t i = 0; i < runtime->slots.overlay_name_count; i++) {
+      if (runtime->slots.overlay_names[i].slot_id == slot_id &&
+          !fr_slot_entry_is_active(&runtime->slots.overlay_names[i])) {
+        return FR_ERR_NOT_FOUND;
+      }
+    }
+  }
+#endif
+  return fr_slot_name_view(runtime, slot_id, out_name, out_length);
+}
+
+fr_err_t fr_slot_reserved_name_at(const fr_runtime_t *runtime, uint16_t index,
+                                  fr_slot_id_t *out_slot_id,
+                                  const char **out_name, uint8_t *out_length) {
+#if FR_PROFILE_MAX_OVERLAY_NAMES > 0
+  if (runtime == NULL || out_slot_id == NULL ||
+      index >= runtime->slots.overlay_name_count) {
+    return FR_ERR_INVALID;
+  }
+  if (runtime->slots.overlay_names[index].state != FR_SLOT_NAME_RESERVED) {
+    return FR_ERR_NOT_FOUND;
+  }
+  *out_slot_id = runtime->slots.overlay_names[index].slot_id;
+  return fr_slot_project_name_entry_view(
+      runtime, &runtime->slots.overlay_names[index], out_name, out_length);
+#else
+  (void)runtime;
+  (void)index;
+  (void)out_slot_id;
+  (void)out_name;
+  (void)out_length;
+  return FR_ERR_NOT_FOUND;
 #endif
 }
 

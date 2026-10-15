@@ -54,19 +54,11 @@ void fr_code_clear_overlay(fr_runtime_t *runtime) {
   memset(&runtime->code.entries[runtime->code.image_count], 0,
          (FR_PROFILE_CODE_OBJECT_TABLE_SIZE - runtime->code.image_count) *
              sizeof(runtime->code.entries[0]));
-  memset(&runtime->code.overlay_instruction_bytes
-             [runtime->code.base_ram_used_instruction_bytes],
-         0, sizeof(runtime->code.overlay_instruction_bytes) -
-                runtime->code.base_ram_used_instruction_bytes);
-  memset(&runtime->code.overlay_param_name_bytes
-             [runtime->code.base_ram_used_param_name_bytes],
-         0, sizeof(runtime->code.overlay_param_name_bytes) -
-                runtime->code.base_ram_used_param_name_bytes);
+  memset(&runtime->code.ram_code_bytes[runtime->code.ram_code_base_used], 0,
+         sizeof(runtime->code.ram_code_bytes) -
+             runtime->code.ram_code_base_used);
   runtime->code.count = runtime->code.image_count;
-  runtime->code.overlay_used_instruction_bytes =
-      runtime->code.base_ram_used_instruction_bytes;
-  runtime->code.overlay_used_param_name_bytes =
-      runtime->code.base_ram_used_param_name_bytes;
+  runtime->code.ram_code_used = runtime->code.ram_code_base_used;
 }
 
 void fr_code_mark_base(fr_runtime_t *runtime) {
@@ -86,10 +78,7 @@ void fr_code_mark_base(fr_runtime_t *runtime) {
   runtime->code.count = keep_count;
   runtime->code.image_count = keep_count;
   runtime->code.base_image_count = keep_count;
-  runtime->code.base_ram_used_instruction_bytes =
-      runtime->code.overlay_used_instruction_bytes;
-  runtime->code.base_ram_used_param_name_bytes =
-      runtime->code.overlay_used_param_name_bytes;
+  runtime->code.ram_code_base_used = runtime->code.ram_code_used;
   runtime->code.image_mounted = true;
 }
 
@@ -124,21 +113,13 @@ void fr_code_restore_base(fr_runtime_t *runtime) {
   memset(&runtime->code.entries[keep_count], 0,
          (FR_PROFILE_CODE_OBJECT_TABLE_SIZE - keep_count) *
              sizeof(runtime->code.entries[0]));
-  memset(&runtime->code.overlay_instruction_bytes
-             [runtime->code.base_ram_used_instruction_bytes],
-         0, sizeof(runtime->code.overlay_instruction_bytes) -
-                runtime->code.base_ram_used_instruction_bytes);
-  memset(&runtime->code.overlay_param_name_bytes
-             [runtime->code.base_ram_used_param_name_bytes],
-         0, sizeof(runtime->code.overlay_param_name_bytes) -
-                runtime->code.base_ram_used_param_name_bytes);
+  memset(&runtime->code.ram_code_bytes[runtime->code.ram_code_base_used], 0,
+         sizeof(runtime->code.ram_code_bytes) -
+             runtime->code.ram_code_base_used);
 
   runtime->code.image_count = keep_count;
   runtime->code.count = keep_count;
-  runtime->code.overlay_used_instruction_bytes =
-      runtime->code.base_ram_used_instruction_bytes;
-  runtime->code.overlay_used_param_name_bytes =
-      runtime->code.base_ram_used_param_name_bytes;
+  runtime->code.ram_code_used = runtime->code.ram_code_base_used;
 }
 
 void fr_code_rebase_ram_pointers(fr_runtime_t *runtime,
@@ -156,25 +137,25 @@ void fr_code_rebase_ram_pointers(fr_runtime_t *runtime,
       continue;
     }
     if (entry->instruction_bytes != NULL) {
-      uintptr_t src = (uintptr_t)source->code.overlay_instruction_bytes;
+      uintptr_t src = (uintptr_t)source->code.ram_code_bytes;
       uintptr_t ptr = (uintptr_t)entry->instruction_bytes;
 
       if (ptr >= src) {
         uintptr_t offset = ptr - src;
-        if (offset < sizeof(runtime->code.overlay_instruction_bytes)) {
-          entry->instruction_bytes =
-              &runtime->code.overlay_instruction_bytes[offset];
+        if (offset < sizeof(runtime->code.ram_code_bytes)) {
+          entry->instruction_bytes = &runtime->code.ram_code_bytes[offset];
         }
       }
     }
     if (entry->param_names != NULL) {
-      uintptr_t src = (uintptr_t)source->code.overlay_param_name_bytes;
+      uintptr_t src = (uintptr_t)source->code.ram_code_bytes;
       uintptr_t ptr = (uintptr_t)entry->param_names;
 
       if (ptr >= src) {
         uintptr_t offset = ptr - src;
-        if (offset < sizeof(runtime->code.overlay_param_name_bytes)) {
-          entry->param_names = &runtime->code.overlay_param_name_bytes[offset];
+        if (offset < sizeof(runtime->code.ram_code_bytes)) {
+          entry->param_names =
+              (const char *)&runtime->code.ram_code_bytes[offset];
         }
       }
     }
@@ -207,31 +188,24 @@ fr_code_install_in_ram(fr_runtime_t *runtime, fr_code_storage_kind_t kind,
                           FR_DIAG_UNIT_COUNT, "saved words count too");
     return FR_ERR_CAPACITY;
   }
-  if ((uint32_t)runtime->code.overlay_used_instruction_bytes + view->length >
-      sizeof(runtime->code.overlay_instruction_bytes)) {
-    fr_diag_note_capacity(
-        runtime->diag, "pending code",
-        (fr_int_t)(sizeof(runtime->code.overlay_instruction_bytes) -
-                   runtime->code.base_ram_used_instruction_bytes),
-        FR_DIAG_UNIT_BYTES, "a save that succeeds frees it");
-    return FR_ERR_CAPACITY;
-  }
-  if ((uint32_t)runtime->code.overlay_used_param_name_bytes +
+  /* The names follow the code in the same area, so one check covers both. */
+  if ((uint32_t)runtime->code.ram_code_used + view->length +
           param_names_length >
-      sizeof(runtime->code.overlay_param_name_bytes)) {
-    param_names_length = 0;
+      sizeof(runtime->code.ram_code_bytes)) {
+    fr_diag_note_capacity(runtime->diag, "pending code",
+                          (fr_int_t)(sizeof(runtime->code.ram_code_bytes) -
+                                     runtime->code.ram_code_base_used),
+                          FR_DIAG_UNIT_BYTES, "a save that succeeds frees it");
+    return FR_ERR_CAPACITY;
   }
 
   entry = &runtime->code.entries[runtime->code.count];
   entry->storage_kind = kind;
   entry->instruction_bytes =
-      &runtime->code.overlay_instruction_bytes
-           [runtime->code.overlay_used_instruction_bytes];
+      &runtime->code.ram_code_bytes[runtime->code.ram_code_used];
   entry->instruction_byte_length = view->length;
   entry->instruction_storage_offset = 0;
-  entry->param_names =
-      &runtime->code.overlay_param_name_bytes
-           [runtime->code.overlay_used_param_name_bytes];
+  entry->param_names = (const char *)&entry->instruction_bytes[view->length];
   entry->param_name_byte_length = param_names_length;
 
   memcpy((uint8_t *)entry->instruction_bytes, view->bytes, view->length);
@@ -241,11 +215,8 @@ fr_code_install_in_ram(fr_runtime_t *runtime, fr_code_storage_kind_t kind,
 
   *out_code_object_id = runtime->code.count;
   runtime->code.count = (uint16_t)(runtime->code.count + 1u);
-  runtime->code.overlay_used_instruction_bytes =
-      (uint16_t)((uint32_t)runtime->code.overlay_used_instruction_bytes +
-                 view->length);
-  runtime->code.overlay_used_param_name_bytes =
-      (uint16_t)((uint32_t)runtime->code.overlay_used_param_name_bytes +
+  runtime->code.ram_code_used =
+      (uint16_t)((uint32_t)runtime->code.ram_code_used + view->length +
                  param_names_length);
   if (kind == FR_CODE_STORAGE_BASE_RAM) {
     runtime->code.image_count = runtime->code.count;
@@ -382,10 +353,9 @@ fr_err_t fr_code_get_instructions(const fr_runtime_t *runtime,
   }
   if ((entry->storage_kind == FR_CODE_STORAGE_BASE_RAM ||
        entry->storage_kind == FR_CODE_STORAGE_OVERLAY_RAM) &&
-      !fr_code_pointer_in_range(entry->instruction_bytes,
-                                entry->instruction_byte_length,
-                                runtime->code.overlay_instruction_bytes,
-                                runtime->code.overlay_used_instruction_bytes)) {
+      !fr_code_pointer_in_range(
+          entry->instruction_bytes, entry->instruction_byte_length,
+          runtime->code.ram_code_bytes, runtime->code.ram_code_used)) {
     return FR_ERR_CORRUPT;
   }
 #if FR_FEATURE_PERSISTENCE
@@ -483,10 +453,9 @@ fr_err_t fr_code_get_param_names(const fr_runtime_t *runtime,
   }
   if ((entry->storage_kind == FR_CODE_STORAGE_BASE_RAM ||
        entry->storage_kind == FR_CODE_STORAGE_OVERLAY_RAM) &&
-      !fr_code_pointer_in_range(entry->param_names,
-                                entry->param_name_byte_length,
-                                runtime->code.overlay_param_name_bytes,
-                                runtime->code.overlay_used_param_name_bytes)) {
+      !fr_code_pointer_in_range(
+          entry->param_names, entry->param_name_byte_length,
+          runtime->code.ram_code_bytes, runtime->code.ram_code_used)) {
     return FR_ERR_CORRUPT;
   }
 #if FR_FEATURE_PERSISTENCE

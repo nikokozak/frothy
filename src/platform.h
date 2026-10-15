@@ -198,15 +198,19 @@ fr_err_t fr_platform_console_read_line(uint8_t *bytes, uint16_t cap,
                                        uint16_t *out_length);
 fr_err_t fr_platform_write_text(const char *text);
 #ifdef FR_HOST_TEST_HELPERS
-/* Test-only: capture platform text in out. NULL restores stdout. */
+/* Test-only: capture console text and byte writes in out. NULL restores stdout. */
 void fr_host_capture_text(char *out, uint16_t cap);
 #endif
 /* Idle-servicing hook. The REPL registers a handler the platform calls while
  * read_line waits for the next byte, so timer and interrupt events fire at an
- * idle prompt instead of only while a program runs. A platform whose read
- * blocks with no poll loop (host stdin) treats registration as a no-op. */
+ * idle prompt instead of only while a program runs. The host read blocks
+ * with no poll loop, so only a test runs the handler there. */
 typedef fr_err_t (*fr_platform_idle_fn)(void *ctx);
 void fr_platform_set_idle_handler(fr_platform_idle_fn handler, void *ctx);
+#ifdef FR_HOST_TEST_HELPERS
+/* Test-only: run the idle handler once, as a device does while it waits. */
+void fr_host_debug_run_idle(void);
+#endif
 #endif
 
 #if FR_FEATURE_REPL || FR_FEATURE_PAD
@@ -823,6 +827,10 @@ fr_err_t fr_platform_persist_mount(uint8_t image_index,
 fr_err_t fr_platform_persist_mount_commit(void);
 void fr_platform_persist_mount_discard(void);
 void fr_platform_persist_unmount(void);
+/* Borrow the image that the runtime is mounted on, or FR_ERR_NOT_FOUND when
+ * none is mounted. A save reads the records that it keeps from this image. */
+fr_err_t fr_platform_persist_mounted_image(const uint8_t **out_bytes,
+                                           uint16_t *out_length);
 bool fr_platform_persist_pointer_is_mounted(const void *ptr, uint16_t length);
 bool fr_platform_persist_code_pointer_is_direct(const void *ptr,
                                                 uint16_t length);
@@ -847,7 +855,13 @@ fr_err_t fr_platform_persist_clear(void);
  * stored image without exposing the backend's slot layout. */
 fr_err_t fr_host_persist_debug_corrupt_newest(uint16_t offset, uint8_t value);
 void fr_host_persist_debug_interrupt_next_header_write(void);
+/* The next finalize writes its header and then returns an error. */
+void fr_host_persist_debug_fail_after_next_header_write(void);
+/* Each call makes one more mount commit fail. */
 void fr_host_persist_debug_fail_next_mount_commit(void);
+/* One step of the next save fails: step 0 is the erase at stream begin, and
+ * step n is the nth stream write. */
+void fr_host_persist_debug_fail_stream_step(uint16_t step);
 void fr_host_persist_debug_shadow_mounts(bool enabled);
 void fr_host_persist_debug_direct_code_pointers(bool enabled);
 #endif

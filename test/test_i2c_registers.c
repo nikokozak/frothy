@@ -16,6 +16,7 @@
 #include "unity/unity.h"
 
 #include <stdint.h>
+#include <string.h>
 
 void setUp(void) {
 #if FR_FEATURE_I2C
@@ -169,6 +170,33 @@ static void test_write_value_out_of_range_rejects(void) {
                         sizeof(out)));
 }
 
+#if FR_FEATURE_BUFFERS
+/* The bytes of i2c.write can be a buffer (ADR 0088). */
+static void test_write_takes_a_buffer(void) {
+  char out[160];
+  uint8_t writes[8];
+
+  open_bus();
+  TEST_ASSERT_EQUAL(FR_OK, fr_repl_eval_line(&s_runtime, "data is buffer: 2",
+                                             out, sizeof(out)));
+  TEST_ASSERT_EQUAL(FR_OK, fr_repl_eval_line(&s_runtime,
+                                             "buffer.set: data, \"AB\"", out,
+                                             sizeof(out)));
+  TEST_ASSERT_EQUAL(FR_OK, fr_repl_eval_line(&s_runtime,
+                                             "i2c.write: bus, 0x76, data", out,
+                                             sizeof(out)));
+  TEST_ASSERT_EQUAL_STRING("ok\n", out);
+  TEST_ASSERT_EQUAL_UINT16(2u, fr_host_i2c_drain_writes(0, writes,
+                                                        sizeof(writes)));
+  TEST_ASSERT_EQUAL_UINT8('A', writes[0]);
+  TEST_ASSERT_EQUAL_UINT8('B', writes[1]);
+  TEST_ASSERT_EQUAL(FR_ERR_TYPE, fr_repl_eval_line(&s_runtime,
+                                                   "i2c.write: bus, 0x76, nil",
+                                                   out, sizeof(out)));
+  TEST_ASSERT_NOT_NULL(strstr(out, "expects text, bytes, or buffer, got nil"));
+}
+#endif
+
 #endif /* FR_FEATURE_I2C */
 
 int main(void) {
@@ -177,6 +205,9 @@ int main(void) {
   RUN_TEST(test_read_reg_returns_queued_byte_and_writes_register);
   RUN_TEST(test_read_reg16_assembles_msb_first);
   RUN_TEST(test_write_reg_emits_two_bytes_in_order);
+#if FR_FEATURE_BUFFERS
+  RUN_TEST(test_write_takes_a_buffer);
+#endif
   RUN_TEST(test_write_reg16_emits_msb_first);
   RUN_TEST(test_addr_above_127_rejects);
   RUN_TEST(test_reg_above_255_rejects);

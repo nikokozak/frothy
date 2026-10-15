@@ -3,6 +3,7 @@
 #include "base_defs.h"
 #include "config.h"
 #include "crc.h"
+#include "instruction.h"
 #include "lib_native.h"
 #include "tagged.h"
 
@@ -49,17 +50,17 @@
   FR_PROFILE_MAX_DEFINITION_CODE_OBJECTS
 #endif
 
-#ifndef FR_PROFILE_HASH_MAX_OVERLAY_CODE_BYTES
-#define FR_PROFILE_HASH_MAX_OVERLAY_CODE_BYTES FR_PROFILE_MAX_OVERLAY_CODE_BYTES
+#ifndef FR_PROFILE_HASH_RAM_CODE_BYTES
+#define FR_PROFILE_HASH_RAM_CODE_BYTES FR_PROFILE_RAM_CODE_BYTES
 #endif
 
 #ifndef FR_PROFILE_HASH_MAX_OVERLAY_TEXT_BYTES
 #define FR_PROFILE_HASH_MAX_OVERLAY_TEXT_BYTES FR_PROFILE_MAX_OVERLAY_TEXT_BYTES
 #endif
 
-#ifndef FR_PROFILE_HASH_MAX_OVERLAY_PARAM_NAME_BYTES
-#define FR_PROFILE_HASH_MAX_OVERLAY_PARAM_NAME_BYTES                          \
-  FR_PROFILE_MAX_OVERLAY_PARAM_NAME_BYTES
+#ifndef FR_PROFILE_HASH_MAX_DEFINITION_PARAM_NAME_BYTES
+#define FR_PROFILE_HASH_MAX_DEFINITION_PARAM_NAME_BYTES                       \
+  FR_MAX_DEFINITION_PARAM_NAME_BYTES
 #endif
 
 #ifndef FR_PROFILE_HASH_MAX_SOURCE_RENDER_BYTES
@@ -204,6 +205,10 @@
 #define FR_PROFILE_HASH_FEATURE_RECORDS FR_FEATURE_RECORDS
 #endif
 
+#ifndef FR_PROFILE_HASH_FEATURE_BUFFERS
+#define FR_PROFILE_HASH_FEATURE_BUFFERS FR_FEATURE_BUFFERS
+#endif
+
 #ifndef FR_PROFILE_HASH_FEATURE_HANDLES
 #define FR_PROFILE_HASH_FEATURE_HANDLES FR_FEATURE_HANDLES
 #endif
@@ -343,9 +348,9 @@ static uint32_t fr_profile_hash_body(uint16_t word_size,
                       FR_PROFILE_HASH_MAX_DEFINITION_INSTRUCTION_BYTES);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_MAX_DEFINITION_TEXT_BYTES);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_MAX_DEFINITION_CODE_OBJECTS);
-  fr_profile_hash_u16(&crc, FR_PROFILE_HASH_MAX_OVERLAY_CODE_BYTES);
+  fr_profile_hash_u16(&crc, FR_PROFILE_HASH_RAM_CODE_BYTES);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_MAX_OVERLAY_TEXT_BYTES);
-  fr_profile_hash_u16(&crc, FR_PROFILE_HASH_MAX_OVERLAY_PARAM_NAME_BYTES);
+  fr_profile_hash_u16(&crc, FR_PROFILE_HASH_MAX_DEFINITION_PARAM_NAME_BYTES);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_MAX_SOURCE_RENDER_BYTES);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_MAX_STACK_DEPTH);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_CODE_OBJECT_TABLE_SIZE);
@@ -372,6 +377,9 @@ static uint32_t fr_profile_hash_body(uint16_t word_size,
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_MAX_RECORD_VALUE_FIELDS);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_PAD_BYTES);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_OVERLAY_UPDATE_VERSION);
+  /* Saved code is instruction bytes, so a new format is a new image
+   * contract (ADR 0085 decision 8). */
+  fr_profile_hash_u16(&crc, FR_INSTRUCTION_FORMAT_VERSION);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_BASE_IMAGE_INCLUDE_SYMBOLS);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_COMPILER);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_OVERLAY_APPLY_COMMAND);
@@ -380,6 +388,7 @@ static uint32_t fr_profile_hash_body(uint16_t word_size,
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_CELLS);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_TEXT);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_RECORDS);
+  fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_BUFFERS);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_HANDLES);
   fr_profile_hash_u16(&crc, FR_PROFILE_HASH_FEATURE_PAD);
 

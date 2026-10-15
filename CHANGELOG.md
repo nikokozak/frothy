@@ -6,6 +6,202 @@ tags described in the "Releasing" section of CONTRIBUTING.md.
 
 ## [Unreleased]
 
+**Upgrade from v0.1.22.** This release changes the saved image and the
+profile hash of every profile, and it has no migration. A board with a
+v0.1.22 image answers `other release (27)` and does not load the image. The
+image stays on the board until `save` or a wipe.
+
+1. Before you update, keep your source: the editor project or your `.fr`
+   files. `see` is not a full backup.
+2. Flash v0.1.23. The browser flasher erases all flash on ESP32 boards, so
+   the board then starts empty.
+3. Install your libraries again and send your program again.
+4. Set again the state that your program needs: cell contents, records, and
+   `wifi.save` credentials after a browser flash.
+5. Type `save`. Do not type `save` first: a `save` before you send your
+   program writes an empty program over the old image.
+
+If you updated without your source, do not type `save` or a wipe command.
+Unless the browser flasher erased an ESP32 board, the old image stays on the
+board, and v0.1.22 firmware can read it again.
+
+### Added
+
+- **`print` writes an integer, and `print.value` writes one named line.**
+  `print: 42` writes `42`. `print.value: "light", 512` writes `light:512` and LF
+  in one write, so an event cannot print inside the line. Neither word makes a
+  Text or Bytes value, so a loop can print for as long as it runs. A label has
+  1 to 48 bytes: a letter or `_` first, then letters, digits, `_`, `.` or `-`.
+- **A saved word keeps its parameter names.** Before, after `save` and a
+  restart or `restore`, `see` showed the parameters of a saved word as `arg0`,
+  `arg1` and so on. Now the saved image holds the names, and `see` shows the
+  names that you wrote. A parameter can have the name of a local, such as
+  `local0`. Then `see` adds `_` to the local's name, so its source still
+  defines the same word. The saved image moves to a new format (payload 6, envelope
+  3): a v0.1.22 image answers `other release (27)`.
+- **A buffer keeps a value that changes many times.** `reply is buffer: 256`
+  makes a buffer that holds up to 256 bytes. Six words use it:
+  `buffer.set`, `buffer.append`, `buffer.length`, `buffer.capacity`,
+  `buffer.at` and `buffer.equals?`. A value can be Text, Bytes, an integer or
+  a buffer. A value that does not fit answers `capacity exceeded (4)` with the
+  note `buffer is full (limit 256 bytes)`, and the contents do not change. A
+  buffer takes no new storage after its definition, so a loop or an event
+  body can change it for as long as it runs. A definition with the same
+  capacity keeps the buffer and empties it, so a file can run again and
+  again. A save keeps the current contents of a buffer that only the user
+  tier holds. A library buffer, and a buffer that both tiers hold, goes back
+  at each save to its contents in the library image. A library Cells value
+  does the same. A buffer takes its capacity from the Text pool, and
+  `mem objects` shows the total in the new row `objects.buffers.used`.
+
+### Changed
+
+- **The note of `other release (27)` names the next step.** After an update
+  that changes the saved image, `restore` answers `other release (27)`. The
+  note now says `the image comes from another release -- send your source
+  again, then save`. Before, the note said that `save` writes a new image. A
+  `save` before you send the source again saves an empty program.
+- **A loop can make Bytes values for as long as it runs.** Before, a board
+  failed after about 1,024 Bytes values since the last restart or save, also
+  when no value was in use. It answered `capacity exceeded (4)` with the note
+  `Bytes table is full (limit 8)`. Now each loop pass, each event body and each
+  failed `attempt` body frees the Bytes values that it made. A loop that calls
+  `i2c.read` has no pass limit, and an `on` body can loop over
+  `bytes.from-byte`.
+- **`set` of a local refuses a Bytes value.** The next loop pass can free the
+  value while the local still names it. Make the value with `here` in the loop
+  body. The error is `not saved (13)`, with a detail that names this fix.
+- **Each loop level uses one of the 16 locals of its word.** A word with 16
+  locals and a loop answers `capacity exceeded (4)` with the note
+  `space for locals in one form is full (limit 16)`. An event body has its own
+  16 locals: before, the word and its event body shared one limit.
+- **The ESP32 native tables have more room.** On `esp32_plain` (ESP32
+  DevKit V1, NodeMCU ESP-32S, XIAO ESP32S3, XIAO ESP32C6), the native table
+  grows from 163 to 192 rows. After the base words, 43 rows stay free. The
+  stepper and synth libraries use 23 rows together, so both fit on the boards
+  that support both (ESP32 DevKit V1 and XIAO ESP32S3). On the XIAO ESP32C3
+  (`esp32c3_plain`), the table grows from 163 to 176 rows, and 39 rows stay
+  free. `make test-native-budget` checks the room for the first-party
+  libraries on each shipped board.
+- **More unsaved code fits before a `save`.** The area for unsaved code and
+  parameter names grows from 1,544 to 4,608 bytes on these profiles:
+  - `esp32_plain`: ESP32 DevKit V1, NodeMCU ESP-32S, XIAO ESP32S3 and XIAO
+    ESP32C6;
+  - `rp2040_plain`: XIAO RP2040;
+  - `rp2040_nina`: Nano RP2040 Connect.
+
+  At least 70 small definitions fit, where about 15 did before. The XIAO
+  ESP32C3 (`esp32c3_plain`) keeps 1,544 bytes because of its small free heap.
+  `mem code` shows the free space.
+- **Unsaved code and its parameter names share one area.** Before, the names
+  had their own area of 520 bytes. When it was full, the device dropped the
+  names of the next word with no message, and `see` showed `arg0`. Now a
+  definition whose code and names do not fit answers `capacity exceeded (4)`
+  with the note `pending code is full`, and nothing changes. `mem code`
+  counts the names. The area keeps the size of the two old areas together.
+- **The instruction format moves to 2.** Code saved by v0.1.22 does not load:
+  the device answers `other release (27)`.
+- **The profile hash moves on every profile.** A board build also hashes the
+  constants of its board and the natives of its libraries. So each board and
+  each library set has its own value, and `status` shows it.
+  `make test-profile-hashes` checks the values of the host builds:
+  `host_normal` 676c476c, `host_small` 6c81f7c3, `esp32_plain` bb8d1b12,
+  `esp32c3_plain` 24c3e661, `rp2040_plain` a2ed0ffc and `rp2040_nina`
+  792ff572.
+- **A reply starts on its own line.** A word such as `print` or `pad.type`
+  can leave the console line open. Then the device writes LF before its next
+  reply, prompt, event line or error. `print: "hi"` at the prompt now
+  answers `hi`, LF, `ok` instead of `hiok`, and `frothy send` no longer waits
+  until its timeout after such a form. After an interrupted
+  `console.read-line`, a reply can start with one empty line.
+- **The words that send bytes take a buffer.** The value of `print` takes an
+  integer, Text, Bytes or a buffer, and its signature shows
+  `int|text|bytes|buffer`. These parameters take Text, Bytes or a buffer, and
+  their signatures show `text|bytes|buffer`:
+  - the bytes of `i2c.write` and `tcp.write`;
+  - the body of `http.post`;
+  - the two payloads of `ble.advertise.start`;
+  - the data of `ble.gatt.set`, `ble.gatt.notify`, `ble.gatt.indicate` and
+    `ble.gatt.write`.
+- **`buffer` is a reserved word.** A parameter, a local or a `repeat ... as`
+  name cannot be `buffer`. A top-level definition such as
+  `buffer is cells: 4` still answers `ok`, and a bare `buffer` at the prompt
+  still reads the value. Uses such as `buffer[0]`, `g: buffer`,
+  `y is buffer` and a use in a word body answer `invalid (8)`. Names such as
+  `rx-buffer` and `buffer.size` stay valid. Rename each name `buffer` in your
+  source before you update.
+- **The detail of a refused save names a Bytes value.** It now says
+  `bound to a live handle or a Bytes value`, because a save keeps a buffer.
+  The help of the Bytes words also says "Bytes value", and their parameter
+  `buf` is now `bytes`.
+- **The note of a full object table is shorter.** It is now
+  `object table is full (limit N)`. The old note names cells, text and
+  records, but the table also holds buffers.
+
+### Fixed
+
+- **The RP2040 boards answer `not found (7)` and `other release (27)`.**
+  Before, the XIAO RP2040 and the Nano RP2040 Connect answered
+  `corrupt data (11)` in two cases. A board with no saved image gave it at
+  `restore`. A saved image from another release gave it with no note. Now
+  these boards answer as the ESP32 boards do. The defect came in v0.1.16.
+- **A `save` after `install-library` keeps every word.** Before, in some
+  orders, a `save` answered `ok` but lost the newest word. The next `save`
+  then answered `corrupt data (11)`, and only `dangerous.wipe` helped. For
+  example: save a word, run `install-library` and define a library word, then
+  `install-user`, define a new word and `save`.
+- **A failed save answers its error.** When a save cannot mount the image that
+  it wrote, it answers that error, and the device runs the newest image that it
+  can mount. Before, the device went back to the older program and the save
+  answered `ok`. A save never writes over the image that the device runs.
+- **A redefinition of a library word survives `save`.** After a user word
+  replaced a library word (notice 103), `save` answered `corrupt data (11)`;
+  v0.1.22 answered `ok` but lost the new word. Now the saved image keeps both
+  values: the user value is the value of the word, and `wipe-user` brings
+  back the library value. A `save` that would hold more values than the
+  device can mount fails with `capacity exceeded (4)`, and the image that the
+  device runs does not change.
+- **A library command whose save fails no longer keeps its binding or its wipe
+  unless the saved program holds it.** `install-library`, `wipe-user` and each
+  definition in library mode save at once. Before, when that save failed, the
+  command answered the error, but its change stayed on the device until a
+  restart. Now `install-library` checks that its save can store every value
+  before it changes the runtime. Each library definition other than a value
+  binding (such as `h is pwm.open: 5, 1000`) does the same. A handle or a
+  Bytes value refuses the command with `not saved (13)`. A value binding
+  checks after its expression runs. On a refusal, only its target binding goes
+  back. The other effects of the expression stay, and a handle that it opened
+  stays open, with no name. When the save fails for another reason, the device
+  goes back to the saved program, as after `restore`. Other unsaved changes
+  go, and open handles close. The device has no mounted image in safe boot,
+  on a new or wiped board, and with an image from another release. Then it
+  clears the project instead.
+  When the last write of the save fails, the device runs the newest saved
+  program that it can load. That program can hold the change.
+- **`install-library` keeps a user word that has the name of a library word.**
+  Before, `install-library` removed a user redefinition of a library word that
+  was not saved yet, with no message. Now the user word stays, and only the
+  library value under it goes. A library definition of the same name still
+  replaces the user word.
+- **A word keeps its slot when a library comes again.** Before,
+  `install-library` gave each library word a new slot. Saved code that
+  called the word then failed with `wrong type (2)`. A new word could also
+  take a slot that old code still called, so the old code called the wrong
+  word. Now a word keeps its slot across `wipe-user` and `install-library`.
+  While saved code calls a removed word, the device keeps the name of that
+  word as reserved. `words` does not list a reserved name, `see` shows it,
+  and a call gives `wrong type (2)` as before. A later definition with that
+  name takes the slot back. A `save` frees each reserved name that no saved
+  code calls. Repeated `install-library` and `wipe-user` no longer fill the
+  slot table, because the device uses a free slot again. When the name
+  table or the slot table is full while reserved names exist, the note says
+  that they count too.
+- **A `save` in safe boot keeps only what the device holds.** In safe boot the
+  device does not load the saved program, so `save` writes only the words that
+  you define. Before, a new word could take the slot of a saved library word,
+  and the save lost it with no message. Use `restore` before `save` to keep
+  the saved program.
+
 ## [0.1.22] - 2026-10-06
 
 ### Added

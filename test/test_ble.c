@@ -241,6 +241,24 @@ static void test_declarative_gatt_table_is_atomic_and_inspectable(void) {
                     fr_bytes_view(&s_runtime, bytes_ref, &bytes, &length));
   TEST_ASSERT_EQUAL_UINT16(5, length);
   TEST_ASSERT_EQUAL_UINT8_ARRAY("ready", bytes, length);
+  {
+    /* The value can be a buffer (ADR 0088 decision 5). */
+    fr_object_id_t buffer_id = 0;
+
+    TEST_ASSERT_EQUAL(FR_OK, fr_buffer_install(&s_runtime, 8,
+                                               (const uint8_t *)"go", 2,
+                                               &buffer_id));
+    TEST_ASSERT_EQUAL(FR_OK, fr_tagged_encode_object_id(buffer_id, &args[1]));
+    TEST_ASSERT_EQUAL(FR_OK, set->native_fn(&s_runtime, args, 2, &result));
+    TEST_ASSERT_EQUAL(FR_OK, get->native_fn(&s_runtime, args, 1, &result));
+    TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_bytes_ref(result, &bytes_ref));
+    TEST_ASSERT_EQUAL(FR_OK,
+                      fr_bytes_view(&s_runtime, bytes_ref, &bytes, &length));
+    TEST_ASSERT_EQUAL_UINT16(2, length);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY("go", bytes, length);
+    args[1] = payload;
+    TEST_ASSERT_EQUAL(FR_OK, set->native_fn(&s_runtime, args, 2, &result));
+  }
 
   args[1] = oversized;
   TEST_ASSERT_EQUAL(FR_ERR_CAPACITY,
@@ -483,9 +501,9 @@ static void test_advertising_words_validate_and_gate_scan(void) {
   read_native_def("ble.advertise.stop", FR_SLOT_BLE_ADVERTISE_STOP, 0,
                   &stop);
 #if FR_FEATURE_NATIVE_SIGNATURES
-  TEST_ASSERT_EQUAL(FR_NATIVE_VALUE_TEXT_OR_BYTES,
+  TEST_ASSERT_EQUAL(FR_NATIVE_VALUE_TEXT_BYTES_OR_BUFFER,
                     start->native_signature->params[0].type);
-  TEST_ASSERT_EQUAL(FR_NATIVE_VALUE_TEXT_OR_BYTES,
+  TEST_ASSERT_EQUAL(FR_NATIVE_VALUE_TEXT_BYTES_OR_BUFFER,
                     start->native_signature->params[1].type);
   TEST_ASSERT_EQUAL_STRING("start legacy BLE advertising with raw AD payloads",
                            start->native_signature->help);
@@ -551,6 +569,40 @@ static void test_advertising_words_validate_and_gate_scan(void) {
   TEST_ASSERT_EQUAL_UINT16(0, status.advertise_requested_interval_ms);
   TEST_ASSERT_EQUAL_UINT32(0, status.advertise_starts);
   TEST_ASSERT_EQUAL_UINT32(0, status.advertise_stops);
+}
+
+/* Both advertising payloads can be buffers (ADR 0088 decision 5). */
+static void test_advertising_payloads_can_be_buffers(void) {
+  static const uint8_t advertising_data[] = {2, 0x01, 0x06};
+  static const uint8_t scan_response_data[] = {3, 0x09, 'F', 'r'};
+  const fr_base_def_t *start = NULL;
+  fr_object_id_t ids[2] = {0};
+  fr_tagged_t args[4] = {0};
+  fr_tagged_t result = fr_tagged_nil();
+  fr_ble_status_t status;
+
+  TEST_ASSERT_EQUAL(FR_OK, fr_base_image_install(&s_runtime));
+  read_native_def("ble.advertise.start", FR_SLOT_BLE_ADVERTISE_START, 4,
+                  &start);
+  TEST_ASSERT_EQUAL(FR_OK, fr_buffer_install(&s_runtime, 31, advertising_data,
+                                             sizeof(advertising_data),
+                                             &ids[0]));
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_buffer_install(&s_runtime, 31, scan_response_data,
+                                      sizeof(scan_response_data), &ids[1]));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_encode_object_id(ids[0], &args[0]));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_encode_object_id(ids[1], &args[1]));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_encode_int(100, &args[2]));
+  TEST_ASSERT_EQUAL(FR_OK, fr_tagged_encode_int(1, &args[3]));
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_ble_on(&s_runtime));
+  TEST_ASSERT_EQUAL(FR_OK, start->native_fn(&s_runtime, args, 4, &result));
+  status = read_status();
+  TEST_ASSERT_EQUAL(FR_BLE_ADVERTISE_ACTIVE, status.advertise_state);
+  TEST_ASSERT_EQUAL_UINT8(sizeof(advertising_data),
+                          status.advertising_data_length);
+  TEST_ASSERT_EQUAL_UINT8(sizeof(scan_response_data),
+                          status.scan_response_data_length);
+  TEST_ASSERT_EQUAL(FR_OK, fr_platform_ble_project_clear());
 }
 
 static fr_tagged_t install_peer(uint8_t address_type, uint8_t id) {
@@ -677,6 +729,20 @@ static void test_gatt_server_events_keep_connection_ownership_visible(void) {
   TEST_ASSERT_EQUAL(FR_OK, fr_host_ble_gatt_subscribe(2, false, true));
   TEST_ASSERT_EQUAL(
       FR_OK, indicate->native_fn(&s_runtime, indicate_args, 4, &result));
+  {
+    /* The data can be a buffer (ADR 0088 decision 5). */
+    fr_object_id_t buffer_id = 0;
+
+    TEST_ASSERT_EQUAL(FR_OK,
+                      fr_buffer_install(&s_runtime, 4, &value, 1, &buffer_id));
+    TEST_ASSERT_EQUAL(FR_OK,
+                      fr_tagged_encode_object_id(buffer_id, &notify_args[2]));
+    indicate_args[2] = notify_args[2];
+    TEST_ASSERT_EQUAL(FR_OK,
+                      notify->native_fn(&s_runtime, notify_args, 3, &result));
+    TEST_ASSERT_EQUAL(
+        FR_OK, indicate->native_fn(&s_runtime, indicate_args, 4, &result));
+  }
 
   TEST_ASSERT_EQUAL(FR_OK, fr_host_ble_gatt_remote_write(1, &value, 1));
   TEST_ASSERT_EQUAL(
@@ -1017,6 +1083,31 @@ static void test_gatt_client_keeps_remote_handles_connection_scoped(void) {
                     fr_bytes_view(&s_runtime, bytes_ref, &bytes, &length));
   TEST_ASSERT_EQUAL_UINT16(sizeof(written), length);
   TEST_ASSERT_EQUAL_UINT8_ARRAY(written, bytes, sizeof(written));
+  {
+    /* The written value can be a buffer (ADR 0088 decision 5). */
+    static const uint8_t from_buffer[] = {7};
+    fr_object_id_t buffer_id = 0;
+
+    TEST_ASSERT_EQUAL(FR_OK, fr_buffer_install(&s_runtime, 4, from_buffer,
+                                               sizeof(from_buffer),
+                                               &buffer_id));
+    TEST_ASSERT_EQUAL(FR_OK,
+                      fr_tagged_encode_object_id(buffer_id, &write_args[2]));
+    TEST_ASSERT_EQUAL(FR_OK,
+                      write->native_fn(&s_runtime, write_args, 5, &result));
+    TEST_ASSERT_EQUAL(FR_OK,
+                      read->native_fn(&s_runtime, read_args, 3, &result));
+    TEST_ASSERT_EQUAL(FR_OK, fr_tagged_decode_bytes_ref(result, &bytes_ref));
+    TEST_ASSERT_EQUAL(FR_OK,
+                      fr_bytes_view(&s_runtime, bytes_ref, &bytes, &length));
+    TEST_ASSERT_EQUAL_UINT16(1, length);
+    TEST_ASSERT_EQUAL_UINT8(7, bytes[0]);
+    TEST_ASSERT_EQUAL(FR_OK,
+                      fr_bytes_install(&s_runtime, written, sizeof(written),
+                                       &write_args[2]));
+    TEST_ASSERT_EQUAL(FR_OK,
+                      write->native_fn(&s_runtime, write_args, 5, &result));
+  }
 
   subscribe_args[0] = connection;
   subscribe_args[1] = read_args[1];
@@ -1829,7 +1920,8 @@ static void test_save_refuses_to_hold_a_live_connection(void) {
                     fr_repl_eval_line(&s_runtime, "save", out, sizeof(out)));
   TEST_ASSERT_EQUAL_STRING(
       "notice: not saved (13)\n"
-      "detail: cannot save slot 'link' - bound to a live handle or buffer\n"
+      "detail: cannot save slot 'link' - bound to a live handle or a Bytes "
+      "value\n"
       "ok\n",
       out);
 }
@@ -1841,6 +1933,7 @@ int main(void) {
   RUN_TEST(test_scanner_words_bridge_tagged_values_and_reports);
   RUN_TEST(test_scanner_loop_reuses_eval_bytes);
   RUN_TEST(test_advertising_words_validate_and_gate_scan);
+  RUN_TEST(test_advertising_payloads_can_be_buffers);
   RUN_TEST(test_gatt_server_events_keep_connection_ownership_visible);
   RUN_TEST(test_central_connection_owns_one_inspectable_handle);
   RUN_TEST(test_gatt_client_keeps_remote_handles_connection_scoped);

@@ -162,7 +162,7 @@ func TestRunInstallReportsNoticeAndContinues(t *testing.T) {
 		"save\nlib_word is fn [ 42 ]\n")
 
 	notice := "notice: not saved (13)\n" +
-		"detail: cannot save slot 'appuart' - bound to a live handle or buffer\n" +
+		"detail: cannot save slot 'appuart' - bound to a live handle or a Bytes value\n" +
 		"ok\n"
 	dev := &fakeDevice{responses: []string{statusResponse32("device"), "ok\n", notice, "ok\n", "ok\n"}}
 	var stderr bytes.Buffer
@@ -177,7 +177,7 @@ func TestRunInstallReportsNoticeAndContinues(t *testing.T) {
 	}
 	if got, want := stderr.String(),
 		"notice: not saved (13)\n"+
-			"detail: cannot save slot 'appuart' - bound to a live handle or buffer\n"; got != want {
+			"detail: cannot save slot 'appuart' - bound to a live handle or a Bytes value\n"; got != want {
 		t.Fatalf("stderr = %q, want raw notice %q", got, want)
 	}
 	if got, want := strings.Join(dev.sent, "\n"),

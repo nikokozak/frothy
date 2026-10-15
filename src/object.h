@@ -44,6 +44,7 @@ typedef enum fr_object_kind_t {
   FR_OBJECT_TEXT = 2,
   FR_OBJECT_RECORD_SHAPE = 3,
   FR_OBJECT_RECORD = 4,
+  FR_OBJECT_BUFFER = 5,
 } fr_object_kind_t;
 
 typedef enum fr_object_storage_kind_t {
@@ -61,7 +62,8 @@ typedef struct fr_object_entry_t {
 #if FR_FEATURE_RECORDS
   /*
    * Records own aux: record-shape stores its shape-name entry; record stores
-   * its shape object id. Non-record object kinds must leave aux zero.
+   * its shape object id. A buffer stores its capacity. Other object kinds
+   * must leave aux zero.
    */
   uint16_t aux;
 #endif
@@ -172,6 +174,22 @@ fr_err_t fr_text_mount_image_since(fr_runtime_t *runtime, const uint8_t *bytes,
                                    fr_object_id_t *out_object_id);
 fr_err_t fr_text_view(const fr_runtime_t *runtime, fr_object_id_t object_id,
                       const uint8_t **out_bytes, uint16_t *out_length);
+/*
+ * A buffer (ADR 0088) is a region of the Text pool with a fixed capacity:
+ * `first` is its offset, `aux` its capacity and `length` its current
+ * length. A write copies its bytes in, so a buffer never refers to other
+ * storage.
+ */
+fr_err_t fr_buffer_install(fr_runtime_t *runtime, uint16_t capacity,
+                           const uint8_t *contents, uint16_t length,
+                           fr_object_id_t *out_object_id);
+fr_err_t fr_buffer_view(const fr_runtime_t *runtime, fr_object_id_t object_id,
+                        const uint8_t **out_bytes, uint16_t *out_length,
+                        uint16_t *out_capacity);
+fr_err_t fr_buffer_write(fr_runtime_t *runtime, fr_object_id_t object_id,
+                         uint16_t at, const uint8_t *bytes, uint16_t length);
+/* The Text pool bytes that buffers keep: the sum of their capacities. */
+uint16_t fr_buffer_used_bytes(const fr_runtime_t *runtime);
 bool fr_record_field_value_allowed(const fr_runtime_t *runtime,
                                    fr_tagged_t tagged);
 fr_err_t fr_record_shape_find(const fr_runtime_t *runtime,

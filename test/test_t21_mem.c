@@ -118,6 +118,11 @@ static void test_mem_objects_emits_object_keys(void) {
   TEST_ASSERT_NOT_NULL(strstr(out, "objects.cells.total "));
   TEST_ASSERT_NOT_NULL(strstr(out, "objects.text.used "));
   TEST_ASSERT_NOT_NULL(strstr(out, "objects.text.total "));
+#if FR_FEATURE_BUFFERS
+  TEST_ASSERT_NOT_NULL(strstr(out, "objects.buffers.used "));
+#else
+  TEST_ASSERT_NULL(strstr(out, "objects.buffers."));
+#endif
 #if FR_FEATURE_RECORDS
   TEST_ASSERT_NOT_NULL(strstr(out, "objects.record_names.used "));
   TEST_ASSERT_NOT_NULL(strstr(out, "objects.record_names.total "));

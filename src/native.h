@@ -3,6 +3,10 @@
 #include "tagged.h"
 #include "types.h"
 
+/* A native reads the bytes of a Text, Bytes or buffer argument only during
+ * its call. A buffer can change at the next instruction, and TCP and BLE
+ * run in other tasks, so a native that needs the bytes after it returns
+ * copies them first. Only the buffer words change a buffer (ADR 0088). */
 typedef fr_err_t (*fr_native_fn_t)(fr_runtime_t *runtime,
                                    const fr_tagged_t *args, uint8_t arg_count,
                                    fr_tagged_t *out);
@@ -14,8 +18,10 @@ typedef enum fr_native_value_kind_t {
   FR_NATIVE_VALUE_NIL,
   FR_NATIVE_VALUE_TEXT,
   FR_NATIVE_VALUE_SECRET_TEXT,
-  FR_NATIVE_VALUE_TEXT_OR_BYTES,
+  FR_NATIVE_VALUE_TEXT_BYTES_OR_BUFFER,
   FR_NATIVE_VALUE_BYTES,
+  FR_NATIVE_VALUE_INT_TEXT_BYTES_OR_BUFFER,
+  FR_NATIVE_VALUE_BUFFER,
 } fr_native_value_kind_t;
 
 typedef struct fr_native_param_t {

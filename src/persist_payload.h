@@ -9,11 +9,10 @@
  * Current payload version carries 32-bit int value fields. Independent from
  * the overlay update version in config.h. Project policy is no backwards
  * compatibility (D7 in T12L-7); the decoder only accepts the current version.
- * Older payloads are invalid and the recovery path is dangerous.wipe +
- * re-install.
+ * An older payload does not load; a later save or a wipe replaces it.
  */
 enum {
-  FR_PERSIST_PAYLOAD_VERSION = 5,
+  FR_PERSIST_PAYLOAD_VERSION = 6,
 };
 
 typedef fr_err_t (*fr_persist_payload_write_fn_t)(void *ctx,
@@ -46,6 +45,13 @@ fr_err_t fr_persist_payload_save_stream(
     const fr_runtime_t *runtime, const uint8_t *old_payload,
     uint16_t old_payload_length, fr_persist_payload_write_fn_t write,
     void *ctx, uint16_t *out_length);
+
+/* The values that a save must store hold no handle and no Bytes value. A
+ * command that saves at once checks this before its save (ADR 0090
+ * amendment). A refusal then leaves its target binding, the tier and the
+ * saved image as they were. The encoder checks it too. On a refusal, the
+ * note names the slot. */
+fr_err_t fr_persist_payload_check_savable(const fr_runtime_t *runtime);
 
 /* ADR 0070 tolerant save. hold_volatile_slots collects the overlay slots
  * whose live handle value can be stored as nil, or returns FR_ERR_VOLATILE

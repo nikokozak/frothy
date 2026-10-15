@@ -86,6 +86,13 @@
 #define FR_FEATURE_RECORDS 0
 #endif
 
+/* Buffers (ADR 0088) live in the Text pool and keep their capacity in the
+ * record field `aux`, so they follow Text and records unless a build says
+ * otherwise. */
+#ifndef FR_FEATURE_BUFFERS
+#define FR_FEATURE_BUFFERS (FR_FEATURE_TEXT && FR_FEATURE_RECORDS)
+#endif
+
 #ifndef FR_FEATURE_HANDLES
 #define FR_FEATURE_HANDLES 0
 #endif
@@ -136,6 +143,13 @@
 
 #ifndef FR_FEATURE_BYTES
 #define FR_FEATURE_BYTES 0
+#endif
+
+/* A host test build sets this to 1. A Bytes tag then carries a rewind count
+ * of its entry, and a rewind fills the freed arena bytes with 0xA5, so a
+ * stale tag or a kept pointer fails a test (ADR 0085 decision 7). */
+#ifndef FR_BYTES_CHECKED
+#define FR_BYTES_CHECKED 0
 #endif
 
 #ifndef FR_FEATURE_BLE
@@ -348,18 +362,21 @@
 #define FR_PROFILE_MAX_DEFINITION_CODE_OBJECTS 2
 #endif
 
-#ifndef FR_PROFILE_MAX_OVERLAY_CODE_BYTES
-#define FR_PROFILE_MAX_OVERLAY_CODE_BYTES                                     \
-  FR_PROFILE_MAX_DEFINITION_INSTRUCTION_BYTES
+/* The parameter names of one definition, each with its NUL byte
+ * (ADR 0084). */
+#define FR_MAX_DEFINITION_PARAM_NAME_BYTES                                    \
+  (FR_PROFILE_PARSE_MAX_PARAMS * (FR_PROFILE_PARSE_MAX_TOKEN_BYTES + 1))
+
+/* RAM code with its parameter names: the base words, then the unsaved words
+ * (ADR 0084). */
+#ifndef FR_PROFILE_RAM_CODE_BYTES
+#define FR_PROFILE_RAM_CODE_BYTES                                             \
+  (FR_PROFILE_MAX_DEFINITION_INSTRUCTION_BYTES +                              \
+   FR_MAX_DEFINITION_PARAM_NAME_BYTES)
 #endif
 
 #ifndef FR_PROFILE_MAX_OVERLAY_TEXT_BYTES
 #define FR_PROFILE_MAX_OVERLAY_TEXT_BYTES FR_PROFILE_MAX_DEFINITION_TEXT_BYTES
-#endif
-
-#ifndef FR_PROFILE_MAX_OVERLAY_PARAM_NAME_BYTES
-#define FR_PROFILE_MAX_OVERLAY_PARAM_NAME_BYTES                               \
-  (FR_PROFILE_PARSE_MAX_PARAMS * (FR_PROFILE_PARSE_MAX_TOKEN_BYTES + 1))
 #endif
 
 #ifndef FR_PROFILE_MAX_SOURCE_RENDER_BYTES
@@ -378,7 +395,7 @@
 
 #ifndef FR_PROFILE_MAX_OVERLAY_UPDATE_INSTRUCTION_BYTES
 #define FR_PROFILE_MAX_OVERLAY_UPDATE_INSTRUCTION_BYTES                       \
-  FR_PROFILE_MAX_OVERLAY_CODE_BYTES
+  FR_PROFILE_RAM_CODE_BYTES
 #endif
 
 #ifndef FR_PROFILE_MAX_OVERLAY_UPDATE_NAMES
@@ -469,8 +486,8 @@
 #error "FR_PROFILE_PARSE_MAX_BODY_EXPRS must fit the uint8_t child count"
 #endif
 
-#if FR_PROFILE_PARSE_MAX_PARAMS > 255
-#error "FR_PROFILE_PARSE_MAX_PARAMS must fit the one-byte arity field"
+#if FR_PROFILE_PARSE_MAX_PARAMS < 1 || FR_PROFILE_PARSE_MAX_PARAMS > 255
+#error "FR_PROFILE_PARSE_MAX_PARAMS must be from 1 to 255 (the one-byte arity field)"
 #endif
 
 #if FR_PROFILE_PARSE_MAX_LOCALS > 255
@@ -506,13 +523,23 @@
 #error "FR_PROFILE_MAX_OVERLAY_NAMES cannot exceed FR_PROFILE_MAX_SLOTS"
 #endif
 
-#if FR_PROFILE_MAX_DEFINITION_INSTRUCTION_BYTES >                             \
-    FR_PROFILE_MAX_OVERLAY_CODE_BYTES
-#error "FR_PROFILE_MAX_DEFINITION_INSTRUCTION_BYTES cannot exceed FR_PROFILE_MAX_OVERLAY_CODE_BYTES"
+#if FR_PROFILE_MAX_DEFINITION_INSTRUCTION_BYTES +                             \
+        FR_MAX_DEFINITION_PARAM_NAME_BYTES >                                  \
+    FR_PROFILE_RAM_CODE_BYTES
+#error "FR_PROFILE_RAM_CODE_BYTES must hold one definition and its parameter names"
 #endif
 
-#if FR_PROFILE_MAX_OVERLAY_CODE_BYTES > FR_PROFILE_TOTAL_IMAGE_BYTES
-#error "FR_PROFILE_MAX_OVERLAY_CODE_BYTES cannot exceed FR_PROFILE_TOTAL_IMAGE_BYTES"
+#if FR_PROFILE_RAM_CODE_BYTES > 65535
+#error "FR_PROFILE_RAM_CODE_BYTES must fit the 16-bit used counters"
+#endif
+
+#if FR_PROFILE_NATIVE_TABLE_SIZE > 65535
+#error "FR_PROFILE_NATIVE_TABLE_SIZE must fit the 16-bit native counters"
+#endif
+
+/* The image code buffers hold one instruction stream. */
+#if FR_PROFILE_MAX_DEFINITION_INSTRUCTION_BYTES > FR_PROFILE_TOTAL_IMAGE_BYTES
+#error "FR_PROFILE_MAX_DEFINITION_INSTRUCTION_BYTES cannot exceed FR_PROFILE_TOTAL_IMAGE_BYTES"
 #endif
 
 #if FR_PROFILE_MAX_DEFINITION_TEXT_BYTES == 0
@@ -521,10 +548,6 @@
 
 #if FR_PROFILE_MAX_DEFINITION_CODE_OBJECTS < 2
 #error "FR_PROFILE_MAX_DEFINITION_CODE_OBJECTS must fit outer and event body code objects"
-#endif
-
-#if FR_PROFILE_MAX_OVERLAY_PARAM_NAME_BYTES == 0
-#error "FR_PROFILE_MAX_OVERLAY_PARAM_NAME_BYTES must be greater than zero"
 #endif
 
 #if FR_PROFILE_MAX_OVERLAY_UPDATE_SLOT_INITS > FR_PROFILE_MAX_SLOTS
@@ -537,8 +560,8 @@
 #endif
 
 #if FR_PROFILE_MAX_OVERLAY_UPDATE_INSTRUCTION_BYTES >                         \
-    FR_PROFILE_MAX_OVERLAY_CODE_BYTES
-#error "FR_PROFILE_MAX_OVERLAY_UPDATE_INSTRUCTION_BYTES cannot exceed FR_PROFILE_MAX_OVERLAY_CODE_BYTES"
+    FR_PROFILE_RAM_CODE_BYTES
+#error "FR_PROFILE_MAX_OVERLAY_UPDATE_INSTRUCTION_BYTES cannot exceed FR_PROFILE_RAM_CODE_BYTES"
 #endif
 
 #if FR_PROFILE_MAX_OVERLAY_UPDATE_NAMES > FR_PROFILE_MAX_OVERLAY_NAMES
@@ -589,6 +612,22 @@
 
 #if FR_FEATURE_RECORDS && !FR_FEATURE_TEXT
 #error "FR_FEATURE_RECORDS requires FR_FEATURE_TEXT in this tranche"
+#endif
+
+#if FR_FEATURE_BUFFERS && !FR_FEATURE_TEXT
+#error "FR_FEATURE_BUFFERS requires FR_FEATURE_TEXT"
+#endif
+
+#if FR_FEATURE_BUFFERS && !FR_FEATURE_RECORDS
+#error "FR_FEATURE_BUFFERS requires FR_FEATURE_RECORDS"
+#endif
+
+#if FR_FEATURE_BUFFERS && FR_PROFILE_MAX_OVERLAY_TEXT_BYTES == 0
+#error "FR_FEATURE_BUFFERS requires FR_PROFILE_MAX_OVERLAY_TEXT_BYTES"
+#endif
+
+#if FR_FEATURE_BUFFERS && !FR_FEATURE_REPL
+#error "FR_FEATURE_BUFFERS requires FR_FEATURE_REPL"
 #endif
 
 #if FR_FEATURE_RECORDS && FR_PROFILE_MAX_RECORD_NAME_BYTES == 0
@@ -679,6 +718,10 @@
 
 #if FR_FEATURE_BLE && !FR_FEATURE_BYTES
 #error "FR_FEATURE_BLE requires FR_FEATURE_BYTES"
+#endif
+
+#if FR_BYTES_CHECKED && !FR_FEATURE_BYTES
+#error "FR_BYTES_CHECKED requires FR_FEATURE_BYTES"
 #endif
 
 #if FR_FEATURE_BLE && !FR_FEATURE_REPL

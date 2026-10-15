@@ -7,6 +7,9 @@
 #include "platform.h"
 #include "tagged.h"
 
+#if FR_BYTES_CHECKED
+#include <assert.h>
+#endif
 #include <string.h>
 
 fr_err_t fr_runtime_init(fr_runtime_t *runtime) {
@@ -55,6 +58,7 @@ fr_err_t fr_runtime_init(fr_runtime_t *runtime) {
      which can only happen with none of them running -- must not touch it. */
   runtime->execution_depth = 0;
   runtime->dispatching_event = false;
+  runtime->console_line_open = false;
   runtime->install_tier = FR_INSTALL_TIER_USER;
   runtime->rescue_error = FR_OK;
   runtime->rescue_error_active = false;
@@ -96,11 +100,21 @@ fr_err_t fr_runtime_clear_project(fr_runtime_t *runtime) {
     uint16_t dst = 0;
     for (uint16_t src = 0; src < runtime->slots.overlay_name_count; src++) {
       fr_slot_id_t slot_id = runtime->slots.overlay_names[src].slot_id;
+      bool keep = false;
 
-      if (slot_id < runtime->slots.base_count &&
-          runtime->slots.base_tier[slot_id] != 0 &&
-          runtime->slots.overlay_names[src].storage_kind !=
-              FR_SLOT_NAME_STORAGE_IMAGE) {
+      /* A saved name stays. A reserved or taken name below the saved part
+       * becomes reserved again; one at or above it goes, because no saved
+       * code can name a slot that was free at the mount (ADR 0089). */
+      if (runtime->slots.overlay_names[src].state == FR_SLOT_NAME_NAMED) {
+        keep = slot_id < runtime->slots.base_count &&
+               runtime->slots.base_tier[slot_id] != 0 &&
+               runtime->slots.overlay_names[src].storage_kind !=
+                   FR_SLOT_NAME_STORAGE_IMAGE;
+      } else {
+        keep = slot_id < runtime->slots.base_count;
+        runtime->slots.overlay_names[src].state = FR_SLOT_NAME_RESERVED;
+      }
+      if (keep) {
         if (dst != src) {
           runtime->slots.overlay_names[dst] = runtime->slots.overlay_names[src];
           if (runtime->slots.overlay_names[src].storage_kind ==
@@ -150,6 +164,28 @@ fr_err_t fr_runtime_reset(fr_runtime_t *runtime) {
   return fr_runtime_clear_project(runtime);
 }
 
+fr_err_t fr_console_write(fr_runtime_t *runtime, const uint8_t *bytes,
+                          uint16_t length) {
+  if (length == 0) {
+    return FR_OK;
+  }
+  runtime->console_line_open = true;
+  FR_TRY(fr_platform_write_bytes(bytes, length));
+  runtime->console_line_open = bytes[length - 1] != '\n';
+  return FR_OK;
+}
+
+fr_err_t fr_console_start_line(fr_runtime_t *runtime) {
+  static const uint8_t newline = '\n';
+
+  if (!runtime->console_line_open) {
+    return FR_OK;
+  }
+  FR_TRY(fr_platform_write_bytes(&newline, 1));
+  runtime->console_line_open = false;
+  return FR_OK;
+}
+
 bool fr_runtime_is_executing(const fr_runtime_t *runtime) {
   return runtime != NULL && runtime->execution_depth > 0;
 }
@@ -175,24 +211,36 @@ void fr_bytes_init(fr_runtime_t *runtime) {
   memset(&runtime->bytes, 0, sizeof(runtime->bytes));
 }
 
-void fr_bytes_reset_if_outermost(fr_runtime_t *runtime) {
-  if (runtime == NULL || runtime->bytes.eval_depth != 0) {
-    return;
+fr_bytes_mark_t fr_bytes_mark(const fr_runtime_t *runtime) {
+  return (fr_bytes_mark_t){.arena_used = runtime->bytes.arena_used,
+                           .entry_count = runtime->bytes.entry_count};
+}
+
+fr_err_t fr_bytes_rewind(fr_runtime_t *runtime, fr_bytes_mark_t mark) {
+  fr_bytes_t *bytes = &runtime->bytes;
+
+  if (mark.entry_count > bytes->entry_count ||
+      mark.arena_used > bytes->arena_used) {
+    return FR_ERR_INVALID;
   }
-  runtime->bytes.arena_used = 0;
-  for (fr_bytes_id_t i = 0; i < FR_PROFILE_BYTES_COUNT; i++) {
-    fr_bytes_entry_t *entry = &runtime->bytes.entries[i];
-    if (!entry->in_use) {
-      continue;
-    }
-    if (entry->generation == FR_TAGGED_BYTES_MAX_GENERATION) {
-      entry->retired = true;
-    } else {
-      entry->generation =
-          (fr_bytes_generation_t)(entry->generation + 1u);
-    }
-    entry->in_use = false;
+#if FR_BYTES_CHECKED
+  for (uint8_t i = mark.entry_count; i < bytes->entry_count; i++) {
+    bytes->entries[i].rewinds = (uint16_t)(bytes->entries[i].rewinds + 1u);
   }
+  memset(&bytes->arena[mark.arena_used], 0xA5,
+         (size_t)(bytes->arena_used - mark.arena_used));
+#endif
+  bytes->entry_count = mark.entry_count;
+  bytes->arena_used = mark.arena_used;
+  return FR_OK;
+}
+
+void fr_bytes_reset(fr_runtime_t *runtime) {
+#if FR_BYTES_CHECKED
+  /* No VM frame may hold a value at the prompt. */
+  assert(runtime->execution_depth == 0);
+#endif
+  (void)fr_bytes_rewind(runtime, (fr_bytes_mark_t){0});
 }
 #endif
 

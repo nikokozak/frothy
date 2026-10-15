@@ -365,9 +365,7 @@ typedef char fr_bytes_count_nonzero[(FR_PROFILE_BYTES_COUNT > 0u) ? 1 : -1];
 typedef char fr_bytes_count_fits_id_field
     [(FR_PROFILE_BYTES_COUNT <= (FR_TAGGED_BYTES_MAX_ID + 1u)) ? 1 : -1];
 typedef char fr_bytes_offset_fits_reserved_range
-    [((((uint64_t)FR_TAGGED_BYTES_MAX_GENERATION
-        << FR_TAGGED_BYTES_GENERATION_SHIFT) |
-       (uint64_t)(FR_PROFILE_BYTES_COUNT - 1u)) <=
+    [((uint64_t)FR_TAGGED_BYTES_LAST_OFFSET <=
       ((uint64_t)FR_TAGGED_RESERVED_END - (uint64_t)FR_TAGGED_BYTES_BASE))
          ? 1
          : -1];
@@ -379,14 +377,17 @@ fr_err_t fr_tagged_encode_bytes_ref(fr_bytes_ref_t ref,
     return FR_ERR_INVALID;
   }
 #if FR_FEATURE_BYTES
-  if (ref.id > FR_TAGGED_BYTES_MAX_ID) {
+  /* A checked build accepts each 16-bit rewind count. A release build
+   * accepts only zero. */
+  if (ref.id > FR_TAGGED_BYTES_MAX_ID ||
+      (!FR_BYTES_CHECKED && ref.rewinds != 0)) {
     return FR_ERR_RANGE;
   }
   *out_tagged =
       (fr_tagged_t)(FR_TAGGED_BYTES_BASE +
                     (fr_tagged_t)ref.id +
-                    ((fr_tagged_t)ref.generation
-                     << FR_TAGGED_BYTES_GENERATION_SHIFT));
+                    ((fr_tagged_t)ref.rewinds
+                     << FR_TAGGED_BYTES_REWINDS_SHIFT));
   return FR_OK;
 #else
   (void)ref;
@@ -404,9 +405,8 @@ fr_err_t fr_tagged_decode_bytes_ref(fr_tagged_t tagged,
     fr_tagged_t offset = (fr_tagged_t)(tagged - FR_TAGGED_BYTES_BASE);
 
     out_ref->id = (fr_bytes_id_t)(offset & FR_TAGGED_BYTES_MAX_ID);
-    out_ref->generation =
-        (fr_bytes_generation_t)((offset >> FR_TAGGED_BYTES_GENERATION_SHIFT) &
-                                 FR_TAGGED_BYTES_MAX_GENERATION);
+    out_ref->rewinds =
+        (uint16_t)(offset >> FR_TAGGED_BYTES_REWINDS_SHIFT);
     if (out_ref->id >= FR_PROFILE_BYTES_COUNT) {
       return FR_ERR_RANGE;
     }

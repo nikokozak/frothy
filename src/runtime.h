@@ -37,13 +37,37 @@ typedef enum fr_slot_name_storage_kind_t {
   FR_SLOT_NAME_STORAGE_PERSIST_IMAGE = 2,
 } fr_slot_name_storage_kind_t;
 
+/* A reserved name is the name of a word that a wipe removed while saved code
+ * still calls its slot; a taken name is a reserved name that an unsaved
+ * definition took back (ADR 0089). */
+typedef enum fr_slot_name_state_t {
+  FR_SLOT_NAME_NAMED = 0,
+  FR_SLOT_NAME_RESERVED = 1,
+  FR_SLOT_NAME_TAKEN = 2,
+} fr_slot_name_state_t;
+
 #if FR_PROFILE_MAX_OVERLAY_NAMES > 0
 typedef struct fr_slot_project_name_entry_t {
   fr_slot_name_storage_kind_t storage_kind;
   fr_slot_id_t slot_id;
   const char *bytes;
   uint8_t length;
+  uint8_t state;
 } fr_slot_project_name_entry_t;
+
+/* The state uses padding: the entry has the size of the same entry without
+ * it on each target (ADR 0089). */
+typedef struct fr_slot_project_name_entry_layout_t {
+  fr_slot_name_storage_kind_t storage_kind;
+  fr_slot_id_t slot_id;
+  const char *bytes;
+  uint8_t length;
+} fr_slot_project_name_entry_layout_t;
+typedef char fr_slot_project_name_entry_size_check
+    [sizeof(fr_slot_project_name_entry_t) ==
+             sizeof(fr_slot_project_name_entry_layout_t)
+         ? 1
+         : -1];
 #endif
 
 /* Base is the installed reset tagged word; current is the live tagged word. */
@@ -123,19 +147,29 @@ typedef struct fr_event_table_t {
 typedef struct fr_bytes_entry_t {
   uint16_t offset;
   uint16_t length;
-  uint8_t generation;
-  bool in_use;
-  bool retired;
+#if FR_BYTES_CHECKED
+  uint16_t rewinds;
+#endif
 } fr_bytes_entry_t;
 
+/* Bytes values grow by two cursors (ADR 0085): a new value takes the next
+ * entry and the next arena bytes. A rewind moves both cursors back to a
+ * mark and frees every value made after that mark. */
 typedef struct fr_bytes_t {
   fr_bytes_entry_t entries[FR_BYTES_TABLE_CAPACITY];
   uint8_t arena[FR_PROFILE_BYTES_ARENA_BYTES > 0
                     ? FR_PROFILE_BYTES_ARENA_BYTES
                     : 1];
   uint16_t arena_used;
-  uint16_t eval_depth;
+  uint8_t entry_count;
 } fr_bytes_t;
+
+/* The two cursors at one point. A loop, an attempt, an event body and the
+ * prompt each keep a mark and rewind to it. */
+typedef struct fr_bytes_mark_t {
+  uint16_t arena_used;
+  uint8_t entry_count;
+} fr_bytes_mark_t;
 #endif
 
 #if FR_FEATURE_NET
@@ -185,6 +219,9 @@ struct fr_runtime_t {
   /* Set while fr_event_dispatch is running a body so the VM step loop does
      not re-enter dispatch from inside a handler (spec §5: no preemption). */
   bool dispatching_event;
+  /* The last tracked console write did not end in LF (ADR 0078). Only
+     fr_runtime_init clears it at start; clear, restore and wipes keep it. */
+  bool console_line_open;
   /* T12L-7 D3: session-scoped install tier. fr_repl_run resets to USER on
      entry; install-library / install-user REPL commands flip it; the persist
      encoder reads it when stamping new overlay records. */
@@ -198,6 +235,11 @@ struct fr_runtime_t {
 
 fr_err_t fr_runtime_init(fr_runtime_t *runtime);
 fr_err_t fr_runtime_reset(fr_runtime_t *runtime);
+/* Console output by a word. A failed write leaves the line marked open. */
+fr_err_t fr_console_write(fr_runtime_t *runtime, const uint8_t *bytes,
+                          uint16_t length);
+/* Write LF if the line is open, so that the next line starts in column 0. */
+fr_err_t fr_console_start_line(fr_runtime_t *runtime);
 fr_err_t fr_runtime_clear_project(fr_runtime_t *runtime);
 /* True while the VM is running anything. Persistence asks before replacing
    the program a frame is executing (ADR 0071). */
@@ -209,5 +251,10 @@ fr_runtime_limits_t fr_runtime_get_limits(void);
 
 #if FR_FEATURE_BYTES
 void fr_bytes_init(fr_runtime_t *runtime);
-void fr_bytes_reset_if_outermost(fr_runtime_t *runtime);
+fr_bytes_mark_t fr_bytes_mark(const fr_runtime_t *runtime);
+/* Free every value made after the mark. A mark above the cursors is
+   invalid. */
+fr_err_t fr_bytes_rewind(fr_runtime_t *runtime, fr_bytes_mark_t mark);
+/* The prompt frees every value after it shows a result. */
+void fr_bytes_reset(fr_runtime_t *runtime);
 #endif

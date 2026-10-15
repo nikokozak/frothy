@@ -41,6 +41,7 @@ typedef enum fr_parse_expr_kind_t {
   FR_PARSE_EXPR_ERROR_CODE,
   FR_PARSE_EXPR_ERROR_NAME,
   FR_PARSE_EXPR_CELLS,
+  FR_PARSE_EXPR_BUFFER,
   FR_PARSE_EXPR_CELL_READ,
   FR_PARSE_EXPR_CELL_WRITE,
   FR_PARSE_EXPR_FIELD_READ,
@@ -103,6 +104,10 @@ bool fr_parse_span_equals(fr_parse_span_t span, const char *text);
 /* True when source holds only spaces and comments, so it holds no form. An
  * unfinished block comment is not blank: the parser reports it. */
 bool fr_parse_source_is_blank(const char *source);
+/* Whether a NUL-ended name is one name token that may name a parameter. The
+ * parser's own tokenizer and reserved words decide, so a name that a saved
+ * image holds always parses back (ADR 0084). */
+bool fr_parse_param_name_ok(const char *name);
 fr_err_t fr_parse_expression_line(const char *source, fr_parse_line_t *out,
                                   fr_parse_expr_id_t *out_expr);
 fr_err_t fr_parse_expression_line_with_diagnostic(

@@ -414,7 +414,8 @@ static void fr_object_rebase_text_entry(fr_object_entry_t *entry,
                                         fr_runtime_t *runtime,
                                         const fr_runtime_t *source) {
   if (entry == NULL || entry->storage_kind != FR_OBJECT_STORAGE_OVERLAY_RAM ||
-      entry->kind != FR_OBJECT_TEXT || entry->bytes == NULL) {
+      (entry->kind != FR_OBJECT_TEXT && entry->kind != FR_OBJECT_BUFFER) ||
+      entry->bytes == NULL) {
     return;
   }
   {
@@ -539,6 +540,8 @@ fr_diag_value_kind_t fr_runtime_diag_value_kind(const fr_runtime_t *runtime,
     return FR_DIAG_VALUE_RECORD_SHAPE;
   case FR_OBJECT_RECORD:
     return FR_DIAG_VALUE_RECORD;
+  case FR_OBJECT_BUFFER:
+    return FR_DIAG_VALUE_BUFFER;
   case FR_OBJECT_NONE:
   default:
     return tagged_kind;
@@ -604,7 +607,7 @@ fr_err_t fr_cells_check_install(const fr_runtime_t *runtime, uint16_t length,
   }
   if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
     fr_diag_note_capacity(runtime->diag,
-                          "object table (cells, text and records)",
+                          "object table",
                           FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
                           NULL);
     return FR_ERR_CAPACITY;
@@ -790,7 +793,7 @@ fr_err_t fr_text_check_install(const fr_runtime_t *runtime,
   }
   if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
     fr_diag_note_capacity(runtime->diag,
-                          "object table (cells, text and records)",
+                          "object table",
                           FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
                           NULL);
     return FR_ERR_CAPACITY;
@@ -838,7 +841,7 @@ fr_err_t fr_text_install_since(fr_runtime_t *runtime, const uint8_t *bytes,
   }
   if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
     fr_diag_note_capacity(runtime->diag,
-                          "object table (cells, text and records)",
+                          "object table",
                           FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
                           NULL);
     return FR_ERR_CAPACITY;
@@ -908,7 +911,7 @@ fr_err_t fr_text_mount_image_since(fr_runtime_t *runtime, const uint8_t *bytes,
   }
   if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
     fr_diag_note_capacity(runtime->diag,
-                          "object table (cells, text and records)",
+                          "object table",
                           FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
                           NULL);
     return FR_ERR_CAPACITY;
@@ -955,6 +958,111 @@ fr_err_t fr_text_view(const fr_runtime_t *runtime, fr_object_id_t object_id,
   return FR_OK;
 #endif
 }
+
+#if FR_FEATURE_BUFFERS
+/* A definition installs an empty buffer; a mount installs one with its
+ * saved contents (the decoder checked that they fit). */
+fr_err_t fr_buffer_install(fr_runtime_t *runtime, uint16_t capacity,
+                           const uint8_t *contents, uint16_t length,
+                           fr_object_id_t *out_object_id) {
+  uint16_t first_byte = 0;
+
+  if (runtime == NULL || out_object_id == NULL) {
+    return FR_ERR_INVALID;
+  }
+  if (capacity == 0 || capacity > FR_TEXT_BYTE_CAPACITY || length > capacity) {
+    return FR_ERR_RANGE;
+  }
+  if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
+    fr_diag_note_capacity(runtime->diag, "object table",
+                          FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
+                          NULL);
+    return FR_ERR_CAPACITY;
+  }
+  if ((uint32_t)runtime->objects.used_text_bytes + capacity >
+      FR_TEXT_BYTE_CAPACITY) {
+    fr_diag_note_capacity(runtime->diag, "Text pool", FR_TEXT_BYTE_CAPACITY,
+                          FR_DIAG_UNIT_BYTES,
+                          "a save that succeeds frees what the program no longer uses");
+    return FR_ERR_CAPACITY;
+  }
+
+  *out_object_id = runtime->objects.count;
+  first_byte = runtime->objects.used_text_bytes;
+  runtime->objects.entries[*out_object_id] = (fr_object_entry_t){
+      .kind = FR_OBJECT_BUFFER,
+      .storage_kind = FR_OBJECT_STORAGE_OVERLAY_RAM,
+      .bytes = &runtime->objects.text_bytes[first_byte],
+      .first = first_byte,
+      .length = length,
+      .aux = capacity,
+  };
+  if (length > 0) {
+    memcpy(&runtime->objects.text_bytes[first_byte], contents, length);
+  }
+  runtime->objects.overlay[*out_object_id] = true;
+  runtime->objects.count = (uint16_t)(runtime->objects.count + 1);
+  runtime->objects.used_text_bytes =
+      (uint16_t)(runtime->objects.used_text_bytes + capacity);
+  return FR_OK;
+}
+
+fr_err_t fr_buffer_view(const fr_runtime_t *runtime, fr_object_id_t object_id,
+                        const uint8_t **out_bytes, uint16_t *out_length,
+                        uint16_t *out_capacity) {
+  const fr_object_entry_t *entry = NULL;
+
+  if (out_bytes == NULL || out_length == NULL || out_capacity == NULL) {
+    return FR_ERR_INVALID;
+  }
+  FR_TRY(fr_object_entry_of_kind(runtime, object_id, FR_OBJECT_BUFFER, &entry));
+  if (!fr_object_view_is_valid(entry->storage_kind, entry->bytes, entry->aux,
+                               runtime->objects.text_bytes,
+                               runtime->objects.used_text_bytes)) {
+    return FR_ERR_CORRUPT;
+  }
+  *out_bytes = entry->bytes;
+  *out_length = entry->length;
+  *out_capacity = entry->aux;
+  return FR_OK;
+}
+
+/* Copy `length` bytes to offset `at` (0 to replace the contents, the
+ * current length to append) and end the contents there. The source can
+ * be this buffer, so the copy is memmove. A value that does not fit changes
+ * nothing. */
+fr_err_t fr_buffer_write(fr_runtime_t *runtime, fr_object_id_t object_id,
+                         uint16_t at, const uint8_t *bytes, uint16_t length) {
+  const fr_object_entry_t *view = NULL;
+  fr_object_entry_t *entry = NULL;
+
+  FR_TRY(fr_object_entry_of_kind(runtime, object_id, FR_OBJECT_BUFFER, &view));
+  entry = &runtime->objects.entries[object_id];
+  if ((uint32_t)at + length > entry->aux) {
+    fr_diag_note_capacity(runtime->diag, "buffer", entry->aux,
+                          FR_DIAG_UNIT_BYTES, NULL);
+    return FR_ERR_CAPACITY;
+  }
+  if (length > 0) {
+    memmove(&runtime->objects.text_bytes[entry->first + at], bytes, length);
+  }
+  entry->length = (uint16_t)(at + length);
+  runtime->objects.overlay[object_id] = true;
+  return FR_OK;
+}
+
+uint16_t fr_buffer_used_bytes(const fr_runtime_t *runtime) {
+  uint16_t used = 0;
+
+  for (fr_object_id_t object_id = 0; object_id < runtime->objects.count;
+       object_id++) {
+    if (runtime->objects.entries[object_id].kind == FR_OBJECT_BUFFER) {
+      used = (uint16_t)(used + runtime->objects.entries[object_id].aux);
+    }
+  }
+  return used;
+}
+#endif
 
 #if FR_FEATURE_RECORDS
 static bool fr_record_name_same(fr_record_name_t lhs, fr_record_name_t rhs) {
@@ -1226,7 +1334,7 @@ static fr_err_t fr_record_shape_install_since_kind(
   }
   if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
     fr_diag_note_capacity(runtime->diag,
-                          "object table (cells, text and records)",
+                          "object table",
                           FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
                           NULL);
     return FR_ERR_CAPACITY;
@@ -1425,7 +1533,7 @@ fr_err_t fr_record_install(fr_runtime_t *runtime,
   }
   if (runtime->objects.count >= FR_PROFILE_OBJECT_TABLE_SIZE) {
     fr_diag_note_capacity(runtime->diag,
-                          "object table (cells, text and records)",
+                          "object table",
                           FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
                           NULL);
     return FR_ERR_CAPACITY;
@@ -1595,47 +1703,45 @@ bool fr_object_is_overlay(const fr_runtime_t *runtime,
 fr_err_t fr_bytes_install(fr_runtime_t *runtime, const uint8_t *bytes,
                           uint16_t length, fr_tagged_t *out_tagged) {
 #if FR_FEATURE_BYTES
+  fr_bytes_t *store = NULL;
+  fr_bytes_entry_t *entry = NULL;
+  fr_bytes_ref_t ref = {0};
+
   if (runtime == NULL || out_tagged == NULL) {
     return FR_ERR_INVALID;
   }
   if (length > 0 && bytes == NULL) {
     return FR_ERR_INVALID;
   }
-  if ((uint32_t)runtime->bytes.arena_used + length >
-      FR_PROFILE_BYTES_ARENA_BYTES) {
+  store = &runtime->bytes;
+  if ((uint32_t)store->arena_used + length > FR_PROFILE_BYTES_ARENA_BYTES) {
     fr_diag_note_capacity(runtime->diag, "Bytes arena",
                           FR_PROFILE_BYTES_ARENA_BYTES, FR_DIAG_UNIT_BYTES,
                           NULL);
     return FR_ERR_CAPACITY;
   }
-
-  for (fr_bytes_id_t i = 0; i < FR_PROFILE_BYTES_COUNT; i++) {
-    fr_bytes_entry_t *entry = &runtime->bytes.entries[i];
-
-    if (entry->in_use || entry->retired) {
-      continue;
-    }
-    if (entry->generation == FR_TAGGED_BYTES_MAX_GENERATION) {
-      entry->retired = true;
-      continue;
-    }
-
-    entry->generation = (fr_bytes_generation_t)(entry->generation + 1u);
-    entry->offset = runtime->bytes.arena_used;
-    entry->length = length;
-    entry->in_use = true;
-    if (length > 0) {
-      memcpy(&runtime->bytes.arena[runtime->bytes.arena_used], bytes, length);
-    }
-    runtime->bytes.arena_used =
-        (uint16_t)(runtime->bytes.arena_used + length);
-
-    fr_bytes_ref_t ref = {.id = i, .generation = entry->generation};
-    return fr_tagged_encode_bytes_ref(ref, out_tagged);
+  if (store->entry_count >= FR_PROFILE_BYTES_COUNT) {
+    fr_diag_note_capacity(runtime->diag, "Bytes table",
+                          FR_PROFILE_BYTES_COUNT, FR_DIAG_UNIT_COUNT, NULL);
+    return FR_ERR_CAPACITY;
   }
-  fr_diag_note_capacity(runtime->diag, "Bytes table", FR_PROFILE_BYTES_COUNT,
-                        FR_DIAG_UNIT_COUNT, NULL);
-  return FR_ERR_CAPACITY;
+
+  /* Both capacities are checked, so the value is published in one step:
+   * no outward call comes between the copy and the cursor moves. */
+  entry = &store->entries[store->entry_count];
+  ref.id = store->entry_count;
+#if FR_BYTES_CHECKED
+  ref.rewinds = entry->rewinds;
+#endif
+  FR_TRY(fr_tagged_encode_bytes_ref(ref, out_tagged));
+  entry->offset = store->arena_used;
+  entry->length = length;
+  if (length > 0) {
+    memcpy(&store->arena[store->arena_used], bytes, length);
+  }
+  store->arena_used = (uint16_t)(store->arena_used + length);
+  store->entry_count = (uint8_t)(store->entry_count + 1u);
+  return FR_OK;
 #else
   (void)runtime;
   (void)bytes;
@@ -1653,13 +1759,15 @@ fr_err_t fr_bytes_view(const fr_runtime_t *runtime, fr_bytes_ref_t ref,
   if (runtime == NULL || out_bytes == NULL || out_length == NULL) {
     return FR_ERR_INVALID;
   }
-  if (ref.id >= FR_PROFILE_BYTES_COUNT) {
+  if (ref.id >= runtime->bytes.entry_count) {
     return FR_ERR_VOLATILE;
   }
   entry = &runtime->bytes.entries[ref.id];
-  if (!entry->in_use || entry->generation != ref.generation) {
+#if FR_BYTES_CHECKED
+  if (entry->rewinds != ref.rewinds) {
     return FR_ERR_VOLATILE;
   }
+#endif
   *out_bytes = &runtime->bytes.arena[entry->offset];
   *out_length = entry->length;
   return FR_OK;

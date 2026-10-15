@@ -102,8 +102,8 @@ static fr_err_t test_persist_apply_user_overlay(
 
 #if FR_FEATURE_TEXT
 #if FR_FEATURE_REPL
-#define FR_TEST_PRINT_WORD " print"
-#define FR_TEST_PRINT_SLOT_COUNT 1
+#define FR_TEST_PRINT_WORD " print print.value"
+#define FR_TEST_PRINT_SLOT_COUNT 2
 #else
 #define FR_TEST_PRINT_WORD ""
 #define FR_TEST_PRINT_SLOT_COUNT 0
@@ -168,6 +168,23 @@ static fr_err_t test_persist_apply_user_overlay(
 #define FR_TEST_BYTES_SLOT_COUNT 0
 #endif
 
+#if FR_FEATURE_BUFFERS
+#define FR_TEST_BUFFER_WORDS                                                 \
+  " buffer.set buffer.append buffer.length buffer.capacity buffer.at "        \
+  "buffer.equals?"
+#define FR_TEST_BUFFER_SLOT_COUNT 6
+/* The signature names of the parameters that take Text, Bytes or a buffer. */
+#define FR_TEST_BYTES_TYPE "text|bytes|buffer"
+#define FR_TEST_VALUE_TYPE "int|text|bytes|buffer"
+#define FR_TEST_VALUE_KINDS "int, text, bytes, or buffer"
+#else
+#define FR_TEST_BUFFER_WORDS ""
+#define FR_TEST_BUFFER_SLOT_COUNT 0
+#define FR_TEST_BYTES_TYPE "text|bytes"
+#define FR_TEST_VALUE_TYPE "int|text|bytes"
+#define FR_TEST_VALUE_KINDS "int, text, or bytes"
+#endif
+
 #if FR_FEATURE_TRACE
 #define FR_TEST_TRACE_WORDS                                                  \
   " trace.open trace.watch trace.arm trace.wait trace.stop trace.count "     \
@@ -230,6 +247,7 @@ enum {
           FR_TEST_MATH_WORDS FR_TEST_PAD_WORDS FR_TEST_TEXT_WORDS             \
               FR_TEST_EVENT_REGISTER_WORDS                                    \
               FR_TEST_NET_WORDS FR_TEST_POWER_WORDS FR_TEST_BYTES_WORDS       \
+              FR_TEST_BUFFER_WORDS                                            \
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
@@ -241,6 +259,7 @@ enum {
           FR_TEST_MATH_WORDS FR_TEST_PAD_WORDS FR_TEST_TEXT_WORDS             \
               FR_TEST_EVENT_REGISTER_WORDS                                    \
               FR_TEST_NET_WORDS FR_TEST_POWER_WORDS FR_TEST_BYTES_WORDS       \
+              FR_TEST_BUFFER_WORDS                                            \
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
@@ -253,6 +272,7 @@ enum {
           FR_TEST_MATH_WORDS FR_TEST_PAD_WORDS FR_TEST_TEXT_WORDS             \
               FR_TEST_EVENT_REGISTER_WORDS                                    \
               FR_TEST_NET_WORDS FR_TEST_POWER_WORDS FR_TEST_BYTES_WORDS       \
+              FR_TEST_BUFFER_WORDS                                            \
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
@@ -264,7 +284,8 @@ enum {
    FR_TEST_MATH_SLOT_COUNT + FR_TEST_PAD_SLOT_COUNT +                         \
    FR_TEST_TEXT_SLOT_COUNT + FR_TEST_EVENT_REGISTER_SLOT_COUNT +              \
    FR_TEST_NET_SLOT_COUNT + FR_TEST_POWER_SLOT_COUNT +                        \
-   FR_TEST_BYTES_SLOT_COUNT + FR_TEST_RELEASE_SLOT_COUNT +                    \
+   FR_TEST_BYTES_SLOT_COUNT + FR_TEST_BUFFER_SLOT_COUNT +                     \
+   FR_TEST_RELEASE_SLOT_COUNT +                                               \
    FR_TEST_EVENT_TEST_SLOT_COUNT +                                            \
    FR_TEST_TRACE_SLOT_COUNT + FR_TEST_PULSE_SLOT_COUNT +                      \
    FR_TEST_CONSOLE_INPUT_SLOT_COUNT + FR_TEST_CONSOLE_SLOT_COUNT)
@@ -275,6 +296,7 @@ enum {
       FR_TEST_PWM_WORDS FR_TEST_I2C_WORDS FR_TEST_MATH_WORDS FR_TEST_PAD_WORDS \
           FR_TEST_TEXT_WORDS FR_TEST_EVENT_REGISTER_WORDS                      \
               FR_TEST_NET_WORDS FR_TEST_POWER_WORDS FR_TEST_BYTES_WORDS       \
+              FR_TEST_BUFFER_WORDS                                            \
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
@@ -285,6 +307,7 @@ enum {
       FR_TEST_PWM_WORDS FR_TEST_I2C_WORDS FR_TEST_MATH_WORDS FR_TEST_PAD_WORDS \
           FR_TEST_TEXT_WORDS FR_TEST_EVENT_REGISTER_WORDS                      \
               FR_TEST_NET_WORDS FR_TEST_POWER_WORDS FR_TEST_BYTES_WORDS       \
+              FR_TEST_BUFFER_WORDS                                            \
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
@@ -296,6 +319,7 @@ enum {
       FR_TEST_PWM_WORDS FR_TEST_I2C_WORDS FR_TEST_MATH_WORDS FR_TEST_PAD_WORDS \
           FR_TEST_TEXT_WORDS FR_TEST_EVENT_REGISTER_WORDS                      \
               FR_TEST_NET_WORDS FR_TEST_POWER_WORDS FR_TEST_BYTES_WORDS       \
+              FR_TEST_BUFFER_WORDS                                            \
               FR_TEST_TRACE_WORDS FR_TEST_PULSE_WORDS                         \
               FR_TEST_CONSOLE_INPUT_WORDS FR_TEST_CONSOLE_WORDS              \
               FR_TEST_RELEASE_WORDS FR_TEST_EVENT_TEST_WORDS                  \
@@ -307,7 +331,8 @@ enum {
    FR_TEST_MATH_SLOT_COUNT + FR_TEST_PAD_SLOT_COUNT +                         \
    FR_TEST_TEXT_SLOT_COUNT + FR_TEST_EVENT_REGISTER_SLOT_COUNT +              \
    FR_TEST_NET_SLOT_COUNT + FR_TEST_POWER_SLOT_COUNT +                        \
-   FR_TEST_BYTES_SLOT_COUNT + FR_TEST_RELEASE_SLOT_COUNT +                    \
+   FR_TEST_BYTES_SLOT_COUNT + FR_TEST_BUFFER_SLOT_COUNT +                     \
+   FR_TEST_RELEASE_SLOT_COUNT +                                               \
    FR_TEST_EVENT_TEST_SLOT_COUNT +                                            \
    FR_TEST_TRACE_SLOT_COUNT + FR_TEST_PULSE_SLOT_COUNT +                      \
    FR_TEST_CONSOLE_INPUT_SLOT_COUNT + FR_TEST_CONSOLE_SLOT_COUNT)
@@ -331,16 +356,24 @@ enum {
 #define FR_TEST_SYNTHETIC_HANDLE_KIND FR_HANDLE_KIND_PWM
 #define FR_TEST_SYNTHETIC_HANDLE_NAME "pwm"
 
-/* Each loop back-edge emits one FR_OP_BYTES_RESET byte between the body's
-   trailing DROP and the REPEAT_NEXT/JUMP when bytes scratch is enabled
-   (src/compile.c repeat/while/forever). That shifts the compiled-loop layout
-   by one byte under FR_FEATURE_BYTES; the assertions below add this offset to
-   lengths, forward jump targets, and every position from the back-edge on. */
+/* With Bytes, each loop keeps a checkpoint in local 15 (ADR 0085): the word
+   gets the 4-byte locals header with 16 locals, a 2-byte BYTES_BEGIN where
+   the loop opens, and a 2-byte BYTES_REWIND after the trailing DROP of each
+   pass. A while also rewinds at its done target. The layout assertions below
+   use the header size of a word with a loop and the width of one checkpoint
+   opcode. */
 #if FR_FEATURE_BYTES
-#define FR_TEST_LOOP_RESET 1u
+#define FR_TEST_LOOP_HEADER FR_INSTRUCTION_LOCALS_HEADER_SIZE
+#define FR_TEST_ARITY_LOOP_HEADER FR_INSTRUCTION_LOCALS_HEADER_SIZE
+#define FR_TEST_LOOP_CHECKPOINT 2u
 #else
-#define FR_TEST_LOOP_RESET 0u
+#define FR_TEST_LOOP_HEADER FR_INSTRUCTION_MIN_HEADER_SIZE
+#define FR_TEST_ARITY_LOOP_HEADER FR_INSTRUCTION_ARITY_HEADER_SIZE
+#define FR_TEST_LOOP_CHECKPOINT 0u
 #endif
+#define FR_TEST_IS_CHECKPOINT(bytes, ip, op)                                  \
+  (FR_TEST_LOOP_CHECKPOINT == 0u ||                                           \
+   ((bytes)[(ip)] == (op) && (bytes)[(ip) + 1u] == 15u))
 
 #define FR_TEST_INT_BYTE0(value)                                             \
   ((uint8_t)((uint32_t)(int32_t)(value) & 0xffu))
@@ -483,6 +516,7 @@ static void test_base_def_contract(void) {
       (FR_FEATURE_RANDOM ? 3 : 0) + (FR_FEATURE_PWM ? 3 : 0) +
       (FR_FEATURE_I2C ? 8 : 0) + (FR_FEATURE_NET ? 14 : 0) +
       (FR_FEATURE_POWER ? 4 : 0) + (FR_FEATURE_BYTES ? 8 : 0) +
+      FR_TEST_BUFFER_SLOT_COUNT +
       (FR_FEATURE_TRACE ? 12 : 0) + (FR_FEATURE_PULSE ? 9 : 0) +
       FR_TEST_CONSOLE_INPUT_SLOT_COUNT +
       (FR_FEATURE_CONSOLE_ROUTING ? 3 : 0) +
@@ -509,7 +543,8 @@ static void test_base_def_contract(void) {
         FR_SLOT_TEXT_LENGTH == FR_SLOT_AFTER_PAD);
 #if FR_FEATURE_REPL
   CHECK("event register slot follows text ids",
-        FR_SLOT_EVENT_REGISTER == FR_SLOT_PRINT + 1);
+        FR_SLOT_PRINT_VALUE == FR_SLOT_PRINT + 1 &&
+            FR_SLOT_EVENT_REGISTER == FR_SLOT_PRINT_VALUE + 1);
 #else
   CHECK("event register slot follows text ids",
         FR_SLOT_EVENT_REGISTER == FR_SLOT_TEXT_FROM_INT + 1);
@@ -712,8 +747,9 @@ static void test_persist_header_refusal_classes(void) {
         fr_persist_format_read_header(image, &info) ==
             FR_ERR_OTHER_RELEASE);
 
+  CHECK("persist header holds format version 3", original[4] == 3u);
   memcpy(image, original, sizeof(image));
-  image[4] ^= 1u;
+  image[4] = 2u;
   write_persist_header_crc(image);
   CHECK("persist refusal classifies another format version",
         fr_persist_format_read_header(image, &info) ==
@@ -730,6 +766,13 @@ static void test_persist_header_refusal_classes(void) {
   image[0] ^= 1u;
   write_persist_header_crc(image);
   CHECK("persist refusal keeps bad magic corrupt",
+        fr_persist_format_read_header(image, &info) == FR_ERR_CORRUPT);
+
+  memset(image, 0xff, FR_PERSIST_HEADER_BYTES);
+  CHECK("persist refusal reads an erased header as empty",
+        fr_persist_format_read_header(image, &info) == FR_ERR_NOT_FOUND);
+  image[FR_PERSIST_HEADER_BYTES - 1u] = 0xfeu;
+  CHECK("persist refusal keeps a header with one byte not erased corrupt",
         fr_persist_format_read_header(image, &info) == FR_ERR_CORRUPT);
 
   memcpy(image, original, sizeof(image));
@@ -814,8 +857,8 @@ static void test_persist_other_release_reports_and_falls_back(void) {
                 FR_ERR_OTHER_RELEASE &&
             strcmp(out,
                    "error: other release (27)\n"
-                   "note: the image comes from another release -- save writes "
-                   "a new one\n") == 0);
+                   "note: the image comes from another release -- send your "
+                   "source again, then save\n") == 0);
 
   CHECK("other release boot starts from the base image",
         fr_base_image_install(&runtime) == FR_OK);
@@ -2064,6 +2107,8 @@ static void test_persist_rejects_code_record_below_base_partition(void) {
   off = (uint16_t)(off + 2);
   memcpy(&payload[off], body_bytes, sizeof(body_bytes));
   off = (uint16_t)(off + sizeof(body_bytes));
+  payload[off++] = 0; /* no parameter names */
+  payload[off++] = 0;
   payload[off++] = FR_TEST_PERSIST_RECORD_BIND;
   write_u16_little_endian(&payload[off], FR_TEST_FIRST_USER_SLOT);
   off = (uint16_t)(off + 2);
@@ -2108,6 +2153,8 @@ static void test_persist_restore_falls_back_from_semantic_corrupt_newer(void) {
   off = (uint16_t)(off + 2);
   payload[off++] = FR_INSTRUCTION_FORMAT_VERSION;
   payload[off++] = 1;
+  payload[off++] = 0; /* no parameter names */
+  payload[off++] = 0;
   payload[off++] = FR_TEST_PERSIST_RECORD_END;
 
   CHECK("semantic fallback commit corrupt newer",
@@ -4382,7 +4429,8 @@ static void test_i2c(void) {
         fr_repl_eval_line(&runtime, "see i2c.write", out, sizeof(out)) ==
                 FR_OK &&
             strcmp(out,
-                   "i2c.write(bus: handle, addr: int, bytes: text|bytes) -> nil\n"
+                   "i2c.write(bus: handle, addr: int, bytes: "
+                   FR_TEST_BYTES_TYPE ") -> nil\n"
                    "write bytes to a 7-bit i2c address\n"
                    "ok\n") == 0);
   CHECK("i2c see read renders signature",
@@ -4965,6 +5013,197 @@ static fr_err_t test_text_native_id(fr_runtime_t *runtime, fr_slot_id_t slot_id,
   return fr_native_get(runtime, native_id, out_entry);
 }
 
+#if FR_FEATURE_REPL && defined(FR_HOST_TEST_HELPERS)
+static void test_print_output(void) {
+  fr_runtime_t runtime;
+  const fr_native_entry_t *print_entry = NULL;
+  const fr_native_entry_t *value_entry = NULL;
+  fr_object_id_t label_id = 0;
+  fr_tagged_t args[2] = {0};
+  fr_tagged_t result = 0;
+  char capture[64];
+  char expected[64];
+  char reply[64];
+  const fr_int_t values[] = {
+      FR_TAGGED_INT_MIN, FR_TAGGED_INT_MIN + 1, -100000, -10, -1,
+      0, 1, 9, 10, 99, 100, FR_TAGGED_INT_MAX - 1, FR_TAGGED_INT_MAX,
+  };
+  const struct {
+    const char *bytes;
+    uint16_t length;
+  } invalid_labels[] = {
+      {"", 0}, {"a:b", 3}, {"a\rb", 3}, {"a\nb", 3}, {"a\0b", 3},
+      {"a\tb", 3}, {"\x1b", 1}, {"\x7f", 1}, {"! light", 7}, {"> light", 7},
+      {"1a", 2}, {"-a", 2}, {".a", 2}, {"a b", 3}, {"\xc3\xa9", 2},
+      {"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 49},
+  };
+  const char *valid_labels[] = {
+      "_", "a.b-c_1", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  };
+
+  CHECK("print installs output natives",
+        fr_base_image_install(&runtime) == FR_OK &&
+            test_text_native_id(&runtime, FR_SLOT_PRINT, &print_entry) == FR_OK &&
+            test_text_native_id(&runtime, FR_SLOT_PRINT_VALUE, &value_entry) ==
+                FR_OK &&
+            fr_text_install(&runtime, (const uint8_t *)"light", 5,
+                              &label_id) == FR_OK &&
+            fr_tagged_encode_object_id(label_id, &args[0]) == FR_OK);
+  if (print_entry == NULL || value_entry == NULL) {
+    return;
+  }
+  for (uint8_t event = 0; event < 2; event++) {
+    runtime.dispatching_event = event != 0;
+    for (size_t i = 0; i < sizeof(values) / sizeof(values[0]); i++) {
+      CHECK("print encodes integer boundary",
+            fr_tagged_encode_int(values[i], &args[1]) == FR_OK);
+      (void)snprintf(expected, sizeof(expected), "%s%ld%s",
+                     event ? "! " : "", (long)values[i], event ? "\n" : "");
+      fr_host_capture_text(capture, sizeof(capture));
+      CHECK("print writes exact decimal bytes and returns nil",
+            fr_native_call(&runtime, print_entry, &args[1], 1, &result) == FR_OK &&
+                fr_tagged_is_nil(result) && strcmp(capture, expected) == 0);
+      /* The foreground print above left the line open (ADR 0078). */
+      (void)snprintf(expected, sizeof(expected), "%slight:%ld\n",
+                     event ? "! " : "\n", (long)values[i]);
+      fr_host_capture_text(capture, sizeof(capture));
+      CHECK("print.value writes one framed line and returns nil",
+            fr_native_call(&runtime, value_entry, args, 2, &result) == FR_OK &&
+                fr_tagged_is_nil(result) && strcmp(capture, expected) == 0);
+    }
+    for (size_t i = 0; i < sizeof(invalid_labels) / sizeof(invalid_labels[0]); i++) {
+      fr_tagged_t invalid_args[2] = {0, args[1]};
+      fr_object_id_t invalid_id = 0;
+      CHECK("print.value installs an invalid label for validation",
+            fr_text_install(&runtime, (const uint8_t *)invalid_labels[i].bytes,
+                              invalid_labels[i].length, &invalid_id) == FR_OK &&
+                fr_tagged_encode_object_id(invalid_id, &invalid_args[0]) == FR_OK);
+      fr_host_capture_text(capture, sizeof(capture));
+      CHECK("print.value rejects invalid labels before any output",
+            fr_native_call(&runtime, value_entry, invalid_args, 2, &result) ==
+                    FR_ERR_DOMAIN && capture[0] == '\0');
+    }
+    for (size_t i = 0; i < sizeof(valid_labels) / sizeof(valid_labels[0]); i++) {
+      fr_tagged_t valid_args[2] = {0, 0};
+      fr_object_id_t valid_id = 0;
+      CHECK("print.value installs a valid edge label",
+            fr_text_install(&runtime, (const uint8_t *)valid_labels[i],
+                            (uint16_t)strlen(valid_labels[i]), &valid_id) == FR_OK &&
+                fr_tagged_encode_object_id(valid_id, &valid_args[0]) == FR_OK &&
+                fr_tagged_encode_int(7, &valid_args[1]) == FR_OK);
+      (void)snprintf(expected, sizeof(expected), "%s%s:7\n", event ? "! " : "",
+                     valid_labels[i]);
+      fr_host_capture_text(capture, sizeof(capture));
+      CHECK("print.value writes a valid edge label",
+            fr_native_call(&runtime, value_entry, valid_args, 2, &result) == FR_OK &&
+                strcmp(capture, expected) == 0);
+    }
+    fr_host_capture_text(capture, sizeof(capture));
+    CHECK("print rejects bool before output without signature validation",
+          print_entry->fn(&runtime, &(fr_tagged_t){fr_tagged_true()}, 1,
+                            &result) == FR_ERR_TYPE && capture[0] == '\0');
+    CHECK("print.value rejects wrong types before output without signatures",
+          value_entry->fn(&runtime, (fr_tagged_t[]){args[1], args[1]}, 2,
+                            &result) == FR_ERR_TYPE &&
+              value_entry->fn(&runtime, (fr_tagged_t[]){args[0], args[0]}, 2,
+                                &result) == FR_ERR_TYPE && capture[0] == '\0');
+  }
+  runtime.dispatching_event = false;
+  fr_host_capture_text(capture, sizeof(capture));
+  CHECK("print preserves foreground Text bytes including NUL",
+        fr_repl_eval_line(&runtime, "print: \"a\\x00b\\n\\nc\"", reply,
+                           sizeof(reply)) == FR_OK &&
+            memcmp(capture, "a\0b\n\nc\0", 7) == 0);
+  runtime.dispatching_event = true;
+  runtime.console_line_open = true; /* foreground output with no LF */
+  fr_host_capture_text(capture, sizeof(capture));
+  CHECK("an event line after an open foreground line starts a new line",
+        fr_repl_eval_line(&runtime, "print: \"a\\n\\nc\"", reply,
+                           sizeof(reply)) == FR_OK &&
+            strcmp(capture, "\n! a\n! \n! c\n") == 0);
+  fr_host_capture_text(capture, sizeof(capture));
+  CHECK("empty event print writes nothing",
+        fr_repl_eval_line(&runtime, "print: \"\"", reply, sizeof(reply)) == FR_OK &&
+            capture[0] == '\0');
+  runtime.dispatching_event = false;
+#if FR_FEATURE_BYTES
+  fr_host_capture_text(capture, sizeof(capture));
+  CHECK("print preserves foreground Bytes including NUL",
+        fr_repl_eval_line(&runtime,
+                           "print: bytes.from-text: \"a\\x00b\\n\\nc\"", reply,
+                           sizeof(reply)) == FR_OK &&
+            memcmp(capture, "a\0b\n\nc\0", 7) == 0);
+#endif
+  for (uint8_t event = 0; event < 2; event++) {
+    runtime.dispatching_event = event != 0;
+    runtime.console_line_open = false;
+    fr_host_capture_text(capture, 8);
+    CHECK("print.value writes its line in one write and returns its failure",
+          fr_native_call(&runtime, value_entry, args, 2, &result) == FR_ERR_RANGE &&
+              capture[0] == '\0');
+    CHECK("a failed write leaves the console line open",
+          runtime.console_line_open);
+  }
+  runtime.console_line_open = false;
+  runtime.dispatching_event = false;
+  fr_host_capture_text(NULL, 0);
+
+  /* Full pools must not prevent output or change retained values. */
+  {
+    fr_object_table_t objects_before;
+    fr_err_t fill_error = FR_OK;
+#if FR_FEATURE_BYTES
+    fr_bytes_t bytes_before;
+    fr_tagged_t bytes = 0;
+#endif
+#if FR_FEATURE_PAD
+    fr_pad_t pad_before;
+    CHECK("print keeps caller PAD data", fr_pad_emit_byte(&runtime, 73) == FR_OK);
+    memcpy(&pad_before, &runtime.pad, sizeof(pad_before));
+#endif
+    for (uint16_t i = 0; i <= FR_PROFILE_OBJECT_TABLE_SIZE && fill_error == FR_OK; i++) {
+      const uint8_t text[2] = {(uint8_t)i, (uint8_t)(i >> 8)};
+      fr_object_id_t id = 0;
+      fill_error = fr_text_install(&runtime, text, sizeof(text), &id);
+    }
+    CHECK("print test fills object storage", fill_error == FR_ERR_CAPACITY);
+    memcpy(&objects_before, &runtime.objects, sizeof(objects_before));
+#if FR_FEATURE_BYTES
+    fill_error = FR_OK;
+    for (uint16_t i = 0; i <= FR_PROFILE_BYTES_COUNT && fill_error == FR_OK; i++) {
+      fill_error = fr_bytes_install(&runtime, (const uint8_t *)"keep", 4, &bytes);
+    }
+    CHECK("print test fills Bytes storage", fill_error == FR_ERR_CAPACITY);
+    memcpy(&bytes_before, &runtime.bytes, sizeof(bytes_before));
+#endif
+    for (fr_int_t i = 0; i < 10000; i++) {
+      runtime.dispatching_event = (i & 1) != 0;
+      CHECK("print encodes changing integer", fr_tagged_encode_int(i, &args[1]) == FR_OK);
+      fr_host_capture_text(capture, sizeof(capture));
+      CHECK("integer print needs no free storage",
+            fr_native_call(&runtime, print_entry, &args[1], 1, &result) == FR_OK);
+      fr_host_capture_text(capture, sizeof(capture));
+      (void)snprintf(expected, sizeof(expected), "%slight:%ld\n",
+                     runtime.dispatching_event ? "! " : "\n", (long)i);
+      CHECK("named integer output continues with full storage",
+            fr_native_call(&runtime, value_entry, args, 2, &result) == FR_OK &&
+                strcmp(capture, expected) == 0);
+    }
+    CHECK("numeric output leaves object storage unchanged",
+          memcmp(&objects_before, &runtime.objects, sizeof(objects_before)) == 0);
+#if FR_FEATURE_BYTES
+    CHECK("numeric output leaves Bytes storage unchanged",
+          memcmp(&bytes_before, &runtime.bytes, sizeof(bytes_before)) == 0);
+#endif
+#if FR_FEATURE_PAD
+    CHECK("numeric output leaves PAD unchanged",
+          memcmp(&pad_before, &runtime.pad, sizeof(pad_before)) == 0);
+#endif
+  }
+  fr_host_capture_text(NULL, 0);
+}
+#endif
+
 /* Walk the named text via text.at, asserting each byte equals expected[i]. */
 static int test_text_bytes_match(fr_runtime_t *runtime, const char *name,
                                  const char *expected) {
@@ -5038,12 +5277,16 @@ static void test_text_natives(void) {
   CHECK("print renders signature",
         fr_repl_eval_line(&runtime, "see print", out, sizeof(out)) == FR_OK &&
             strcmp(out,
-                   "print(value: text|bytes) -> nil\n"
-                   "write raw text or bytes to the console output\n"
+                   "print(value: " FR_TEST_VALUE_TYPE ") -> nil\n"
+                   "write an " FR_TEST_VALUE_KINDS " to the console output\n"
                    "ok\n") == 0);
-  CHECK("print rejects int arg",
-        fr_repl_eval_line(&runtime, "print: 7", out, sizeof(out)) ==
-            FR_ERR_TYPE);
+  CHECK("print.value renders signature",
+        fr_repl_eval_line(&runtime, "see print.value", out, sizeof(out)) ==
+                FR_OK &&
+            strcmp(out,
+                   "print.value(label: text, value: int) -> nil\n"
+                   "write label:value and a newline to the console output\n"
+                   "ok\n") == 0);
 
   CHECK("text.length on bare literal evaluates",
         fr_repl_eval_line(&runtime, "text.length: \"hello\"", out,
@@ -6300,6 +6543,7 @@ static void test_save_beyond_hold_capacity_stays_strict(void) {
   char name[32];
   char out[256];
   char compact_notice_out[27];
+  char open_notice_out[28];
   char short_notice_out[26];
   bool all_ok = true;
 
@@ -6326,13 +6570,18 @@ static void test_save_beyond_hold_capacity_stays_strict(void) {
                 FR_ERR_VOLATILE &&
             strcmp(out,
                    "notice: not saved (13)\n"
-                   "detail: cannot save slot 'h' - bound to a live handle or "
-                   "buffer\n"
+                   "detail: cannot save slot 'h' - bound to a live handle or a "
+                   "Bytes value\n"
                    "ok\n") == 0);
   CHECK("cap small buffer keeps the headline and the prompt completion",
         fr_repl_eval_line(&runtime, "save", compact_notice_out,
                           sizeof(compact_notice_out)) == FR_ERR_VOLATILE &&
             strcmp(compact_notice_out, "notice: not saved (13)\nok\n") == 0);
+  runtime.console_line_open = true;
+  CHECK("cap small buffer keeps the headline after an open-line separator",
+        fr_repl_eval_line(&runtime, "save", open_notice_out,
+                          sizeof(open_notice_out)) == FR_ERR_VOLATILE &&
+            strcmp(open_notice_out, "\nnotice: not saved (13)\nok\n") == 0);
   CHECK("cap too-small buffer emits no partial notice",
         fr_repl_eval_line(&runtime, "save", short_notice_out,
                           sizeof(short_notice_out)) == FR_ERR_RANGE &&
@@ -8110,9 +8359,9 @@ static void test_code(void) {
                 FR_CODE_STORAGE_OVERLAY_RAM &&
             fr_code_get_instructions(&runtime, overlay_code_id, &owned_view) ==
                 FR_OK &&
-            owned_view.bytes >= runtime.code.overlay_instruction_bytes &&
-            owned_view.bytes < runtime.code.overlay_instruction_bytes +
-                                   sizeof(runtime.code.overlay_instruction_bytes));
+            owned_view.bytes >= runtime.code.ram_code_bytes &&
+            owned_view.bytes < runtime.code.ram_code_bytes +
+                                   sizeof(runtime.code.ram_code_bytes));
   CHECK("overlay shadow calls overlay code without moving base id",
         fr_tagged_encode_code_object_id(overlay_code_id, &overlay_code_tagged) ==
                 FR_OK &&
@@ -8138,7 +8387,7 @@ static void test_code(void) {
   image_bytes_before = runtime.code.entries[base_code_id].instruction_bytes;
   too_large_view = (fr_instruction_stream_t){
       .bytes = stable_two,
-      .length = (uint16_t)(FR_PROFILE_MAX_OVERLAY_CODE_BYTES + 1u),
+      .length = (uint16_t)(FR_PROFILE_RAM_CODE_BYTES + 1u),
   };
   CHECK("overlay over-cap leaves image arena untouched",
         (fr_code_clear_overlay(&runtime), true) &&
@@ -8743,7 +8992,9 @@ static void test_image(void) {
 #if FR_FEATURE_TEXT && FR_FEATURE_REPL
   CHECK("base image looks up print slot name",
         fr_base_slot_id_for_name("print", &slot_id) == FR_OK &&
-            slot_id == FR_SLOT_PRINT);
+            slot_id == FR_SLOT_PRINT &&
+            fr_base_slot_id_for_name("print.value", &slot_id) == FR_OK &&
+            slot_id == FR_SLOT_PRINT_VALUE);
 #endif
 #if FR_FEATURE_UART
   CHECK("base image looks up uart slot names",
@@ -10934,18 +11185,35 @@ static void test_compile(void) {
                 "boot is fn with count [ repeat count [ wait: 1 ] ]",
                 &update) == FR_OK &&
             update.code_object.instructions.length ==
-                17u + push_size + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[1] == FR_INSTRUCTION_ARITY_HEADER_SIZE &&
+                FR_TEST_ARITY_LOOP_HEADER + 14u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[1] == FR_TEST_ARITY_LOOP_HEADER &&
             update.instruction_bytes[2] == 1 &&
-            update.instruction_bytes[3] == FR_OP_LOAD_ARG &&
-            update.instruction_bytes[4] == 0 &&
-            update.instruction_bytes[5] == FR_OP_REPEAT_BEGIN &&
-            update.instruction_bytes[6] == 15u + push_size + FR_TEST_LOOP_RESET &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[12u + push_size] == FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[12u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_ARITY_LOOP_HEADER] ==
+                FR_OP_LOAD_ARG &&
+            update.instruction_bytes[FR_TEST_ARITY_LOOP_HEADER + 1u] == 0 &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_ARITY_LOOP_HEADER + 2u,
+                                  FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[FR_TEST_ARITY_LOOP_HEADER + 2u +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_REPEAT_BEGIN &&
+            update.instruction_bytes[FR_TEST_ARITY_LOOP_HEADER + 3u +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_ARITY_LOOP_HEADER + 12u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_ARITY_LOOP_HEADER + 9u + push_size +
+                                      FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_ARITY_LOOP_HEADER + 9u +
+                                     push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_REPEAT_NEXT &&
-            update.instruction_bytes[13u + push_size + FR_TEST_LOOP_RESET] == 8);
+            update.instruction_bytes[FR_TEST_ARITY_LOOP_HEADER + 10u +
+                                     push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_ARITY_LOOP_HEADER + 5u + FR_TEST_LOOP_CHECKPOINT);
 
   CHECK("compiled function owns instruction bytes",
         fr_compile_overlay_update("boot is fn [ 1 ]", &update) == FR_OK &&
@@ -11766,61 +12034,101 @@ static void test_compile(void) {
         fr_compile_overlay_update("boot is fn [ repeat 2 [ wait: 1 ] ]",
                                   &update) == FR_OK &&
             update.code_object.instructions.length ==
-                14u + (push_size * 2u) + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[2] == FR_OP_PUSH_INT &&
-            update.instruction_bytes[3] == 2 &&
-            update.instruction_bytes[2u + push_size] == FR_OP_REPEAT_BEGIN &&
-            update.instruction_bytes[3u + push_size] ==
-                12u + (push_size * 2u) + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[5u + push_size] == FR_OP_PUSH_INT &&
-            update.instruction_bytes[6u + push_size] == 1 &&
-            update.instruction_bytes[5u + (push_size * 2u)] ==
+                FR_TEST_LOOP_HEADER + 12u + (push_size * 2u) +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[1] == FR_TEST_LOOP_HEADER &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER] == FR_OP_PUSH_INT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u] == 2 &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + push_size,
+                                  FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_REPEAT_BEGIN &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 10u + (push_size * 2u) +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_PUSH_INT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == 1 &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u +
+                                     (push_size * 2u) +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_CALL_NATIVE_SLOT &&
-            update.instruction_bytes[6u + (push_size * 2u)] == FR_SLOT_WAIT &&
-            update.instruction_bytes[8u + (push_size * 2u)] == FR_OP_DROP &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[9u + (push_size * 2u)] ==
-                 FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[9u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u +
+                                     (push_size * 2u) +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_SLOT_WAIT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 6u +
+                                     (push_size * 2u) +
+                                     FR_TEST_LOOP_CHECKPOINT] == FR_OP_DROP &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 7u + (push_size * 2u) +
+                                      FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 7u +
+                                     (push_size * 2u) +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_REPEAT_NEXT &&
-            update.instruction_bytes[10u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] ==
-                5u + push_size &&
-            update.instruction_bytes[12u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 8u +
+                                     (push_size * 2u) +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 3u + push_size +
+                    FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 10u +
+                                     (push_size * 2u) +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_PUSH_NIL &&
-            update.instruction_bytes[13u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 11u +
+                                     (push_size * 2u) +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_RETURN);
   CHECK("compiled repeat-as owns index in loop opcodes",
         fr_compile_overlay_update("boot is fn [ repeat 2 as i [ i ] ]",
                                   &update) == FR_OK &&
             update.code_object.instructions.length ==
-                17u + push_size + FR_TEST_LOOP_RESET &&
+                17u + push_size + 2u * FR_TEST_LOOP_CHECKPOINT &&
             update.instruction_bytes[1] == FR_INSTRUCTION_LOCALS_HEADER_SIZE &&
-            update.instruction_bytes[3] == 1 &&
+            update.instruction_bytes[3] ==
+                (FR_TEST_LOOP_CHECKPOINT == 0u ? 1u : 16u) &&
             update.instruction_bytes[4] == FR_OP_PUSH_INT &&
             update.instruction_bytes[5] == 2 &&
-            update.instruction_bytes[4u + push_size] ==
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes, 4u + push_size,
+                                  FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[4u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_REPEAT_BEGIN_AS &&
-            update.instruction_bytes[5u + push_size] ==
-                15u + push_size + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[7u + push_size] == 0 &&
-            update.instruction_bytes[8u + push_size] == FR_OP_LOAD_LOCAL &&
-            update.instruction_bytes[9u + push_size] == 0 &&
-            update.instruction_bytes[10u + push_size] == FR_OP_DROP &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[11u + push_size] == FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[11u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[5u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                15u + push_size + 2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[7u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == 0 &&
+            update.instruction_bytes[8u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_LOAD_LOCAL &&
+            update.instruction_bytes[9u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == 0 &&
+            update.instruction_bytes[10u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == FR_OP_DROP &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  11u + push_size + FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[11u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_REPEAT_NEXT_AS &&
-            update.instruction_bytes[12u + push_size + FR_TEST_LOOP_RESET] ==
-                8u + push_size &&
-            update.instruction_bytes[14u + push_size + FR_TEST_LOOP_RESET] ==
-                0 &&
-            update.instruction_bytes[15u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[12u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                8u + push_size + FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[14u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] == 0 &&
+            update.instruction_bytes[15u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_PUSH_NIL &&
-            update.instruction_bytes[16u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[16u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_RETURN);
   CHECK("repeat-as sums zero-based index",
         test_run_boot_source_int("boot is fn [ here t is 0 ; repeat 4 as i "
@@ -11853,40 +12161,73 @@ static void test_compile(void) {
         fr_compile_overlay_update("boot is fn [ repeat 0 [ one ] ]",
                                   &update) == FR_OK &&
             update.code_object.instructions.length ==
-                14u + push_size + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[2] == FR_OP_PUSH_INT &&
-            update.instruction_bytes[3] == 0 &&
-            update.instruction_bytes[2u + push_size] == FR_OP_REPEAT_BEGIN &&
-            update.instruction_bytes[3u + push_size] ==
-                12u + push_size + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[5u + push_size] == FR_OP_LOAD_SLOT &&
-            update.instruction_bytes[6u + push_size] == FR_SLOT_ONE &&
-            update.instruction_bytes[8u + push_size] == FR_OP_DROP &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[9u + push_size] == FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[9u + push_size + FR_TEST_LOOP_RESET] ==
+                FR_TEST_LOOP_HEADER + 12u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER] == FR_OP_PUSH_INT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u] == 0 &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + push_size,
+                                  FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_REPEAT_BEGIN &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 10u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_LOAD_SLOT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == FR_SLOT_ONE &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 6u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == FR_OP_DROP &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 7u + push_size +
+                                      FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 7u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_REPEAT_NEXT &&
-            update.instruction_bytes[10u + push_size + FR_TEST_LOOP_RESET] ==
-                5u + push_size &&
-            update.instruction_bytes[12u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 8u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 3u + push_size +
+                    FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 10u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_PUSH_NIL &&
-            update.instruction_bytes[13u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 11u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_RETURN);
   CHECK("compiled repeat accepts dynamic count",
         fr_base_image_install(&runtime) == FR_OK &&
             fr_compile_overlay_update("boot is fn [ repeat one [ wait: 1 ] ]",
                                       &update) == FR_OK &&
             update.code_object.instructions.length ==
-                17u + push_size + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[2] == FR_OP_LOAD_SLOT &&
-            update.instruction_bytes[3] == FR_SLOT_ONE &&
-            update.instruction_bytes[5] == FR_OP_REPEAT_BEGIN &&
-            update.instruction_bytes[6] == 15u + push_size + FR_TEST_LOOP_RESET &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[12u + push_size] == FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[12u + push_size + FR_TEST_LOOP_RESET] ==
+                FR_TEST_LOOP_HEADER + 15u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER] == FR_OP_LOAD_SLOT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u] == FR_SLOT_ONE &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 3u,
+                                  FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_REPEAT_BEGIN &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 13u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 10u + push_size +
+                                      FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 10u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_REPEAT_NEXT &&
-            update.instruction_bytes[13u + push_size + FR_TEST_LOOP_RESET] == 8 &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 11u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 6u + FR_TEST_LOOP_CHECKPOINT &&
             fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
             fr_vm_run_boot(&runtime, &tagged) == FR_OK &&
             fr_tagged_is_nil(tagged));
@@ -11907,28 +12248,53 @@ static void test_compile(void) {
         fr_compile_overlay_update("boot is fn [ while 0 [ 1 ] ]",
                                   &update) == FR_OK &&
             update.code_object.instructions.length ==
-                11u + (push_size * 2u) + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[2] == FR_OP_PUSH_INT &&
-            update.instruction_bytes[3] == 0 &&
-            update.instruction_bytes[2u + push_size] ==
+                FR_TEST_LOOP_HEADER + 9u + (push_size * 2u) +
+                    3u * FR_TEST_LOOP_CHECKPOINT &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER, FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_PUSH_INT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u +
+                                     FR_TEST_LOOP_CHECKPOINT] == 0 &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_JUMP_IF_FALSY &&
-            update.instruction_bytes[3u + push_size] ==
-                9u + (push_size * 2u) + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[5u + push_size] == FR_OP_PUSH_INT &&
-            update.instruction_bytes[6u + push_size] == 1 &&
-            update.instruction_bytes[5u + (push_size * 2u)] == FR_OP_DROP &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[6u + (push_size * 2u)] ==
-                 FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[6u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] == FR_OP_JUMP &&
-            update.instruction_bytes[7u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] == 2 &&
-            update.instruction_bytes[9u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + 7u + (push_size * 2u) +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_PUSH_INT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == 1 &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u +
+                                     (push_size * 2u) +
+                                     FR_TEST_LOOP_CHECKPOINT] == FR_OP_DROP &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 4u + (push_size * 2u) +
+                                      FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u +
+                                     (push_size * 2u) +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_JUMP &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 5u +
+                                     (push_size * 2u) +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + FR_TEST_LOOP_CHECKPOINT &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 7u + (push_size * 2u) +
+                                      2u * FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 7u +
+                                     (push_size * 2u) +
+                                     3u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_PUSH_NIL &&
-            update.instruction_bytes[10u + (push_size * 2u) +
-                                     FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 8u +
+                                     (push_size * 2u) +
+                                     3u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_RETURN);
   CHECK("compiled while false skips body and yields nil",
         fr_runtime_init(&runtime) == FR_OK &&
@@ -11979,21 +12345,38 @@ static void test_compile(void) {
         fr_compile_overlay_update("boot is fn [ forever [ wait: 1 ] ]",
                                   &update) == FR_OK &&
             update.code_object.instructions.length ==
-                11u + push_size + FR_TEST_LOOP_RESET &&
-            update.instruction_bytes[2] == FR_OP_PUSH_INT &&
-            update.instruction_bytes[3] == 1 &&
-            update.instruction_bytes[2u + push_size] ==
+                FR_TEST_LOOP_HEADER + 9u + push_size +
+                    2u * FR_TEST_LOOP_CHECKPOINT &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER, FR_OP_BYTES_BEGIN) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_OP_PUSH_INT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u +
+                                     FR_TEST_LOOP_CHECKPOINT] == 1 &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_CALL_NATIVE_SLOT &&
-            update.instruction_bytes[3u + push_size] == FR_SLOT_WAIT &&
-            update.instruction_bytes[5u + push_size] == FR_OP_DROP &&
-            (FR_TEST_LOOP_RESET == 0u ||
-             update.instruction_bytes[6u + push_size] == FR_OP_BYTES_RESET) &&
-            update.instruction_bytes[6u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 1u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] ==
+                FR_SLOT_WAIT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 3u + push_size +
+                                     FR_TEST_LOOP_CHECKPOINT] == FR_OP_DROP &&
+            FR_TEST_IS_CHECKPOINT(update.instruction_bytes,
+                                  FR_TEST_LOOP_HEADER + 4u + push_size +
+                                      FR_TEST_LOOP_CHECKPOINT,
+                                  FR_OP_BYTES_REWIND) &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 4u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_JUMP &&
-            update.instruction_bytes[7u + push_size + FR_TEST_LOOP_RESET] == 2 &&
-            update.instruction_bytes[9u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 5u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
+                FR_TEST_LOOP_HEADER + FR_TEST_LOOP_CHECKPOINT &&
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 7u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_PUSH_NIL &&
-            update.instruction_bytes[10u + push_size + FR_TEST_LOOP_RESET] ==
+            update.instruction_bytes[FR_TEST_LOOP_HEADER + 8u + push_size +
+                                     2u * FR_TEST_LOOP_CHECKPOINT] ==
                 FR_OP_RETURN);
   CHECK("compiled pure forever sees pending interrupt",
         fr_base_image_install(&runtime) == FR_OK &&
@@ -12712,10 +13095,9 @@ static void test_compiler_overlay_wire_parity(void) {
   CHECK("compiler parity code counts match",
         direct_runtime.code.count == wire_runtime.code.count &&
             host_mirror.code.count == wire_runtime.code.count &&
-            direct_runtime.code.overlay_used_instruction_bytes ==
-                wire_runtime.code.overlay_used_instruction_bytes &&
-            host_mirror.code.overlay_used_instruction_bytes ==
-                wire_runtime.code.overlay_used_instruction_bytes);
+            direct_runtime.code.ram_code_used ==
+                wire_runtime.code.ram_code_used &&
+            host_mirror.code.ram_code_used == wire_runtime.code.ram_code_used);
   CHECK("compiler parity literal slot matches",
         test_named_slot_effects_match(&direct_runtime, &wire_runtime, "led"));
   CHECK("compiler parity code slot matches",
@@ -13208,8 +13590,8 @@ static void test_persist(void) {
                   FR_OK &&
               strcmp(out,
                      "overlay code\n"
-                     "to greet with arg0 [ text.concat: \"led=\", "
-                     "text.from-int: arg0 ]\n"
+                     "to greet with x [ text.concat: \"led=\", "
+                     "text.from-int: x ]\n"
                      "ok\n") == 0 &&
               fr_repl_eval_line(&runtime, "labeled is greet: 1", out,
                                 sizeof(out)) == FR_OK &&
@@ -13803,7 +14185,7 @@ static void test_persist_payload_rejects_seventeenth_event_record(void) {
       'F', 'R', 'P', 'O',
       FR_PERSIST_PAYLOAD_VERSION,
       0x01, 0, 0, 3, 0, FR_INSTRUCTION_FORMAT_VERSION,
-      FR_INSTRUCTION_MIN_HEADER_SIZE, FR_OP_RETURN,
+      FR_INSTRUCTION_MIN_HEADER_SIZE, FR_OP_RETURN, 0, 0,
       FR_TEST_PERSIST_RECORD_EVENT, FR_EVENT_KIND_GPIO_RISING, 0, 0, 0, 0, 0, 0,
       FR_TEST_PERSIST_RECORD_EVENT, FR_EVENT_KIND_GPIO_RISING, 0, 0, 0, 0, 0, 0,
       FR_TEST_PERSIST_RECORD_EVENT, FR_EVENT_KIND_GPIO_RISING, 0, 0, 0, 0, 0, 0,
@@ -15375,6 +15757,140 @@ static bool test_repl_run_lines(fr_runtime_t *runtime,
   return err == FR_OK;
 }
 
+#if FR_FEATURE_REPL && FR_FEATURE_TEXT && FR_FEATURE_PAD && \
+    defined(FR_HOST_TEST_HELPERS)
+/* ADR 0078: a word can leave the console line open. A prompt, a REPL reply,
+ * an event line and a complete-line word start in column 0, so a client always
+ * finds `ok` or `error:` on its own line. */
+static void test_console_line_framing(void) {
+  static const struct {
+    const char *name;
+    bool open_before; /* as after a boot word that printed with no LF */
+    const char *lines[2];
+    uint8_t line_count;
+    const char *expected_prefix;
+  } cases[] = {
+      {"ok follows an open print", false, {"print: 42"}, 1, "> 42\nok\n> "},
+      {"a print that ends in LF adds no empty line", false,
+       {"print: \"hi\\n\""}, 1, "> hi\nok\n> "},
+      {"a result follows an open print", false,
+       {"to f [ print: 5; 7 ]", "f:"}, 2, "> ok\n> 5\n7\nok\n> "},
+      {"an error follows an open print", false,
+       {"to g [ print: 5; 1 / 0 ]", "g:"}, 2, "> ok\n> 5\nerror: "},
+      {"print.value follows an open print", false,
+       {"to v [ print: 5; print.value: \"x\", 1 ]", "v:"}, 2,
+       "> ok\n> 5\nx:1\nok\n> "},
+      {"pad.type leaves the line open", false,
+       {"to t [ pad.reset:; pad.emit-byte: 65; pad.type: ]", "t:"}, 2,
+       "> ok\n> A\nok\n> "},
+      {"pad.type with no data leaves the line closed", false,
+       {"to t [ pad.reset:; pad.type: ]", "t:"}, 2, "> ok\n> ok\n> "},
+      {"pad.type that ends in LF adds no empty line", false,
+       {"to t [ pad.reset:; pad.emit-byte: 10; pad.type: ]", "t:"}, 2,
+       "> ok\n> \nok\n> "},
+      {"a Text result gets one LF", false,
+       {"to l [ print: 5; \"abcdefghij\" ]", "l:"}, 2,
+       "> ok\n> 5\n\"abcdefghij\"\nok\n> "},
+      {"the first prompt follows boot output", true, {""}, 0, "\n> "},
+  };
+  const fr_repl_io_t io = {
+      .read_line = test_repl_read_line,
+      .write_text = fr_platform_write_text,
+  };
+  fr_runtime_t runtime;
+  char capture[128];
+  char reply[64];
+
+  for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+    test_repl_io_state_t state = {
+        .lines = cases[i].lines,
+        .line_count = cases[i].line_count,
+    };
+    fr_err_t err = FR_OK;
+
+    CHECK("line framing installs the base image",
+          fr_base_image_install(&runtime) == FR_OK);
+    runtime.console_line_open = cases[i].open_before;
+    test_repl_io_state = &state;
+    fr_host_capture_text(capture, sizeof(capture));
+    err = fr_repl_run(&runtime, &io);
+    fr_host_capture_text(NULL, 0);
+    test_repl_io_state = NULL;
+    if (err != FR_OK ||
+        strncmp(capture, cases[i].expected_prefix,
+                strlen(cases[i].expected_prefix)) != 0) {
+      fprintf(stderr, "line framing: %s\n  got: [%s]\n", cases[i].name,
+              capture);
+    }
+    CHECK("each reply starts in column 0",
+          err == FR_OK && strncmp(capture, cases[i].expected_prefix,
+                                  strlen(cases[i].expected_prefix)) == 0);
+  }
+
+  CHECK("line framing installs the base image",
+        fr_base_image_install(&runtime) == FR_OK &&
+            fr_repl_eval_line(&runtime,
+                              "to t [ pad.reset:; pad.emit-byte: 65; pad.type: ]",
+                              reply, sizeof(reply)) == FR_OK);
+  runtime.dispatching_event = true;
+  fr_host_capture_text(capture, sizeof(capture));
+  CHECK("pad.type in an event body writes raw bytes and opens the line",
+        fr_repl_eval_line(&runtime, "t:", reply, sizeof(reply)) == FR_OK &&
+            strcmp(capture, "A") == 0 && strcmp(reply, "\nok\n") == 0);
+  runtime.console_line_open = false;
+  fr_host_capture_text(capture, 3);
+  CHECK("a failed body after the event prefix leaves the line open",
+        fr_repl_eval_line(&runtime, "print: \"abc\"", reply, sizeof(reply)) !=
+                FR_OK &&
+            strcmp(capture, "! ") == 0 && strncmp(reply, "\nerror: ", 8) == 0);
+  runtime.dispatching_event = false;
+#if FR_FEATURE_EVENTS
+  runtime.console_line_open = true;
+  runtime.events.overflow_count = runtime.events.overflow_reported_count + 1u;
+  fr_host_capture_text(capture, sizeof(capture));
+  fr_event_report_overflow(&runtime);
+  CHECK("the dropped-event line starts on a new line",
+        strcmp(capture, "\n! events dropped: 1\n") == 0 &&
+            !runtime.console_line_open);
+#endif
+#if FR_FEATURE_CONSOLE_ROUTING
+  runtime.console_line_open = true;
+  fr_host_capture_text(capture, sizeof(capture));
+  CHECK("a console route change closes the open line first",
+        fr_repl_eval_line(&runtime, "console.default:", reply, sizeof(reply)) ==
+                FR_OK &&
+            strcmp(capture, "\n") == 0 && strcmp(reply, "ok\n") == 0);
+#endif
+  fr_host_capture_text(NULL, 0);
+  runtime.console_line_open = true;
+  CHECK("a buffered reply starts on a new line and closes the line",
+        fr_repl_eval_line(&runtime, "1 + 1", reply, sizeof(reply)) == FR_OK &&
+            strcmp(reply, "\n2\nok\n") == 0 && !runtime.console_line_open);
+  runtime.console_line_open = true;
+  CHECK("clear keeps an open console line",
+        fr_runtime_clear_project(&runtime) == FR_OK && runtime.console_line_open);
+#if FR_FEATURE_PERSISTENCE
+  (void)fr_platform_persist_clear();
+  CHECK("save, restore and wipe-user keep an open console line",
+        fr_persist_save(&runtime) == FR_OK &&
+            fr_persist_restore(&runtime) == FR_OK &&
+            fr_persist_wipe_user(&runtime) == FR_OK && runtime.console_line_open);
+  (void)fr_platform_persist_clear();
+#endif
+  {
+    test_repl_io_state_t state = {.lines = NULL, .line_count = 0};
+
+    test_repl_io_state = &state;
+    fr_host_capture_text(capture, 1);
+    CHECK("a failed newline stops the reply and keeps the line open",
+          fr_repl_run(&runtime, &io) != FR_OK && capture[0] == '\0' &&
+              runtime.console_line_open);
+    fr_host_capture_text(NULL, 0);
+    test_repl_io_state = NULL;
+  }
+}
+#endif
+
 static bool test_error_line_matches_wire_shape(const char *out) {
   const char *line = strstr(out, "error: ");
   const char *end = NULL;
@@ -16055,7 +16571,8 @@ static void test_repl_error_diagnostics(void) {
             test_error_line_equals(out,
                                    "error: wrong type: cells 1 (2)") &&
             strstr(out,
-                   "print argument 1 expects text or bytes, got cells\n") !=
+                   "print argument 1 expects " FR_TEST_VALUE_KINDS
+                   ", got cells\n") !=
                 NULL);
 #endif
 
@@ -16082,6 +16599,15 @@ static void test_repl_error_diagnostics(void) {
             fr_repl_eval_line(&runtime, "gpio.read: 65536", compact_out,
                               (uint16_t)sizeof(compact_out)) == FR_ERR_DOMAIN &&
             strcmp(compact_out, "error: bad value: 65536 (3)\n") == 0);
+  {
+    char open_error_out[30];
+
+    runtime.console_line_open = true;
+    CHECK("small public buffer keeps the headline after an open-line separator",
+          fr_repl_eval_line(&runtime, "gpio.read: 65536", open_error_out,
+                            (uint16_t)sizeof(open_error_out)) == FR_ERR_DOMAIN &&
+              strcmp(open_error_out, "\nerror: bad value: 65536 (3)\n") == 0);
+  }
   CHECK("too-small public buffer does not emit a partial error",
         fr_base_image_install(&runtime) == FR_OK &&
             fr_repl_eval_line(&runtime, "gpio.read: 65536", short_error_out,
@@ -17180,6 +17706,237 @@ static void test_repl_overlong_line_recovers(void) {
             strcmp(out, expected) == 0);
 }
 
+#if FR_FEATURE_COMPILER
+/* ADR 0084 points 1 to 3: one pending area holds each unsaved instruction
+ * stream and then its parameter names, and one check runs before any
+ * change. */
+static uint16_t test_pending_room(const fr_runtime_t *runtime) {
+  return (uint16_t)(sizeof(runtime->code.ram_code_bytes) -
+                    runtime->code.ram_code_used);
+}
+
+static uint16_t test_compiled_length(fr_runtime_t *runtime,
+                                     const char *source) {
+  static fr_compile_overlay_update_t update;
+
+  if (fr_compile_overlay_update_for_runtime(runtime, source, &update) !=
+      FR_OK) {
+    return 0;
+  }
+  return (uint16_t)(update.code_object.instructions.length +
+                    (update.overlay_update.code_object_count == 2u
+                         ? update.event_body_object.instructions.length
+                         : 0u));
+}
+
+static bool test_word_param_names(fr_runtime_t *runtime, const char *word,
+                                  const char *names, uint16_t names_len) {
+  fr_slot_id_t slot_id = 0;
+  fr_tagged_t tagged = 0;
+  fr_code_object_id_t code_id = 0;
+  const char *got = NULL;
+  uint16_t got_len = 0;
+
+  return fr_slot_id_for_name(runtime, word, &slot_id) == FR_OK &&
+         fr_slot_read(runtime, slot_id, &tagged) == FR_OK &&
+         fr_tagged_decode_code_object_id(tagged, &code_id) == FR_OK &&
+         fr_code_get_param_names(runtime, code_id, &got, &got_len) == FR_OK &&
+         got_len == names_len && memcmp(got, names, names_len) == 0;
+}
+
+static void test_pending_area_holds_code_and_names(void) {
+  static fr_runtime_t runtime;
+  char out[1024];
+  char before[1024];
+  char line[700];
+  uint16_t word_length = 0;
+  uint16_t filler_length = 0;
+  uint16_t exact_length = 0;
+  uint16_t room = 0;
+  uint16_t name_length = 0;
+  int used = 0;
+
+  /* The names of a word follow its code in the pending area. */
+  CHECK("pending area install", fr_base_image_install(&runtime) == FR_OK);
+  room = test_pending_room(&runtime);
+  word_length =
+      test_compiled_length(&runtime, "to w with alpha, beta [ alpha + beta ]");
+  CHECK("pending area: a word with two names",
+        word_length > 0 &&
+            fr_repl_eval_line(&runtime,
+                              "to w with alpha, beta [ alpha + beta ]", out,
+                              sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) == room - word_length - 11u &&
+            test_word_param_names(&runtime, "w", "alpha\0beta\0", 11));
+  snprintf(before, sizeof(before),
+           "code.pending.used %u\ncode.pending.total %u\nok\n",
+           (unsigned)(word_length + 11u),
+           (unsigned)(sizeof(runtime.code.ram_code_bytes) -
+                      runtime.code.ram_code_base_used));
+  CHECK("mem code counts the names",
+        fr_repl_eval_line(&runtime, "mem code", out, sizeof(out)) == FR_OK &&
+            strcmp(out, before) == 0);
+  CHECK("clear frees pending code and names together",
+        fr_repl_eval_line(&runtime, "clear", out, sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) == room);
+
+#if FR_FEATURE_EVENTS
+  /* Both instruction streams and the word's names count; an event body has
+   * no names. */
+  word_length =
+      test_compiled_length(&runtime, "to ev with p [ every 1000 [ 1 ] ; p ]");
+  CHECK("pending area: a word with an event body",
+        word_length > 0 &&
+            fr_repl_eval_line(&runtime,
+                              "to ev with p [ every 1000 [ 1 ] ; p ]", out,
+                              sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) == room - word_length - 2u);
+  CHECK("pending area: clear after the event word",
+        fr_repl_eval_line(&runtime, "clear", out, sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) == room);
+#endif
+
+  /* Fill the area with one word until the room left is less than one more
+   * filler and the exact word with a one-byte name. */
+  filler_length = test_compiled_length(&runtime, "to filler [ 1 ; 2 ; 3 ]");
+  exact_length = test_compiled_length(&runtime, "to exact with p [ 0 ]");
+  CHECK("pending area: filler and exact lengths",
+        filler_length > 0 && exact_length > 0);
+  room = test_pending_room(&runtime);
+  while (filler_length > 0 &&
+         room >= (uint16_t)(filler_length + exact_length + 2u)) {
+    if (fr_repl_eval_line(&runtime, "to filler [ 1 ; 2 ; 3 ]", out,
+                          sizeof(out)) != FR_OK) {
+      break;
+    }
+    room = test_pending_room(&runtime);
+  }
+  CHECK("pending area: the fill leaves room for a short name",
+        room >= (uint16_t)(exact_length + 2u) &&
+            room < (uint16_t)(filler_length + exact_length + 2u));
+
+  /* One byte more than the room: refused, and nothing changes. */
+  name_length = (uint16_t)(room - exact_length);
+  used = snprintf(line, sizeof(line), "to exact with ");
+  memset(line + used, 'q', name_length);
+  used += name_length;
+  snprintf(line + used, sizeof(line) - (size_t)used, " [ 0 ]");
+  CHECK("pending area: one byte over is refused",
+        fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                FR_ERR_CAPACITY &&
+            strstr(out, "note: pending code is full") != NULL &&
+            test_pending_room(&runtime) == room);
+  /* The exact fit. */
+  used = snprintf(line, sizeof(line), "to exact with ");
+  memset(line + used, 'q', (size_t)(name_length - 1u));
+  used += name_length - 1u;
+  snprintf(line + used, sizeof(line) - (size_t)used, " [ 0 ]");
+  CHECK("pending area: an exact fit fits",
+        fr_repl_eval_line(&runtime, line, out, sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) == 0);
+
+#if FR_FEATURE_TEXT
+  /* Refused definitions that contain Text leave no object, Text byte, slot
+   * or pending byte behind. */
+  CHECK("refused Text definitions: state before",
+        fr_repl_eval_line(&runtime, "mem", before, sizeof(before)) == FR_OK);
+  for (int i = 0; i < 4; i++) {
+    snprintf(line, sizeof(line), "to leak%d [ \"refused text %d\" ]", i, i);
+    CHECK("refused Text definitions: each is refused",
+          fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+              FR_ERR_CAPACITY);
+  }
+  CHECK("refused Text definitions: nothing changes",
+        fr_repl_eval_line(&runtime, "mem", out, sizeof(out)) == FR_OK &&
+            strcmp(out, before) == 0);
+#endif
+
+  /* Every parameter name at the token limit fits. */
+  CHECK("pending area: long names install",
+        fr_base_image_install(&runtime) == FR_OK);
+  used = snprintf(line, sizeof(line), "to long with ");
+  for (int i = 0; i < FR_PARSE_MAX_PARAMS; i++) {
+    if (i > 0) {
+      used += snprintf(line + used, sizeof(line) - (size_t)used, ", ");
+    }
+    memset(line + used, 'a' + i, FR_PROFILE_PARSE_MAX_TOKEN_BYTES);
+    used += FR_PROFILE_PARSE_MAX_TOKEN_BYTES;
+  }
+  snprintf(line + used, sizeof(line) - (size_t)used, " [ 0 ]");
+  {
+    static fr_compile_overlay_update_t update;
+    const char *names = NULL;
+    uint16_t names_len = 0;
+
+    CHECK("pending area: the longest legal names fit",
+          fr_compile_overlay_update_for_runtime(&runtime, line, &update) ==
+                  FR_OK &&
+              fr_overlay_apply(&runtime, &update.overlay_update) == FR_OK &&
+              fr_code_get_param_names(&runtime,
+                                      (fr_code_object_id_t)(runtime.code.count -
+                                                            1u),
+                                      &names, &names_len) == FR_OK &&
+              names_len == FR_PARSE_MAX_PARAMS *
+                               (FR_PROFILE_PARSE_MAX_TOKEN_BYTES + 1));
+  }
+
+#if FR_FEATURE_SOURCE_BASE
+  /* A base word keeps its names in the base part of the area: after a
+   * restore of the base, in a copied runtime, and after a clear. */
+  CHECK("base names install", fr_base_image_install(&runtime) == FR_OK);
+  CHECK("a base word shows its names",
+        fr_repl_eval_line(&runtime, "see blink", out, sizeof(out)) == FR_OK &&
+            strstr(out, "to blink with pin, count, delay [") != NULL);
+  CHECK("clear keeps the base names",
+        fr_repl_eval_line(&runtime, "to w with x [ x ]", out, sizeof(out)) ==
+                FR_OK &&
+            fr_repl_eval_line(&runtime, "clear", out, sizeof(out)) == FR_OK &&
+            test_word_param_names(&runtime, "blink", "pin\0count\0delay\0",
+                                  16));
+  fr_code_restore_base(&runtime);
+  CHECK("fr_code_restore_base keeps the base names",
+        test_word_param_names(&runtime, "blink", "pin\0count\0delay\0", 16));
+  {
+    static fr_runtime_t copy;
+    fr_slot_id_t slot_id = 0;
+    fr_tagged_t tagged = 0;
+    fr_code_object_id_t code_id = 0;
+    const char *names = NULL;
+    uint16_t names_len = 0;
+    uintptr_t area = (uintptr_t)copy.code.ram_code_bytes;
+
+    memcpy(&copy, &runtime, sizeof(copy));
+    fr_code_rebase_ram_pointers(&copy, &runtime);
+    CHECK("a copied runtime rebases the names into its own area",
+          fr_slot_id_for_name(&copy, "blink", &slot_id) == FR_OK &&
+              fr_slot_read(&copy, slot_id, &tagged) == FR_OK &&
+              fr_tagged_decode_code_object_id(tagged, &code_id) == FR_OK &&
+              fr_code_get_param_names(&copy, code_id, &names, &names_len) ==
+                  FR_OK &&
+              (uintptr_t)names >= area &&
+              (uintptr_t)names + names_len <=
+                  area + sizeof(copy.code.ram_code_bytes) &&
+              names_len == 16 && memcmp(names, "pin\0count\0delay\0", 16) == 0);
+  }
+#endif
+
+#if FR_FEATURE_PERSISTENCE
+  /* A save that succeeds frees the pending names with their code. */
+  (void)fr_platform_persist_clear();
+  CHECK("save frees pending names install",
+        fr_base_image_install(&runtime) == FR_OK);
+  room = test_pending_room(&runtime);
+  CHECK("save frees pending names",
+        fr_repl_eval_line(&runtime, "to w with alpha, beta [ alpha ]", out,
+                          sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) < room &&
+            fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK &&
+            test_pending_room(&runtime) == room);
+  (void)fr_platform_persist_clear();
+#endif
+}
+#endif
+
 /* A full store names itself and its limit, and a note that gives a remedy
  * gives one that works. */
 static void test_repl_capacity_notes(void) {
@@ -17190,9 +17947,8 @@ static void test_repl_capacity_notes(void) {
   fr_err_t err = FR_OK;
 
   CHECK("capacity notes install", fr_base_image_install(&runtime) == FR_OK);
-  pending_limit =
-      (uint16_t)(sizeof(runtime.code.overlay_instruction_bytes) -
-                 runtime.code.base_ram_used_instruction_bytes);
+  pending_limit = (uint16_t)(sizeof(runtime.code.ram_code_bytes) -
+                             runtime.code.ram_code_base_used);
   snprintf(expected, sizeof(expected),
            "code.pending.used 0\ncode.pending.total %u\nok\n",
            (unsigned)pending_limit);
@@ -17200,9 +17956,13 @@ static void test_repl_capacity_notes(void) {
         fr_repl_eval_line(&runtime, "mem code", out, sizeof(out)) == FR_OK &&
             strcmp(out, expected) == 0);
 
+  /* Each redefinition adds a code entry. The word is large enough that the
+   * pending area fills before the code entries run out, also on host_small
+   * (260 bytes of code and names, 16 entries). */
   for (int i = 0; i < 1000; i++) {
-    err = fr_repl_eval_line(&runtime, "to w with p [ p + 1 ]", out,
-                            sizeof(out));
+    err = fr_repl_eval_line(
+        &runtime, "to w with p [ p + 1 ; p + 2 ; p + 3 ; p + 4 ]", out,
+        sizeof(out));
     if (err != FR_OK) {
       break;
     }
@@ -17287,26 +18047,75 @@ static void test_repl_capacity_notes(void) {
 #endif
 
 #if FR_FEATURE_PERSISTENCE && FR_PROFILE_MAX_OVERLAY_NAMES > 0
-  /* A library slot made before a user wipe stays below the live user slot,
-   * so repeated installs fill the slot table while few names exist. */
+  /* ADR 0089: a name keeps its slot across tier wipes, and a free slot is
+   * used again, so a loop of tier wipes keeps the slot count after round 1,
+   * also when the names change in each round. */
+  {
+    uint16_t count_after_round_1 = 0;
+    bool steps_ok = true;
+
+    (void)fr_platform_persist_clear();
+    CHECK("slot loop install", fr_base_image_install(&runtime) == FR_OK);
+    for (int i = 0; i < 40; i++) {
+      steps_ok = steps_ok &&
+                 fr_repl_eval_line(&runtime, "install-library", out,
+                                   sizeof(out)) == FR_OK &&
+                 fr_repl_eval_line(&runtime, "l is 1", out, sizeof(out)) ==
+                     FR_OK &&
+                 fr_repl_eval_line(&runtime, "install-user", out,
+                                   sizeof(out)) == FR_OK &&
+                 fr_repl_eval_line(&runtime, "wipe-user", out, sizeof(out)) ==
+                     FR_OK &&
+                 fr_repl_eval_line(&runtime, "u is 1", out, sizeof(out)) ==
+                     FR_OK;
+      if (i == 0) {
+        count_after_round_1 = runtime.slots.count;
+      }
+    }
+    CHECK("a loop of tier wipes keeps the slot count",
+          steps_ok && runtime.slots.count == count_after_round_1);
+
+    (void)fr_platform_persist_clear();
+    CHECK("slot loop with new names install",
+          fr_base_image_install(&runtime) == FR_OK);
+    for (int i = 0; i < 40; i++) {
+      char line[32];
+
+      steps_ok = steps_ok && fr_repl_eval_line(&runtime, "install-library",
+                                               out, sizeof(out)) == FR_OK;
+      snprintf(line, sizeof(line), "l%d is 1", i);
+      steps_ok =
+          steps_ok && fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                          FR_OK;
+      steps_ok = steps_ok &&
+                 fr_repl_eval_line(&runtime, "install-user", out,
+                                   sizeof(out)) == FR_OK &&
+                 fr_repl_eval_line(&runtime, "wipe-user", out, sizeof(out)) ==
+                     FR_OK;
+      snprintf(line, sizeof(line), "u%d is 1", i);
+      steps_ok =
+          steps_ok && fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                          FR_OK &&
+          fr_repl_eval_line(&runtime, "save", out, sizeof(out)) == FR_OK;
+      if (i == 0) {
+        count_after_round_1 = runtime.slots.count;
+      }
+    }
+    CHECK("a loop with new names and saves keeps the slot count",
+          steps_ok && runtime.slots.count == count_after_round_1);
+  }
+
+  /* The slot-table note stays: every project slot holds a value. */
   snprintf(expected, sizeof(expected), "note: slot table is full (limit %u)\n",
            (unsigned)FR_PROFILE_MAX_SLOTS);
   (void)fr_platform_persist_clear();
   CHECK("capacity notes install for slots",
         fr_base_image_install(&runtime) == FR_OK);
-  for (int i = 0; i < FR_PROFILE_MAX_SLOTS; i++) {
-    if (fr_repl_eval_line(&runtime, "install-library", out, sizeof(out)) !=
-        FR_OK) {
-      break;
-    }
-    err = fr_repl_eval_line(&runtime, "l is 1", out, sizeof(out));
-    if (err != FR_OK) {
-      break;
-    }
-    (void)fr_repl_eval_line(&runtime, "install-user", out, sizeof(out));
-    (void)fr_repl_eval_line(&runtime, "wipe-user", out, sizeof(out));
-    (void)fr_repl_eval_line(&runtime, "u is 1", out, sizeof(out));
+  for (fr_slot_id_t slot_id = fr_slot_first_project_id();
+       slot_id < FR_PROFILE_MAX_SLOTS; slot_id++) {
+    (void)fr_slot_write(&runtime, slot_id, FR_TAGGED_INT_LITERAL(1));
   }
+  err = fr_repl_eval_line(&runtime, "u is 1", out, sizeof(out));
   CHECK("slot table full names the store and its limit",
         err == FR_ERR_CAPACITY && strstr(out, expected) != NULL);
   (void)fr_platform_persist_clear();
@@ -17315,7 +18124,7 @@ static void test_repl_capacity_notes(void) {
 #if FR_FEATURE_TEXT
   /* Short texts fill the object table before the Text pool. */
   snprintf(expected, sizeof(expected),
-           "note: object table (cells, text and records) is full (limit %u)\n",
+           "note: object table is full (limit %u)\n",
            (unsigned)FR_PROFILE_OBJECT_TABLE_SIZE);
   CHECK("capacity notes install for objects",
         fr_base_image_install(&runtime) == FR_OK);
@@ -17409,16 +18218,29 @@ static void test_repl_capacity_notes(void) {
                           out, sizeof(out)) == FR_ERR_CAPACITY &&
             strstr(out, expected) != NULL);
 
-  /* An entry retires at its last generation, so many short uses fill the
-     table. */
-  snprintf(expected, sizeof(expected),
-           "note: Bytes table is full (limit %u)\n",
-           (unsigned)FR_PROFILE_BYTES_COUNT);
-  CHECK("Bytes table full names the store and its limit",
-        fr_repl_eval_line(&runtime,
-                          "repeat 2000 [ bytes.length: (bytes.from-int: 1) ]",
-                          out, sizeof(out)) == FR_ERR_CAPACITY &&
-            strstr(out, expected) != NULL);
+  /* A loop frees the values of each pass (ADR 0085), so the table fills
+     only when more values are alive at one time than it holds. */
+  {
+    char line[400];
+    int used = 0;
+
+    for (unsigned i = 0; i <= (unsigned)FR_PROFILE_BYTES_COUNT; i++) {
+      used += snprintf(line + used, sizeof(line) - (size_t)used,
+                       "here b%u is bytes.from-int: %u; ", i, i);
+    }
+    snprintf(line + used, sizeof(line) - (size_t)used, "1");
+    snprintf(expected, sizeof(expected),
+             "note: Bytes table is full (limit %u)\n",
+             (unsigned)FR_PROFILE_BYTES_COUNT);
+    CHECK("short uses in a loop do not fill the Bytes table",
+          fr_repl_eval_line(&runtime,
+                            "repeat 2000 [ bytes.length: (bytes.from-int: 1) ]",
+                            out, sizeof(out)) == FR_OK);
+    CHECK("Bytes table full names the store and its limit",
+          fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
+                  FR_ERR_CAPACITY &&
+              strstr(out, expected) != NULL);
+  }
 #endif
 
 #if FR_FEATURE_PAD
@@ -17490,7 +18312,9 @@ static void test_repl_capacity_notes(void) {
           fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
                   FR_ERR_CAPACITY &&
               strstr(out, expected) != NULL);
-    snprintf(line, sizeof(line), "v is max: (repeat 1 as i [ %s ]), 0",
+    /* random.below exists on every profile; each body counts its locals
+       while it compiles, so an unknown word would fail first. */
+    snprintf(line, sizeof(line), "v is random.below: (repeat 1 as i [ %s ])",
              locals);
     CHECK("too many locals in a value binding name the store and its limit",
           fr_repl_eval_line(&runtime, line, out, sizeof(out)) ==
@@ -17936,6 +18760,22 @@ static void test_repl_interrupt_terminates_response(void) {
             test_repl_run_lines(&runtime, lines, 2, out,
                                 (uint16_t)sizeof(out)) &&
             strcmp(out, "> interrupted\nok\n> 1\nok\n> ") == 0);
+#if FR_FEATURE_TEXT && defined(FR_HOST_TEST_HELPERS)
+  {
+    char capture[64];
+    const char *output_lines[] = {
+        "forever [ print.value: \"light\", 7; stop: ]",
+        "print.value: \"after\", 8",
+    };
+    fr_host_capture_text(capture, sizeof(capture));
+    CHECK("numeric output loop stops at a VM interrupt and the REPL recovers",
+          test_repl_run_lines(&runtime, output_lines, 2, out,
+                               (uint16_t)sizeof(out)) &&
+              strcmp(capture, "light:7\nafter:8\n") == 0 &&
+              strcmp(out, "> interrupted\nok\n> ok\n> ") == 0);
+    fr_host_capture_text(NULL, 0);
+  }
+#endif
 }
 #endif
 
@@ -18146,6 +18986,37 @@ static void test_repl_startup_restore_and_boot(void) {
             gpio_value == 1 &&
             fr_slot_read(&runtime, FR_SLOT_BOOT, &tagged) == FR_OK &&
             fr_tagged_decode_code_object_id(tagged, &code_id) == FR_OK);
+#if FR_FEATURE_TEXT && defined(FR_HOST_TEST_HELPERS)
+  {
+    char boot_out[96];
+
+    /* ADR 0078: a boot word can leave the console line open. */
+    CHECK("startup boot saves a boot that prints and fails",
+          fr_repl_eval_line(&runtime, "boot is fn [ print: \"ready\"; 1 / 0 ]",
+                            out, sizeof(out)) == FR_OK &&
+              fr_persist_save(&runtime) == FR_OK &&
+              fr_base_image_install(&runtime) == FR_OK);
+    fr_host_capture_text(boot_out, (uint16_t)sizeof(boot_out));
+    CHECK("a startup error follows boot output on a new line",
+          fr_repl_startup_restore_and_boot(&runtime) == FR_OK &&
+              strstr(boot_out, "ready\nerror: ") != NULL &&
+              !runtime.console_line_open);
+    fr_host_capture_text(NULL, 0);
+    CHECK("startup boot saves a boot that prints",
+          fr_repl_eval_line(&runtime, "boot is fn [ print: \"ready\" ]", out,
+                            sizeof(out)) == FR_OK &&
+              fr_persist_save(&runtime) == FR_OK &&
+              fr_base_image_install(&runtime) == FR_OK);
+    fr_host_capture_text(boot_out, (uint16_t)sizeof(boot_out));
+    CHECK("boot output leaves the line open for the first prompt",
+          fr_repl_startup_restore_and_boot(&runtime) == FR_OK &&
+              strstr(boot_out, "ready") != NULL &&
+              strcmp(strstr(boot_out, "ready"), "ready") == 0 &&
+              runtime.console_line_open);
+    fr_host_capture_text(NULL, 0);
+    fr_platform_persist_clear();
+  }
+#endif
 }
 #endif
 
@@ -18195,6 +19066,13 @@ int main(void) {
 #if FR_FEATURE_TEXT
   test_text_objects();
   test_text_natives();
+#if FR_FEATURE_REPL && defined(FR_HOST_TEST_HELPERS)
+  test_print_output();
+#if FR_FEATURE_REPL && FR_FEATURE_TEXT && FR_FEATURE_PAD && \
+    defined(FR_HOST_TEST_HELPERS)
+  test_console_line_framing();
+#endif
+#endif
 #endif
 #if FR_FEATURE_RECORDS
   test_records();
@@ -18391,6 +19269,7 @@ int main(void) {
 #if FR_FEATURE_COMPILER
   test_repl_overlong_line_recovers();
   test_repl_capacity_notes();
+  test_pending_area_holds_code_and_names();
   test_repl_input_mistakes();
   test_repl_base_word_notice();
   test_repl_source_form_wire();

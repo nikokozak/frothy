@@ -34,6 +34,10 @@ typedef struct fr_compile_locals_t {
   fr_compile_local_t entries[FR_PARSE_MAX_LOCALS];
   uint8_t count;
   uint8_t next_index;
+  /* Bytes checkpoints (ADR 0085): the loop level of the code that compiles
+   * now, and the number of levels that the body uses. */
+  uint8_t loop_level;
+  uint8_t loop_levels;
 } fr_compile_locals_t;
 
 /* An `on`/`every`/`after` statement stashes its body here as a separate code
@@ -70,7 +74,7 @@ typedef enum fr_compile_source_feature_t {
   FR_COMPILE_SOURCE_EVENTS,
 } fr_compile_source_feature_t;
 
-/* ponytail: one compile at a time; add per-task workspaces if background
+/* One compile at a time; add per-task workspaces if background
  * compiles ever run concurrently. */
 static fr_compile_overlay_update_t fr_compile_shared_overlay_workspace;
 static bool fr_compile_shared_overlay_workspace_in_use;
@@ -417,8 +421,8 @@ static void fr_compile_note_name_suggestion(const fr_compile_context_t *ctx,
       const char *project_name = NULL;
       uint8_t project_name_length = 0;
 
-      if (fr_slot_name_view(ctx->runtime, slot_id, &project_name,
-                            &project_name_length) != FR_OK) {
+      if (fr_slot_active_name_view(ctx->runtime, slot_id, &project_name,
+                                   &project_name_length) != FR_OK) {
         continue;
       }
       if (call_position && !fr_compile_slot_is_callable(ctx, slot_id)) {
@@ -664,8 +668,12 @@ static fr_err_t fr_compile_add_local(const fr_compile_context_t *ctx,
         ctx, FR_DIAG_TOKEN, FR_DIAG_MSG_COMPILE_PARAM_SHADOW, name);
     return FR_ERR_INVALID;
   }
-  if (ctx->locals->next_index >= FR_PARSE_MAX_LOCALS ||
+  /* A visible local stays below every hidden checkpoint local in use. */
+  if (ctx->locals->next_index >=
+          FR_PARSE_MAX_LOCALS - ctx->locals->loop_levels ||
       ctx->locals->count >= FR_PARSE_MAX_LOCALS) {
+    fr_diag_note_capacity(ctx->diag, "space for locals in one form",
+                          FR_PARSE_MAX_LOCALS, FR_DIAG_UNIT_COUNT, NULL);
     return FR_ERR_CAPACITY;
   }
   ctx->locals->entries[ctx->locals->count].name = name;
@@ -676,21 +684,6 @@ static fr_err_t fr_compile_add_local(const fr_compile_context_t *ctx,
   return FR_OK;
 }
 
-static uint8_t fr_compile_count_local_binds(const fr_parse_line_t *parsed) {
-  uint8_t count = 0;
-
-  if (parsed == NULL) {
-    return 0;
-  }
-  for (uint8_t i = 0; i < parsed->expr_count; i++) {
-    if (parsed->exprs[i].kind == FR_PARSE_EXPR_LOCAL_BIND ||
-        (parsed->exprs[i].kind == FR_PARSE_EXPR_REPEAT &&
-         parsed->exprs[i].name.start != NULL)) {
-      count = (uint8_t)(count + 1);
-    }
-  }
-  return count;
-}
 
 static fr_err_t fr_compile_write_byte(uint8_t instruction_bytes[],
                                       uint16_t *offset, uint8_t byte) {
@@ -703,6 +696,95 @@ static fr_err_t fr_compile_write_byte(uint8_t instruction_bytes[],
   instruction_bytes[*offset] = byte;
   *offset = (uint16_t)(*offset + 1);
   return FR_OK;
+}
+
+/* Each loop level keeps its Bytes checkpoint in a hidden local (ADR 0085).
+ * Level L uses local 15 - L, so the visible locals keep their numbers, and
+ * a body with a loop has all 16 locals. Without Bytes, a loop has no
+ * checkpoint and these helpers write nothing. */
+/* A body with a local, or with a loop when Bytes are on, needs the 4-byte
+ * locals header. The scan covers the whole line, event bodies included, so
+ * a word whose only locals are in its event body keeps one unused count
+ * byte. Each body writes its own count after it compiles. */
+static bool fr_compile_needs_locals(const fr_parse_line_t *parsed) {
+  for (uint8_t i = 0; i < parsed->expr_count; i++) {
+    const fr_parse_expr_t *expr = &parsed->exprs[i];
+
+    if (expr->kind == FR_PARSE_EXPR_LOCAL_BIND ||
+        (expr->kind == FR_PARSE_EXPR_REPEAT && expr->name.start != NULL)) {
+      return true;
+    }
+#if FR_FEATURE_BYTES
+    if (expr->kind == FR_PARSE_EXPR_REPEAT ||
+        expr->kind == FR_PARSE_EXPR_WHILE ||
+        expr->kind == FR_PARSE_EXPR_FOREVER) {
+      return true;
+    }
+#endif
+  }
+  return false;
+}
+
+static uint8_t fr_compile_frame_locals(const fr_compile_locals_t *locals) {
+  return locals->loop_levels > 0 ? FR_PARSE_MAX_LOCALS : locals->next_index;
+}
+
+static fr_err_t fr_compile_open_checkpoint(const fr_compile_context_t *ctx,
+                                           uint8_t instruction_bytes[],
+                                           uint16_t *offset,
+                                           uint8_t *out_local) {
+#if FR_FEATURE_BYTES
+  fr_compile_locals_t *locals = NULL;
+  uint8_t level = 0;
+
+  if (ctx == NULL || ctx->locals == NULL) {
+    return FR_ERR_INVALID;
+  }
+  locals = ctx->locals;
+  level = locals->loop_level;
+  if (level >= FR_PARSE_MAX_LOCALS ||
+      locals->next_index > FR_PARSE_MAX_LOCALS - 1u - level) {
+    fr_diag_note_capacity(ctx->diag, "space for locals in one form",
+                          FR_PARSE_MAX_LOCALS, FR_DIAG_UNIT_COUNT, NULL);
+    return FR_ERR_CAPACITY;
+  }
+  *out_local = (uint8_t)(FR_PARSE_MAX_LOCALS - 1u - level);
+  locals->loop_level = (uint8_t)(level + 1u);
+  if (locals->loop_levels < locals->loop_level) {
+    locals->loop_levels = locals->loop_level;
+  }
+  FR_TRY(fr_compile_write_byte(instruction_bytes, offset, FR_OP_BYTES_BEGIN));
+  return fr_compile_write_byte(instruction_bytes, offset, *out_local);
+#else
+  (void)ctx;
+  (void)instruction_bytes;
+  (void)offset;
+  *out_local = 0;
+  return FR_OK;
+#endif
+}
+
+static fr_err_t fr_compile_rewind_checkpoint(uint8_t instruction_bytes[],
+                                             uint16_t *offset,
+                                             uint8_t local) {
+#if FR_FEATURE_BYTES
+  FR_TRY(
+      fr_compile_write_byte(instruction_bytes, offset, FR_OP_BYTES_REWIND));
+  return fr_compile_write_byte(instruction_bytes, offset, local);
+#else
+  (void)instruction_bytes;
+  (void)offset;
+  (void)local;
+  return FR_OK;
+#endif
+}
+
+static void fr_compile_close_checkpoint(const fr_compile_context_t *ctx) {
+#if FR_FEATURE_BYTES
+  ctx->locals->loop_level = (uint8_t)(ctx->locals->loop_level - 1u);
+#else
+  (void)ctx;
+#endif
 }
 
 static fr_err_t fr_compile_write_u16(uint8_t instruction_bytes[],
@@ -1384,6 +1466,7 @@ static fr_err_t fr_compile_emit_repeat(const fr_compile_context_t *ctx,
   uint16_t body_offset = 0;
   uint8_t saved_locals_count = 0;
   uint8_t index_local = 0;
+  uint8_t checkpoint = 0;
   bool has_index = false;
 
   if (expr == NULL || expr->child_count != 2) {
@@ -1406,6 +1489,10 @@ static fr_err_t fr_compile_emit_repeat(const fr_compile_context_t *ctx,
   has_index = expr->name.start != NULL;
   FR_TRY(fr_compile_emit_expr(ctx, parsed, expr->children[0],
                               instruction_bytes, offset));
+  /* The checkpoint starts after the count, so a loop in the count uses the
+   * same level. */
+  FR_TRY(fr_compile_open_checkpoint(ctx, instruction_bytes, offset,
+                                    &checkpoint));
   if (has_index) {
     if (ctx == NULL || ctx->locals == NULL) {
       return FR_ERR_INVALID;
@@ -1425,9 +1512,7 @@ static fr_err_t fr_compile_emit_repeat(const fr_compile_context_t *ctx,
   FR_TRY(fr_compile_emit_expr(ctx, parsed, expr->children[1],
                               instruction_bytes, offset));
   FR_TRY(fr_compile_emit_drop(instruction_bytes, offset));
-#if FR_FEATURE_BYTES
-  FR_TRY(fr_compile_write_byte(instruction_bytes, offset, FR_OP_BYTES_RESET));
-#endif
+  FR_TRY(fr_compile_rewind_checkpoint(instruction_bytes, offset, checkpoint));
   if (has_index) {
     FR_TRY(fr_compile_write_byte(instruction_bytes, offset,
                                  FR_OP_REPEAT_NEXT_AS));
@@ -1439,6 +1524,7 @@ static fr_err_t fr_compile_emit_repeat(const fr_compile_context_t *ctx,
                                        FR_OP_REPEAT_NEXT, body_offset));
   }
   FR_TRY(fr_compile_patch_u16(instruction_bytes, done_target_operand, *offset));
+  fr_compile_close_checkpoint(ctx);
   return fr_compile_emit_push_nil(instruction_bytes, offset);
 }
 
@@ -1449,6 +1535,7 @@ static fr_err_t fr_compile_emit_while(const fr_compile_context_t *ctx,
                                       uint16_t *offset) {
   uint16_t cond_offset = 0;
   uint16_t done_target_operand = 0;
+  uint8_t checkpoint = 0;
 
   if (expr == NULL || expr->child_count != 2) {
     return FR_ERR_INVALID;
@@ -1457,6 +1544,11 @@ static fr_err_t fr_compile_emit_while(const fr_compile_context_t *ctx,
       ctx, FR_COMPILE_SOURCE_CONTROL_FLOW,
       fr_compile_expr_diagnostic_span(parsed, expr)));
 
+  /* The checkpoint starts before the condition, so a loop in the condition
+   * uses the next level. A false condition rewinds too: it frees the values
+   * of the last condition. */
+  FR_TRY(fr_compile_open_checkpoint(ctx, instruction_bytes, offset,
+                                    &checkpoint));
   cond_offset = *offset;
   FR_TRY(fr_compile_emit_expr(ctx, parsed, expr->children[0],
                               instruction_bytes, offset));
@@ -1465,12 +1557,12 @@ static fr_err_t fr_compile_emit_while(const fr_compile_context_t *ctx,
   FR_TRY(fr_compile_emit_expr(ctx, parsed, expr->children[1],
                               instruction_bytes, offset));
   FR_TRY(fr_compile_emit_drop(instruction_bytes, offset));
-#if FR_FEATURE_BYTES
-  FR_TRY(fr_compile_write_byte(instruction_bytes, offset, FR_OP_BYTES_RESET));
-#endif
+  FR_TRY(fr_compile_rewind_checkpoint(instruction_bytes, offset, checkpoint));
   FR_TRY(fr_compile_emit_jump_target(instruction_bytes, offset, FR_OP_JUMP,
                                      cond_offset));
   FR_TRY(fr_compile_patch_u16(instruction_bytes, done_target_operand, *offset));
+  FR_TRY(fr_compile_rewind_checkpoint(instruction_bytes, offset, checkpoint));
+  fr_compile_close_checkpoint(ctx);
   return fr_compile_emit_push_nil(instruction_bytes, offset);
 }
 
@@ -1554,7 +1646,7 @@ fr_compile_emit_event_register(const fr_compile_context_t *ctx,
   FR_TRY(fr_compile_write_byte(body->bytes, &body_offset, FR_OP_RETURN));
   /* next_index is the high-water-mark; LIST emit restores `count` on close
    * so the body needs to size locals to what was ever assigned. */
-  body->bytes[3] = body_locals.next_index;
+  body->bytes[3] = fr_compile_frame_locals(&body_locals);
   body->object->instructions =
       (fr_instruction_stream_t){.bytes = body->bytes, .length = body_offset};
   body->object->param_names = NULL;
@@ -1585,6 +1677,7 @@ static fr_err_t fr_compile_emit_forever(const fr_compile_context_t *ctx,
                                         uint8_t instruction_bytes[],
                                         uint16_t *offset) {
   uint16_t body_offset = 0;
+  uint8_t checkpoint = 0;
 
   if (expr == NULL || expr->child_count != 1) {
     return FR_ERR_INVALID;
@@ -1593,15 +1686,16 @@ static fr_err_t fr_compile_emit_forever(const fr_compile_context_t *ctx,
       ctx, FR_COMPILE_SOURCE_CONTROL_FLOW,
       fr_compile_expr_diagnostic_span(parsed, expr)));
 
+  FR_TRY(fr_compile_open_checkpoint(ctx, instruction_bytes, offset,
+                                    &checkpoint));
   body_offset = *offset;
   FR_TRY(fr_compile_emit_expr(ctx, parsed, expr->children[0],
                               instruction_bytes, offset));
   FR_TRY(fr_compile_emit_drop(instruction_bytes, offset));
-#if FR_FEATURE_BYTES
-  FR_TRY(fr_compile_write_byte(instruction_bytes, offset, FR_OP_BYTES_RESET));
-#endif
+  FR_TRY(fr_compile_rewind_checkpoint(instruction_bytes, offset, checkpoint));
   FR_TRY(fr_compile_emit_jump_target(instruction_bytes, offset, FR_OP_JUMP,
                                      body_offset));
+  fr_compile_close_checkpoint(ctx);
   return fr_compile_emit_push_nil(instruction_bytes, offset);
 }
 
@@ -2212,7 +2306,6 @@ static fr_err_t fr_compile_function(const fr_compile_context_t *ctx,
       .used = false,
   };
   uint8_t arity = 0;
-  uint8_t local_count = 0;
   uint8_t header_size = FR_INSTRUCTION_MIN_HEADER_SIZE;
   uint16_t offset = 0;
 
@@ -2227,17 +2320,7 @@ static fr_err_t fr_compile_function(const fr_compile_context_t *ctx,
     return FR_ERR_INVALID;
   }
   arity = function->param_count;
-  local_count = fr_compile_count_local_binds(parsed);
-  if (local_count > FR_PARSE_MAX_LOCALS) {
-    fr_diag_note_capacity(ctx != NULL ? ctx->diag : NULL,
-                          "space for locals in one form", FR_PARSE_MAX_LOCALS,
-                          FR_DIAG_UNIT_COUNT, NULL);
-    return FR_ERR_CAPACITY;
-  }
-  if ((uint16_t)arity + local_count > FR_PROFILE_MAX_STACK_DEPTH) {
-    return FR_ERR_INVALID;
-  }
-  if (local_count > 0) {
+  if (fr_compile_needs_locals(parsed)) {
     header_size = FR_INSTRUCTION_LOCALS_HEADER_SIZE;
   } else if (arity > 0) {
     header_size = FR_INSTRUCTION_ARITY_HEADER_SIZE;
@@ -2260,12 +2343,16 @@ static fr_err_t fr_compile_function(const fr_compile_context_t *ctx,
   if (header_size >= FR_INSTRUCTION_ARITY_HEADER_SIZE) {
     out->instruction_bytes[2] = arity;
   }
-  if (header_size >= FR_INSTRUCTION_LOCALS_HEADER_SIZE) {
-    out->instruction_bytes[3] = local_count;
-  }
   FR_TRY(fr_compile_emit_expr(&body_ctx, parsed, function->child,
                               out->instruction_bytes, &offset));
   FR_TRY(fr_compile_write_byte(out->instruction_bytes, &offset, FR_OP_RETURN));
+  if (header_size >= FR_INSTRUCTION_LOCALS_HEADER_SIZE) {
+    out->instruction_bytes[3] = fr_compile_frame_locals(&locals);
+    if ((uint16_t)arity + out->instruction_bytes[3] >
+        FR_PROFILE_MAX_STACK_DEPTH) {
+      return FR_ERR_INVALID;
+    }
+  }
 
   out->code_object = (fr_image_code_object_t){
       .instructions = (fr_instruction_stream_t){.bytes = out->instruction_bytes,
@@ -2426,6 +2513,26 @@ fr_compile_overlay_update_with_context(const fr_compile_context_t *ctx,
   }
 #endif
 
+#if FR_FEATURE_BUFFERS
+  if (value->kind == FR_PARSE_EXPR_BUFFER) {
+    if (value->int_value > FR_TEXT_BYTE_CAPACITY) {
+      return FR_ERR_RANGE;
+    }
+    out->buffer_object =
+        (fr_image_buffer_object_t){.capacity = (uint16_t)value->int_value};
+    out->slot_inits[0] =
+        (fr_image_slot_init_t){slot_id, {FR_IMAGE_REF_BUFFER_OBJECT, 0, 0}};
+    out->overlay_update = (fr_overlay_update_t){
+        .slot_inits = out->slot_inits,
+        .slot_init_count = 1,
+        .buffer_objects = &out->buffer_object,
+        .buffer_object_count = 1,
+    };
+    fr_compile_attach_slot_name(out, has_slot_name);
+    return FR_OK;
+  }
+#endif
+
 #if FR_FEATURE_TEXT
   if (value->kind == FR_PARSE_EXPR_TEXT) {
     uint16_t copied_length = 0;
@@ -2580,7 +2687,6 @@ fr_err_t fr_compile_value_binding_for_runtime_with_diagnostic(
   fr_compile_locals_t locals = {0};
   fr_parse_line_t parsed = {0};
   const fr_parse_expr_t *value = NULL;
-  uint8_t local_count = 0;
   uint8_t header_size = FR_INSTRUCTION_MIN_HEADER_SIZE;
   uint16_t offset = 0;
 
@@ -2603,16 +2709,7 @@ fr_err_t fr_compile_value_binding_for_runtime_with_diagnostic(
       (uint16_t)sizeof(out->slot_name_text), &out->slot_name, &out->slot_id,
       &out->has_slot_name));
 
-  local_count = fr_compile_count_local_binds(&parsed);
-  if (local_count > FR_PARSE_MAX_LOCALS) {
-    fr_diag_note_capacity(ctx.diag, "space for locals in one form",
-                          FR_PARSE_MAX_LOCALS, FR_DIAG_UNIT_COUNT, NULL);
-    return FR_ERR_CAPACITY;
-  }
-  if (local_count > FR_PROFILE_MAX_STACK_DEPTH) {
-    return FR_ERR_INVALID;
-  }
-  if (local_count > 0) {
+  if (fr_compile_needs_locals(&parsed)) {
     header_size = FR_INSTRUCTION_LOCALS_HEADER_SIZE;
   }
   offset = header_size;
@@ -2623,14 +2720,17 @@ fr_err_t fr_compile_value_binding_for_runtime_with_diagnostic(
   if (header_size >= FR_INSTRUCTION_ARITY_HEADER_SIZE) {
     out->instruction_bytes[2] = 0;
   }
-  if (header_size >= FR_INSTRUCTION_LOCALS_HEADER_SIZE) {
-    out->instruction_bytes[3] = local_count;
-  }
   FR_TRY(fr_compile_emit_expr(&ctx, &parsed, parsed.definition.value,
                               out->instruction_bytes, &offset));
   FR_TRY(fr_compile_emit_slot_op(out->instruction_bytes, &offset,
                                  FR_OP_STORE_SLOT, out->slot_id));
   FR_TRY(fr_compile_write_byte(out->instruction_bytes, &offset, FR_OP_RETURN));
+  if (header_size >= FR_INSTRUCTION_LOCALS_HEADER_SIZE) {
+    out->instruction_bytes[3] = fr_compile_frame_locals(&locals);
+    if (out->instruction_bytes[3] > FR_PROFILE_MAX_STACK_DEPTH) {
+      return FR_ERR_INVALID;
+    }
+  }
 
   out->instructions = (fr_instruction_stream_t){.bytes = out->instruction_bytes,
                                                 .length = offset};
@@ -2645,7 +2745,6 @@ fr_compile_expression_with_context(const fr_compile_context_t *ctx,
   fr_parse_expr_id_t expr_id = 0;
   fr_compile_context_t expr_ctx = {0};
   fr_compile_locals_t locals = {0};
-  uint8_t local_count = 0;
   uint8_t header_size = FR_INSTRUCTION_MIN_HEADER_SIZE;
   uint16_t offset = 0;
 
@@ -2657,17 +2756,7 @@ fr_compile_expression_with_context(const fr_compile_context_t *ctx,
   FR_TRY(fr_parse_expression_line_with_diagnostic(
       source, &parsed, &expr_id, ctx != NULL ? ctx->diag : NULL));
 
-  local_count = fr_compile_count_local_binds(&parsed);
-  if (local_count > FR_PARSE_MAX_LOCALS) {
-    fr_diag_note_capacity(ctx != NULL ? ctx->diag : NULL,
-                          "space for locals in one form", FR_PARSE_MAX_LOCALS,
-                          FR_DIAG_UNIT_COUNT, NULL);
-    return FR_ERR_CAPACITY;
-  }
-  if (local_count > FR_PROFILE_MAX_STACK_DEPTH) {
-    return FR_ERR_INVALID;
-  }
-  if (local_count > 0) {
+  if (fr_compile_needs_locals(&parsed)) {
     header_size = FR_INSTRUCTION_LOCALS_HEADER_SIZE;
   }
   offset = header_size;
@@ -2681,12 +2770,15 @@ fr_compile_expression_with_context(const fr_compile_context_t *ctx,
   if (header_size >= FR_INSTRUCTION_ARITY_HEADER_SIZE) {
     out->instruction_bytes[2] = 0;
   }
-  if (header_size >= FR_INSTRUCTION_LOCALS_HEADER_SIZE) {
-    out->instruction_bytes[3] = local_count;
-  }
   FR_TRY(fr_compile_emit_expr(&expr_ctx, &parsed, expr_id,
                               out->instruction_bytes, &offset));
   FR_TRY(fr_compile_write_byte(out->instruction_bytes, &offset, FR_OP_RETURN));
+  if (header_size >= FR_INSTRUCTION_LOCALS_HEADER_SIZE) {
+    out->instruction_bytes[3] = fr_compile_frame_locals(&locals);
+    if (out->instruction_bytes[3] > FR_PROFILE_MAX_STACK_DEPTH) {
+      return FR_ERR_INVALID;
+    }
+  }
 
   out->instructions = (fr_instruction_stream_t){.bytes = out->instruction_bytes,
                                                 .length = offset};

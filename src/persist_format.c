@@ -10,7 +10,7 @@
 #include <string.h>
 
 enum {
-  FR_PERSIST_FORMAT_VERSION = 2,
+  FR_PERSIST_FORMAT_VERSION = 3,
 };
 
 typedef char fr_persist_storage_must_fit_uint16[
@@ -77,12 +77,21 @@ fr_err_t fr_persist_format_build_header(uint8_t *bytes,
 fr_err_t fr_persist_format_read_header(const uint8_t *bytes,
                                        fr_persist_format_info_t *out) {
   uint8_t scratch[FR_PERSIST_HEADER_BYTES];
+  uint16_t erased_bytes = 0;
   uint32_t payload_length = 0;
   uint32_t total_length = 0;
   uint32_t stored_crc = 0;
 
   if (bytes == NULL || out == NULL) {
     return FR_ERR_INVALID;
+  }
+  while (erased_bytes < FR_PERSIST_HEADER_BYTES &&
+         bytes[erased_bytes] == 0xffu) {
+    erased_bytes++;
+  }
+  if (erased_bytes == FR_PERSIST_HEADER_BYTES) {
+    /* Erased flash is an empty slot, not damage (ADR 0076). */
+    return FR_ERR_NOT_FOUND;
   }
   if (memcmp(bytes, fr_persist_format_magic, sizeof(fr_persist_format_magic)) !=
       0) {
@@ -173,4 +182,59 @@ fr_err_t fr_persist_format_stamp_generation(uint8_t *bytes,
                               backend_generation);
   fr_persist_format_write_header_crc(bytes);
   return FR_OK;
+}
+
+fr_err_t
+fr_persist_format_pick_read_slot(const fr_err_t err[2],
+                                 const fr_persist_format_info_t info[2],
+                                 uint8_t image_index, uint8_t *out_slot) {
+  uint8_t newest = 0;
+  uint8_t valid_count = 0;
+
+  for (uint8_t slot = 0; slot < 2; slot++) {
+    if (err[slot] == FR_OK) {
+      valid_count++;
+    }
+  }
+  if (valid_count == 0) {
+    for (uint8_t slot = 0; slot < 2; slot++) {
+      if (err[slot] != FR_ERR_NOT_FOUND && err[slot] != FR_ERR_OTHER_RELEASE) {
+        return FR_ERR_CORRUPT;
+      }
+    }
+    return err[0] == FR_ERR_OTHER_RELEASE || err[1] == FR_ERR_OTHER_RELEASE
+               ? FR_ERR_OTHER_RELEASE
+               : FR_ERR_NOT_FOUND;
+  }
+  if (image_index >= valid_count) {
+    return FR_ERR_NOT_FOUND;
+  }
+  if (err[0] != FR_OK || (err[1] == FR_OK && info[1].backend_generation >
+                                                 info[0].backend_generation)) {
+    newest = 1;
+  }
+  *out_slot = (uint8_t)(newest ^ image_index);
+  return FR_OK;
+}
+
+void fr_persist_format_pick_commit_slot(const bool valid[2],
+                                        const fr_persist_format_info_t info[2],
+                                        uint8_t mounted_slot, uint8_t *out_slot,
+                                        uint32_t *out_generation) {
+  uint32_t newest = 0;
+
+  for (uint8_t slot = 0; slot < 2; slot++) {
+    if (valid[slot] && info[slot].backend_generation > newest) {
+      newest = info[slot].backend_generation;
+    }
+  }
+  if (mounted_slot < 2) {
+    *out_slot = (uint8_t)(1u - mounted_slot);
+  } else if (valid[0] && valid[1]) {
+    *out_slot =
+        info[0].backend_generation <= info[1].backend_generation ? 0u : 1u;
+  } else {
+    *out_slot = valid[0] ? 1u : 0u;
+  }
+  *out_generation = newest + 1u;
 }

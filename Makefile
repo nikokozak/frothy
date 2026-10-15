@@ -245,6 +245,13 @@ UNITY_T16_BYTES_TEST_SOURCES = \
 	$(PLATFORM_SOURCES) \
 	$(PERSISTENCE_KERNEL_SOURCES)
 
+UNITY_BUFFERS_TEST_SOURCES = \
+	test/test_buffers.c \
+	test/unity/unity.c \
+	$(KERNEL_SOURCES) \
+	$(PLATFORM_SOURCES) \
+	$(PERSISTENCE_KERNEL_SOURCES)
+
 UNITY_BLE_TEST_SOURCES = \
 	test/test_ble.c \
 	test/unity/unity.c \
@@ -325,6 +332,7 @@ UNITY_T15_NET_TEST_BINARY ?= $(BUILD_DIR)/test-unity-t15-net
 UNITY_T15B_TCP_TEST_BINARY ?= $(BUILD_DIR)/test-unity-t15b-tcp
 UNITY_T14_POWER_TEST_BINARY ?= $(BUILD_DIR)/test-unity-t14-power
 UNITY_T16_BYTES_TEST_BINARY ?= $(BUILD_DIR)/test-unity-t16-bytes
+UNITY_BUFFERS_TEST_BINARY ?= $(BUILD_DIR)/test-unity-buffers
 UNITY_BLE_TEST_BINARY ?= $(BUILD_DIR)/test-unity-ble
 BLE_TEST_CFLAGS = \
 	-DFR_FEATURE_BLE=1 \
@@ -391,7 +399,7 @@ test-esp-idf-i2c-timeout: ## Check that each ESP32 I2C transfer passes FR_ESP_I2
 		awk '{ n += 1; if ($$0 !~ /,[[:space:]]*FR_ESP_I2C_TIMEOUT_MS[[:space:]]*[)]/) { print "I2C transfer without FR_ESP_I2C_TIMEOUT_MS: " $$0; bad = 1 } } \
 		END { if (n < 3) { print "expected at least 3 I2C transfer calls, found " n; bad = 1 } exit bad }'
 
-test-unity: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TEST_BINARY) $(UNITY_PERSIST_TIER_TEST_BINARY) $(UNITY_T12_SERVO_TEST_BINARY) $(UNITY_T21_MEM_TEST_BINARY) $(UNITY_T15_NET_TEST_BINARY) $(UNITY_T15B_TCP_TEST_BINARY) $(UNITY_T14_POWER_TEST_BINARY) $(UNITY_T16_BYTES_TEST_BINARY) ## Run all Unity host binaries.
+test-unity: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TEST_BINARY) $(UNITY_PERSIST_TIER_TEST_BINARY) $(UNITY_T12_SERVO_TEST_BINARY) $(UNITY_T21_MEM_TEST_BINARY) $(UNITY_T15_NET_TEST_BINARY) $(UNITY_T15B_TCP_TEST_BINARY) $(UNITY_T14_POWER_TEST_BINARY) $(UNITY_T16_BYTES_TEST_BINARY) $(UNITY_BUFFERS_TEST_BINARY) ## Run all Unity host binaries.
 	./$(UNITY_TEST_BINARY)
 	./$(UNITY_I2C_TEST_BINARY)
 	./$(UNITY_LIB_NATIVES_TEST_BINARY)
@@ -402,6 +410,7 @@ test-unity: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TE
 	./$(UNITY_T15B_TCP_TEST_BINARY)
 	./$(UNITY_T14_POWER_TEST_BINARY)
 	./$(UNITY_T16_BYTES_TEST_BINARY)
+	./$(UNITY_BUFFERS_TEST_BINARY)
 	$(MAKE) test-ble-host
 	$(MAKE) BOARD=host PROFILE=host_normal \
 		UNITY_TEST_BINARY=build/host/test-unity-host-normal \
@@ -414,12 +423,13 @@ test-unity: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TE
 		UNITY_T15B_TCP_TEST_BINARY=build/host/test-unity-t15b-tcp-host-normal \
 		UNITY_T14_POWER_TEST_BINARY=build/host/test-unity-t14-power-host-normal \
 		UNITY_T16_BYTES_TEST_BINARY=build/host/test-unity-t16-bytes-host-normal \
+		UNITY_BUFFERS_TEST_BINARY=build/host/test-unity-buffers-host-normal \
 		_test-unity-run
 
 help: ## Show common make targets.
 	@awk 'BEGIN { FS = ":.*##"; printf "Targets:\n" } /^[A-Za-z0-9_.-]+:.*##/ { printf "  %-38s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
-_test-unity-run: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TEST_BINARY) $(UNITY_PERSIST_TIER_TEST_BINARY) $(UNITY_T12_SERVO_TEST_BINARY) $(UNITY_T21_MEM_TEST_BINARY) $(UNITY_T15_NET_TEST_BINARY) $(UNITY_T15B_TCP_TEST_BINARY) $(UNITY_T14_POWER_TEST_BINARY) $(UNITY_T16_BYTES_TEST_BINARY)
+_test-unity-run: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIVES_TEST_BINARY) $(UNITY_PERSIST_TIER_TEST_BINARY) $(UNITY_T12_SERVO_TEST_BINARY) $(UNITY_T21_MEM_TEST_BINARY) $(UNITY_T15_NET_TEST_BINARY) $(UNITY_T15B_TCP_TEST_BINARY) $(UNITY_T14_POWER_TEST_BINARY) $(UNITY_T16_BYTES_TEST_BINARY) $(UNITY_BUFFERS_TEST_BINARY)
 	./$(UNITY_TEST_BINARY)
 	./$(UNITY_I2C_TEST_BINARY)
 	./$(UNITY_LIB_NATIVES_TEST_BINARY)
@@ -430,6 +440,46 @@ _test-unity-run: $(UNITY_TEST_BINARY) $(UNITY_I2C_TEST_BINARY) $(UNITY_LIB_NATIV
 	./$(UNITY_T15B_TCP_TEST_BINARY)
 	./$(UNITY_T14_POWER_TEST_BINARY)
 	./$(UNITY_T16_BYTES_TEST_BINARY)
+	./$(UNITY_BUFFERS_TEST_BINARY)
+
+test-bytes-checked: ## Run the host_normal suites with checked Bytes tags (stale tags and kept pointers fail).
+	$(MAKE) BOARD=host PROFILE=host_normal BUILD_DIR=build/host-bytes-checked \
+		CFLAGS=-DFR_BYTES_CHECKED=1 \
+		TEST_BINARY=build/host-bytes-checked/test \
+		test _test-unity-run _test-ble-host-run
+
+# The profile hash of each profile in a host build of one board, as `status`
+# shows it. A new base word, limit, feature or source base moves a hash. Then
+# update this list and name the move in the CHANGELOG.
+PROFILE_HASHES = \
+	host:host_normal:676c476c \
+	host:host_small:6c81f7c3 \
+	esp32_devkit_v1:esp32_plain:bb8d1b12 \
+	seeed_xiao_esp32c3:esp32c3_plain:24c3e661 \
+	host:rp2040_plain:a2ed0ffc \
+	host:rp2040_nina:792ff572
+
+test-profile-hashes: ## Check the profile hash of each profile against its recorded value.
+	@for entry in $(PROFILE_HASHES); do \
+		board=$${entry%%:*}; rest=$${entry#*:}; profile=$${rest%%:*}; \
+		hash=$${rest#*:}; \
+		$(MAKE) -s BOARD=$$board TARGET=host PROFILE=$$profile \
+			BUILD_DIR=build/hash-$$profile \
+			FROTHY_BINARY=build/hash-$$profile/frothy frothy >/dev/null || exit 1; \
+		got=$$(printf 'status\n' | build/hash-$$profile/frothy | \
+			grep -o 'profile_hash=[0-9a-f]*'); \
+		if [ "$$got" != "profile_hash=$$hash" ]; then \
+			printf '%s: %s, recorded profile_hash=%s\n' "$$profile" "$$got" "$$hash"; \
+			exit 1; \
+		fi; \
+	done; \
+	printf 'profile hashes ok\n'
+
+test-buffers-off: ## Run the host_normal suite with buffers off (FR_FEATURE_BUFFERS=0).
+	$(MAKE) BOARD=host PROFILE=host_normal BUILD_DIR=build/host-buffers-off \
+		CFLAGS=-DFR_FEATURE_BUFFERS=0 \
+		TEST_BINARY=build/host-buffers-off/test \
+		test _test-unity-run
 
 test-ble-host: ## Run the deterministic BLE fixture under the host_normal data profile.
 	$(MAKE) BOARD=host PROFILE=host_normal \
@@ -691,9 +741,15 @@ test-host-normal-transcript: host-normal ## Replay the host_normal transcript.
 		cat $$cr_open_file; printf 'a CR did not end the line at once\n'; \
 		exit 1; \
 	fi; \
+	read_line_out=$$(printf 'to q [ print: "name? "; console.read-line: ]\nq:\nbob\n' \
+		| build/host/frothy-host-normal); \
+	if ! printf '%s\n' "$$read_line_out" | grep -qxF 'bytes 3'; then \
+		printf '%s\nread-line after an open print transcript failed\n' "$$read_line_out"; \
+		exit 1; \
+	fi; \
 	overlong_ctrl_c_out=$$(awk 'BEGIN { print "console.read-line:"; for (i = 0; i < 600; i++) printf "x"; printf "%c\n1 + 1\n", 3 }' \
 		| build/host/frothy-host-normal); \
-	if ! printf '%s\n' "$$overlong_ctrl_c_out" | grep -qxF '> interrupted' || \
+	if ! printf '%s\n' "$$overlong_ctrl_c_out" | grep -qxF 'interrupted' || \
 		! printf '%s\n' "$$overlong_ctrl_c_out" | grep -qF '> 2'; then \
 		printf '%s\noverlong Ctrl-C input transcript failed\n' "$$overlong_ctrl_c_out"; \
 		exit 1; \
@@ -949,6 +1005,14 @@ test-esp32-plain-host-transcript: esp32-plain-host ## Replay the esp32_plain pro
 			exit 1; \
 		fi; \
 	done; \
+	defs=$$(i=0; while [ $$i -lt 70 ]; do printf '%s\n' 'to w with p [ gpio.write: p, 1 ; wait: 10 ; gpio.write: p, 0 ; wait: 10 ]'; \
+		i=$$((i + 1)); done | build/esp32-plain-host/frothy); \
+	if [ "$$(printf '%s\n' "$$defs" | grep -c 'ok$$')" != 70 ] || \
+		printf '%s\n' "$$defs" | grep -q 'error'; then \
+		printf '%s\n' "$$defs" | grep -A1 'error' | head -4; \
+		printf 'the RAM code area does not hold 70 definitions (ADR 0083)\n'; \
+		exit 1; \
+	fi; \
 	printf 'esp32_plain host transcript ok\n'
 
 seeed-xiao-host:
@@ -999,6 +1063,17 @@ test-seeed-xiao-esp32c3-host-transcript: ## Check the C3 base image and hardware
 		'> error: not found (7)' '> 43' 'ok' '> '); \
 	if [ "$$out" != "$$expected" ]; then \
 		printf '%s\nXIAO ESP32C3 transcript did not match\n' "$$out"; \
+		exit 1; \
+	fi; \
+	defs=$$({ i=0; while [ $$i -lt 15 ]; do printf '%s\n' 'to w with p [ gpio.write: p, 1 ; wait: 10 ; gpio.write: p, 0 ; wait: 10 ]'; \
+		i=$$((i + 1)); done; printf '%s\n' 'mem code'; } \
+		| build/seeed_xiao_esp32c3-host/frothy.elf); \
+	total=$$(printf '%s\n' "$$defs" | awk '/code.pending.total/ { print $$2 }'); \
+	if [ "$$(printf '%s\n' "$$defs" | grep -c 'ok$$')" != 16 ] || \
+		printf '%s\n' "$$defs" | grep -q 'error' || [ -z "$$total" ] || \
+		[ "$$total" -gt 1544 ]; then \
+		printf '%s\n' "$$defs" | tail -4; \
+		printf 'the C3 keeps a RAM code area of 1,544 bytes and holds 15 definitions (ADR 0083)\n'; \
 		exit 1; \
 	fi; \
 	printf 'XIAO ESP32C3 host transcript ok\n'
@@ -1087,6 +1162,10 @@ $(UNITY_T16_BYTES_TEST_BINARY): $(UNITY_T16_BYTES_TEST_SOURCES) $(KERNEL_DEPS) $
 		test/unity/unity.h test/unity/unity_internals.h | $(BUILD_DIR)
 	$(FR_CC) $(FR_CFLAGS) -DFR_INCLUDE_TEST_NATIVES=1 -DFR_HOST_TEST_HELPERS=1 $(UNITY_T16_BYTES_TEST_SOURCES) $(FR_LDFLAGS) -o $@
 
+$(UNITY_BUFFERS_TEST_BINARY): $(UNITY_BUFFERS_TEST_SOURCES) $(KERNEL_DEPS) $(BUILD_DEPS) \
+		test/unity/unity.h test/unity/unity_internals.h | $(BUILD_DIR)
+	$(FR_CC) $(FR_CFLAGS) -DFR_INCLUDE_TEST_NATIVES=1 -DFR_LIB_NATIVES_PROVIDED=1 -DFR_HOST_TEST_HELPERS=1 $(UNITY_BUFFERS_TEST_SOURCES) $(FR_LDFLAGS) -o $@
+
 $(UNITY_BLE_TEST_BINARY): $(UNITY_BLE_TEST_SOURCES) $(KERNEL_DEPS) $(BUILD_DEPS) \
 		test/unity/unity.h test/unity/unity_internals.h | $(BUILD_DIR)
 	$(FR_CC) $(FR_CFLAGS) $(BLE_TEST_CFLAGS) -DFR_HOST_TEST_HELPERS=1 $(UNITY_BLE_TEST_SOURCES) $(FR_LDFLAGS) -o $@
@@ -1130,6 +1209,35 @@ print-target-facts:
 			-e 's/^#define \(FR_FEATURE_[A-Z0-9_]*\) \(.*\)$$/\1=\2/p' | \
 		LC_ALL=C sort
 
+# The accepted native table size of each shipped board, and the native rows
+# that its supported first-party libraries need: stepper (15) on six boards,
+# synth (8) on ESP32 DevKit V1 and XIAO ESP32S3 (ADR 0082 addendum). The row
+# counts copy the manifests in libraries/; change them with a library release.
+NATIVE_BUDGET_BOARDS := \
+	esp32_devkit_v1:192:23 \
+	seeed_xiao_esp32s3:192:23 \
+	seeed_xiao_esp32c6:192:15 \
+	nodemcu_esp32s:192:0 \
+	seeed_xiao_esp32c3:176:15 \
+	seeed_xiao_rp2040:129:15 \
+	arduino_nano_rp2040_connect:152:15
+
+test-native-budget: ## Check each shipped board's native table and the room for its first-party libraries.
+	@for entry in $(NATIVE_BUDGET_BOARDS); do \
+		board=$${entry%%:*}; rest=$${entry#*:}; size=$${rest%%:*}; need=$${rest#*:}; \
+		out=$$($(MAKE) --no-print-directory -s print-native-budget BOARD=$$board 2>/dev/null); \
+		base=$$(printf '%s\n' "$$out" | sed -n 's/^NATIVE_BASE_ROWS=//p'); \
+		table=$$(printf '%s\n' "$$out" | sed -n 's/^NATIVE_TABLE_SIZE=//p'); \
+		if [ -z "$$base" ] || [ "$$table" != "$$size" ] || \
+			[ $$((table - base)) -lt $$need ]; then \
+			printf '%s: table %s rows (accepted %s), base %s rows; its libraries need %s free rows\n' \
+				"$$board" "$$table" "$$size" "$$base" "$$need"; \
+			exit 1; \
+		fi; \
+		printf '%s: %s of %s rows for the base, %s free, %s needed\n' \
+			"$$board" "$$base" "$$table" $$((table - base)) "$$need"; \
+	done
+
 print-native-budget: ## Print the base native rows and the table size for BOARD.
 	@rm -rf build/native-budget-$(BOARD)
 	@$(MAKE) --no-print-directory -s BOARD=$(BOARD) TARGET=host PROFILE=$(PROFILE) \
@@ -1145,4 +1253,4 @@ vsix: ## Build the VS Code extension package.
 clean: ## Remove generated build outputs.
 	rm -rf build frothy test/test test/test-host-normal test/fixtures/projects/*/.frothy
 
-.PHONY: print-native-budget test test-esp-idf-console-boundary test-esp-idf-i2c-timeout test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config print-target-facts vsix clean
+.PHONY: print-native-budget test-native-budget test-buffers-off test-profile-hashes test test-esp-idf-console-boundary test-esp-idf-i2c-timeout test-unity test-ble-host _test-ble-host-run help artifacts flash wipe-persist test-host-normal host-normal examples examples-manifest check-examples-manifest host-normal-events host-normal-no-native-signatures test-host-normal-transcript test-host-normal-event-transcript test-host-normal-trace-transcript test-host-normal-pulse-transcript test-host-normal-no-native-signatures-transcript test-host-normal-profile test-lib-e2e esp32-plain-host test-esp32-plain-host-transcript seeed-xiao-host test-seeed-xiao-host-transcript frothy-host-command cli install-host test-install-host print-config print-target-facts vsix clean

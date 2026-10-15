@@ -44,13 +44,19 @@ typedef uint32_t fr_tagged_t;
 #endif
 
 #if FR_FEATURE_BYTES
+/* A Bytes tag is the entry id. A checked build puts the rewind count of the
+ * entry above the id; a release build has no count (ADR 0085). */
 #define FR_TAGGED_BYTES_BASE FR_TAGGED_RESERVED_BASE
-#define FR_TAGGED_BYTES_GENERATION_SHIFT 3u
+#define FR_TAGGED_BYTES_REWINDS_SHIFT 3u
 #define FR_TAGGED_BYTES_MAX_ID ((fr_tagged_t)0x07u)
-#define FR_TAGGED_BYTES_MAX_GENERATION ((fr_tagged_t)0xFFu)
+#if FR_BYTES_CHECKED
+#define FR_TAGGED_BYTES_MAX_REWINDS ((fr_tagged_t)0xFFFFu)
+#else
+#define FR_TAGGED_BYTES_MAX_REWINDS ((fr_tagged_t)0u)
+#endif
 #define FR_TAGGED_BYTES_LAST_OFFSET                                            \
-  ((fr_tagged_t)((FR_TAGGED_BYTES_MAX_GENERATION                               \
-                  << FR_TAGGED_BYTES_GENERATION_SHIFT) |                        \
+  ((fr_tagged_t)((FR_TAGGED_BYTES_MAX_REWINDS                                  \
+                  << FR_TAGGED_BYTES_REWINDS_SHIFT) |                           \
                  FR_TAGGED_BYTES_MAX_ID))
 #define FR_TAGGED_BYTES_END                                                    \
   ((fr_tagged_t)(FR_TAGGED_BYTES_BASE + FR_TAGGED_BYTES_LAST_OFFSET))

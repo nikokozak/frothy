@@ -61,6 +61,8 @@ typedef struct fr_image_records_t {
   uint16_t record_shape_object_count;
   const fr_image_record_object_t *record_objects;
   uint16_t record_object_count;
+  const fr_image_buffer_object_t *buffer_objects;
+  uint16_t buffer_object_count;
   const fr_image_native_t *natives;
   uint16_t native_count;
   const fr_slot_name_t *slot_names;
@@ -259,6 +261,8 @@ fr_image_records_from_overlay(const fr_overlay_update_t *update) {
       .record_shape_object_count = update->record_shape_object_count,
       .record_objects = update->record_objects,
       .record_object_count = update->record_object_count,
+      .buffer_objects = update->buffer_objects,
+      .buffer_object_count = update->buffer_object_count,
       .natives = update->natives,
       .native_count = update->native_count,
       .slot_names = update->slot_names,
@@ -288,6 +292,14 @@ static fr_err_t fr_image_check_tables(const fr_image_records_t *records) {
   if (records->record_objects == NULL && records->record_object_count > 0) {
     return FR_ERR_INVALID;
   }
+  if (records->buffer_objects == NULL && records->buffer_object_count > 0) {
+    return FR_ERR_INVALID;
+  }
+#if !FR_FEATURE_BUFFERS
+  if (records->buffer_object_count > 0) {
+    return FR_ERR_UNSUPPORTED;
+  }
+#endif
 #if !FR_FEATURE_CELLS
   if (records->cell_object_count > 0) {
     return FR_ERR_UNSUPPORTED;
@@ -324,7 +336,8 @@ static fr_err_t fr_image_check_tables(const fr_image_records_t *records) {
   }
   if (records->code_object_count > FR_PROFILE_CODE_OBJECT_TABLE_SIZE ||
       (uint32_t)records->cell_object_count + records->text_object_count +
-              records->record_shape_object_count + records->record_object_count >
+              records->record_shape_object_count +
+              records->record_object_count + records->buffer_object_count >
           FR_PROFILE_OBJECT_TABLE_SIZE ||
       records->native_count > FR_PROFILE_NATIVE_TABLE_SIZE) {
     return FR_ERR_CAPACITY;
@@ -356,6 +369,9 @@ static fr_err_t fr_image_check_ref(const fr_image_records_t *records,
                                                           : FR_ERR_NOT_FOUND;
   case FR_IMAGE_REF_RECORD_OBJECT:
     return ref.index < records->record_object_count ? FR_OK
+                                                    : FR_ERR_NOT_FOUND;
+  case FR_IMAGE_REF_BUFFER_OBJECT:
+    return ref.index < records->buffer_object_count ? FR_OK
                                                     : FR_ERR_NOT_FOUND;
   default:
     return FR_ERR_INVALID;
@@ -591,7 +607,7 @@ static fr_err_t fr_image_record_field_ref_allowed(
 static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
                                      const fr_image_records_t *records,
                                      fr_image_apply_mode_t mode) {
-  uint32_t used_instruction_bytes = 0;
+  uint32_t used_ram_code_bytes = 0;
   uint32_t used_cell_words = 0;
   uint32_t used_record_values = 0;
   uint16_t new_text_objects = 0;
@@ -600,6 +616,8 @@ static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
   uint16_t new_record_name_entries = 0;
   uint16_t new_record_shape_fields = 0;
   uint16_t new_record_name_bytes = 0;
+  uint16_t new_buffer_objects = 0;
+  uint32_t new_buffer_bytes = 0;
   fr_slot_id_t slot_count_after_writes = 0;
 
   if (runtime == NULL || records == NULL) {
@@ -631,6 +649,41 @@ static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
       runtime, records, &new_record_shape_objects, &new_record_name_entries,
       &new_record_shape_fields, &new_record_name_bytes));
 #endif
+#if FR_FEATURE_BUFFERS
+  /* ADR 0088 decision 2: when the name of a definition already holds a
+   * buffer of the same capacity, the apply keeps that buffer and empties
+   * it, so it needs no room. A new buffer takes an entry and its capacity
+   * in the Text pool. fr_image_apply_to_runtime makes the same choice. */
+  for (uint16_t i = 0; i < records->buffer_object_count; i++) {
+    uint16_t capacity = records->buffer_objects[i].capacity;
+    bool reused = false;
+
+    if (capacity == 0 || capacity > FR_TEXT_BYTE_CAPACITY) {
+      return FR_ERR_RANGE;
+    }
+    for (uint16_t j = 0; j < records->slot_init_count; j++) {
+      const fr_image_slot_init_t *init = &records->slot_inits[j];
+      fr_tagged_t current = 0;
+      fr_object_id_t held_id = 0;
+      const uint8_t *ignored_bytes = NULL;
+      uint16_t ignored_length = 0;
+      uint16_t held_capacity = 0;
+
+      reused = reused ||
+               (init->ref.kind == FR_IMAGE_REF_BUFFER_OBJECT &&
+                init->ref.index == i &&
+                fr_slot_read(runtime, init->slot_id, &current) == FR_OK &&
+                fr_tagged_decode_object_id(current, &held_id) == FR_OK &&
+                fr_buffer_view(runtime, held_id, &ignored_bytes,
+                               &ignored_length, &held_capacity) == FR_OK &&
+                held_capacity == capacity);
+    }
+    if (!reused) {
+      new_buffer_objects = (uint16_t)(new_buffer_objects + 1u);
+      new_buffer_bytes += capacity;
+    }
+  }
+#endif
   if ((uint32_t)runtime->code.count + records->code_object_count >
       FR_PROFILE_CODE_OBJECT_TABLE_SIZE) {
     fr_diag_note_capacity(runtime->diag, "code object table",
@@ -640,10 +693,10 @@ static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
   }
   if ((uint32_t)runtime->objects.count + records->cell_object_count +
           new_text_objects + new_record_shape_objects +
-          records->record_object_count >
+          records->record_object_count + new_buffer_objects >
       FR_PROFILE_OBJECT_TABLE_SIZE) {
     fr_diag_note_capacity(runtime->diag,
-                          "object table (cells, text and records)",
+                          "object table",
                           FR_PROFILE_OBJECT_TABLE_SIZE, FR_DIAG_UNIT_COUNT,
                           NULL);
     return FR_ERR_CAPACITY;
@@ -660,27 +713,32 @@ static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
       runtime->code.count != runtime->code.image_count) {
     return FR_ERR_INVALID;
   }
-  used_instruction_bytes = runtime->code.overlay_used_instruction_bytes;
+  /* Each code object takes its instructions and then its parameter names
+   * from the one RAM area (ADR 0084), so the check counts both before any
+   * change. */
+  used_ram_code_bytes = runtime->code.ram_code_used;
   for (uint16_t i = 0; i < records->code_object_count; i++) {
     const fr_instruction_stream_t *instructions =
         &records->code_objects[i].instructions;
     fr_instruction_header_t header = {0};
-    uint32_t instruction_capacity =
-        (uint32_t)sizeof(runtime->code.overlay_instruction_bytes);
+    uint32_t ram_code_capacity = (uint32_t)sizeof(runtime->code.ram_code_bytes);
+    uint32_t names_length = records->code_objects[i].param_names != NULL
+                                ? records->code_objects[i].param_names_length
+                                : 0u;
 
     if (instructions->length == 0 || instructions->bytes == NULL) {
       return FR_ERR_INVALID;
     }
     FR_TRY(fr_instruction_read_header(instructions, &header));
-    if (used_instruction_bytes + instructions->length > instruction_capacity) {
+    if (used_ram_code_bytes + instructions->length + names_length >
+        ram_code_capacity) {
       fr_diag_note_capacity(
           runtime->diag, "pending code",
-          (fr_int_t)(instruction_capacity -
-                     runtime->code.base_ram_used_instruction_bytes),
+          (fr_int_t)(ram_code_capacity - runtime->code.ram_code_base_used),
           FR_DIAG_UNIT_BYTES, "a save that succeeds frees it");
       return FR_ERR_CAPACITY;
     }
-    used_instruction_bytes += instructions->length;
+    used_ram_code_bytes += instructions->length + names_length;
   }
 
 #if FR_FEATURE_CELLS
@@ -702,7 +760,8 @@ static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
 #endif
 
 #if FR_FEATURE_TEXT
-  if ((uint32_t)runtime->objects.used_text_bytes + new_text_bytes >
+  if ((uint32_t)runtime->objects.used_text_bytes + new_text_bytes +
+          new_buffer_bytes >
       FR_TEXT_BYTE_CAPACITY) {
     fr_diag_note_capacity(runtime->diag, "Text pool", FR_TEXT_BYTE_CAPACITY,
                           FR_DIAG_UNIT_BYTES,
@@ -712,6 +771,7 @@ static fr_err_t fr_image_check_apply(const fr_runtime_t *runtime,
 #else
   (void)new_text_objects;
   (void)new_text_bytes;
+  (void)new_buffer_bytes;
 #endif
 
 #if FR_FEATURE_RECORDS
@@ -830,6 +890,7 @@ static fr_err_t fr_image_resolve_ref(
     const fr_object_id_t text_ids[], uint16_t text_id_count,
     const fr_object_id_t record_shape_ids[], uint16_t record_shape_id_count,
     const fr_object_id_t record_ids[], uint16_t record_id_count,
+    const fr_object_id_t buffer_ids[], uint16_t buffer_id_count,
     const fr_native_id_t native_ids[], uint16_t native_id_count,
     fr_image_ref_t ref, fr_tagged_t *out_tagged) {
   switch (ref.kind) {
@@ -870,6 +931,11 @@ static fr_err_t fr_image_resolve_ref(
       return FR_ERR_NOT_FOUND;
     }
     return fr_tagged_encode_object_id(record_ids[ref.index], out_tagged);
+  case FR_IMAGE_REF_BUFFER_OBJECT:
+    if (ref.index >= buffer_id_count) {
+      return FR_ERR_NOT_FOUND;
+    }
+    return fr_tagged_encode_object_id(buffer_ids[ref.index], out_tagged);
   default:
     return FR_ERR_INVALID;
   }
@@ -964,11 +1030,13 @@ static fr_err_t fr_image_apply_to_runtime(fr_runtime_t *runtime,
   fr_object_id_t text_ids[FR_OBJECT_TABLE_CAPACITY];
   fr_object_id_t record_shape_ids[FR_OBJECT_TABLE_CAPACITY];
   fr_object_id_t record_ids[FR_OBJECT_TABLE_CAPACITY];
+  fr_object_id_t buffer_ids[FR_OBJECT_TABLE_CAPACITY];
   fr_native_id_t native_ids[FR_PROFILE_NATIVE_TABLE_SIZE];
   uint16_t installed_text_count = 0;
   uint16_t installed_cell_count = 0;
   uint16_t installed_record_shape_count = 0;
   uint16_t installed_record_count = 0;
+  uint16_t installed_buffer_count = 0;
   uint16_t installed_native_count = 0;
 
 #if FR_FEATURE_TEXT
@@ -1052,7 +1120,8 @@ static fr_err_t fr_image_apply_to_runtime(fr_runtime_t *runtime,
         code_ids, records->code_object_count, cell_ids, installed_cell_count,
         text_ids, installed_text_count, record_shape_ids,
         installed_record_shape_count, record_ids, installed_record_count,
-        native_ids, installed_native_count, record->shape, &shape_tagged));
+        buffer_ids, 0, native_ids, installed_native_count, record->shape,
+        &shape_tagged));
     FR_TRY(fr_tagged_decode_object_id(shape_tagged, &shape_object_id));
     if (record->field_count > FR_RECORD_FIELDS_PER_SHAPE_CAPACITY) {
       return FR_ERR_RANGE;
@@ -1062,8 +1131,8 @@ static fr_err_t fr_image_apply_to_runtime(fr_runtime_t *runtime,
           code_ids, records->code_object_count, cell_ids, installed_cell_count,
           text_ids, installed_text_count, record_shape_ids,
           installed_record_shape_count, record_ids, installed_record_count,
-          native_ids, installed_native_count, record->field_values[j],
-          &field_values[j]));
+          buffer_ids, 0, native_ids, installed_native_count,
+          record->field_values[j], &field_values[j]));
     }
     FR_TRY(fr_record_install(runtime, shape_object_id, field_values,
                              record->field_count,
@@ -1084,6 +1153,38 @@ static fr_err_t fr_image_apply_to_runtime(fr_runtime_t *runtime,
 #else
   (void)cell_ids;
 #endif
+#if FR_FEATURE_BUFFERS
+  /* The choice of fr_image_check_apply: keep and empty a buffer of the same
+   * capacity that the name holds, else install a new one. */
+  for (; installed_buffer_count < records->buffer_object_count;
+       installed_buffer_count++) {
+    uint16_t capacity =
+        records->buffer_objects[installed_buffer_count].capacity;
+    fr_object_id_t *buffer_id = &buffer_ids[installed_buffer_count];
+    bool reused = false;
+
+    for (uint16_t j = 0; j < records->slot_init_count && !reused; j++) {
+      const fr_image_slot_init_t *init = &records->slot_inits[j];
+      fr_tagged_t current = 0;
+      const uint8_t *ignored_bytes = NULL;
+      uint16_t ignored_length = 0;
+      uint16_t held_capacity = 0;
+
+      reused = init->ref.kind == FR_IMAGE_REF_BUFFER_OBJECT &&
+               init->ref.index == installed_buffer_count &&
+               fr_slot_read(runtime, init->slot_id, &current) == FR_OK &&
+               fr_tagged_decode_object_id(current, buffer_id) == FR_OK &&
+               fr_buffer_view(runtime, *buffer_id, &ignored_bytes,
+                              &ignored_length, &held_capacity) == FR_OK &&
+               held_capacity == capacity;
+    }
+    if (reused) {
+      FR_TRY(fr_buffer_write(runtime, *buffer_id, 0, NULL, 0));
+    } else {
+      FR_TRY(fr_buffer_install(runtime, capacity, NULL, 0, buffer_id));
+    }
+  }
+#endif
   for (; installed_native_count < records->native_count;
        installed_native_count++) {
     const fr_image_native_t *native = &records->natives[installed_native_count];
@@ -1102,8 +1203,8 @@ static fr_err_t fr_image_apply_to_runtime(fr_runtime_t *runtime,
         code_ids, records->code_object_count, cell_ids, installed_cell_count,
         text_ids, installed_text_count, record_shape_ids,
         installed_record_shape_count, record_ids, installed_record_count,
-        native_ids, installed_native_count,
-        records->slot_inits[i].ref, &tagged));
+        buffer_ids, installed_buffer_count, native_ids,
+        installed_native_count, records->slot_inits[i].ref, &tagged));
     if (mode == FR_IMAGE_APPLY_BASE) {
       FR_TRY(fr_slot_set_base(runtime, records->slot_inits[i].slot_id, tagged));
     } else {
@@ -1241,6 +1342,7 @@ static fr_err_t fr_overlay_update_encode_ref(
     return FR_ERR_UNSUPPORTED;
   case FR_IMAGE_REF_RECORD_SHAPE_OBJECT:
   case FR_IMAGE_REF_RECORD_OBJECT:
+  case FR_IMAGE_REF_BUFFER_OBJECT:
     return FR_ERR_UNSUPPORTED;
   default:
     return FR_ERR_INVALID;
@@ -1309,7 +1411,7 @@ fr_err_t fr_overlay_update_encode(const fr_overlay_update_t *update,
   if (records.native_count > 0) {
     return FR_ERR_UNSUPPORTED;
   }
-  if (records.cell_object_count > 0) {
+  if (records.cell_object_count > 0 || records.buffer_object_count > 0) {
     return FR_ERR_UNSUPPORTED;
   }
   if (records.record_shape_object_count > 0 || records.record_object_count > 0) {
@@ -1483,7 +1585,7 @@ static fr_err_t fr_overlay_update_decode_code(
                                     &out->instruction_bytes
                                          [*instruction_bytes_used],
                                 .length = length};
-  /* Persisted code carries no param names yet; the renderer falls back. */
+  /* Code from `apply` has no parameter names; `see` shows `arg0` and so on. */
   code->param_names = NULL;
   code->param_names_length = 0;
   *instruction_bytes_used = (uint16_t)(*instruction_bytes_used + length);

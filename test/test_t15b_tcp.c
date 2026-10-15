@@ -373,12 +373,37 @@ static void test_interrupt_during_read_returns_interrupted(void) {
   TEST_ASSERT_EQUAL(FR_OK, fr_platform_tcp_close(platform_index));
 }
 
+#if FR_FEATURE_BUFFERS
+/* tcp.write takes a buffer as it takes Text and Bytes (ADR 0088). */
+static void test_tcp_write_takes_a_buffer(void) {
+  const uint8_t body[2] = {'h', 'i'};
+  uint8_t drained[8] = {0};
+  uint16_t drained_len = 0;
+
+  install_base();
+  fr_host_tcp_queue_response(0, body, 2);
+  eval_ok("sock is tcp.open: \"example.com\", 80");
+  eval_ok("request is buffer: 8");
+  eval_ok("buffer.set: request, \"GET\"");
+  eval_ok("tcp.write: sock, request");
+  TEST_ASSERT_EQUAL(FR_OK,
+                    fr_host_tcp_drain_writes(0, drained, sizeof(drained),
+                                             &drained_len));
+  TEST_ASSERT_EQUAL_UINT16(3, drained_len);
+  TEST_ASSERT_EQUAL_MEMORY("GET", drained, 3);
+  eval_ok("tcp.close: sock");
+}
+#endif
+
 #endif /* FR_FEATURE_NET */
 
 int main(void) {
   UNITY_BEGIN();
 #if FR_FEATURE_NET
   RUN_TEST(test_open_write_read_close_happy_path);
+#if FR_FEATURE_BUFFERS
+  RUN_TEST(test_tcp_write_takes_a_buffer);
+#endif
   RUN_TEST(test_listen_accept_lifecycle);
   RUN_TEST(test_accept_returns_nil_when_idle);
   RUN_TEST(test_relisten_same_port_returns_same_handle);
