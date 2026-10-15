@@ -377,8 +377,10 @@ fr_err_t fr_tagged_encode_bytes_ref(fr_bytes_ref_t ref,
     return FR_ERR_INVALID;
   }
 #if FR_FEATURE_BYTES
+  /* A checked build accepts each 16-bit rewind count. A release build
+   * accepts only zero. */
   if (ref.id > FR_TAGGED_BYTES_MAX_ID ||
-      ref.rewinds > FR_TAGGED_BYTES_MAX_REWINDS) {
+      (!FR_BYTES_CHECKED && ref.rewinds != 0)) {
     return FR_ERR_RANGE;
   }
   *out_tagged =

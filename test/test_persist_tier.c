@@ -2140,7 +2140,7 @@ static void test_equal_bodies_keep_their_own_names(void) {
  * parses back. */
 static void test_see_keeps_a_local_apart_from_the_parameters(void) {
   char line[256];
-  char expected[256];
+  char expected[sizeof(line) + 32];
   char out[FR_REPL_OUTPUT_BYTES];
   int used = 0;
 
