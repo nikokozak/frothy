@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.4 — 2026-10-16
+
+### Changed
+
+- **The grammar marks `buffer` as a keyword.** Frothy v0.1.23 adds
+  `name is buffer: N`, and the editor now colors `buffer` like `cells`.
+
+## 0.5.3 — 2026-07-22
+
+### Changed
+
+- **An empty `binaryPath` finds the CLI.** VS Code that starts from the macOS
+  GUI does not get the PATH of the login shell. The extension now looks on the
+  process PATH, then in the standard Homebrew prefixes. A set value is used as
+  it is.
+
 ## 0.5.2 — 2026-07-20
 
 ### Changed
