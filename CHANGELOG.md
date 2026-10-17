@@ -4,7 +4,7 @@ All notable changes to Frothy are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions are the `vX.Y.Z` git
 tags described in the "Releasing" section of CONTRIBUTING.md.
 
-## [0.1.23] - 2026-10-16
+## [0.1.23] - 2026-10-17
 
 **Upgrade from v0.1.22.** This release changes the saved image and the
 profile hash of every profile, and it has no migration. A board with a
