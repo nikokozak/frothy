@@ -4,7 +4,7 @@ All notable changes to Frothy are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions are the `vX.Y.Z` git
 tags described in the "Releasing" section of CONTRIBUTING.md.
 
-## [Unreleased]
+## [0.1.23] - 2026-10-21
 
 **Upgrade from v0.1.22.** This release changes the saved image and the
 profile hash of every profile, and it has no migration. A board with a
@@ -15,15 +15,16 @@ image stays on the board until `save` or a wipe.
    files. `see` is not a full backup.
 2. Flash v0.1.23. The browser flasher erases all flash on ESP32 boards, so
    the board then starts empty.
-3. Install your libraries again and send your program again.
-4. Set again the state that your program needs: cell contents, records, and
+3. Install your libraries again.
+4. Send your program again.
+5. Set again the state that your program needs: cell contents, records, and
    `wifi.save` credentials after a browser flash.
-5. Type `save`. Do not type `save` first: a `save` before you send your
+6. Type `save`. Do not type `save` first: a `save` before you send your
    program writes an empty program over the old image.
 
 If you updated without your source, do not type `save` or a wipe command.
-Unless the browser flasher erased an ESP32 board, the old image stays on the
-board, and v0.1.22 firmware can read it again.
+When the flash did not erase the old image, the image stays on the board, and
+v0.1.22 firmware can read it again.
 
 ### Added
 
@@ -201,6 +202,18 @@ board, and v0.1.22 firmware can read it again.
   you define. Before, a new word could take the slot of a saved library word,
   and the save lost it with no message. Use `restore` before `save` to keep
   the saved program.
+
+### Known issues
+
+- **A long chain of calls can overflow the stack.** An event body counts its
+  call depth from zero, on top of the program that it interrupts. Also,
+  `bytes.concat`, `text.concat`, `i2c.read` and `tcp.read` keep a 4 KiB array
+  on the stack, and `http.get` and `http.post` keep arrays that total just over
+  8 KiB. On the tested ESP32 boards, a program and an event body that are each
+  about 14 calls deep can restart the board. The RP2040 boards have no stack
+  guard, and their stack can grow into the heap with no report. v0.1.22 has the
+  same defect. Until a later release fixes it, keep the chains of calls in
+  event bodies short. Call these six words only from short chains of calls.
 
 ## [0.1.22] - 2026-10-06
 
